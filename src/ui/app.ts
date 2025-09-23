@@ -21,6 +21,12 @@ export const createApp = (root: HTMLElement): AppInstance => {
 
   let activeId: string | null = null;
   let organizations: Organization[] = [];
+  let visibleIds: Set<string> | null = null;
+
+  const getVisibleOrganizations = (): Organization[] => {
+    if (!visibleIds) return organizations;
+    return organizations.filter((o) => visibleIds!.has(o.id));
+  };
 
   const handleHover = (id: string | null) => {
     if (activeId === id) {
@@ -32,12 +38,16 @@ export const createApp = (root: HTMLElement): AppInstance => {
     mapView.setActiveOrganization(activeId);
   };
 
-  const sidebar = createSidebar({
-    onHover: (id) => handleHover(id),
-  });
-
   const mapView = createMapView({
     onHover: (id) => handleHover(id),
+    onVisibleIdsChange: (ids) => {
+      visibleIds = new Set(ids);
+      sidebar.setOrganizations(getVisibleOrganizations(), organizations.length);
+    },
+  });
+  const sidebar = createSidebar({
+    onHover: (id) => handleHover(id),
+    onZoomOutAll: () => mapView.fitAllOrganizations(),
   });
 
   layout.appendChild(sidebar.element);
@@ -45,8 +55,8 @@ export const createApp = (root: HTMLElement): AppInstance => {
 
   const unsubscribe = organizationStore.subscribe((next) => {
     organizations = next;
-    sidebar.setOrganizations(organizations);
     mapView.setOrganizations(organizations);
+    sidebar.setOrganizations(getVisibleOrganizations(), organizations.length);
 
     if (activeId && !organizations.some((org) => org.id === activeId)) {
       activeId = null;

@@ -51,9 +51,6 @@ export const createTopBar = (): TopBarController => {
     <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-500 font-display text-lg font-semibold tracking-tight text-white shadow-floating">
       NE
     </span>
-    <span class="hidden text-sm font-semibold md:inline text-slate-700 dark:text-slate-200">
-      Neighborhood Explorer
-    </span>
   `;
 
   const nav = document.createElement("nav");

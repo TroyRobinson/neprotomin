@@ -6,12 +6,14 @@ import { themeController } from "./theme";
 
 interface MapViewOptions {
   onHover: (id: string | null) => void;
+  onVisibleIdsChange?: (ids: string[]) => void;
 }
 
 export interface MapViewController {
   element: HTMLElement;
   setOrganizations: (organizations: Organization[]) => void;
   setActiveOrganization: (id: string | null) => void;
+  fitAllOrganizations: () => void;
   destroy: () => void;
 }
 
@@ -34,7 +36,7 @@ type FC = GeoJSON.FeatureCollection<
 
 const emptyFC = (): FC => ({ type: "FeatureCollection", features: [] });
 
-export const createMapView = ({ onHover }: MapViewOptions): MapViewController => {
+export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
   container.className = "relative flex flex-1";
 
@@ -63,6 +65,7 @@ export const createMapView = ({ onHover }: MapViewOptions): MapViewController =>
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
   let activeId: string | null = null;
+  let lastVisibleIdsKey: string | null = null;
 
   const ensureSourcesAndLayers = () => {
     if (!map.isStyleLoaded()) return;
@@ -121,6 +124,9 @@ export const createMapView = ({ onHover }: MapViewOptions): MapViewController =>
     }
 
     updateHighlight();
+
+    // Recompute visible ids after ensuring layers/sources
+    emitVisibleIds();
   };
 
   map.once("load", () => {
@@ -181,12 +187,27 @@ export const createMapView = ({ onHover }: MapViewOptions): MapViewController =>
     if (source) {
       source.setData(lastData);
     }
+
+    // Organizations changed; recompute visible set
+    emitVisibleIds();
   };
 
   const setActiveOrganization = (id: string | null) => {
     if (activeId === id) return;
     activeId = id;
     updateHighlight();
+  };
+
+  const fitAllOrganizations = () => {
+    const features = lastData.features;
+    if (!features.length) return;
+    const first = features[0].geometry.coordinates as [number, number];
+    let bounds = new maplibregl.LngLatBounds(first, first);
+    for (let i = 1; i < features.length; i++) {
+      const c = features[i].geometry.coordinates as [number, number];
+      bounds = bounds.extend(c);
+    }
+    map.fitBounds(bounds, { padding: 60, duration: 400 });
   };
 
   const resizeObserver = new ResizeObserver(() => {
@@ -203,10 +224,33 @@ export const createMapView = ({ onHover }: MapViewOptions): MapViewController =>
     map.once("idle", () => ensureSourcesAndLayers());
   });
 
+  const emitVisibleIds = () => {
+    const bounds = map.getBounds();
+    const ids = lastData.features
+      .filter((f) => {
+        const [lng, lat] = f.geometry.coordinates as [number, number];
+        return bounds.contains([lng, lat]);
+      })
+      .map((f) => f.properties.id);
+
+    // Stable sort and de-dupe just in case
+    const uniqueSorted = Array.from(new Set(ids)).sort();
+    const key = uniqueSorted.join("|");
+    if (key === lastVisibleIdsKey) return;
+    lastVisibleIdsKey = key;
+
+    if (onVisibleIdsChange) onVisibleIdsChange(uniqueSorted);
+  };
+
+  // Update visible set on map interactions
+  map.on("moveend", () => emitVisibleIds());
+  map.on("zoomend", () => emitVisibleIds());
+
   return {
     element: container,
     setOrganizations,
     setActiveOrganization,
+    fitAllOrganizations,
     destroy: () => {
       resizeObserver.disconnect();
       unsubscribeTheme();
