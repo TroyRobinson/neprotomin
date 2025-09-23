@@ -4,6 +4,7 @@ Agent playbook (concise)
   - Prefer MapLibre-rendered layers over DOM markers to avoid zoom drift. Use a GeoJSON `source` + `circle` layers for pins and a separate highlight layer filtered by id. See `src/ui/mapView.ts:96`.
   - Avoid CSS transforms on marker containers; let the renderer position features. If needed, use layer paint props instead of DOM styling.
   - MapLibre `setStyle()` clears custom sources/layers. On theme/basemap swap, listen for `styledata`/`idle` and re-add sources/layers, then repopulate data and filters.
+  - Lingering cluster numbers: Set `fadeDuration: 0` in Map constructor to disable symbol cross-fade. Paint transitions don't control this - it's MapLibre's built-in symbol placement fade.
 
 - Map config
   - Use a light street basemap (Carto Positron GL) and center on Tulsa. Disable rotation for predictable UX. See `src/ui/mapView.ts:17` and `src/ui/mapView.ts:111`.
