@@ -16,6 +16,7 @@ const _schema = i.schema({
       url: i.string(),
       latitude: i.number(),
       longitude: i.number(),
+      category: i.string().indexed(),
     }),
   },
   links: {},

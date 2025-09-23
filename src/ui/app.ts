@@ -52,14 +52,15 @@ export const createApp = (root: HTMLElement): AppInstance => {
 
   const mapView = createMapView({
     onHover: (id) => handleHover(id),
-    onVisibleIdsChange: (ids) => {
+    onVisibleIdsChange: (ids, totalInSource) => {
       visibleIds = new Set(ids);
-      sidebar.setOrganizations(getVisibleOrganizations(), organizations.length);
+      sidebar.setOrganizations(getVisibleOrganizations(), totalInSource);
     },
   });
   const sidebar = createSidebar({
     onHover: (id) => handleHover(id),
     onZoomOutAll: () => mapView.fitAllOrganizations(),
+    onCategoryClick: (categoryId) => mapView.setCategoryFilter(categoryId),
   });
 
   layout.appendChild(sidebar.element);

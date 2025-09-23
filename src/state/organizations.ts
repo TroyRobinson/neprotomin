@@ -45,7 +45,8 @@ class OrganizationStore {
                 org?.name &&
                 org?.url &&
                 typeof org?.latitude === "number" &&
-                typeof org?.longitude === "number",
+                typeof org?.longitude === "number" &&
+                typeof (org as any)?.category === "string",
             ),
           )
           .map((org) => ({
@@ -54,6 +55,7 @@ class OrganizationStore {
             url: org.url,
             latitude: org.latitude,
             longitude: org.longitude,
+            category: (org as any).category,
           }));
 
         this.data = normalized;

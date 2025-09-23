@@ -16,19 +16,19 @@ const CLOSE_ICON = `
   </svg>
 `;
 
-const categories = [
-  { id: "health", label: "Health" },
-  { id: "education", label: "Education" },
-  { id: "justice", label: "Justice" },
-  { id: "economy", label: "Economy" },
-];
+import { CATEGORIES as categories } from "../types/categories";
 
 export interface CategoryChipsController {
   element: HTMLElement;
+  setSelected: (categoryId: string | null) => void;
   destroy: () => void;
 }
 
-export const createCategoryChips = (): CategoryChipsController => {
+interface CategoryChipsOptions {
+  onChange?: (categoryId: string | null) => void;
+}
+
+export const createCategoryChips = (options: CategoryChipsOptions = {}): CategoryChipsController => {
   const wrapper = document.createElement("div");
   wrapper.className =
     "pointer-events-none absolute left-4 top-4 z-10 flex flex-wrap gap-2";
@@ -60,6 +60,7 @@ export const createCategoryChips = (): CategoryChipsController => {
     const handleClick = () => {
       selectedId = selectedId === category.id ? null : category.id;
       update();
+      if (options.onChange) options.onChange(selectedId);
     };
 
     button.addEventListener("click", handleClick);
@@ -100,6 +101,11 @@ export const createCategoryChips = (): CategoryChipsController => {
     });
   };
 
+  const setSelected = (categoryId: string | null) => {
+    selectedId = categoryId;
+    update();
+  };
+
   const destroy = () => {
     entries.forEach(({ button, handleClick }) => {
       button.removeEventListener("click", handleClick);
@@ -108,5 +114,5 @@ export const createCategoryChips = (): CategoryChipsController => {
 
   update();
 
-  return { element: wrapper, destroy };
+  return { element: wrapper, setSelected, destroy };
 };

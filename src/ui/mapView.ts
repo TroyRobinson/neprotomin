@@ -7,13 +7,14 @@ import { createCategoryChips } from "./categoryChips";
 
 interface MapViewOptions {
   onHover: (idOrIds: string | string[] | null) => void;
-  onVisibleIdsChange?: (ids: string[]) => void;
+  onVisibleIdsChange?: (ids: string[], totalInSource: number) => void;
 }
 
 export interface MapViewController {
   element: HTMLElement;
   setOrganizations: (organizations: Organization[]) => void;
   setActiveOrganization: (id: string | null) => void;
+  setCategoryFilter: (categoryId: string | null) => void;
   fitAllOrganizations: () => void;
   destroy: () => void;
 }
@@ -48,7 +49,14 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
   mapNode.className = "absolute inset-0";
   container.appendChild(mapNode);
 
-  const categoryChips = createCategoryChips();
+  // Category filter UI (chips)
+  let selectedCategory: string | null = null;
+  const categoryChips = createCategoryChips({
+    onChange: (categoryId) => {
+      selectedCategory = categoryId;
+      applyData();
+    },
+  });
   container.appendChild(categoryChips.element);
 
   let currentTheme = themeController.getTheme();
@@ -67,6 +75,8 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
   map.touchZoomRotate.disableRotation();
 
 
+  // Keep a copy of all orgs and the last rendered FeatureCollection
+  let allOrganizations: Organization[] = [];
   let lastData: FC = emptyFC();
 
   map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
@@ -346,9 +356,18 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
   };
 
   const setOrganizations = (organizations: Organization[]) => {
+    allOrganizations = organizations;
+    applyData();
+  };
+
+  const applyData = () => {
+    const filtered = selectedCategory
+      ? allOrganizations.filter((o) => o.category === selectedCategory)
+      : allOrganizations;
+
     const fc: FC = {
       type: "FeatureCollection",
-      features: organizations.map((o) => ({
+      features: filtered.map((o) => ({
         type: "Feature",
         properties: { id: o.id, name: o.name, url: o.url },
         geometry: { type: "Point", coordinates: [o.longitude, o.latitude] },
@@ -362,6 +381,13 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
       source.setData(lastData);
     }
 
+    // If the active org no longer exists under filter, clear it
+    if (activeId && !filtered.some((o) => o.id === activeId)) {
+      activeId = null;
+      updateHighlight();
+      clearClusterHighlight();
+    }
+
     // Organizations changed; recompute visible set
     emitVisibleIds();
   };
@@ -372,6 +398,14 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
     updateHighlight();
     // Also update cluster highlight, if applicable
     void highlightClusterContainingOrg(activeId);
+  };
+
+  const setCategoryFilter = (categoryId: string | null) => {
+    if (selectedCategory === categoryId) return;
+    selectedCategory = categoryId;
+    // Reflect in chips without re-emitting onChange
+    categoryChips.setSelected(selectedCategory);
+    applyData();
   };
 
   const fitAllOrganizations = () => {
@@ -415,7 +449,7 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
     if (key === lastVisibleIdsKey) return;
     lastVisibleIdsKey = key;
 
-    if (onVisibleIdsChange) onVisibleIdsChange(uniqueSorted);
+    if (onVisibleIdsChange) onVisibleIdsChange(uniqueSorted, lastData.features.length);
   };
 
   // Update visible set on map interactions
@@ -426,6 +460,7 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
     element: container,
     setOrganizations,
     setActiveOrganization,
+    setCategoryFilter,
     fitAllOrganizations,
     destroy: () => {
       resizeObserver.disconnect();

@@ -20,30 +20,49 @@ export const ensureOrganizationsSeeded = async (): Promise<void> => {
         },
       });
 
-      const existingByName = new Set(
-        (data.organizations ?? [])
-          .map((org) => org?.name)
-          .filter((name): name is string => Boolean(name)),
-      );
-
-      const missingSeeds = organizationSeedData.filter(
-        (seed) => !existingByName.has(seed.name),
-      );
-
-      if (missingSeeds.length === 0) {
-        return;
+      const existingByName = new Map<string, any>();
+      for (const org of data.organizations ?? []) {
+        if (org?.name) existingByName.set(org.name, org);
       }
 
-      await db.transact(
-        missingSeeds.map((org) =>
-          db.tx.organizations[id()].update({
-            name: org.name,
-            url: org.url,
-            latitude: org.latitude,
-            longitude: org.longitude,
-          }),
-        ),
-      );
+      const txs: any[] = [];
+      for (const seed of organizationSeedData) {
+        const existing = existingByName.get(seed.name);
+        if (existing && existing.id) {
+          // Update if any field differs or category missing
+          const needsUpdate =
+            existing.url !== seed.url ||
+            existing.latitude !== seed.latitude ||
+            existing.longitude !== seed.longitude ||
+            existing.category !== seed.category;
+          if (needsUpdate) {
+            txs.push(
+              db.tx.organizations[existing.id].update({
+                name: seed.name,
+                url: seed.url,
+                latitude: seed.latitude,
+                longitude: seed.longitude,
+                category: seed.category,
+              }),
+            );
+          }
+        } else {
+          // Create new
+          txs.push(
+            db.tx.organizations[id()].update({
+              name: seed.name,
+              url: seed.url,
+              latitude: seed.latitude,
+              longitude: seed.longitude,
+              category: seed.category,
+            }),
+          );
+        }
+      }
+
+      if (txs.length > 0) {
+        await db.transact(txs);
+      }
     } catch (error) {
       console.warn(
         "InstantDB seed encountered an error (likely offline); skipping seed",

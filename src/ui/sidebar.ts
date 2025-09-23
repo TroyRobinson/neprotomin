@@ -1,8 +1,10 @@
 import type { Organization } from "../types/organization";
+import { getCategoryLabel } from "../types/categories";
 
 interface SidebarOptions {
   onHover: (idOrIds: string | string[] | null) => void;
   onZoomOutAll: () => void;
+  onCategoryClick?: (categoryId: string) => void;
 }
 
 export interface SidebarController {
@@ -15,6 +17,7 @@ export interface SidebarController {
 const createListItem = (
   org: Organization,
   onHover: SidebarOptions["onHover"],
+  onCategoryClick?: SidebarOptions["onCategoryClick"],
 ): HTMLLIElement => {
   const item = document.createElement("li");
   item.dataset.orgId = org.id;
@@ -37,6 +40,28 @@ const createListItem = (
 
   item.appendChild(name);
   item.appendChild(link);
+
+  // Category badge just to the right of the link
+  const categoryBadge = document.createElement("span");
+  categoryBadge.className =
+    "mt-1 ml-2 inline-flex items-center rounded-full bg-slate-50 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-800/70 dark:text-slate-300 cursor-pointer";
+  categoryBadge.textContent = getCategoryLabel(org.category);
+  categoryBadge.setAttribute("role", "button");
+  categoryBadge.tabIndex = 0;
+  const handleBadgeClick = () => {
+    const cat = (org as any).category as string | undefined;
+    if (cat) {
+      onCategoryClick?.(cat);
+    }
+  };
+  categoryBadge.addEventListener("click", handleBadgeClick);
+  categoryBadge.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleBadgeClick();
+    }
+  });
+  item.appendChild(categoryBadge);
 
   const handleEnter = () => onHover(org.id);
   const handleLeave = () => onHover(null);
@@ -64,7 +89,7 @@ const createZoomOutListItem = (onZoomOutAll: () => void): HTMLLIElement => {
   return li;
 };
 
-export const createSidebar = ({ onHover, onZoomOutAll }: SidebarOptions): SidebarController => {
+export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: SidebarOptions): SidebarController => {
   const container = document.createElement("aside");
   container.className =
     "relative flex w-full max-w-sm flex-col border-r border-slate-200 bg-white/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60";
@@ -159,7 +184,7 @@ export const createSidebar = ({ onHover, onZoomOutAll }: SidebarOptions): Sideba
       if (existing) {
         frag.appendChild(existing);
       } else {
-        const li = createListItem(org, onHover);
+        const li = createListItem(org, onHover, onCategoryClick);
         // Start hidden for transition-in
         li.classList.add("opacity-0", "translate-y-1");
         frag.appendChild(li);
