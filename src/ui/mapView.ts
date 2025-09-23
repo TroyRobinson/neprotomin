@@ -683,6 +683,11 @@ export const createMapView = ({
       clearClusterHighlight();
       onHover(id || null);
     });
+    
+    // Prevent zip/area selection when clicking org pins
+    map.on("click", LAYER_POINTS_ID, (e) => {
+      e.originalEvent.stopPropagation();
+    });
 
     map.on("mouseenter", LAYER_CLUSTERS_ID, () => {
       map.getCanvas().style.cursor = "pointer";
@@ -730,6 +735,13 @@ export const createMapView = ({
 
     const handleZipClick = (e: maplibregl.MapLayerMouseEvent) => {
       if (boundaryMode !== "zips") return;
+      
+      // Check if there's an org pin at this point first
+      const orgFeatures = map.queryRenderedFeatures(e.point, {
+        layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID],
+      });
+      if (orgFeatures.length > 0) return; // Don't select zip if clicking on org pin
+      
       const features = map.queryRenderedFeatures(e.point, {
         layers: [BOUNDARY_FILL_LAYER_ID],
       });

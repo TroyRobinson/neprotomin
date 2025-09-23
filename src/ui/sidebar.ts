@@ -35,7 +35,7 @@ const createListItem = (
   link.target = "_blank";
   link.rel = "noopener noreferrer";
   link.className =
-    "mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-600 transition-colors hover:text-brand-500 dark:text-brand-300 dark:hover:text-brand-200";
+    "mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-400 transition-colors hover:text-brand-900 dark:text-slate-300 dark:hover:text-slate-100";
   link.innerHTML = `Visit site
     <span aria-hidden="true" class="text-[1em] leading-none">↗</span>
   `;
@@ -276,6 +276,13 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
     const missing = Math.max(totalCount - visibleCount, 0);
     if (missing > 0) {
       zoomOutButton.textContent = `${missing} more not visible (Zoom out)`;
+      // Add slight brand color to the zoom-out link
+      zoomOutButton.classList.add(
+        "text-brand-200",
+        "hover:text-brand-800", 
+        "transition-colors",
+        "font-normal"
+      );
       listAll.appendChild(zoomOutListItem);
       zoomOutListItem.hidden = false;
     } else {
