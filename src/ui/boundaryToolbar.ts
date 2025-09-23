@@ -217,7 +217,10 @@ export const createBoundaryToolbar = ({
     chipsContainer.innerHTML = "";
     chipByZip.clear();
     if (lastZips.length === 0) return;
-    const sorted = [...lastZips].sort();
+    // Sort pinned zips first (left), then unpinned zips (right)
+    const pinned = lastZips.filter(zip => lastPinned.has(zip)).sort();
+    const unpinned = lastZips.filter(zip => !lastPinned.has(zip)).sort();
+    const sorted = [...pinned, ...unpinned];
     for (const zip of sorted) {
       const pinned = lastPinned.has(zip);
       const chip = document.createElement("button");

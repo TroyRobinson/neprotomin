@@ -48,14 +48,14 @@ export const createDemographicsBar = (): DemographicsBarController => {
 
   const setStats = (s: DemographicStats | null) => {
     if (!s || !s.selectedCount) {
-      pop.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Population:</span> —`;
-      age.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Avg Age:</span> —`;
-      married.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Married:</span> —`;
+      pop.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Population:</span> <span class="text-slate-400 dark:text-slate-500">—</span>`;
+      age.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Avg Age:</span> <span class="text-slate-400 dark:text-slate-500">—</span>`;
+      married.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Married:</span> <span class="text-slate-400 dark:text-slate-500">—</span>`;
       return;
     }
-    pop.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Population:</span> ${formatPopulation(s.population)}`;
-    age.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Avg Age:</span> ${formatNumber(s.avgAge)}`;
-    married.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Married:</span> ${formatPercent(s.marriedPercent)}`;
+    pop.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Population:</span> <span class="text-slate-400 dark:text-slate-500">${formatPopulation(s.population)}</span>`;
+    age.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Avg Age:</span> <span class="text-slate-400 dark:text-slate-500">${formatNumber(s.avgAge)}</span>`;
+    married.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Married:</span> <span class="text-slate-400 dark:text-slate-500">${formatPercent(s.marriedPercent)}</span>`;
   };
 
   // Initialize empty state
