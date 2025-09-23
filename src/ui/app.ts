@@ -29,7 +29,8 @@ export const createApp = (root: HTMLElement): AppInstance => {
   let organizations: Organization[] = [];
   let visibleIds: Set<string> | null = null;
   let sourceIds: Set<string> | null = null;
-  let selectedZips: Set<string> = new Set();
+  let selectedZips: Set<string> = new Set(); // union of pinned + transient from map
+  let pinnedZips: Set<string> = new Set();
   let organizationZips: Map<string, string | null> = new Map();
 
   let sidebar: SidebarController | null = null;
@@ -104,9 +105,16 @@ export const createApp = (root: HTMLElement): AppInstance => {
       sourceIds = new Set(allSourceIds);
       updateSidebar();
     },
-    onZipSelectionChange: (zips) => {
+    onZipSelectionChange: (zips, meta) => {
       selectedZips = new Set(zips);
+      // If meta.pinned provided, keep app state in sync
+      if (meta?.pinned) pinnedZips = new Set(meta.pinned);
       updateSidebar();
+      // Reflect selected chips in toolbar
+      boundaryToolbar.setSelectedZips(Array.from(selectedZips), Array.from(pinnedZips));
+    },
+    onZipHoverChange: (zip) => {
+      boundaryToolbar.setHoveredZip(zip);
     },
   });
   sidebar = createSidebar({
@@ -119,6 +127,17 @@ export const createApp = (root: HTMLElement): AppInstance => {
     defaultValue: defaultBoundary,
     onChange: (mode) => {
       mapView.setBoundaryMode(mode);
+    },
+    onToggleZipPin: (zip, nextPinned) => {
+      const next = new Set(pinnedZips);
+      if (nextPinned) next.add(zip);
+      else next.delete(zip);
+      pinnedZips = next;
+      mapView.setPinnedZips(Array.from(pinnedZips));
+      boundaryToolbar.setSelectedZips(Array.from(selectedZips), Array.from(pinnedZips));
+    },
+    onHoverZip: (zip) => {
+      mapView.setHoveredZip(zip);
     },
   });
 

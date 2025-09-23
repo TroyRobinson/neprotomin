@@ -12,7 +12,8 @@ import { createCategoryChips } from "./categoryChips";
 interface MapViewOptions {
   onHover: (idOrIds: string | string[] | null) => void;
   onVisibleIdsChange?: (ids: string[], totalInSource: number, allSourceIds: string[]) => void;
-  onZipSelectionChange?: (selectedZips: string[]) => void;
+  onZipSelectionChange?: (selectedZips: string[], meta?: { pinned: string[]; transient: string[] }) => void;
+  onZipHoverChange?: (zip: string | null) => void;
 }
 
 export interface MapViewController {
@@ -21,6 +22,8 @@ export interface MapViewController {
   setActiveOrganization: (id: string | null) => void;
   setCategoryFilter: (categoryId: string | null) => void;
   setBoundaryMode: (mode: BoundaryMode) => void;
+  setPinnedZips: (zips: string[]) => void;
+  setHoveredZip: (zip: string | null) => void;
   fitAllOrganizations: () => void;
   destroy: () => void;
 }
@@ -44,6 +47,10 @@ const BOUNDARY_FILL_LAYER_ID = "tulsa-zip-boundaries-fill";
 const BOUNDARY_LINE_LAYER_ID = "tulsa-zip-boundaries-outline";
 const BOUNDARY_HIGHLIGHT_FILL_LAYER_ID = "tulsa-zip-boundaries-highlight-fill";
 const BOUNDARY_HIGHLIGHT_LINE_LAYER_ID = "tulsa-zip-boundaries-highlight-line";
+const BOUNDARY_PINNED_FILL_LAYER_ID = "tulsa-zip-boundaries-pinned-fill";
+const BOUNDARY_PINNED_LINE_LAYER_ID = "tulsa-zip-boundaries-pinned-line";
+const BOUNDARY_HOVER_LINE_LAYER_ID = "tulsa-zip-boundaries-hover-line";
+const BOUNDARY_HOVER_FILL_LAYER_ID = "tulsa-zip-boundaries-hover-fill";
 
 type FC = GeoJSON.FeatureCollection<
   GeoJSON.Point,
@@ -56,6 +63,7 @@ export const createMapView = ({
   onHover,
   onVisibleIdsChange,
   onZipSelectionChange,
+  onZipHoverChange,
 }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
   container.className = "relative flex flex-1";
@@ -76,7 +84,11 @@ export const createMapView = ({
 
   let currentTheme = themeController.getTheme();
   let boundaryMode: BoundaryMode = "zips";
-  let selectedZips = new Set<string>();
+  // Selections: pinned persist; transient are from recent clicks
+  let pinnedZips = new Set<string>();
+  let transientZips = new Set<string>();
+  let hoveredZipFromToolbar: string | null = null;
+  let hoveredZipFromMap: string | null = null;
 
   const map = new maplibregl.Map({
     container: mapNode,
@@ -121,6 +133,35 @@ export const createMapView = ({
           lineOpacity: 0.35,
         };
 
+  const getHoverColors = (theme: ThemeName, isSelected: boolean, isPinned: boolean) => {
+    if (isPinned) {
+      // Darker shade of pinned color (#3755f0 -> darker blue)
+      return {
+        fillColor: "#3755f0",
+        fillOpacity: theme === "dark" ? 0.50 : 0.40,
+        lineColor: "#1e40af", // darker blue
+        lineOpacity: 0.95,
+      };
+    }
+    if (isSelected) {
+      // Darker shade of selected color (#6d8afc -> darker blue)  
+      return {
+        fillColor: "#3755f0",
+        fillOpacity: theme === "dark" ? 0.32 : 0.26,
+        lineColor: "#4f46e5", // darker blue
+        lineOpacity: 0.90,
+      };
+    }
+    // Darker shade of base colors
+    const palette = getBoundaryPalette(theme);
+    return {
+      fillColor: palette.fillColor,
+      fillOpacity: palette.fillOpacity * 1.8, // more subtle on hover
+      lineColor: theme === "dark" ? "#cbd5e1" : "#475569", // darker versions
+      lineOpacity: palette.lineOpacity * 1.5,
+    };
+  };
+
   const updateBoundaryPaint = () => {
     const palette = getBoundaryPalette(currentTheme);
     if (map.getLayer(BOUNDARY_FILL_LAYER_ID)) {
@@ -130,6 +171,31 @@ export const createMapView = ({
     if (map.getLayer(BOUNDARY_LINE_LAYER_ID)) {
       map.setPaintProperty(BOUNDARY_LINE_LAYER_ID, "line-color", palette.lineColor);
       map.setPaintProperty(BOUNDARY_LINE_LAYER_ID, "line-opacity", palette.lineOpacity);
+    }
+    if (map.getLayer(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID)) {
+      map.setPaintProperty(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, "fill-color", "#3755f0");
+      map.setPaintProperty(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, "fill-opacity", currentTheme === "dark" ? 0.26 : 0.20);
+    }
+    if (map.getLayer(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID)) {
+      map.setPaintProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "line-color", "#6d8afc");
+      map.setPaintProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "line-width", 1); // half of original 2
+      map.setPaintProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "line-opacity", 0.9);
+    }
+    if (map.getLayer(BOUNDARY_PINNED_FILL_LAYER_ID)) {
+      map.setPaintProperty(BOUNDARY_PINNED_FILL_LAYER_ID, "fill-color", "#3755f0");
+      map.setPaintProperty(BOUNDARY_PINNED_FILL_LAYER_ID, "fill-opacity", currentTheme === "dark" ? 0.40 : 0.30);
+    }
+    if (map.getLayer(BOUNDARY_PINNED_LINE_LAYER_ID)) {
+      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-color", "#1d3bd6");
+      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-width", 1.4); // half of original 2.8
+      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-opacity", 0.95);
+    }
+    if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
+      map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-width", 0.9); // half of original 1.8
+      map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity-transition", { duration: 150, delay: 0 });
+    }
+    if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
+      map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity-transition", { duration: 150, delay: 0 });
     }
   };
 
@@ -147,32 +213,82 @@ export const createMapView = ({
     if (map.getLayer(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID)) {
       map.setLayoutProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "visibility", visibility);
     }
+    if (map.getLayer(BOUNDARY_PINNED_FILL_LAYER_ID)) {
+      map.setLayoutProperty(BOUNDARY_PINNED_FILL_LAYER_ID, "visibility", visibility);
+    }
+    if (map.getLayer(BOUNDARY_PINNED_LINE_LAYER_ID)) {
+      map.setLayoutProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "visibility", visibility);
+    }
+    if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
+      map.setLayoutProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "visibility", visibility);
+    }
+    if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
+      map.setLayoutProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "visibility", visibility);
+    }
+  };
+
+  const getUnionZips = (): string[] => {
+    const u = new Set<string>([...pinnedZips, ...transientZips]);
+    return Array.from(u);
   };
 
   const updateZipSelectionHighlight = () => {
-    const selected = Array.from(selectedZips);
-    const filter =
-      selected.length > 0
-        ? (["in", ["get", "zip"], ["literal", selected]] as any)
-        : (["==", ["get", "zip"], "__none__"] as any);
-    if (map.getLayer(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID)) {
-      map.setFilter(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, filter);
-    }
-    if (map.getLayer(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID)) {
-      map.setFilter(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, filter);
+    const pinned = Array.from(pinnedZips);
+    const transient = Array.from(transientZips).filter((z) => !pinnedZips.has(z));
+    const pinnedFilter = pinned.length
+      ? (["in", ["get", "zip"], ["literal", pinned]] as any)
+      : (["==", ["get", "zip"], "__none__"] as any);
+    const transFilter = transient.length
+      ? (["in", ["get", "zip"], ["literal", transient]] as any)
+      : (["==", ["get", "zip"], "__none__"] as any);
+    if (map.getLayer(BOUNDARY_PINNED_FILL_LAYER_ID)) map.setFilter(BOUNDARY_PINNED_FILL_LAYER_ID, pinnedFilter);
+    if (map.getLayer(BOUNDARY_PINNED_LINE_LAYER_ID)) map.setFilter(BOUNDARY_PINNED_LINE_LAYER_ID, pinnedFilter);
+    if (map.getLayer(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID)) map.setFilter(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, transFilter);
+    if (map.getLayer(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID)) map.setFilter(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, transFilter);
+  };
+
+  const updateZipHoverOutline = () => {
+    const hovered = hoveredZipFromToolbar || hoveredZipFromMap;
+    const filter = hovered
+      ? (["==", ["get", "zip"], hovered] as any)
+      : (["==", ["get", "zip"], "__none__"] as any);
+    
+    // Apply filter to both hover layers
+    if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) map.setFilter(BOUNDARY_HOVER_LINE_LAYER_ID, filter);
+    if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) map.setFilter(BOUNDARY_HOVER_FILL_LAYER_ID, filter);
+    
+    // Update hover colors based on current state of hovered zip
+    if (hovered) {
+      const isPinned = pinnedZips.has(hovered);
+      const isSelected = transientZips.has(hovered);
+      const hoverColors = getHoverColors(currentTheme, isSelected, isPinned);
+      
+      if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
+        map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-color", hoverColors.lineColor);
+        map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity", hoverColors.lineOpacity);
+      }
+      if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
+        map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-color", hoverColors.fillColor);
+        map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity", hoverColors.fillOpacity);
+      }
     }
   };
 
   const notifyZipSelectionChange = () => {
-    onZipSelectionChange?.(Array.from(selectedZips));
+    const union = getUnionZips();
+    onZipSelectionChange?.(union, {
+      pinned: Array.from(pinnedZips),
+      transient: Array.from(transientZips),
+    });
   };
 
   const zoomToSelectedZips = () => {
-    if (selectedZips.size === 0) return;
+    const union = getUnionZips();
+    if (union.length === 0) return;
 
     let combinedBounds: BoundsArray | null = null;
 
-    for (const zip of selectedZips) {
+    for (const zip of union) {
       const bounds = getZipBounds(zip);
       if (!bounds) continue;
       if (!combinedBounds) {
@@ -198,6 +314,7 @@ export const createMapView = ({
 
   const applyZipSelection = ({ shouldZoom, notify }: { shouldZoom: boolean; notify: boolean }) => {
     updateZipSelectionHighlight();
+    updateZipHoverOutline();
     if (shouldZoom) {
       zoomToSelectedZips();
     }
@@ -207,28 +324,45 @@ export const createMapView = ({
   };
 
   const clearZipSelection = ({ notify }: { notify: boolean }) => {
-    if (selectedZips.size === 0) {
+    if (transientZips.size === 0) {
       if (notify) notifyZipSelectionChange();
       return;
     }
-    selectedZips = new Set();
+    transientZips = new Set();
     applyZipSelection({ shouldZoom: false, notify });
   };
 
   const toggleZipSelection = (zip: string, additive: boolean) => {
-    const next = new Set(selectedZips);
-    if (additive) {
-      if (next.has(zip)) {
-        next.delete(zip);
-      } else {
-        next.add(zip);
+    // Check if zip is already selected (either pinned or transient)
+    const isAlreadyPinned = pinnedZips.has(zip);
+    const isAlreadyTransient = transientZips.has(zip);
+    const isAlreadySelected = isAlreadyPinned || isAlreadyTransient;
+    
+    if (isAlreadySelected) {
+      // Remove from both pinned and transient if already selected
+      if (isAlreadyPinned) {
+        const nextPinned = new Set(pinnedZips);
+        nextPinned.delete(zip);
+        pinnedZips = nextPinned;
+      }
+      if (isAlreadyTransient) {
+        const nextTransient = new Set(transientZips);
+        nextTransient.delete(zip);
+        transientZips = nextTransient;
       }
     } else {
-      next.clear();
-      next.add(zip);
+      // Original selection logic for unselected zips
+      const next = new Set(transientZips);
+      if (additive) {
+        next.add(zip);
+      } else {
+        next.clear();
+        next.add(zip);
+      }
+      transientZips = next;
     }
-    selectedZips = next;
-    applyZipSelection({ shouldZoom: true, notify: true });
+    
+    applyZipSelection({ shouldZoom: !isAlreadySelected, notify: true });
   };
 
   const ensureSourcesAndLayers = () => {
@@ -270,7 +404,7 @@ export const createMapView = ({
         paint: {
           "line-color": palette.lineColor,
           "line-opacity": palette.lineOpacity,
-          "line-width": 1.2,
+          "line-width": 0.6, // half of original 1.2
         },
       });
     }
@@ -283,10 +417,7 @@ export const createMapView = ({
           source: BOUNDARY_SOURCE_ID,
           filter: ["==", ["get", "zip"], "__none__"],
           layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
-          paint: {
-            "fill-color": "#3755f0",
-            "fill-opacity": 0.22,
-          },
+          paint: {},
         },
         BOUNDARY_LINE_LAYER_ID,
       );
@@ -299,10 +430,62 @@ export const createMapView = ({
         source: BOUNDARY_SOURCE_ID,
         filter: ["==", ["get", "zip"], "__none__"],
         layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
+        paint: {},
+      });
+    }
+
+    // Pinned layers
+    if (!map.getLayer(BOUNDARY_PINNED_FILL_LAYER_ID)) {
+      map.addLayer(
+        {
+          id: BOUNDARY_PINNED_FILL_LAYER_ID,
+          type: "fill",
+          source: BOUNDARY_SOURCE_ID,
+          filter: ["==", ["get", "zip"], "__none__"],
+          layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
+          paint: {},
+        },
+        BOUNDARY_LINE_LAYER_ID,
+      );
+    }
+    if (!map.getLayer(BOUNDARY_PINNED_LINE_LAYER_ID)) {
+      map.addLayer({
+        id: BOUNDARY_PINNED_LINE_LAYER_ID,
+        type: "line",
+        source: BOUNDARY_SOURCE_ID,
+        filter: ["==", ["get", "zip"], "__none__"],
+        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
+        paint: {},
+      });
+    }
+
+    // Hover fill layer (below hover line)
+    if (!map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
+      map.addLayer(
+        {
+          id: BOUNDARY_HOVER_FILL_LAYER_ID,
+          type: "fill",
+          source: BOUNDARY_SOURCE_ID,
+          filter: ["==", ["get", "zip"], "__none__"],
+          layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
+          paint: {
+            "fill-opacity-transition": { duration: 150, delay: 0 } as any,
+          },
+        },
+        BOUNDARY_HOVER_LINE_LAYER_ID, // Insert before hover line layer
+      );
+    }
+
+    // Hover outline layer (topmost)
+    if (!map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
+      map.addLayer({
+        id: BOUNDARY_HOVER_LINE_LAYER_ID,
+        type: "line",
+        source: BOUNDARY_SOURCE_ID,
+        filter: ["==", ["get", "zip"], "__none__"],
+        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
         paint: {
-          "line-color": "#1d3bd6",
-          "line-width": 2.4,
-          "line-opacity": 0.85,
+          "line-opacity-transition": { duration: 150, delay: 0 } as any,
         },
       });
     }
@@ -455,11 +638,35 @@ export const createMapView = ({
 
     ensureSourcesAndLayers();
 
+    // Add grabby-hand cursor during drag
+    let isDragging = false;
+    
+    map.on("mousedown", () => {
+      isDragging = true;
+      map.getCanvas().style.cursor = "grabbing";
+    });
+    
+    map.on("mouseup", () => {
+      isDragging = false;
+      map.getCanvas().style.cursor = "pointer";
+    });
+    
+    // Handle case where mouse leaves canvas while dragging
+    map.getCanvas().addEventListener("mouseleave", () => {
+      if (isDragging) {
+        isDragging = false;
+        map.getCanvas().style.cursor = "pointer";
+      }
+    });
+
+    // Set default cursor to pointer
+    map.getCanvas().style.cursor = "pointer";
+
     map.on("mouseenter", LAYER_POINTS_ID, () => {
       map.getCanvas().style.cursor = "pointer";
     });
     map.on("mouseleave", LAYER_POINTS_ID, () => {
-      map.getCanvas().style.cursor = "";
+      map.getCanvas().style.cursor = "pointer";
       clearClusterHighlight();
       onHover(null);
     });
@@ -474,7 +681,7 @@ export const createMapView = ({
       map.getCanvas().style.cursor = "pointer";
     });
     map.on("mouseleave", LAYER_CLUSTERS_ID, () => {
-      map.getCanvas().style.cursor = "";
+      map.getCanvas().style.cursor = "pointer";
       clearClusterHighlight();
       onHover(null);
     });
@@ -534,7 +741,22 @@ export const createMapView = ({
       map.getCanvas().style.cursor = "pointer";
     });
     map.on("mouseleave", BOUNDARY_FILL_LAYER_ID, () => {
-      map.getCanvas().style.cursor = "";
+      map.getCanvas().style.cursor = "pointer";
+      hoveredZipFromMap = null;
+      updateZipHoverOutline();
+      onZipHoverChange?.(null);
+    });
+
+    map.on("mousemove", BOUNDARY_FILL_LAYER_ID, (e: any) => {
+      if (boundaryMode !== "zips") return;
+      const features = map.queryRenderedFeatures(e.point, { layers: [BOUNDARY_FILL_LAYER_ID] });
+      const feature = features[0];
+      const zip = feature?.properties?.zip as string | undefined;
+      if (!zip) return;
+      if (hoveredZipFromMap === zip) return;
+      hoveredZipFromMap = zip;
+      updateZipHoverOutline();
+      onZipHoverChange?.(zip);
     });
   });
 
@@ -570,7 +792,10 @@ export const createMapView = ({
   const setBoundaryMode = (mode: BoundaryMode) => {
     boundaryMode = mode;
     if (mode !== "zips") {
-      clearZipSelection({ notify: true });
+      // Clear all selections when leaving zip mode
+      transientZips = new Set();
+      pinnedZips = new Set();
+      applyZipSelection({ shouldZoom: false, notify: true });
     }
     ensureSourcesAndLayers();
     updateBoundaryVisibility();
@@ -714,6 +939,7 @@ export const createMapView = ({
 
   const handleKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
+      // ESC clears only transient selection; pinned remain
       clearZipSelection({ notify: true });
     }
   };
@@ -725,6 +951,21 @@ export const createMapView = ({
     setActiveOrganization,
     setCategoryFilter,
     setBoundaryMode,
+    setPinnedZips: (zips: string[]) => {
+      const next = new Set(zips);
+      let changed = false;
+      if (next.size !== pinnedZips.size) changed = true;
+      else {
+        for (const z of next) if (!pinnedZips.has(z)) { changed = true; break; }
+      }
+      if (!changed) return;
+      pinnedZips = next;
+      applyZipSelection({ shouldZoom: false, notify: true });
+    },
+    setHoveredZip: (zip: string | null) => {
+      hoveredZipFromToolbar = zip;
+      updateZipHoverOutline();
+    },
     fitAllOrganizations,
     destroy: () => {
       resizeObserver.disconnect();
