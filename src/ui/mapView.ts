@@ -3,6 +3,7 @@ import maplibregl from "maplibre-gl";
 import type { Organization } from "../types/organization";
 import { TULSA_CENTER } from "../types/organization";
 import { themeController } from "./theme";
+import { createCategoryChips } from "./categoryChips";
 
 interface MapViewOptions {
   onHover: (idOrIds: string | string[] | null) => void;
@@ -46,6 +47,9 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
   const mapNode = document.createElement("div");
   mapNode.className = "absolute inset-0";
   container.appendChild(mapNode);
+
+  const categoryChips = createCategoryChips();
+  container.appendChild(categoryChips.element);
 
   let currentTheme = themeController.getTheme();
 
@@ -426,6 +430,7 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
     destroy: () => {
       resizeObserver.disconnect();
       unsubscribeTheme();
+      categoryChips.destroy();
       map.remove();
     },
   };
