@@ -3,6 +3,8 @@ import type { Organization } from "../types/organization";
 import { createMapView } from "./mapView";
 import { createSidebar } from "./sidebar";
 import { createTopBar } from "./topbar";
+import { createBoundaryToolbar } from "./boundaryToolbar";
+import type { BoundaryMode } from "../types/boundaries";
 
 export interface AppInstance {
   destroy: () => void;
@@ -14,6 +16,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
     "flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950";
 
   const topBar = createTopBar();
+  const defaultBoundary: BoundaryMode = "zips";
 
   const layout = document.createElement("main");
   layout.className =
@@ -63,6 +66,15 @@ export const createApp = (root: HTMLElement): AppInstance => {
     onCategoryClick: (categoryId) => mapView.setCategoryFilter(categoryId),
   });
 
+  const boundaryToolbar = createBoundaryToolbar({
+    defaultValue: defaultBoundary,
+    onChange: (mode) => {
+      mapView.setBoundaryMode(mode);
+    },
+  });
+
+  mapView.setBoundaryMode(defaultBoundary);
+
   layout.appendChild(sidebar.element);
   layout.appendChild(mapView.element);
 
@@ -79,12 +91,14 @@ export const createApp = (root: HTMLElement): AppInstance => {
   });
 
   root.appendChild(topBar.element);
+  root.appendChild(boundaryToolbar.element);
   root.appendChild(layout);
 
   return {
     destroy: () => {
       unsubscribe();
       topBar.destroy();
+      boundaryToolbar.destroy();
       mapView.destroy();
       root.innerHTML = "";
     },

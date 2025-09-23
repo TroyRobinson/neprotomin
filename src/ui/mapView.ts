@@ -1,5 +1,7 @@
 import maplibregl from "maplibre-gl";
 
+import { tulsaZipBoundaries } from "../data/tulsaZipBoundaries";
+import type { BoundaryMode } from "../types/boundaries";
 import type { Organization } from "../types/organization";
 import { TULSA_CENTER } from "../types/organization";
 import { themeController } from "./theme";
@@ -15,6 +17,7 @@ export interface MapViewController {
   setOrganizations: (organizations: Organization[]) => void;
   setActiveOrganization: (id: string | null) => void;
   setCategoryFilter: (categoryId: string | null) => void;
+  setBoundaryMode: (mode: BoundaryMode) => void;
   fitAllOrganizations: () => void;
   destroy: () => void;
 }
@@ -33,6 +36,9 @@ const LAYER_CLUSTER_COUNT_ID = "organizations-cluster-count";
 const LAYER_POINTS_ID = "organizations-points";
 const LAYER_HIGHLIGHT_ID = "organizations-highlight";
 const LAYER_CLUSTER_HIGHLIGHT_ID = "organizations-cluster-highlight";
+const BOUNDARY_SOURCE_ID = "tulsa-zip-boundaries";
+const BOUNDARY_FILL_LAYER_ID = "tulsa-zip-boundaries-fill";
+const BOUNDARY_LINE_LAYER_ID = "tulsa-zip-boundaries-outline";
 
 type FC = GeoJSON.FeatureCollection<
   GeoJSON.Point,
@@ -60,6 +66,7 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
   container.appendChild(categoryChips.element);
 
   let currentTheme = themeController.getTheme();
+  let boundaryMode: BoundaryMode = "zips";
 
   const map = new maplibregl.Map({
     container: mapNode,
@@ -85,8 +92,88 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
   let activeId: string | null = null;
   let lastVisibleIdsKey: string | null = null;
 
+  const getBoundaryPalette = (theme: ThemeName) =>
+    theme === "dark"
+      ? {
+          // Dark theme: lighter, subtler fill and outline
+          fillColor: "#94a3b8", // slate-400
+          fillOpacity: 0.08,
+          lineColor: "#f1f5f9", // slate-100
+          lineOpacity: 0.45,
+        }
+      : {
+          // Light theme: very light shading with a softer outline
+          fillColor: "#1f2937", // gray-800 but very low opacity
+          fillOpacity: 0.04,
+          lineColor: "#94a3b8", // slate-400
+          lineOpacity: 0.35,
+        };
+
+  const updateBoundaryPaint = () => {
+    const palette = getBoundaryPalette(currentTheme);
+    if (map.getLayer(BOUNDARY_FILL_LAYER_ID)) {
+      map.setPaintProperty(BOUNDARY_FILL_LAYER_ID, "fill-color", palette.fillColor);
+      map.setPaintProperty(BOUNDARY_FILL_LAYER_ID, "fill-opacity", palette.fillOpacity);
+    }
+    if (map.getLayer(BOUNDARY_LINE_LAYER_ID)) {
+      map.setPaintProperty(BOUNDARY_LINE_LAYER_ID, "line-color", palette.lineColor);
+      map.setPaintProperty(BOUNDARY_LINE_LAYER_ID, "line-opacity", palette.lineOpacity);
+    }
+  };
+
+  const updateBoundaryVisibility = () => {
+    const visibility = boundaryMode === "zips" ? "visible" : "none";
+    if (map.getLayer(BOUNDARY_FILL_LAYER_ID)) {
+      map.setLayoutProperty(BOUNDARY_FILL_LAYER_ID, "visibility", visibility);
+    }
+    if (map.getLayer(BOUNDARY_LINE_LAYER_ID)) {
+      map.setLayoutProperty(BOUNDARY_LINE_LAYER_ID, "visibility", visibility);
+    }
+  };
+
   const ensureSourcesAndLayers = () => {
     if (!map.isStyleLoaded()) return;
+
+    if (!map.getSource(BOUNDARY_SOURCE_ID)) {
+      map.addSource(BOUNDARY_SOURCE_ID, {
+        type: "geojson",
+        data: tulsaZipBoundaries,
+      });
+    }
+
+    const boundarySource = map.getSource(BOUNDARY_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (boundarySource) {
+      boundarySource.setData(tulsaZipBoundaries);
+    }
+
+    if (!map.getLayer(BOUNDARY_FILL_LAYER_ID)) {
+      const palette = getBoundaryPalette(currentTheme);
+      map.addLayer({
+        id: BOUNDARY_FILL_LAYER_ID,
+        type: "fill",
+        source: BOUNDARY_SOURCE_ID,
+        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
+        paint: {
+          "fill-color": palette.fillColor,
+          "fill-opacity": palette.fillOpacity,
+        },
+      });
+    }
+
+    if (!map.getLayer(BOUNDARY_LINE_LAYER_ID)) {
+      const palette = getBoundaryPalette(currentTheme);
+      map.addLayer({
+        id: BOUNDARY_LINE_LAYER_ID,
+        type: "line",
+        source: BOUNDARY_SOURCE_ID,
+        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
+        paint: {
+          "line-color": palette.lineColor,
+          "line-opacity": palette.lineOpacity,
+          "line-width": 1.2,
+        },
+      });
+    }
 
     if (!map.getSource(SOURCE_ID)) {
       map.addSource(SOURCE_ID, {
@@ -220,6 +307,8 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
     }
 
     updateHighlight();
+    updateBoundaryPaint();
+    updateBoundaryVisibility();
 
     // Recompute visible ids after ensuring layers/sources
     emitVisibleIds();
@@ -320,6 +409,12 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
       ? ["all", ["has", "point_count"], ["==", ["get", "cluster_id"], clusterId]]
       : ["all", ["has", "point_count"], ["==", ["get", "cluster_id"], -1]];
     map.setFilter(LAYER_CLUSTER_HIGHLIGHT_ID, filter as any);
+  };
+
+  const setBoundaryMode = (mode: BoundaryMode) => {
+    boundaryMode = mode;
+    ensureSourcesAndLayers();
+    updateBoundaryVisibility();
   };
 
   const clearClusterHighlight = () => setClusterHighlight(null);
@@ -461,6 +556,7 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
     setOrganizations,
     setActiveOrganization,
     setCategoryFilter,
+    setBoundaryMode,
     fitAllOrganizations,
     destroy: () => {
       resizeObserver.disconnect();
