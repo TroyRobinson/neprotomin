@@ -5,7 +5,11 @@ type ThemeName = "light" | "dark";
 const getThemeIcon = (theme: ThemeName): string => {
   if (theme === "dark") {
     return `
-      <svg viewBox="0 0 24 24" aria-hidden="true" class="h-5 w-5">
+      <svg
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        class="h-5 w-5 translate-x-[-2px] translate-y-[2px]"
+      >
         <path
           fill="currentColor"
           d="M21 12.79A9 9 0 0111.21 3a7 7 0 1010 9.79 1 1 0 010 .02 9 9 0 01-.21 0z"
