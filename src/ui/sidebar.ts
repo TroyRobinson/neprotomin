@@ -9,7 +9,7 @@ interface SidebarOptions {
 
 export interface SidebarController {
   element: HTMLElement;
-  setOrganizations: (organizations: Organization[], totalCount?: number) => void;
+  setOrganizations: (groups: { inSelection: Organization[]; all: Organization[]; totalSourceCount?: number }) => void;
   setActiveOrganization: (id: string | null) => void;
   setHighlightedOrganizations: (ids: string[] | null) => void;
 }
@@ -108,8 +108,23 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
   header.appendChild(title);
   header.appendChild(totalLabel);
 
-  const list = document.createElement("ul");
-  list.className = "flex-1 space-y-2 overflow-y-auto px-4 pb-6 pt-1";
+  // Content wrapper (scroll area)
+  const scroll = document.createElement("div");
+  scroll.className = "flex-1 overflow-y-auto";
+
+  // Section: IN SELECTION
+  const inSelHeader = document.createElement("h3");
+  inSelHeader.className = "px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500";
+  inSelHeader.textContent = "IN SELECTION";
+  const listInSelection = document.createElement("ul");
+  listInSelection.className = "space-y-2 px-4";
+
+  // Section: ALL
+  const allHeader = document.createElement("h3");
+  allHeader.className = "px-4 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500";
+  allHeader.textContent = "ALL";
+  const listAll = document.createElement("ul");
+  listAll.className = "space-y-2 px-4 pb-6";
 
   const emptyState = document.createElement("p");
   emptyState.className = "px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400";
@@ -123,8 +138,11 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
   const zoomOutListItem = createZoomOutListItem(onZoomOutAll);
   const zoomOutButton = zoomOutListItem.querySelector("button")!;
 
+  // Registry of DOM nodes by org id so we can move items across sections
+  const nodeRegistry = new Map<string, HTMLLIElement>();
+
   const updateActiveState = () => {
-    const items = list.querySelectorAll<HTMLLIElement>("li");
+    const items = container.querySelectorAll<HTMLLIElement>("ul li");
     items.forEach((item) => {
       // Don't apply active state to the zoom out link
       if (item === zoomOutListItem) return;
@@ -138,90 +156,131 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
     });
   };
 
-  const setOrganizations = (organizations: Organization[], total?: number) => {
-    totalCount = typeof total === "number" ? total : organizations.length;
-    totalLabel.textContent = `${organizations.length}`;
+  const resetInlineLayout = (el: HTMLLIElement) => {
+    el.style.height = "";
+    el.style.marginTop = "";
+    el.style.marginBottom = "";
+    el.style.paddingTop = "";
+    el.style.paddingBottom = "";
+    el.style.transition = "";
+  };
 
-    // Diff existing items vs next set for smoother transitions
-    const existingItems = new Map<string, HTMLLIElement>();
-    list.querySelectorAll<HTMLLIElement>("li").forEach((li) => {
-      // Don't include the zoom out link in the map
+  const ensureVisible = (el: HTMLLIElement) => {
+    el.classList.remove("opacity-0", "translate-y-1");
+    resetInlineLayout(el);
+  };
+
+  const collapseAndRemove = (el: HTMLLIElement) => {
+    // Guard: if already detached, skip
+    if (!el.isConnected) return;
+    const prevTransition = el.style.transition;
+    const h = el.offsetHeight;
+    el.style.height = `${h}px`;
+    // Force layout
+    void el.offsetHeight;
+    el.style.transition = "height 120ms ease, opacity 120ms linear, transform 120ms ease, margin 120ms ease, padding 120ms ease";
+    el.classList.add("opacity-0", "translate-y-1");
+    el.style.height = "0px";
+    el.style.marginTop = "0px";
+    el.style.marginBottom = "0px";
+    el.style.paddingTop = "0px";
+    el.style.paddingBottom = "0px";
+    const onEnd = () => {
+      const id = el.dataset.orgId;
+      el.remove();
+      if (id) nodeRegistry.delete(id);
+      el.style.transition = prevTransition;
+    };
+    const to = window.setTimeout(onEnd, 200);
+    el.addEventListener("transitionend", () => {
+      window.clearTimeout(to);
+      onEnd();
+    }, { once: true });
+  };
+
+  const diffAndRenderList = (listEl: HTMLUListElement, organizations: Organization[], globalDesiredIds: Set<string>) => {
+    const desiredIds = new Set(organizations.map((o) => o.id));
+
+    // Remove/move existing children based on desired sets
+    Array.from(listEl.querySelectorAll<HTMLLIElement>("li")).forEach((li) => {
       if (li === zoomOutListItem) return;
       const id = li.dataset.orgId;
-      if (id) existingItems.set(id, li);
-    });
-
-    const nextIds = new Set(organizations.map((o) => o.id));
-
-    // Remove items not in next set with fast fade/slide out
-    existingItems.forEach((li, id) => {
-      if (!nextIds.has(id)) {
-        // Temporarily set a much faster transition for fade/slide out
-        const prevTransition = li.style.transition;
-        li.style.transition = "opacity 80ms linear, transform 80ms linear";
-        li.classList.add("opacity-0", "translate-y-1");
-        const removeNode = () => {
+      if (!id) return;
+      if (!desiredIds.has(id)) {
+        if (globalDesiredIds.has(id)) {
+          // Will be re-parented by the other section; remove synchronously
           li.remove();
-        };
-        li.addEventListener("transitionend", removeNode, { once: true });
-        // Clean up transition property after animation
-        li.addEventListener(
-          "transitionend",
-          () => {
-            li.style.transition = prevTransition;
-          },
-          { once: true }
-        );
+        } else {
+          // Truly leaving the sidebar; collapse with animation
+          collapseAndRemove(li);
+        }
       }
     });
 
-    // Build in-order fragment of next items, reusing existing where possible
+    // Build ordered fragment and append/move nodes
     const frag = document.createDocumentFragment();
-    const knownIds = new Set<string>();
     for (const org of organizations) {
-      knownIds.add(org.id);
-      const existing = existingItems.get(org.id);
-      if (existing) {
-        frag.appendChild(existing);
-      } else {
-        const li = createListItem(org, onHover, onCategoryClick);
-        // Start hidden for transition-in
+      let li = nodeRegistry.get(org.id);
+      if (!li) {
+        li = createListItem(org, onHover, onCategoryClick);
+        nodeRegistry.set(org.id, li);
+        // New node: start hidden, animate in
         li.classList.add("opacity-0", "translate-y-1");
-        frag.appendChild(li);
-        // Animate in on next frame
-        requestAnimationFrame(() => {
-          li.classList.remove("opacity-0", "translate-y-1");
-        });
+        requestAnimationFrame(() => ensureVisible(li!));
+      } else {
+        // Reused node: if it was previously removed from DOM, treat as entering
+        const reappearing = !li.isConnected;
+        if (reappearing) {
+          resetInlineLayout(li);
+          li.classList.add("opacity-0", "translate-y-1");
+          requestAnimationFrame(() => ensureVisible(li!));
+        } else {
+          ensureVisible(li);
+        }
       }
+      frag.appendChild(li);
     }
 
-    // Remove zoom out link if present before re-adding
-    if (zoomOutListItem.parentElement === list) {
-      list.removeChild(zoomOutListItem);
+    // Remove zoom out link if present in this list before re-adding elsewhere
+    if (zoomOutListItem.parentElement === listEl) {
+      listEl.removeChild(zoomOutListItem);
     }
 
-    // Reorder by appending in the desired order (moves existing nodes)
-    list.appendChild(frag);
+    listEl.appendChild(frag);
+  };
 
-    // Show/hide and update the zoomOutLink as the last item in the list
-    const missing = Math.max(totalCount - organizations.length, 0);
+  const setOrganizations = (groups: { inSelection: Organization[]; all: Organization[]; totalSourceCount?: number }) => {
+    const inSel = groups.inSelection ?? [];
+    const all = groups.all ?? [];
+    totalCount = typeof groups.totalSourceCount === "number" ? groups.totalSourceCount : (inSel.length + all.length);
+
+    // Update counts
+    const visibleCount = inSel.length + all.length;
+    totalLabel.textContent = `${visibleCount}`;
+
+    // Section visibility
+    inSelHeader.style.display = inSel.length > 0 ? "" : "none";
+    listInSelection.style.display = inSel.length > 0 ? "" : "none";
+
+    // Render lists with global desired id set for move vs remove decisions
+    const globalDesired = new Set([...inSel, ...all].map((o) => o.id));
+    diffAndRenderList(listInSelection, inSel, globalDesired);
+    diffAndRenderList(listAll, all, globalDesired);
+
+    // Zoom-out button goes at the end of ALL list
+    const missing = Math.max(totalCount - visibleCount, 0);
     if (missing > 0) {
       zoomOutButton.textContent = `${missing} more not visible (Zoom out)`;
-      list.appendChild(zoomOutListItem);
-      zoomOutListItem.style.display = "";
+      listAll.appendChild(zoomOutListItem);
+      zoomOutListItem.hidden = false;
     } else {
-      zoomOutListItem.style.display = "none";
+      zoomOutListItem.hidden = true;
     }
 
     // Empty state visibility
-    const isEmpty = organizations.length === 0;
-    // Hide the empty message if there are orgs overall but none in view
+    const isEmpty = visibleCount === 0;
     emptyState.hidden = !isEmpty || missing > 0;
     if (isEmpty && missing === 0) {
-      activeId = null;
-    }
-
-    if (activeId && !knownIds.has(activeId)) {
       activeId = null;
     }
 
@@ -240,8 +299,12 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
 
   const content = document.createElement("div");
   content.className = "flex flex-1 flex-col overflow-hidden";
-  content.appendChild(emptyState);
-  content.appendChild(list);
+  scroll.appendChild(emptyState);
+  scroll.appendChild(inSelHeader);
+  scroll.appendChild(listInSelection);
+  scroll.appendChild(allHeader);
+  scroll.appendChild(listAll);
+  content.appendChild(scroll);
 
   container.appendChild(header);
   container.appendChild(content);

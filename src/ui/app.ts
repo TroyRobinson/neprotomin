@@ -2,9 +2,11 @@ import { organizationStore } from "../state/organizations";
 import type { Organization } from "../types/organization";
 import { createMapView } from "./mapView";
 import { createSidebar } from "./sidebar";
+import type { SidebarController } from "./sidebar";
 import { createTopBar } from "./topbar";
 import { createBoundaryToolbar } from "./boundaryToolbar";
 import type { BoundaryMode } from "../types/boundaries";
+import { findZipForLocation } from "../lib/zipBoundaries";
 
 export interface AppInstance {
   destroy: () => void;
@@ -26,17 +28,59 @@ export const createApp = (root: HTMLElement): AppInstance => {
   let highlightedIds: Set<string> = new Set();
   let organizations: Organization[] = [];
   let visibleIds: Set<string> | null = null;
+  let sourceIds: Set<string> | null = null;
+  let selectedZips: Set<string> = new Set();
+  let organizationZips: Map<string, string | null> = new Map();
+
+  let sidebar: SidebarController | null = null;
+
+  const computeSourceOrganizations = () => {
+    const sourceFilter = sourceIds;
+    return organizations.filter((org) => !sourceFilter || sourceFilter.has(org.id));
+  };
 
   const getVisibleOrganizations = (): Organization[] => {
-    if (!visibleIds) return organizations;
-    return organizations.filter((o) => visibleIds!.has(o.id));
+    const fromSource = computeSourceOrganizations();
+    if (!visibleIds) return fromSource;
+    const visibleFilter = visibleIds;
+    return fromSource.filter((org) => visibleFilter.has(org.id));
+  };
+
+  let sidebarUpdateScheduled = false;
+  const updateSidebar = () => {
+    if (sidebarUpdateScheduled) return;
+    sidebarUpdateScheduled = true;
+    requestAnimationFrame(() => {
+      sidebarUpdateScheduled = false;
+      if (!sidebar) return;
+      const visible = getVisibleOrganizations();
+      let inSelection: Organization[] = [];
+      if (selectedZips.size > 0) {
+        inSelection = visible.filter((org) => {
+          const zip = organizationZips.get(org.id);
+          return !!zip && selectedZips.has(zip);
+        });
+      }
+      const inSelectionIds = new Set(inSelection.map((o) => o.id));
+      const rest = visible.filter((org) => !inSelectionIds.has(org.id));
+      const totalSourceCount = sourceIds ? sourceIds.size : computeSourceOrganizations().length;
+      sidebar.setOrganizations({ inSelection, all: rest, totalSourceCount });
+    });
+  };
+
+  const recomputeOrganizationZips = (orgs: Organization[]) => {
+    const next = new Map<string, string | null>();
+    for (const org of orgs) {
+      next.set(org.id, findZipForLocation(org.longitude, org.latitude));
+    }
+    organizationZips = next;
   };
 
   const handleHover = (idOrIds: string | string[] | null) => {
     // Cluster hover -> highlight many list items; do not change map point highlight
     if (Array.isArray(idOrIds)) {
       highlightedIds = new Set(idOrIds);
-      sidebar.setHighlightedOrganizations(idOrIds);
+      sidebar?.setHighlightedOrganizations(idOrIds);
       return;
     }
 
@@ -47,20 +91,25 @@ export const createApp = (root: HTMLElement): AppInstance => {
     }
 
     highlightedIds.clear();
-    sidebar.setHighlightedOrganizations(null);
+    sidebar?.setHighlightedOrganizations(null);
     activeId = id;
-    sidebar.setActiveOrganization(activeId);
+    sidebar?.setActiveOrganization(activeId);
     mapView.setActiveOrganization(activeId);
   };
 
   const mapView = createMapView({
     onHover: (id) => handleHover(id),
-    onVisibleIdsChange: (ids, totalInSource) => {
+    onVisibleIdsChange: (ids, _totalInSource, allSourceIds) => {
       visibleIds = new Set(ids);
-      sidebar.setOrganizations(getVisibleOrganizations(), totalInSource);
+      sourceIds = new Set(allSourceIds);
+      updateSidebar();
+    },
+    onZipSelectionChange: (zips) => {
+      selectedZips = new Set(zips);
+      updateSidebar();
     },
   });
-  const sidebar = createSidebar({
+  sidebar = createSidebar({
     onHover: (id) => handleHover(id),
     onZoomOutAll: () => mapView.fitAllOrganizations(),
     onCategoryClick: (categoryId) => mapView.setCategoryFilter(categoryId),
@@ -75,17 +124,22 @@ export const createApp = (root: HTMLElement): AppInstance => {
 
   mapView.setBoundaryMode(defaultBoundary);
 
+  if (!sidebar) {
+    throw new Error("Sidebar failed to initialize");
+  }
+
   layout.appendChild(sidebar.element);
   layout.appendChild(mapView.element);
 
   const unsubscribe = organizationStore.subscribe((next) => {
     organizations = next;
+    recomputeOrganizationZips(organizations);
     mapView.setOrganizations(organizations);
-    sidebar.setOrganizations(getVisibleOrganizations(), organizations.length);
+    updateSidebar();
 
     if (activeId && !organizations.some((org) => org.id === activeId)) {
       activeId = null;
-      sidebar.setActiveOrganization(null);
+      sidebar?.setActiveOrganization(null);
       mapView.setActiveOrganization(null);
     }
   });

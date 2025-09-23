@@ -47,7 +47,7 @@ export const createSelect = <T extends string>({
 
   select.style.appearance = "none";
   select.style.webkitAppearance = "none";
-  select.style.mozAppearance = "none";
+  (select.style as any).MozAppearance = "none";
 
   options.forEach((option) => {
     const optionElement = document.createElement("option");

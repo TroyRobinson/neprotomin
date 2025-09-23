@@ -1,6 +1,8 @@
 import maplibregl from "maplibre-gl";
 
 import { tulsaZipBoundaries } from "../data/tulsaZipBoundaries";
+import { getZipBounds } from "../lib/zipBoundaries";
+import type { BoundsArray } from "../lib/zipBoundaries";
 import type { BoundaryMode } from "../types/boundaries";
 import type { Organization } from "../types/organization";
 import { TULSA_CENTER } from "../types/organization";
@@ -9,7 +11,8 @@ import { createCategoryChips } from "./categoryChips";
 
 interface MapViewOptions {
   onHover: (idOrIds: string | string[] | null) => void;
-  onVisibleIdsChange?: (ids: string[], totalInSource: number) => void;
+  onVisibleIdsChange?: (ids: string[], totalInSource: number, allSourceIds: string[]) => void;
+  onZipSelectionChange?: (selectedZips: string[]) => void;
 }
 
 export interface MapViewController {
@@ -39,6 +42,8 @@ const LAYER_CLUSTER_HIGHLIGHT_ID = "organizations-cluster-highlight";
 const BOUNDARY_SOURCE_ID = "tulsa-zip-boundaries";
 const BOUNDARY_FILL_LAYER_ID = "tulsa-zip-boundaries-fill";
 const BOUNDARY_LINE_LAYER_ID = "tulsa-zip-boundaries-outline";
+const BOUNDARY_HIGHLIGHT_FILL_LAYER_ID = "tulsa-zip-boundaries-highlight-fill";
+const BOUNDARY_HIGHLIGHT_LINE_LAYER_ID = "tulsa-zip-boundaries-highlight-line";
 
 type FC = GeoJSON.FeatureCollection<
   GeoJSON.Point,
@@ -47,7 +52,11 @@ type FC = GeoJSON.FeatureCollection<
 
 const emptyFC = (): FC => ({ type: "FeatureCollection", features: [] });
 
-export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): MapViewController => {
+export const createMapView = ({
+  onHover,
+  onVisibleIdsChange,
+  onZipSelectionChange,
+}: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
   container.className = "relative flex flex-1";
 
@@ -67,6 +76,7 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
 
   let currentTheme = themeController.getTheme();
   let boundaryMode: BoundaryMode = "zips";
+  let selectedZips = new Set<string>();
 
   const map = new maplibregl.Map({
     container: mapNode,
@@ -75,6 +85,8 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
     zoom: 12.5,
     attributionControl: false,
     fadeDuration: 0,
+    // Disable Shift+drag box zoom so Shift can be used for multi-select
+    boxZoom: false,
   });
 
   map.dragRotate.disable();
@@ -129,6 +141,94 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
     if (map.getLayer(BOUNDARY_LINE_LAYER_ID)) {
       map.setLayoutProperty(BOUNDARY_LINE_LAYER_ID, "visibility", visibility);
     }
+    if (map.getLayer(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID)) {
+      map.setLayoutProperty(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, "visibility", visibility);
+    }
+    if (map.getLayer(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID)) {
+      map.setLayoutProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "visibility", visibility);
+    }
+  };
+
+  const updateZipSelectionHighlight = () => {
+    const selected = Array.from(selectedZips);
+    const filter =
+      selected.length > 0
+        ? (["in", ["get", "zip"], ["literal", selected]] as any)
+        : (["==", ["get", "zip"], "__none__"] as any);
+    if (map.getLayer(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID)) {
+      map.setFilter(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, filter);
+    }
+    if (map.getLayer(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID)) {
+      map.setFilter(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, filter);
+    }
+  };
+
+  const notifyZipSelectionChange = () => {
+    onZipSelectionChange?.(Array.from(selectedZips));
+  };
+
+  const zoomToSelectedZips = () => {
+    if (selectedZips.size === 0) return;
+
+    let combinedBounds: BoundsArray | null = null;
+
+    for (const zip of selectedZips) {
+      const bounds = getZipBounds(zip);
+      if (!bounds) continue;
+      if (!combinedBounds) {
+        combinedBounds = bounds;
+      } else {
+        combinedBounds = [
+          [
+            Math.min(combinedBounds[0][0], bounds[0][0]),
+            Math.min(combinedBounds[0][1], bounds[0][1]),
+          ],
+          [
+            Math.max(combinedBounds[1][0], bounds[1][0]),
+            Math.max(combinedBounds[1][1], bounds[1][1]),
+          ],
+        ];
+      }
+    }
+
+    if (!combinedBounds) return;
+
+    map.fitBounds(combinedBounds, { padding: 48, duration: 400, maxZoom: 14 });
+  };
+
+  const applyZipSelection = ({ shouldZoom, notify }: { shouldZoom: boolean; notify: boolean }) => {
+    updateZipSelectionHighlight();
+    if (shouldZoom) {
+      zoomToSelectedZips();
+    }
+    if (notify) {
+      notifyZipSelectionChange();
+    }
+  };
+
+  const clearZipSelection = ({ notify }: { notify: boolean }) => {
+    if (selectedZips.size === 0) {
+      if (notify) notifyZipSelectionChange();
+      return;
+    }
+    selectedZips = new Set();
+    applyZipSelection({ shouldZoom: false, notify });
+  };
+
+  const toggleZipSelection = (zip: string, additive: boolean) => {
+    const next = new Set(selectedZips);
+    if (additive) {
+      if (next.has(zip)) {
+        next.delete(zip);
+      } else {
+        next.add(zip);
+      }
+    } else {
+      next.clear();
+      next.add(zip);
+    }
+    selectedZips = next;
+    applyZipSelection({ shouldZoom: true, notify: true });
   };
 
   const ensureSourcesAndLayers = () => {
@@ -171,6 +271,38 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
           "line-color": palette.lineColor,
           "line-opacity": palette.lineOpacity,
           "line-width": 1.2,
+        },
+      });
+    }
+
+    if (!map.getLayer(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID)) {
+      map.addLayer(
+        {
+          id: BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+          type: "fill",
+          source: BOUNDARY_SOURCE_ID,
+          filter: ["==", ["get", "zip"], "__none__"],
+          layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
+          paint: {
+            "fill-color": "#3755f0",
+            "fill-opacity": 0.22,
+          },
+        },
+        BOUNDARY_LINE_LAYER_ID,
+      );
+    }
+
+    if (!map.getLayer(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID)) {
+      map.addLayer({
+        id: BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+        type: "line",
+        source: BOUNDARY_SOURCE_ID,
+        filter: ["==", ["get", "zip"], "__none__"],
+        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
+        paint: {
+          "line-color": "#1d3bd6",
+          "line-width": 2.4,
+          "line-opacity": 0.85,
         },
       });
     }
@@ -309,6 +441,7 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
     updateHighlight();
     updateBoundaryPaint();
     updateBoundaryVisibility();
+    updateZipSelectionHighlight();
 
     // Recompute visible ids after ensuring layers/sources
     emitVisibleIds();
@@ -380,6 +513,29 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
         // ignore expansion errors
       }
     });
+
+    const handleZipClick = (e: maplibregl.MapLayerMouseEvent) => {
+      if (boundaryMode !== "zips") return;
+      const features = map.queryRenderedFeatures(e.point, {
+        layers: [BOUNDARY_FILL_LAYER_ID],
+      });
+      const feature = features[0];
+      const zip = feature?.properties?.zip as string | undefined;
+      if (!zip) return;
+      const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
+      toggleZipSelection(zip, additive);
+    };
+
+    map.on("click", BOUNDARY_FILL_LAYER_ID, handleZipClick);
+    map.on("click", BOUNDARY_LINE_LAYER_ID, handleZipClick);
+
+    map.on("mouseenter", BOUNDARY_FILL_LAYER_ID, () => {
+      if (boundaryMode !== "zips") return;
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", BOUNDARY_FILL_LAYER_ID, () => {
+      map.getCanvas().style.cursor = "";
+    });
   });
 
   map.on("load", () => {
@@ -413,6 +569,9 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
 
   const setBoundaryMode = (mode: BoundaryMode) => {
     boundaryMode = mode;
+    if (mode !== "zips") {
+      clearZipSelection({ notify: true });
+    }
     ensureSourcesAndLayers();
     updateBoundaryVisibility();
   };
@@ -540,16 +699,25 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
 
     // Stable sort and de-dupe just in case
     const uniqueSorted = Array.from(new Set(ids)).sort();
-    const key = uniqueSorted.join("|");
+    const allSourceIds = lastData.features.map((f) => f.properties.id);
+    const key = `${uniqueSorted.join("|")}::${allSourceIds.length}`;
     if (key === lastVisibleIdsKey) return;
     lastVisibleIdsKey = key;
 
-    if (onVisibleIdsChange) onVisibleIdsChange(uniqueSorted, lastData.features.length);
+    if (onVisibleIdsChange)
+      onVisibleIdsChange(uniqueSorted, lastData.features.length, allSourceIds);
   };
 
   // Update visible set on map interactions
   map.on("moveend", () => emitVisibleIds());
   map.on("zoomend", () => emitVisibleIds());
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      clearZipSelection({ notify: true });
+    }
+  };
+  window.addEventListener("keydown", handleKeyDown);
 
   return {
     element: container,
@@ -562,6 +730,7 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
       resizeObserver.disconnect();
       unsubscribeTheme();
       categoryChips.destroy();
+      window.removeEventListener("keydown", handleKeyDown);
       map.remove();
     },
   };
