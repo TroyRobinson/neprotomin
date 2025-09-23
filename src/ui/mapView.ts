@@ -8,6 +8,7 @@ import type { Organization } from "../types/organization";
 import { TULSA_CENTER } from "../types/organization";
 import { themeController } from "./theme";
 import { createCategoryChips } from "./categoryChips";
+import { createZipFloatingTitle, type ZipFloatingTitleController } from "./components/zipFloatingTitle";
 
 interface MapViewOptions {
   onHover: (idOrIds: string | string[] | null) => void;
@@ -81,6 +82,9 @@ export const createMapView = ({
     },
   });
   container.appendChild(categoryChips.element);
+
+  // ZIP floating title
+  let zipFloatingTitle: ZipFloatingTitleController;
 
   let currentTheme = themeController.getTheme();
   let boundaryMode: BoundaryMode = "zips";
@@ -638,6 +642,9 @@ export const createMapView = ({
 
     ensureSourcesAndLayers();
 
+    // Initialize ZIP floating title after map is loaded
+    zipFloatingTitle = createZipFloatingTitle({ map });
+
     // Add grabby-hand cursor during drag
     let isDragging = false;
     
@@ -745,6 +752,7 @@ export const createMapView = ({
       hoveredZipFromMap = null;
       updateZipHoverOutline();
       onZipHoverChange?.(null);
+      zipFloatingTitle?.hide();
     });
 
     map.on("mousemove", BOUNDARY_FILL_LAYER_ID, (e: any) => {
@@ -757,6 +765,9 @@ export const createMapView = ({
       hoveredZipFromMap = zip;
       updateZipHoverOutline();
       onZipHoverChange?.(zip);
+      
+      // Show floating title for the hovered ZIP
+      zipFloatingTitle?.show(zip);
     });
   });
 
@@ -971,6 +982,7 @@ export const createMapView = ({
       resizeObserver.disconnect();
       unsubscribeTheme();
       categoryChips.destroy();
+      zipFloatingTitle?.destroy();
       window.removeEventListener("keydown", handleKeyDown);
       map.remove();
     },
