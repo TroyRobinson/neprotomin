@@ -48,6 +48,21 @@ const createListItem = (
   return item;
 };
 
+// Helper to create the zoom out link as a list item
+const createZoomOutListItem = (onZoomOutAll: () => void): HTMLLIElement => {
+  const li = document.createElement("li");
+  li.className = "px-0 pt-0 pb-0"; // Remove extra padding, let button handle it
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className =
+    "block w-full text-left text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 px-4 pb-4 pt-2";
+  button.addEventListener("click", () => onZoomOutAll());
+
+  li.appendChild(button);
+  return li;
+};
+
 export const createSidebar = ({ onHover, onZoomOutAll }: SidebarOptions): SidebarController => {
   const container = document.createElement("aside");
   container.className =
@@ -77,21 +92,15 @@ export const createSidebar = ({ onHover, onZoomOutAll }: SidebarOptions): Sideba
   let activeId: string | null = null;
   let totalCount: number = 0;
 
-  // Footer with zoom-out link
-  const footer = document.createElement("div");
-  footer.className = "px-4 pb-4 pt-2 border-t border-slate-200/70 dark:border-slate-800/70";
-  footer.hidden = true;
-
-  const zoomOutLink = document.createElement("button");
-  zoomOutLink.type = "button";
-  zoomOutLink.className =
-    "text-xs font-medium text-slate-500 underline underline-offset-2 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200";
-  zoomOutLink.addEventListener("click", () => onZoomOutAll());
-  footer.appendChild(zoomOutLink);
+  // Create the zoom out list item (li > button)
+  const zoomOutListItem = createZoomOutListItem(onZoomOutAll);
+  const zoomOutButton = zoomOutListItem.querySelector("button")!;
 
   const updateActiveState = () => {
     const items = list.querySelectorAll<HTMLLIElement>("li");
     items.forEach((item) => {
+      // Don't apply active state to the zoom out link
+      if (item === zoomOutListItem) return;
       const isActive = item.dataset.orgId === activeId;
       item.classList.toggle("border-brand-300", isActive);
       item.classList.toggle("ring-2", isActive);
@@ -108,18 +117,33 @@ export const createSidebar = ({ onHover, onZoomOutAll }: SidebarOptions): Sideba
     // Diff existing items vs next set for smoother transitions
     const existingItems = new Map<string, HTMLLIElement>();
     list.querySelectorAll<HTMLLIElement>("li").forEach((li) => {
+      // Don't include the zoom out link in the map
+      if (li === zoomOutListItem) return;
       const id = li.dataset.orgId;
       if (id) existingItems.set(id, li);
     });
 
     const nextIds = new Set(organizations.map((o) => o.id));
 
-    // Remove items not in next set with fade/slide out
+    // Remove items not in next set with fast fade/slide out
     existingItems.forEach((li, id) => {
       if (!nextIds.has(id)) {
+        // Temporarily set a much faster transition for fade/slide out
+        const prevTransition = li.style.transition;
+        li.style.transition = "opacity 80ms linear, transform 80ms linear";
         li.classList.add("opacity-0", "translate-y-1");
-        const removeNode = () => li.remove();
+        const removeNode = () => {
+          li.remove();
+        };
         li.addEventListener("transitionend", removeNode, { once: true });
+        // Clean up transition property after animation
+        li.addEventListener(
+          "transitionend",
+          () => {
+            li.style.transition = prevTransition;
+          },
+          { once: true }
+        );
       }
     });
 
@@ -143,16 +167,22 @@ export const createSidebar = ({ onHover, onZoomOutAll }: SidebarOptions): Sideba
       }
     }
 
+    // Remove zoom out link if present before re-adding
+    if (zoomOutListItem.parentElement === list) {
+      list.removeChild(zoomOutListItem);
+    }
+
     // Reorder by appending in the desired order (moves existing nodes)
     list.appendChild(frag);
 
-    // Footer toggle and text
+    // Show/hide and update the zoomOutLink as the last item in the list
     const missing = Math.max(totalCount - organizations.length, 0);
     if (missing > 0) {
-      zoomOutLink.textContent = `${missing} more not visible (Zoom out)`;
-      footer.hidden = false;
+      zoomOutButton.textContent = `${missing} more not visible (Zoom out)`;
+      list.appendChild(zoomOutListItem);
+      zoomOutListItem.style.display = "";
     } else {
-      footer.hidden = true;
+      zoomOutListItem.style.display = "none";
     }
 
     // Empty state visibility
@@ -179,7 +209,6 @@ export const createSidebar = ({ onHover, onZoomOutAll }: SidebarOptions): Sideba
   content.className = "flex flex-1 flex-col overflow-hidden";
   content.appendChild(emptyState);
   content.appendChild(list);
-  content.appendChild(footer);
 
   container.appendChild(header);
   container.appendChild(content);
