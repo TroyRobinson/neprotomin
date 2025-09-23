@@ -58,6 +58,126 @@ export const createBoundaryToolbar = ({
   chipsWrapper.style.clipPath = "inset(-4px -4px -4px -4px)"; // Allow highlights to extend beyond container
   container.appendChild(chipsWrapper);
 
+  // Inner container strictly for chips so we don't wipe the add button on rerender
+  const chipsContainer = document.createElement("div");
+  chipsContainer.className = "flex items-center gap-2";
+  chipsWrapper.appendChild(chipsContainer);
+
+  // Inline add-zips UI
+  const addWrapper = document.createElement("div");
+  addWrapper.className = "flex items-center gap-1";
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.title = "Add ZIPs";
+  addBtn.setAttribute("aria-label", "Add ZIPs");
+  addBtn.className = [
+    "inline-flex h-6 w-6 items-center justify-center rounded-full border",
+    "border-slate-300 bg-white/70 text-slate-500 hover:border-brand-300 hover:text-brand-700",
+    "dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400",
+    "transition-colors",
+  ].join(" ");
+  addBtn.innerHTML = `
+    <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px]" aria-hidden="true">
+      <path fill-rule="evenodd" d="M10 3.5a.75.75 0 01.75.75v5h5a.75.75 0 010 1.5h-5v5a.75.75 0 01-1.5 0v-5h-5a.75.75 0 010-1.5h5v-5A.75.75 0 0110 3.5z" clip-rule="evenodd" />
+    </svg>
+  `;
+
+  const inputWrapper = document.createElement("div");
+  inputWrapper.className = "hidden"; // hidden by default
+
+  const input = document.createElement("textarea");
+  input.rows = 1;
+  input.placeholder = "Add ZIPs (comma or space separated)";
+  input.className = [
+    "h-7 min-h-[1.75rem] resize-none rounded border px-2 py-1 text-xs",
+    "border-slate-300 bg-white text-slate-700 shadow-sm",
+    "focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200",
+    "dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50",
+    "w-56 md:w-64",
+    "mt-1.5 ml-1" // Add margin-top to sit slightly lower in the parent bar
+  ].join(" ");
+  inputWrapper.appendChild(input);
+
+  addWrapper.appendChild(addBtn);
+  addWrapper.appendChild(inputWrapper);
+  chipsWrapper.appendChild(addWrapper);
+
+  let inputOpen = false;
+
+  const showInput = () => {
+    if (inputOpen) return;
+    inputOpen = true;
+    inputWrapper.classList.remove("hidden");
+    // Slight delay ensures layout is applied before focus
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
+  };
+
+  const hideInput = () => {
+    if (!inputOpen) return;
+    inputOpen = false;
+    inputWrapper.classList.add("hidden");
+    input.value = "";
+  };
+
+  const parseZips = (raw: string): string[] => {
+    const matches = raw.match(/\b\d{5}\b/g) || [];
+    // de-dupe while preserving order of first appearance
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const m of matches) {
+      if (!seen.has(m)) {
+        seen.add(m);
+        out.push(m);
+      }
+    }
+    return out;
+  };
+
+  const submitZips = () => {
+    const zips = parseZips(input.value);
+    if (zips.length > 0) {
+      for (const z of zips) {
+        onToggleZipPin?.(z, true);
+      }
+      // Scroll to end to reveal newly added chips soon after app state updates
+      requestAnimationFrame(() => {
+        chipsWrapper.scrollLeft = chipsWrapper.scrollWidth;
+      });
+    }
+    hideInput();
+  };
+
+  addBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (inputOpen) hideInput();
+    else showInput();
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submitZips();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      hideInput();
+    }
+  });
+
+  const onDocumentPointerDown = (e: Event) => {
+    if (!inputOpen) return;
+    const target = e.target as Node | null;
+    if (!target) return;
+    // Close if clicking outside the input wrapper and add button
+    if (!inputWrapper.contains(target) && !addBtn.contains(target)) {
+      hideInput();
+    }
+  };
+  document.addEventListener("pointerdown", onDocumentPointerDown, true);
+
   let lastZips: string[] = [];
   let lastPinned = new Set<string>();
   let hoveredZip: string | null = null;
@@ -65,7 +185,7 @@ export const createBoundaryToolbar = ({
 
   const renderChips = () => {
     // Simple redraw (small counts)
-    chipsWrapper.innerHTML = "";
+    chipsContainer.innerHTML = "";
     chipByZip.clear();
     if (lastZips.length === 0) return;
     const sorted = [...lastZips].sort();
@@ -110,7 +230,7 @@ export const createBoundaryToolbar = ({
       }
 
       chipByZip.set(zip, chip);
-      chipsWrapper.appendChild(chip);
+      chipsContainer.appendChild(chip);
     }
   };
 
@@ -136,6 +256,9 @@ export const createBoundaryToolbar = ({
     setValue: selectController.setValue,
     setSelectedZips,
     setHoveredZip,
-    destroy: selectController.destroy,
+    destroy: () => {
+      document.removeEventListener("pointerdown", onDocumentPointerDown, true);
+      selectController.destroy();
+    },
   };
 };
