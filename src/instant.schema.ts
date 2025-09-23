@@ -11,18 +11,15 @@ const _schema = i.schema({
     $users: i.entity({
       email: i.string().unique().indexed().optional(),
     }),
-    todos: i.entity({
-      text: i.string(),
-      done: i.boolean(),
-      createdAt: i.number(),
+    organizations: i.entity({
+      name: i.string().indexed(),
+      url: i.string(),
+      latitude: i.number(),
+      longitude: i.number(),
     }),
   },
   links: {},
-  rooms: {
-    todos: {
-      presence: i.entity({}),
-    },
-  },
+  rooms: {},
 });
 
 // This helps Typescript display nicer intellisense
