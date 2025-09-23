@@ -1,4 +1,5 @@
 import type { Organization } from "../types/organization";
+import { createDemographicsBar, type DemographicStats } from "./components/demographicsBar";
 import { getCategoryLabel } from "../types/categories";
 
 interface SidebarOptions {
@@ -12,6 +13,7 @@ export interface SidebarController {
   setOrganizations: (groups: { inSelection: Organization[]; all: Organization[]; totalSourceCount?: number }) => void;
   setActiveOrganization: (id: string | null) => void;
   setHighlightedOrganizations: (ids: string[] | null) => void;
+  setDemographics: (stats: DemographicStats | null) => void;
 }
 
 const createListItem = (
@@ -22,7 +24,7 @@ const createListItem = (
   const item = document.createElement("li");
   item.dataset.orgId = org.id;
   item.className =
-    "group relative rounded-xl border border-transparent px-4 py-3 transition duration-200 ease-out hover:border-brand-200 hover:bg-brand-50 dark:hover:border-slate-700 dark:hover:bg-slate-800/70";
+    "group relative rounded-xl border border-transparent px-4 py-3 transition duration-200 ease-out bg-slate-100/40 hover:border-brand-200 hover:bg-brand-50 dark:bg-slate-800/20 dark:hover:border-slate-700 dark:hover:bg-slate-800/70";
 
   const name = document.createElement("p");
   name.className = "text-sm font-semibold text-slate-700 dark:text-slate-100";
@@ -93,6 +95,9 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
   const container = document.createElement("aside");
   container.className =
     "relative flex w-full max-w-sm flex-col border-r border-slate-200 bg-white/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60";
+
+  // Demographics summary bar
+  const demographics = createDemographicsBar();
 
   const header = document.createElement("div");
   header.className = "flex items-center justify-between px-6 py-4";
@@ -306,6 +311,7 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
   scroll.appendChild(listAll);
   content.appendChild(scroll);
 
+  container.appendChild(demographics.element);
   container.appendChild(header);
   container.appendChild(content);
 
@@ -314,5 +320,6 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
     setOrganizations,
     setActiveOrganization,
     setHighlightedOrganizations,
+    setDemographics: (stats) => demographics.setStats(stats),
   };
 };

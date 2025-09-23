@@ -7,6 +7,8 @@ import { createTopBar } from "./topbar";
 import { createBoundaryToolbar } from "./boundaryToolbar";
 import type { BoundaryMode } from "../types/boundaries";
 import { findZipForLocation } from "../lib/zipBoundaries";
+import type { Area } from "../types/area";
+import { areasStore } from "../state/areas";
 
 export interface AppInstance {
   destroy: () => void;
@@ -32,6 +34,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
   let selectedZips: Set<string> = new Set(); // union of pinned + transient from map
   let pinnedZips: Set<string> = new Set();
   let organizationZips: Map<string, string | null> = new Map();
+  let areasByKey: Map<string, Area> = new Map();
 
   let sidebar: SidebarController | null = null;
 
@@ -67,6 +70,35 @@ export const createApp = (root: HTMLElement): AppInstance => {
       const totalSourceCount = sourceIds ? sourceIds.size : computeSourceOrganizations().length;
       sidebar.setOrganizations({ inSelection, all: rest, totalSourceCount });
     });
+  };
+
+  const recalcDemographics = () => {
+    if (!sidebar) return;
+    const keys = Array.from(selectedZips);
+    if (keys.length === 0) {
+      sidebar.setDemographics(null);
+      return;
+    }
+    let totalPop = 0;
+    let weightedAge = 0;
+    let weightedMarried = 0;
+    let any = false;
+    for (const k of keys) {
+      const a = areasByKey.get(k);
+      if (!a) continue;
+      any = true;
+      const p = Math.max(0, Math.round(a.population));
+      totalPop += p;
+      weightedAge += a.avgAge * p;
+      weightedMarried += a.marriedPercent * p;
+    }
+    if (!any) {
+      sidebar.setDemographics({ selectedCount: 0 });
+      return;
+    }
+    const avgAge = totalPop > 0 ? weightedAge / totalPop : undefined;
+    const marriedPercent = totalPop > 0 ? weightedMarried / totalPop : undefined;
+    sidebar.setDemographics({ selectedCount: keys.length, population: totalPop, avgAge, marriedPercent });
   };
 
   const recomputeOrganizationZips = (orgs: Organization[]) => {
@@ -110,6 +142,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
       // If meta.pinned provided, keep app state in sync
       if (meta?.pinned) pinnedZips = new Set(meta.pinned);
       updateSidebar();
+      recalcDemographics();
       // Reflect selected chips in toolbar
       boundaryToolbar.setSelectedZips(Array.from(selectedZips), Array.from(pinnedZips));
     },
@@ -163,6 +196,13 @@ export const createApp = (root: HTMLElement): AppInstance => {
     }
   });
 
+  const unsubscribeAreas = areasStore.subscribe((rows) => {
+    const map = new Map<string, Area>();
+    for (const a of rows) map.set(a.key, a);
+    areasByKey = map;
+    recalcDemographics();
+  });
+
   root.appendChild(topBar.element);
   root.appendChild(boundaryToolbar.element);
   root.appendChild(layout);
@@ -170,6 +210,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
   return {
     destroy: () => {
       unsubscribe();
+      unsubscribeAreas();
       topBar.destroy();
       boundaryToolbar.destroy();
       mapView.destroy();

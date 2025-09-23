@@ -100,6 +100,35 @@ export const createBoundaryToolbar = ({
   inputWrapper.appendChild(input);
 
   addWrapper.appendChild(addBtn);
+  // "pin all" quick action lives immediately to the right of the add (+) button
+  const pinAllBtn = document.createElement("button");
+  pinAllBtn.type = "button";
+  pinAllBtn.textContent = "pin all";
+  pinAllBtn.className = [
+    "text-xs font-medium text-brand-400 hover:text-brand-600/90",
+    "decoration-brand-200/70 hover:decoration-brand-400 ml-2",
+    "cursor-pointer whitespace-nowrap",
+    "hidden", // hidden until there are multiple unpinned selections
+  ].join(" ");
+  // action: "pin" | "clear"; managed in setSelectedZips
+  pinAllBtn.dataset.action = "pin";
+  pinAllBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const action = pinAllBtn.dataset.action;
+    if (action === "clear") {
+      const toUnpin = lastZips.filter((z) => lastPinned.has(z));
+      for (const z of toUnpin) {
+        onToggleZipPin?.(z, false);
+      }
+    } else {
+      const toPin = lastZips.filter((z) => !lastPinned.has(z));
+      for (const z of toPin) {
+        onToggleZipPin?.(z, true);
+      }
+    }
+  });
+  // Insert before the input to keep it directly to the right of the plus icon
+  addWrapper.appendChild(pinAllBtn);
   addWrapper.appendChild(inputWrapper);
   chipsWrapper.appendChild(addWrapper);
 
@@ -238,6 +267,21 @@ export const createBoundaryToolbar = ({
     lastZips = Array.from(new Set(zips));
     lastPinned = new Set(pinned);
     renderChips();
+    // Decide between "pin all" vs "clear pins"
+    const pinnedCount = lastZips.filter((z) => lastPinned.has(z)).length;
+    const unpinnedCount = lastZips.length - pinnedCount;
+    // Prefer showing "clear pins" when 2+ of the selected are pinned
+    if (pinnedCount >= 2) {
+      pinAllBtn.textContent = "clear pins";
+      pinAllBtn.dataset.action = "clear";
+      pinAllBtn.classList.remove("hidden");
+    } else if (lastZips.length >= 2 && unpinnedCount > 0) {
+      pinAllBtn.textContent = "pin all";
+      pinAllBtn.dataset.action = "pin";
+      pinAllBtn.classList.remove("hidden");
+    } else {
+      pinAllBtn.classList.add("hidden");
+    }
   };
 
   const setHoveredZip = (zip: string | null) => {
