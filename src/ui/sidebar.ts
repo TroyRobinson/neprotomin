@@ -67,7 +67,7 @@ export const createSidebar = ({ onHover }: SidebarOptions): SidebarController =>
   header.appendChild(totalLabel);
 
   const list = document.createElement("ul");
-  list.className = "flex-1 space-y-2 overflow-y-auto px-4 pb-6 pt-3";
+  list.className = "flex-1 space-y-2 overflow-y-auto px-4 pb-6 pt-1";
 
   const emptyState = document.createElement("p");
   emptyState.className = "px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400";

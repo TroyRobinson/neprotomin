@@ -3,6 +3,7 @@ Agent playbook (concise)
 - Map markers
   - Prefer MapLibre-rendered layers over DOM markers to avoid zoom drift. Use a GeoJSON `source` + `circle` layers for pins and a separate highlight layer filtered by id. See `src/ui/mapView.ts:96`.
   - Avoid CSS transforms on marker containers; let the renderer position features. If needed, use layer paint props instead of DOM styling.
+  - MapLibre `setStyle()` clears custom sources/layers. On theme/basemap swap, listen for `styledata`/`idle` and re-add sources/layers, then repopulate data and filters.
 
 - Map config
   - Use a light street basemap (Carto Positron GL) and center on Tulsa. Disable rotation for predictable UX. See `src/ui/mapView.ts:17` and `src/ui/mapView.ts:111`.
@@ -21,4 +22,3 @@ Agent playbook (concise)
 
 - Dev ergonomics
   - Node: Vite expects >=20.19 or >=22.12. Use `npm run dev` for local, `npm run build` for CI checks.
-

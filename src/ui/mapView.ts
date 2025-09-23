@@ -2,6 +2,7 @@ import maplibregl from "maplibre-gl";
 
 import type { Organization } from "../types/organization";
 import { TULSA_CENTER } from "../types/organization";
+import { themeController } from "./theme";
 
 interface MapViewOptions {
   onHover: (id: string | null) => void;
@@ -14,7 +15,13 @@ export interface MapViewController {
   destroy: () => void;
 }
 
-const MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+type ThemeName = "light" | "dark";
+
+const MAP_STYLE_LIGHT = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+const MAP_STYLE_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+
+const getMapStyle = (theme: ThemeName): string =>
+  theme === "dark" ? MAP_STYLE_DARK : MAP_STYLE_LIGHT;
 
 const SOURCE_ID = "organizations";
 const LAYER_POINTS_ID = "organizations-points";
@@ -35,9 +42,11 @@ export const createMapView = ({ onHover }: MapViewOptions): MapViewController =>
   mapNode.className = "absolute inset-0";
   container.appendChild(mapNode);
 
+  let currentTheme = themeController.getTheme();
+
   const map = new maplibregl.Map({
     container: mapNode,
-    style: MAP_STYLE,
+    style: getMapStyle(currentTheme),
     center: [TULSA_CENTER.longitude, TULSA_CENTER.latitude],
     zoom: 12.5,
     attributionControl: false,
@@ -47,44 +56,80 @@ export const createMapView = ({ onHover }: MapViewOptions): MapViewController =>
   map.touchZoomRotate.enable();
   map.touchZoomRotate.disableRotation();
 
+
+  let lastData: FC = emptyFC();
+
+  map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+
+  let activeId: string | null = null;
+
+  const ensureSourcesAndLayers = () => {
+    if (!map.isStyleLoaded()) return;
+
+    if (!map.getSource(SOURCE_ID)) {
+      map.addSource(SOURCE_ID, {
+        type: "geojson",
+        data: emptyFC(),
+      });
+    }
+
+    if (!map.getLayer(LAYER_POINTS_ID)) {
+      map.addLayer({
+        id: LAYER_POINTS_ID,
+        type: "circle",
+        source: SOURCE_ID,
+        paint: {
+          // animate in: start at 0 and grow/fade to target
+          "circle-radius": 0,
+          "circle-opacity": 0,
+          "circle-color": "#3755f0", // brand-500
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 2,
+          "circle-radius-transition": { duration: 200, delay: 0 },
+          "circle-opacity-transition": { duration: 200, delay: 0 },
+        } as any,
+      });
+
+      // Kick off the grow/fade to normal values next frame
+      requestAnimationFrame(() => {
+        if (!map.getLayer(LAYER_POINTS_ID)) return;
+        map.setPaintProperty(LAYER_POINTS_ID, "circle-radius", 6);
+        map.setPaintProperty(LAYER_POINTS_ID, "circle-opacity", 1);
+      });
+    }
+
+    if (!map.getLayer(LAYER_HIGHLIGHT_ID)) {
+      map.addLayer({
+        id: LAYER_HIGHLIGHT_ID,
+        type: "circle",
+        source: SOURCE_ID,
+        filter: ["==", ["get", "id"], "__none__"],
+        paint: {
+          "circle-radius": 9,
+          "circle-color": "#85a3ff", // brand-300
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 2,
+          "circle-opacity": 1,
+        },
+      });
+    }
+
+    const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData(lastData);
+    }
+
+    updateHighlight();
+  };
+
   map.once("load", () => {
     map.jumpTo({
       center: [TULSA_CENTER.longitude, TULSA_CENTER.latitude],
       zoom: 13,
     });
 
-    // Add empty source and layers; we’ll set data when available
-    map.addSource(SOURCE_ID, {
-      type: "geojson",
-      data: emptyFC(),
-    });
-
-    map.addLayer({
-      id: LAYER_POINTS_ID,
-      type: "circle",
-      source: SOURCE_ID,
-      paint: {
-        "circle-radius": 6,
-        "circle-color": "#3755f0", // brand-500
-        "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 2,
-        "circle-opacity": 1,
-      },
-    });
-
-    map.addLayer({
-      id: LAYER_HIGHLIGHT_ID,
-      type: "circle",
-      source: SOURCE_ID,
-      filter: ["==", ["get", "id"], "__none__"],
-      paint: {
-        "circle-radius": 9,
-        "circle-color": "#85a3ff", // brand-300
-        "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 2,
-        "circle-opacity": 1,
-      },
-    });
+    ensureSourcesAndLayers();
 
     map.on("mouseenter", LAYER_POINTS_ID, () => {
       map.getCanvas().style.cursor = "pointer";
@@ -98,20 +143,19 @@ export const createMapView = ({ onHover }: MapViewOptions): MapViewController =>
       const id = f?.properties?.id as string | undefined;
       onHover(id || null);
     });
-
-    // If we already have data queued, apply it
-    if (queuedData) {
-      const src = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource;
-      src.setData(queuedData);
-      queuedData = null;
-    }
   });
 
-  map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+  map.on("load", () => {
+    ensureSourcesAndLayers();
+  });
 
-  let activeId: string | null = null;
-  let queuedData: FC | null = null;
+  map.on("styledata", () => {
+    ensureSourcesAndLayers();
+  });
+  map.on("idle", () => {
+    // Guarantees layers/sources exist once style fully settles
+    ensureSourcesAndLayers();
+  });
 
   const updateHighlight = () => {
     if (!map.getLayer(LAYER_HIGHLIGHT_ID)) return;
@@ -131,11 +175,11 @@ export const createMapView = ({ onHover }: MapViewOptions): MapViewController =>
       })),
     };
 
+    lastData = fc;
+
     const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     if (source) {
-      source.setData(fc);
-    } else {
-      queuedData = fc;
+      source.setData(lastData);
     }
   };
 
@@ -150,12 +194,22 @@ export const createMapView = ({ onHover }: MapViewOptions): MapViewController =>
   });
   resizeObserver.observe(container);
 
+  const unsubscribeTheme = themeController.subscribe((nextTheme) => {
+    if (nextTheme === currentTheme) return;
+    currentTheme = nextTheme;
+    map.setStyle(getMapStyle(nextTheme));
+    // After a style swap, ensure our layers are reattached when ready
+    map.once("styledata", () => ensureSourcesAndLayers());
+    map.once("idle", () => ensureSourcesAndLayers());
+  });
+
   return {
     element: container,
     setOrganizations,
     setActiveOrganization,
     destroy: () => {
       resizeObserver.disconnect();
+      unsubscribeTheme();
       map.remove();
     },
   };
