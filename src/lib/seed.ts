@@ -3,6 +3,7 @@ import { id } from "@instantdb/core";
 import { organizationSeedData } from "../data/organizations";
 import { getAllZipCodes } from "./zipBoundaries";
 import { db } from "./db";
+import { statsSeedData } from "../data/stats";
 
 let seedPromise: Promise<void> | null = null;
 
@@ -169,4 +170,64 @@ export const ensureAreasSeeded = async (): Promise<void> => {
   })();
 
   return seedAreasPromise;
+};
+
+let seedStatsPromise: Promise<void> | null = null;
+
+export const ensureStatsSeeded = async (): Promise<void> => {
+  if (seedStatsPromise) return seedStatsPromise;
+
+  seedStatsPromise = (async () => {
+    try {
+      const { data } = await db.queryOnce({
+        stats: {
+          $: { order: { name: "asc" } },
+        },
+      });
+
+      const existingByComposite = new Map<string, any>();
+      for (const row of data.stats ?? []) {
+        const n = (row as any)?.name as string | undefined;
+        const c = (row as any)?.category as string | undefined;
+        if (n && c) existingByComposite.set(`${n}::${c}`.toLowerCase(), row);
+      }
+
+      const txs: any[] = [];
+      for (const seed of statsSeedData) {
+        const comp = `${seed.name}::${seed.category}`.toLowerCase();
+        const existing = existingByComposite.get(comp);
+        if (existing && existing.id) {
+          const needsUpdate =
+            (existing as any).name !== seed.name ||
+            (existing as any).category !== seed.category;
+          if (needsUpdate) {
+            txs.push(
+              db.tx.stats[existing.id].update({
+                name: seed.name,
+                category: seed.category,
+              }),
+            );
+          }
+        } else {
+          txs.push(
+            db.tx.stats[id()].update({
+              name: seed.name,
+              category: seed.category,
+            }),
+          );
+        }
+      }
+
+      if (txs.length > 0) {
+        await db.transact(txs);
+      }
+    } catch (error) {
+      console.warn(
+        "InstantDB stats seed encountered an error (likely offline); skipping seed",
+        error,
+      );
+    }
+  })();
+
+  return seedStatsPromise;
 };

@@ -17,27 +17,43 @@ const CLOSE_ICON = `
 `;
 
 import { CATEGORIES as categories } from "../types/categories";
+import type { Stat } from "../types/stat";
+import { statsStore } from "../state/stats";
 
 export interface CategoryChipsController {
   element: HTMLElement;
   setSelected: (categoryId: string | null) => void;
+  setSelectedStat: (statId: string | null) => void;
   destroy: () => void;
 }
 
 interface CategoryChipsOptions {
   onChange?: (categoryId: string | null) => void;
+  onStatChange?: (statId: string | null) => void;
 }
 
 export const createCategoryChips = (options: CategoryChipsOptions = {}): CategoryChipsController => {
   const wrapper = document.createElement("div");
   wrapper.className =
-    "pointer-events-none absolute left-4 top-4 z-10 flex flex-wrap gap-2";
+    "pointer-events-none absolute left-4 top-4 z-10 flex flex-nowrap items-start gap-2";
 
   const list = document.createElement("div");
   list.className = "flex flex-wrap gap-2 pointer-events-auto transition-all duration-300";
   wrapper.appendChild(list);
 
+  // Stats chips appear to the right of the selected category
+  const statWrapper = document.createElement("div");
+  statWrapper.className = "flex flex-wrap gap-2 items-center pointer-events-auto transition-all duration-300 ml-2 pl-2 border-l border-slate-200 dark:border-slate-700";
+  // Note: statWrapper lives inside the same flex row so it aligns immediately
+  // to the right of the selected category chip.
+  list.appendChild(statWrapper);
+
   let selectedId: string | null = null;
+  let selectedStatId: string | null = null;
+
+  // In-memory stats from store
+  let allStats: Stat[] = [];
+  let unsubscribeStats: (() => void) | null = null;
 
   const entries = categories.map((category) => {
     const button = document.createElement("button");
@@ -58,9 +74,13 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     button.appendChild(closeIcon);
 
     const handleClick = () => {
-      selectedId = selectedId === category.id ? null : category.id;
+      const nextId = selectedId === category.id ? null : category.id;
+      selectedId = nextId;
+      // Reset stat selection when switching category or clearing category
+      selectedStatId = null;
       update();
       if (options.onChange) options.onChange(selectedId);
+      if (options.onStatChange) options.onStatChange(selectedStatId);
     };
 
     button.addEventListener("click", handleClick);
@@ -76,6 +96,9 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       const selectedEntry = entries.find(e => e.categoryId === selectedId);
       if (selectedEntry) {
         list.insertBefore(selectedEntry.button, list.firstChild);
+        // Ensure stats wrapper renders immediately after the selected chip
+        if (statWrapper.parentElement !== list) list.appendChild(statWrapper);
+        list.insertBefore(statWrapper, selectedEntry.button.nextSibling);
       }
     }
 
@@ -99,20 +122,131 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
         button.style.pointerEvents = "auto";
       }
     });
+
+    // Update stats UI region
+    renderStatChips();
   };
 
   const setSelected = (categoryId: string | null) => {
     selectedId = categoryId;
+    // Clear stat selection if no category
+    if (!selectedId) selectedStatId = null;
     update();
+  };
+
+  const setSelectedStat = (statId: string | null) => {
+    selectedStatId = statId;
+    updateStatSelectionStyles();
+  };
+
+  const formatStatChipLabel = (name: string): string => {
+    if (name.length <= 12) return name;
+    const words = name.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return name.slice(0, 12);
+    const first = words[0];
+    const second = words[1];
+    if (!second) {
+      // No second word; show full first word per spec
+      return first;
+    }
+    const hasMore = second.length > 5 || words.length > 2;
+    return `${first} ${second.slice(0, 5)}${hasMore ? " ..." : ""}`;
+  };
+
+  const buildStatButton = (stat: Stat) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES}`;
+    btn.setAttribute("data-stat-id", stat.id);
+    btn.setAttribute("title", stat.name);
+    const label = document.createElement("span");
+    label.textContent = formatStatChipLabel(stat.name);
+    label.className = "whitespace-nowrap";
+    btn.appendChild(label);
+    const handleClick = () => {
+      const next = selectedStatId === stat.id ? null : stat.id;
+      selectedStatId = next;
+      updateStatSelectionStyles();
+      if (options.onStatChange) options.onStatChange(selectedStatId);
+    };
+    btn.addEventListener("click", handleClick);
+    return { btn, handleClick, labelEl: label };
+  };
+
+  let statEntries: { btn: HTMLButtonElement; handleClick: () => void; id: string; name: string; labelEl: HTMLSpanElement }[] = [];
+
+  const renderStatChips = () => {
+    // Show only when a category is selected
+    if (!selectedId) {
+      statWrapper.classList.add("hidden");
+      // Clean up existing
+      statEntries.forEach((e) => e.btn.removeEventListener("click", e.handleClick));
+      statWrapper.replaceChildren();
+      statEntries = [];
+      return;
+    }
+    statWrapper.classList.remove("hidden");
+
+    const stats = allStats.filter((s) => s.category === selectedId);
+
+    // Rebuild if set changed (simple rebuild for clarity)
+    statEntries.forEach((e) => e.btn.removeEventListener("click", e.handleClick));
+    statWrapper.replaceChildren();
+    statEntries = stats.map((s) => {
+      const { btn, handleClick, labelEl } = buildStatButton(s);
+      statWrapper.appendChild(btn);
+      return { btn, handleClick, id: s.id, name: s.name, labelEl };
+    });
+
+    updateStatSelectionStyles();
+  };
+
+  const updateStatSelectionStyles = () => {
+    if (!selectedId) {
+      statWrapper.classList.add("hidden");
+      return;
+    }
+    // If a stat is selected, move it to the start so it "floats left"
+    if (selectedStatId) {
+      const selectedEntry = statEntries.find((e) => e.id === selectedStatId);
+      if (selectedEntry) {
+        statWrapper.insertBefore(selectedEntry.btn, statWrapper.firstChild);
+      }
+    }
+    statEntries.forEach(({ btn, id, name, labelEl }) => {
+      const isSelected = selectedStatId === id;
+      btn.className = `${CATEGORY_CHIP_CLASSES} ${
+        isSelected ? CATEGORY_CHIP_SELECTED_CLASSES : CATEGORY_CHIP_NEUTRAL_CLASSES
+      }`;
+      // Selected stat shows full name; others truncated
+      labelEl.textContent = isSelected ? name : formatStatChipLabel(name);
+      if (selectedStatId && selectedStatId !== id) {
+        btn.style.opacity = "0";
+        btn.style.transform = "translateX(-8px) scale(0.95)";
+        btn.style.pointerEvents = "none";
+      } else {
+        btn.style.opacity = "1";
+        btn.style.transform = "translateX(0) scale(1)";
+        btn.style.pointerEvents = "auto";
+      }
+    });
   };
 
   const destroy = () => {
     entries.forEach(({ button, handleClick }) => {
       button.removeEventListener("click", handleClick);
     });
+    statEntries.forEach(({ btn, handleClick }) => btn.removeEventListener("click", handleClick));
+    if (unsubscribeStats) unsubscribeStats();
   };
 
   update();
 
-  return { element: wrapper, setSelected, destroy };
+  // Subscribe to stats after helpers are defined
+  unsubscribeStats = statsStore.subscribe((rows) => {
+    allStats = rows;
+    renderStatChips();
+  });
+
+  return { element: wrapper, setSelected, setSelectedStat, destroy };
 };

@@ -30,7 +30,7 @@ export const createDemographicsBar = (): DemographicsBarController => {
 
   const title = document.createElement("div");
   title.className = "font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400";
-  title.textContent = "Demo:";
+  title.textContent = "Demo";
 
   const stats = document.createElement("div");
   stats.className = "flex items-center gap-4 text-slate-600 dark:text-slate-300 ml-3";
@@ -48,14 +48,14 @@ export const createDemographicsBar = (): DemographicsBarController => {
 
   const setStats = (s: DemographicStats | null) => {
     if (!s || !s.selectedCount) {
-      pop.textContent = `Population: —`;
-      age.textContent = `Avg Age: —`;
-      married.textContent = `Married: —`;
+      pop.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Population:</span> —`;
+      age.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Avg Age:</span> —`;
+      married.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Married:</span> —`;
       return;
     }
-    pop.textContent = `Population: ${formatPopulation(s.population)}`;
-    age.textContent = `Avg Age: ${formatNumber(s.avgAge)}`;
-    married.textContent = `Married: ${formatPercent(s.marriedPercent)}`;
+    pop.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Population:</span> ${formatPopulation(s.population)}`;
+    age.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Avg Age:</span> ${formatNumber(s.avgAge)}`;
+    married.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Married:</span> ${formatPercent(s.marriedPercent)}`;
   };
 
   // Initialize empty state

@@ -73,12 +73,15 @@ export const createMapView = ({
   mapNode.className = "absolute inset-0";
   container.appendChild(mapNode);
 
-  // Category filter UI (chips)
+  // Category + stat filter UI (chips)
   let selectedCategory: string | null = null;
   const categoryChips = createCategoryChips({
     onChange: (categoryId) => {
       selectedCategory = categoryId;
       applyData();
+    },
+    onStatChange: (_statKey) => {
+      // Placeholder: no data filtering yet; stat selection only affects UI
     },
   });
   container.appendChild(categoryChips.element);

@@ -25,6 +25,10 @@ const _schema = i.schema({
       avgAge: i.number(),
       marriedPercent: i.number(),
     }),
+    stats: i.entity({
+      name: i.string().indexed(),
+      category: i.string().indexed(),
+    }),
   },
   links: {},
   rooms: {},

@@ -1,5 +1,8 @@
 Agent playbook (concise)
 
+- Styles:
+  - Note that we're using Tailwind (see setup)
+
 - Map markers
   - Prefer MapLibre-rendered layers over DOM markers to avoid zoom drift. Use a GeoJSON `source` + `circle` layers for pins and a separate highlight layer filtered by id. See `src/ui/mapView.ts:96`.
   - Avoid CSS transforms on marker containers; let the renderer position features. If needed, use layer paint props instead of DOM styling.

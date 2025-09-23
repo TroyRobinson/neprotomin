@@ -27,7 +27,7 @@ const createListItem = (
     "group relative rounded-xl border border-transparent px-4 py-3 transition duration-200 ease-out bg-slate-100/40 hover:border-brand-200 hover:bg-brand-50 dark:bg-slate-800/20 dark:hover:border-slate-700 dark:hover:bg-slate-800/70";
 
   const name = document.createElement("p");
-  name.className = "text-sm font-semibold text-slate-700 dark:text-slate-100";
+  name.className = "text-sm font-medium text-slate-600 dark:text-slate-300";
   name.textContent = org.name;
 
   const link = document.createElement("a");
@@ -100,10 +100,10 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
   const demographics = createDemographicsBar();
 
   const header = document.createElement("div");
-  header.className = "flex items-center justify-between px-6 py-4";
+  header.className = "flex items-center justify-between px-6 pt-4 pb-0";
 
   const title = document.createElement("h2");
-  title.className = "text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400";
+  title.className = "text-sm font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-400 pl-2 pt-2";
   title.textContent = "Organizations";
 
   const totalLabel = document.createElement("span");
@@ -119,14 +119,14 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
 
   // Section: IN SELECTION
   const inSelHeader = document.createElement("h3");
-  inSelHeader.className = "px-8 pt-3 pb-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500";
+  inSelHeader.className = "px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500";
   inSelHeader.textContent = "IN SELECTION";
   const listInSelection = document.createElement("ul");
   listInSelection.className = "space-y-2 px-4";
 
   // Section: ALL
   const allHeader = document.createElement("h3");
-  allHeader.className = "px-8 pt-4 pb-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500";
+  allHeader.className = "px-8 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500";
   allHeader.textContent = "ALL";
   const listAll = document.createElement("ul");
   listAll.className = "space-y-2 px-4 pb-6";
@@ -278,7 +278,7 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
       zoomOutButton.textContent = `${missing} more not visible (Zoom out)`;
       // Add slight brand color to the zoom-out link
       zoomOutButton.classList.add(
-        "text-brand-200",
+        "text-brand-300",
         "hover:text-brand-800", 
         "transition-colors",
         "font-normal"

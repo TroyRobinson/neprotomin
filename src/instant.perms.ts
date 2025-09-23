@@ -11,6 +11,22 @@ const rules = {
       delete: "true",
     },
   },
+  areas: {
+    allow: {
+      view: "true",
+      create: "true",
+      update: "true",
+      delete: "true",
+    },
+  },
+  stats: {
+    allow: {
+      view: "true",
+      create: "true",
+      update: "true",
+      delete: "true",
+    },
+  },
 } satisfies InstantRules;
 
 export default rules;
