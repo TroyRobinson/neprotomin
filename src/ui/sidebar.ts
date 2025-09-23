@@ -1,7 +1,7 @@
 import type { Organization } from "../types/organization";
 
 interface SidebarOptions {
-  onHover: (id: string | null) => void;
+  onHover: (idOrIds: string | string[] | null) => void;
   onZoomOutAll: () => void;
 }
 
@@ -9,6 +9,7 @@ export interface SidebarController {
   element: HTMLElement;
   setOrganizations: (organizations: Organization[], totalCount?: number) => void;
   setActiveOrganization: (id: string | null) => void;
+  setHighlightedOrganizations: (ids: string[] | null) => void;
 }
 
 const createListItem = (
@@ -31,7 +32,7 @@ const createListItem = (
   link.className =
     "mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-600 transition-colors hover:text-brand-500 dark:text-brand-300 dark:hover:text-brand-200";
   link.innerHTML = `Visit site
-    <span aria-hidden="true" class="text-lg leading-none">↗</span>
+    <span aria-hidden="true" class="text-[1em] leading-none">↗</span>
   `;
 
   item.appendChild(name);
@@ -90,6 +91,7 @@ export const createSidebar = ({ onHover, onZoomOutAll }: SidebarOptions): Sideba
   emptyState.textContent = "No organizations found. Add one to get started.";
 
   let activeId: string | null = null;
+  let highlightedIds: Set<string> = new Set();
   let totalCount: number = 0;
 
   // Create the zoom out list item (li > button)
@@ -101,7 +103,8 @@ export const createSidebar = ({ onHover, onZoomOutAll }: SidebarOptions): Sideba
     items.forEach((item) => {
       // Don't apply active state to the zoom out link
       if (item === zoomOutListItem) return;
-      const isActive = item.dataset.orgId === activeId;
+      const id = item.dataset.orgId || "";
+      const isActive = id === activeId || highlightedIds.has(id);
       item.classList.toggle("border-brand-300", isActive);
       item.classList.toggle("ring-2", isActive);
       item.classList.toggle("ring-brand-200/80", isActive);
@@ -205,6 +208,11 @@ export const createSidebar = ({ onHover, onZoomOutAll }: SidebarOptions): Sideba
     updateActiveState();
   };
 
+  const setHighlightedOrganizations = (ids: string[] | null) => {
+    highlightedIds = new Set(ids ?? []);
+    updateActiveState();
+  };
+
   const content = document.createElement("div");
   content.className = "flex flex-1 flex-col overflow-hidden";
   content.appendChild(emptyState);
@@ -217,5 +225,6 @@ export const createSidebar = ({ onHover, onZoomOutAll }: SidebarOptions): Sideba
     element: container,
     setOrganizations,
     setActiveOrganization,
+    setHighlightedOrganizations,
   };
 };

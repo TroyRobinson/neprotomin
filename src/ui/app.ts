@@ -20,6 +20,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
     "flex flex-1 overflow-hidden border-t border-transparent dark:border-slate-800";
 
   let activeId: string | null = null;
+  let highlightedIds: Set<string> = new Set();
   let organizations: Organization[] = [];
   let visibleIds: Set<string> | null = null;
 
@@ -28,11 +29,22 @@ export const createApp = (root: HTMLElement): AppInstance => {
     return organizations.filter((o) => visibleIds!.has(o.id));
   };
 
-  const handleHover = (id: string | null) => {
-    if (activeId === id) {
+  const handleHover = (idOrIds: string | string[] | null) => {
+    // Cluster hover -> highlight many list items; do not change map point highlight
+    if (Array.isArray(idOrIds)) {
+      highlightedIds = new Set(idOrIds);
+      sidebar.setHighlightedOrganizations(idOrIds);
       return;
     }
 
+    // Single id or null
+    const id = idOrIds;
+    if (activeId === id && highlightedIds.size === 0) {
+      return;
+    }
+
+    highlightedIds.clear();
+    sidebar.setHighlightedOrganizations(null);
     activeId = id;
     sidebar.setActiveOrganization(activeId);
     mapView.setActiveOrganization(activeId);

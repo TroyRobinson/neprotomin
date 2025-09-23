@@ -5,7 +5,7 @@ import { TULSA_CENTER } from "../types/organization";
 import { themeController } from "./theme";
 
 interface MapViewOptions {
-  onHover: (id: string | null) => void;
+  onHover: (idOrIds: string | string[] | null) => void;
   onVisibleIdsChange?: (ids: string[]) => void;
 }
 
@@ -30,6 +30,7 @@ const LAYER_CLUSTERS_ID = "organizations-clusters";
 const LAYER_CLUSTER_COUNT_ID = "organizations-cluster-count";
 const LAYER_POINTS_ID = "organizations-points";
 const LAYER_HIGHLIGHT_ID = "organizations-highlight";
+const LAYER_CLUSTER_HIGHLIGHT_ID = "organizations-cluster-highlight";
 
 type FC = GeoJSON.FeatureCollection<
   GeoJSON.Point,
@@ -170,6 +171,35 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
       });
     }
 
+    // Cluster highlight ring, drawn above base clusters
+    if (!map.getLayer(LAYER_CLUSTER_HIGHLIGHT_ID)) {
+      map.addLayer({
+        id: LAYER_CLUSTER_HIGHLIGHT_ID,
+        type: "circle",
+        source: SOURCE_ID,
+        filter: [
+          "all",
+          ["has", "point_count"],
+          ["==", ["get", "cluster_id"], -1],
+        ],
+        paint: {
+          "circle-radius": [
+            "step",
+            ["get", "point_count"],
+            18,
+            10,
+            22,
+            25,
+            28,
+          ],
+          "circle-color": "#85a3ff",
+          "circle-opacity": 0.35,
+          "circle-stroke-color": "#85a3ff",
+          "circle-stroke-width": 2,
+        },
+      });
+    }
+
     const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     if (source) {
       source.setData(lastData);
@@ -194,11 +224,13 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
     });
     map.on("mouseleave", LAYER_POINTS_ID, () => {
       map.getCanvas().style.cursor = "";
+      clearClusterHighlight();
       onHover(null);
     });
     map.on("mousemove", LAYER_POINTS_ID, (e: any) => {
       const f = e.features?.[0];
       const id = f?.properties?.id as string | undefined;
+      clearClusterHighlight();
       onHover(id || null);
     });
 
@@ -207,6 +239,25 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
     });
     map.on("mouseleave", LAYER_CLUSTERS_ID, () => {
       map.getCanvas().style.cursor = "";
+      clearClusterHighlight();
+      onHover(null);
+    });
+    map.on("mousemove", LAYER_CLUSTERS_ID, async (e: any) => {
+      const features = map.queryRenderedFeatures(e.point, {
+        layers: [LAYER_CLUSTERS_ID],
+      });
+      const feature = features[0];
+      const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      const clusterId = feature?.properties?.cluster_id as number | undefined;
+      if (!feature || !source || clusterId === undefined) return;
+      try {
+        setClusterHighlight(clusterId);
+        const leaves = await source.getClusterLeaves(clusterId, 1000, 0);
+        const ids = leaves
+          .map((f: any) => f?.properties?.id)
+          .filter((v: any): v is string => typeof v === "string");
+        onHover(ids);
+      } catch {}
     });
     map.on("click", LAYER_CLUSTERS_ID, async (e) => {
       const features = map.queryRenderedFeatures(e.point, {
@@ -249,6 +300,47 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
     map.setFilter(LAYER_HIGHLIGHT_ID, filter as any);
   };
 
+  const setClusterHighlight = (clusterId: number | null) => {
+    if (!map.getLayer(LAYER_CLUSTER_HIGHLIGHT_ID)) return;
+    const filter = clusterId !== null
+      ? ["all", ["has", "point_count"], ["==", ["get", "cluster_id"], clusterId]]
+      : ["all", ["has", "point_count"], ["==", ["get", "cluster_id"], -1]];
+    map.setFilter(LAYER_CLUSTER_HIGHLIGHT_ID, filter as any);
+  };
+
+  const clearClusterHighlight = () => setClusterHighlight(null);
+
+  // When activating a single org (e.g., hovering card), if it's clustered at the
+  // current zoom, highlight the containing cluster as well.
+  const highlightClusterContainingOrg = async (id: string | null) => {
+    if (!id) {
+      clearClusterHighlight();
+      return;
+    }
+    const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (!source) return;
+    try {
+      const canvas = map.getCanvas();
+      const clusters = map
+        .queryRenderedFeatures([[0, 0], [canvas.width, canvas.height]] as any, {
+          layers: [LAYER_CLUSTERS_ID],
+        })
+        .filter((f) => typeof (f.properties as any)?.cluster_id === "number");
+
+      for (const f of clusters) {
+        const cid = (f.properties as any).cluster_id as number;
+        const leaves = await source.getClusterLeaves(cid, 1000, 0);
+        if (leaves.some((lf: any) => lf?.properties?.id === id)) {
+          setClusterHighlight(cid);
+          return;
+        }
+      }
+      clearClusterHighlight();
+    } catch {
+      clearClusterHighlight();
+    }
+  };
+
   const setOrganizations = (organizations: Organization[]) => {
     const fc: FC = {
       type: "FeatureCollection",
@@ -274,6 +366,8 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
     if (activeId === id) return;
     activeId = id;
     updateHighlight();
+    // Also update cluster highlight, if applicable
+    void highlightClusterContainingOrg(activeId);
   };
 
   const fitAllOrganizations = () => {
