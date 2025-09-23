@@ -114,14 +114,14 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
 
   // Section: IN SELECTION
   const inSelHeader = document.createElement("h3");
-  inSelHeader.className = "px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500";
+  inSelHeader.className = "px-8 pt-3 pb-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500";
   inSelHeader.textContent = "IN SELECTION";
   const listInSelection = document.createElement("ul");
   listInSelection.className = "space-y-2 px-4";
 
   // Section: ALL
   const allHeader = document.createElement("h3");
-  allHeader.className = "px-4 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500";
+  allHeader.className = "px-8 pt-4 pb-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500";
   allHeader.textContent = "ALL";
   const listAll = document.createElement("ul");
   listAll.className = "space-y-2 px-4 pb-6";
