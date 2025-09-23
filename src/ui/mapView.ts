@@ -336,7 +336,7 @@ export const createMapView = ({
     applyZipSelection({ shouldZoom: false, notify });
   };
 
-  const toggleZipSelection = (zip: string, additive: boolean) => {
+  const toggleZipSelection = (zip: string, additive: boolean, shouldZoom: boolean = false) => {
     // Check if zip is already selected (either pinned or transient)
     const isAlreadyPinned = pinnedZips.has(zip);
     const isAlreadyTransient = transientZips.has(zip);
@@ -366,7 +366,7 @@ export const createMapView = ({
       transientZips = next;
     }
     
-    applyZipSelection({ shouldZoom: !isAlreadySelected, notify: true });
+    applyZipSelection({ shouldZoom: shouldZoom && !isAlreadySelected, notify: true });
   };
 
   const ensureSourcesAndLayers = () => {
@@ -749,11 +749,32 @@ export const createMapView = ({
       const zip = feature?.properties?.zip as string | undefined;
       if (!zip) return;
       const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
-      toggleZipSelection(zip, additive);
+      toggleZipSelection(zip, additive, false); // Single click: no zoom
+    };
+
+    const handleZipDoubleClick = (e: maplibregl.MapLayerMouseEvent) => {
+      if (boundaryMode !== "zips") return;
+      
+      // Check if there's an org pin at this point first
+      const orgFeatures = map.queryRenderedFeatures(e.point, {
+        layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID],
+      });
+      if (orgFeatures.length > 0) return; // Don't select zip if clicking on org pin
+      
+      const features = map.queryRenderedFeatures(e.point, {
+        layers: [BOUNDARY_FILL_LAYER_ID],
+      });
+      const feature = features[0];
+      const zip = feature?.properties?.zip as string | undefined;
+      if (!zip) return;
+      const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
+      toggleZipSelection(zip, additive, true); // Double click: with zoom
     };
 
     map.on("click", BOUNDARY_FILL_LAYER_ID, handleZipClick);
     map.on("click", BOUNDARY_LINE_LAYER_ID, handleZipClick);
+    map.on("dblclick", BOUNDARY_FILL_LAYER_ID, handleZipDoubleClick);
+    map.on("dblclick", BOUNDARY_LINE_LAYER_ID, handleZipDoubleClick);
 
     map.on("mouseenter", BOUNDARY_FILL_LAYER_ID, () => {
       if (boundaryMode !== "zips") return;
