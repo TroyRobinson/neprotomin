@@ -26,6 +26,8 @@ const getMapStyle = (theme: ThemeName): string =>
   theme === "dark" ? MAP_STYLE_DARK : MAP_STYLE_LIGHT;
 
 const SOURCE_ID = "organizations";
+const LAYER_CLUSTERS_ID = "organizations-clusters";
+const LAYER_CLUSTER_COUNT_ID = "organizations-cluster-count";
 const LAYER_POINTS_ID = "organizations-points";
 const LAYER_HIGHLIGHT_ID = "organizations-highlight";
 
@@ -74,6 +76,50 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
       map.addSource(SOURCE_ID, {
         type: "geojson",
         data: emptyFC(),
+        cluster: true,
+        clusterMaxZoom: 14,
+        clusterRadius: 50,
+      });
+    }
+
+    if (!map.getLayer(LAYER_CLUSTERS_ID)) {
+      map.addLayer({
+        id: LAYER_CLUSTERS_ID,
+        type: "circle",
+        source: SOURCE_ID,
+        filter: ["has", "point_count"],
+        paint: {
+          "circle-color": "#3755f0",
+          "circle-opacity": 0.85,
+          "circle-radius": [
+            "step",
+            ["get", "point_count"],
+            14,
+            10,
+            18,
+            25,
+            24,
+          ],
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 2,
+        },
+      });
+    }
+
+    if (!map.getLayer(LAYER_CLUSTER_COUNT_ID)) {
+      map.addLayer({
+        id: LAYER_CLUSTER_COUNT_ID,
+        type: "symbol",
+        source: SOURCE_ID,
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field": ["get", "point_count_abbreviated"],
+          "text-font": ["literal", ["Open Sans Bold", "Arial Unicode MS Bold"]],
+          "text-size": 12,
+        },
+        paint: {
+          "text-color": "#ffffff",
+        },
       });
     }
 
@@ -82,6 +128,7 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
         id: LAYER_POINTS_ID,
         type: "circle",
         source: SOURCE_ID,
+        filter: ["!", ["has", "point_count"]],
         paint: {
           // animate in: start at 0 and grow/fade to target
           "circle-radius": 0,
@@ -107,7 +154,11 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
         id: LAYER_HIGHLIGHT_ID,
         type: "circle",
         source: SOURCE_ID,
-        filter: ["==", ["get", "id"], "__none__"],
+        filter: [
+          "all",
+          ["!", ["has", "point_count"]],
+          ["==", ["get", "id"], "__none__"],
+        ],
         paint: {
           "circle-radius": 9,
           "circle-color": "#85a3ff", // brand-300
@@ -149,6 +200,31 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
       const id = f?.properties?.id as string | undefined;
       onHover(id || null);
     });
+
+    map.on("mouseenter", LAYER_CLUSTERS_ID, () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", LAYER_CLUSTERS_ID, () => {
+      map.getCanvas().style.cursor = "";
+    });
+    map.on("click", LAYER_CLUSTERS_ID, async (e) => {
+      const features = map.queryRenderedFeatures(e.point, {
+        layers: [LAYER_CLUSTERS_ID],
+      });
+      const feature = features[0];
+      if (!feature || feature.geometry?.type !== "Point") return;
+      const clusterId = feature.properties?.cluster_id as number | undefined;
+      const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      if (!source || clusterId === undefined) return;
+      try {
+        const zoom = await source.getClusterExpansionZoom(clusterId);
+        const point = feature.geometry as GeoJSON.Point;
+        const [lng, lat] = point.coordinates as [number, number];
+        map.easeTo({ center: [lng, lat], zoom });
+      } catch (error) {
+        // ignore expansion errors
+      }
+    });
   });
 
   map.on("load", () => {
@@ -165,9 +241,10 @@ export const createMapView = ({ onHover, onVisibleIdsChange }: MapViewOptions): 
 
   const updateHighlight = () => {
     if (!map.getLayer(LAYER_HIGHLIGHT_ID)) return;
+    const baseFilter: any[] = ["!", ["has", "point_count"]];
     const filter = activeId
-      ? ["==", ["get", "id"], activeId]
-      : ["==", ["get", "id"], "__none__"];
+      ? ["all", baseFilter, ["==", ["get", "id"], activeId]]
+      : ["all", baseFilter, ["==", ["get", "id"], "__none__"]];
     map.setFilter(LAYER_HIGHLIGHT_ID, filter as any);
   };
 
