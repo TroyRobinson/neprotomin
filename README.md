@@ -1,4 +1,5 @@
-# NE Minimal Prototype for testing UX/UI and as a dev guide.
+# NE Proto Min 
+NE Minimal Prototype for testing UX/UI and as a dev guide.
 
 
 --
