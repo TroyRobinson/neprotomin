@@ -16,8 +16,12 @@ export interface AppInstance {
 
 export const createApp = (root: HTMLElement): AppInstance => {
   root.innerHTML = "";
+  // Fix overall scrolling: lock the app to the viewport height so the
+  // page itself never scrolls. Only the sidebar list should scroll, and
+  // the map should fill from the bottom of the boundary toolbar to the
+  // bottom of the window.
   root.className =
-    "flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950";
+    "flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-950";
 
   const topBar = createTopBar();
   const defaultBoundary: BoundaryMode = "zips";
