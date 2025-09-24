@@ -1,5 +1,8 @@
 Agent playbook (concise)
 
+- Dev Server: 
+  - Assume the dev server is already running by the user and *don't* attempt to start it.
+
 - Styles:
   - Note that we're using Tailwind (see setup)
 

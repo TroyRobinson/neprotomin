@@ -10,6 +10,8 @@ import { themeController } from "./theme";
 import { createCategoryChips } from "./categoryChips";
 import { statDataStore } from "../state/statData";
 import { createZipFloatingTitle, type ZipFloatingTitleController } from "./components/zipFloatingTitle";
+import { createZipLabels, type ZipLabelsController } from "./components/zipLabels";
+import { createChoroplethLegend, type ChoroplethLegendController } from "./components/choroplethLegend";
 
 interface MapViewOptions {
   onHover: (idOrIds: string | string[] | null) => void;
@@ -55,6 +57,17 @@ const BOUNDARY_HOVER_LINE_LAYER_ID = "tulsa-zip-boundaries-hover-line";
 const BOUNDARY_HOVER_FILL_LAYER_ID = "tulsa-zip-boundaries-hover-fill";
 const BOUNDARY_STATDATA_FILL_LAYER_ID = "tulsa-zip-statdata-fill";
 
+// Shared brand ramp for choropleth (light -> dark)
+const CHOROPLETH_COLORS = [
+  "#e9efff",
+  "#cdd9ff",
+  "#aebfff",
+  "#85a3ff",
+  "#6d8afc",
+  "#4a6af9",
+  "#3755f0",
+];
+
 type FC = GeoJSON.FeatureCollection<
   GeoJSON.Point,
   { id: string; name: string; url: string }
@@ -85,12 +98,20 @@ export const createMapView = ({
     onStatChange: (statId) => {
       selectedStatId = statId;
       updateStatDataChoropleth();
+      updateChoroplethLegend();
+      
+      // Update ZIP labels with stat overlay info
+      const statData = selectedStatId && statDataByStatId.get(selectedStatId)?.data || null;
+      zipLabels?.setStatOverlay(selectedStatId, statData);
     },
   });
   container.appendChild(categoryChips.element);
 
   // ZIP floating title
   let zipFloatingTitle: ZipFloatingTitleController;
+  let zipLabels: ZipLabelsController;
+  // Choropleth legend (bottom-right)
+  let choroplethLegend: ChoroplethLegendController;
 
   let currentTheme = themeController.getTheme();
   let boundaryMode: BoundaryMode = "zips";
@@ -130,6 +151,9 @@ export const createMapView = ({
 
   map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+  // Legend UI overlays atop map DOM, not a MapLibre control
+  choroplethLegend = createChoroplethLegend();
+  container.appendChild(choroplethLegend.element);
 
   let activeId: string | null = null;
   let lastVisibleIdsKey: string | null = null;
@@ -152,17 +176,8 @@ export const createMapView = ({
         };
 
   const getHoverColors = (theme: ThemeName, isSelected: boolean, isPinned: boolean) => {
-    if (isPinned) {
-      // Darker shade of pinned color (#3755f0 -> darker blue)
-      return {
-        fillColor: "#3755f0",
-        fillOpacity: theme === "dark" ? 0.50 : 0.40,
-        lineColor: "#1e40af", // darker blue
-        lineOpacity: 0.95,
-      };
-    }
-    if (isSelected) {
-      // Darker shade of selected color (#6d8afc -> darker blue)  
+    if (isPinned || isSelected) {
+      // Use same color for both pinned and selected states
       return {
         fillColor: "#3755f0",
         fillOpacity: theme === "dark" ? 0.32 : 0.26,
@@ -201,12 +216,12 @@ export const createMapView = ({
     }
     if (map.getLayer(BOUNDARY_PINNED_FILL_LAYER_ID)) {
       map.setPaintProperty(BOUNDARY_PINNED_FILL_LAYER_ID, "fill-color", "#3755f0");
-      map.setPaintProperty(BOUNDARY_PINNED_FILL_LAYER_ID, "fill-opacity", currentTheme === "dark" ? 0.40 : 0.30);
+      map.setPaintProperty(BOUNDARY_PINNED_FILL_LAYER_ID, "fill-opacity", currentTheme === "dark" ? 0.26 : 0.20);
     }
     if (map.getLayer(BOUNDARY_PINNED_LINE_LAYER_ID)) {
-      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-color", "#1d3bd6");
-      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-width", 1.4); // half of original 2.8
-      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-opacity", 0.95);
+      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-color", "#6d8afc");
+      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-width", 1);
+      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-opacity", 0.9);
     }
     if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
       map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-width", 0.9); // half of original 1.8
@@ -262,10 +277,37 @@ export const createMapView = ({
     const transFilter = transient.length
       ? (["in", ["get", "zip"], ["literal", transient]] as any)
       : (["==", ["get", "zip"], "__none__"] as any);
-    if (map.getLayer(BOUNDARY_PINNED_FILL_LAYER_ID)) map.setFilter(BOUNDARY_PINNED_FILL_LAYER_ID, pinnedFilter);
-    if (map.getLayer(BOUNDARY_PINNED_LINE_LAYER_ID)) map.setFilter(BOUNDARY_PINNED_LINE_LAYER_ID, pinnedFilter);
-    if (map.getLayer(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID)) map.setFilter(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, transFilter);
-    if (map.getLayer(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID)) map.setFilter(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, transFilter);
+      
+    // When stat overlay is active, hide fill layers to let choropleth show through
+    const hasStatOverlay = Boolean(selectedStatId);
+    const fillFilter = hasStatOverlay ? (["==", ["get", "zip"], "__none__"] as any) : null;
+    
+    if (map.getLayer(BOUNDARY_PINNED_FILL_LAYER_ID)) {
+      map.setFilter(BOUNDARY_PINNED_FILL_LAYER_ID, fillFilter || pinnedFilter);
+    }
+    if (map.getLayer(BOUNDARY_PINNED_LINE_LAYER_ID)) {
+      map.setFilter(BOUNDARY_PINNED_LINE_LAYER_ID, pinnedFilter);
+      // Make borders thicker and white when stat overlay is active
+      const lineWidth = hasStatOverlay ? 1.5 : 1;
+      const lineColor = hasStatOverlay
+        ? (currentTheme === "dark" ? "#e6e6e6" : "#94a3b8") // dark: white, light: slate-400
+        : "#6d8afc";
+      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-width", lineWidth);
+      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-color", lineColor);
+    }
+    if (map.getLayer(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID)) {
+      map.setFilter(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, fillFilter || transFilter);
+    }
+    if (map.getLayer(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID)) {
+      map.setFilter(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, transFilter);
+      // Make borders thicker and white when stat overlay is active
+      const lineWidth = hasStatOverlay ? 1.5 : 1;
+      const lineColor = hasStatOverlay
+        ? (currentTheme === "dark" ? "#e6e6e6" : "#94a3b8") // dark: white, light: slate-400
+        : "#6d8afc";
+      map.setPaintProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "line-width", lineWidth);
+      map.setPaintProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "line-color", lineColor);
+    }
   };
 
   const updateZipHoverOutline = () => {
@@ -278,19 +320,44 @@ export const createMapView = ({
     if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) map.setFilter(BOUNDARY_HOVER_LINE_LAYER_ID, filter);
     if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) map.setFilter(BOUNDARY_HOVER_FILL_LAYER_ID, filter);
     
-    // Update hover colors based on current state of hovered zip
+    // Update ZIP labels with hover state
+    zipLabels?.setHoveredZip(hovered);
+    
+    // Update hover styling based on current state of hovered zip
     if (hovered) {
       const isPinned = pinnedZips.has(hovered);
       const isSelected = transientZips.has(hovered);
-      const hoverColors = getHoverColors(currentTheme, isSelected, isPinned);
-      
-      if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
-        map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-color", hoverColors.lineColor);
-        map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity", hoverColors.lineOpacity);
-      }
-      if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
-        map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-color", hoverColors.fillColor);
-        map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity", hoverColors.fillOpacity);
+      const hasStatOverlay = Boolean(selectedStatId);
+
+      if (hasStatOverlay && (isSelected || isPinned)) {
+        // In stat overlay mode, for already-selected geometries:
+        // - Do NOT change hue; gently adjust lightness only
+        // - Keep border thick and make it light grey on hover
+        if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
+          const hoverLineColor = currentTheme === "dark" ? "#ffffff" : "#94a3b8"; // dark: white, light: slate-400
+          map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-color", hoverLineColor);
+          map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity", 0.95);
+          map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-width", 3.0);
+        }
+        if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
+          // Lighten in dark mode (white overlay), darken in light mode (black overlay)
+          const overlayColor = currentTheme === "dark" ? "#ffffff" : "#000000";
+          const overlayOpacity = currentTheme === "dark" ? 0.12 : 0.10;
+          map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-color", overlayColor);
+          map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity", overlayOpacity);
+        }
+      } else {
+        // Default hover behavior
+        const hoverColors = getHoverColors(currentTheme, isSelected, isPinned);
+        if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
+          map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-color", hoverColors.lineColor);
+          map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity", hoverColors.lineOpacity);
+          // Use default width set elsewhere
+        }
+        if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
+          map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-color", hoverColors.fillColor);
+          map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity", hoverColors.fillOpacity);
+        }
       }
     }
   };
@@ -301,6 +368,9 @@ export const createMapView = ({
       pinned: Array.from(pinnedZips),
       transient: Array.from(transientZips),
     });
+    
+    // Update ZIP labels
+    zipLabels?.setSelectedZips(union, Array.from(pinnedZips));
   };
 
   const zoomToSelectedZips = () => {
@@ -679,6 +749,10 @@ export const createMapView = ({
 
     // Initialize ZIP floating title after map is loaded
     zipFloatingTitle = createZipFloatingTitle({ map });
+    
+    // Initialize ZIP labels system
+    zipLabels = createZipLabels({ map });
+    zipLabels.setTheme(currentTheme);
 
     // Add grabby-hand cursor during drag
     let isDragging = false;
@@ -844,14 +918,12 @@ export const createMapView = ({
       hoveredZipFromMap = null;
       updateZipHoverOutline();
       onZipHoverChange?.(null);
-      zipFloatingTitle?.hide();
     });
     map.on("mouseleave", BOUNDARY_STATDATA_FILL_LAYER_ID, () => {
       map.getCanvas().style.cursor = "pointer";
       hoveredZipFromMap = null;
       updateZipHoverOutline();
       onZipHoverChange?.(null);
-      zipFloatingTitle?.hide();
     });
 
     const onZipMouseMove = (e: any) => {
@@ -865,10 +937,8 @@ export const createMapView = ({
       if (hoveredZipFromMap === zip) return;
       hoveredZipFromMap = zip;
       updateZipHoverOutline();
-      onZipHoverChange?.(zip);
       
-      // Show floating title for the hovered ZIP (no numeric popover)
-      zipFloatingTitle?.show(zip);
+      onZipHoverChange?.(zip);
     };
     map.on("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
     map.on("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
@@ -890,6 +960,11 @@ export const createMapView = ({
   unsubscribeStatData = statDataStore.subscribe((byStat) => {
     statDataByStatId = byStat as any;
     updateStatDataChoropleth();
+    updateChoroplethLegend();
+    
+    // Update ZIP labels with new stat data
+    const statData = selectedStatId && statDataByStatId.get(selectedStatId)?.data || null;
+    zipLabels?.setStatOverlay(selectedStatId, statData);
   });
 
   function updateHighlight() {
@@ -899,6 +974,23 @@ export const createMapView = ({
       ? ["all", baseFilter, ["==", ["get", "id"], activeId]]
       : ["all", baseFilter, ["==", ["get", "id"], "__none__"]];
     map.setFilter(LAYER_HIGHLIGHT_ID, filter as any);
+  }
+
+  // Update legend visibility and values based on current stat selection/data
+  function updateChoroplethLegend() {
+    if (!selectedStatId || boundaryMode !== "zips") {
+      choroplethLegend.setVisible(false);
+      return;
+    }
+    const entry = statDataByStatId.get(selectedStatId);
+    const hasData = !!entry && Object.keys(entry.data || {}).length > 0;
+    if (!hasData) {
+      choroplethLegend.setVisible(false);
+      return;
+    }
+    choroplethLegend.setColors(CHOROPLETH_COLORS[0], CHOROPLETH_COLORS[CHOROPLETH_COLORS.length - 1]);
+    choroplethLegend.setRange(entry!.min, entry!.max, (entry as any).type as string);
+    choroplethLegend.setVisible(true);
   }
 
   const setClusterHighlight = (clusterId: number | null) => {
@@ -920,6 +1012,7 @@ export const createMapView = ({
     ensureSourcesAndLayers();
     updateBoundaryVisibility();
     updateStatDataChoropleth();
+    updateChoroplethLegend();
   };
 
   const clearClusterHighlight = () => setClusterHighlight(null);
@@ -980,16 +1073,8 @@ export const createMapView = ({
       return;
     }
 
-    // Brand ramp light -> dark
-    const COLORS = [
-      "#e9efff",
-      "#cdd9ff",
-      "#aebfff",
-      "#85a3ff",
-      "#6d8afc",
-      "#4a6af9",
-      "#3755f0",
-    ];
+    // Brand ramp light -> dark (shared constant)
+    const COLORS = CHOROPLETH_COLORS;
     const classes = COLORS.length;
     const range = max - min;
     const idxFor = (v: number) => {
@@ -1092,6 +1177,9 @@ export const createMapView = ({
     // After a style swap, ensure our layers are reattached when ready
     map.once("styledata", () => ensureSourcesAndLayers());
     map.once("idle", () => ensureSourcesAndLayers());
+    
+    // Update ZIP labels theme
+    zipLabels?.setTheme(nextTheme);
   });
 
   const emitVisibleIds = () => {
@@ -1146,6 +1234,10 @@ export const createMapView = ({
     setHoveredZip: (zip: string | null) => {
       hoveredZipFromToolbar = zip;
       updateZipHoverOutline();
+      
+      // Update hovered ZIP in labels
+      const finalHovered = zip || hoveredZipFromMap;
+      zipLabels?.setHoveredZip(finalHovered);
     },
     fitAllOrganizations,
     destroy: () => {
@@ -1154,6 +1246,8 @@ export const createMapView = ({
       categoryChips.destroy();
       if (unsubscribeStatData) unsubscribeStatData();
       zipFloatingTitle?.destroy();
+      zipLabels?.destroy();
+      choroplethLegend?.destroy();
       window.removeEventListener("keydown", handleKeyDown);
       map.remove();
     },

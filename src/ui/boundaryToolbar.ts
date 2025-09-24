@@ -35,7 +35,7 @@ export const createBoundaryToolbar = ({
 
   const label = document.createElement("label");
   label.className = "flex items-center gap-2 font-medium";
-  label.textContent = "Boundaries";
+  label.textContent = "Areas";
   label.htmlFor = "boundary-select";
 
   const selectController = createSelect<BoundaryMode>({

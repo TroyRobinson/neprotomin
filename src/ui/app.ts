@@ -21,6 +21,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
 
   const topBar = createTopBar();
   const defaultBoundary: BoundaryMode = "zips";
+  const CITY_LABEL = "TULSA";
 
   const layout = document.createElement("main");
   layout.className =
@@ -35,6 +36,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
   let pinnedZips: Set<string> = new Set();
   let organizationZips: Map<string, string | null> = new Map();
   let areasByKey: Map<string, Area> = new Map();
+  let currentBoundaryMode: BoundaryMode = defaultBoundary;
 
   let sidebar: SidebarController | null = null;
 
@@ -72,13 +74,62 @@ export const createApp = (root: HTMLElement): AppInstance => {
     });
   };
 
+  // Get stats for overall city (e.g. Tulsa in demographics bar)
+  const getAreasForCurrentBoundary = (): Area[] => {
+    if (areasByKey.size === 0) return [];
+    const allAreas = Array.from(areasByKey.values());
+    if (currentBoundaryMode === "zips") {
+      return allAreas.filter((area) => area.type === "ZIP");
+    }
+
+    const areasByType = new Map<string, Area[]>();
+    for (const area of allAreas) {
+      const bucket = areasByType.get(area.type);
+      if (bucket) bucket.push(area);
+      else areasByType.set(area.type, [area]);
+    }
+
+    if (areasByType.has("ZIP")) return areasByType.get("ZIP") ?? [];
+    const first = areasByType.values().next();
+    return first.done ? [] : first.value;
+  };
+
+  const computeCityDemographics = () => {
+    const areas = getAreasForCurrentBoundary();
+    if (areas.length === 0) return null;
+
+    let totalPop = 0;
+    let weightedAge = 0;
+    let weightedMarried = 0;
+
+    for (const area of areas) {
+      const p = Math.max(0, Math.round(area.population));
+      totalPop += p;
+      weightedAge += area.avgAge * p;
+      weightedMarried += area.marriedPercent * p;
+    }
+
+    const avgAge = totalPop > 0 ? weightedAge / totalPop : undefined;
+    const marriedPercent = totalPop > 0 ? weightedMarried / totalPop : undefined;
+
+    return {
+      selectedCount: areas.length,
+      label: CITY_LABEL,
+      population: totalPop,
+      avgAge,
+      marriedPercent,
+    };
+  };
+
   const recalcDemographics = () => {
     if (!sidebar) return;
     const keys = Array.from(selectedZips);
     if (keys.length === 0) {
-      sidebar.setDemographics(null);
+      const cityStats = computeCityDemographics();
+      sidebar.setDemographics(cityStats);
       return;
     }
+    const label = keys.length === 1 ? keys[0] : `SELECTED(${keys.length})`;
     let totalPop = 0;
     let weightedAge = 0;
     let weightedMarried = 0;
@@ -93,12 +144,12 @@ export const createApp = (root: HTMLElement): AppInstance => {
       weightedMarried += a.marriedPercent * p;
     }
     if (!any) {
-      sidebar.setDemographics({ selectedCount: 0 });
+      sidebar.setDemographics({ selectedCount: keys.length, label });
       return;
     }
     const avgAge = totalPop > 0 ? weightedAge / totalPop : undefined;
     const marriedPercent = totalPop > 0 ? weightedMarried / totalPop : undefined;
-    sidebar.setDemographics({ selectedCount: keys.length, population: totalPop, avgAge, marriedPercent });
+    sidebar.setDemographics({ selectedCount: keys.length, label, population: totalPop, avgAge, marriedPercent });
   };
 
   const recomputeOrganizationZips = (orgs: Organization[]) => {
@@ -146,9 +197,6 @@ export const createApp = (root: HTMLElement): AppInstance => {
       // Reflect selected chips in toolbar
       boundaryToolbar.setSelectedZips(Array.from(selectedZips), Array.from(pinnedZips));
     },
-    onZipHoverChange: (zip) => {
-      boundaryToolbar.setHoveredZip(zip);
-    },
   });
   sidebar = createSidebar({
     onHover: (id) => handleHover(id),
@@ -159,7 +207,9 @@ export const createApp = (root: HTMLElement): AppInstance => {
   const boundaryToolbar = createBoundaryToolbar({
     defaultValue: defaultBoundary,
     onChange: (mode) => {
+      currentBoundaryMode = mode;
       mapView.setBoundaryMode(mode);
+      recalcDemographics();
     },
     onToggleZipPin: (zip, nextPinned) => {
       const next = new Set(pinnedZips);

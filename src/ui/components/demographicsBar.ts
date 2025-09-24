@@ -1,5 +1,6 @@
 export interface DemographicStats {
   selectedCount: number;
+  label?: string;
   population?: number; // total
   avgAge?: number; // weighted average
   marriedPercent?: number; // weighted average
@@ -9,6 +10,8 @@ export interface DemographicsBarController {
   element: HTMLElement;
   setStats: (stats: DemographicStats | null) => void;
 }
+
+const DEFAULT_TITLE = "TULSA";
 
 const formatPopulation = (value: number | undefined): string => {
   if (!Number.isFinite(value || NaN)) return "—";
@@ -30,7 +33,7 @@ export const createDemographicsBar = (): DemographicsBarController => {
 
   const title = document.createElement("div");
   title.className = "font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400";
-  title.textContent = "Demo";
+  title.textContent = DEFAULT_TITLE;
 
   const stats = document.createElement("div");
   stats.className = "flex items-center gap-4 text-slate-600 dark:text-slate-300 ml-3";
@@ -47,13 +50,16 @@ export const createDemographicsBar = (): DemographicsBarController => {
   container.appendChild(stats);
 
   const setStats = (s: DemographicStats | null) => {
-    if (!s || !s.selectedCount) {
-      pop.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Population:</span> <span class="text-slate-400 dark:text-slate-500">—</span>`;
+    const nextTitle = s?.label?.trim() ? s.label : DEFAULT_TITLE;
+    title.textContent = nextTitle;
+
+    if (!s || s.selectedCount <= 0) {
+      pop.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Pop:</span> <span class="text-slate-400 dark:text-slate-500">—</span>`;
       age.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Avg Age:</span> <span class="text-slate-400 dark:text-slate-500">—</span>`;
       married.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Married:</span> <span class="text-slate-400 dark:text-slate-500">—</span>`;
       return;
     }
-    pop.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Population:</span> <span class="text-slate-400 dark:text-slate-500">${formatPopulation(s.population)}</span>`;
+    pop.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Pop:</span> <span class="text-slate-400 dark:text-slate-500">${formatPopulation(s.population)}</span>`;
     age.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Avg Age:</span> <span class="text-slate-400 dark:text-slate-500">${formatNumber(s.avgAge)}</span>`;
     married.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Married:</span> <span class="text-slate-400 dark:text-slate-500">${formatPercent(s.marriedPercent)}</span>`;
   };
