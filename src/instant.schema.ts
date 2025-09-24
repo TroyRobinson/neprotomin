@@ -29,6 +29,15 @@ const _schema = i.schema({
       name: i.string().indexed(),
       category: i.string().indexed(),
     }),
+    statData: i.entity({
+      statId: i.string().indexed(),
+      name: i.string().indexed(), // e.g., "root" or sub-stat name
+      area: i.string().indexed(), // e.g., Tulsa
+      boundaryType: i.string().indexed(), // e.g., ZIP
+      date: i.string().indexed(), // e.g., year like "2025"
+      type: i.string(), // e.g., count | percent | rate | years | currency
+      data: i.json<Record<string, number>>(), // map of area key (e.g., ZIP) -> value
+    }),
   },
   links: {},
   rooms: {},

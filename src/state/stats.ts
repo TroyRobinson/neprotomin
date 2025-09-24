@@ -1,6 +1,6 @@
 import type { Stat } from "../types/stat";
 import { db } from "../lib/db";
-import { ensureStatsSeeded } from "../lib/seed";
+import { ensureStatsSeeded, ensureStatDataSeeded } from "../lib/seed";
 
 const STATS_QUERY = {
   stats: {
@@ -53,6 +53,8 @@ class StatsStore {
     }
 
     void ensureStatsSeeded();
+    // Also seed stat data (root, Tulsa ZIP 2025) once
+    void ensureStatDataSeeded();
   }
 
   private teardown() {

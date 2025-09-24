@@ -231,3 +231,159 @@ export const ensureStatsSeeded = async (): Promise<void> => {
 
   return seedStatsPromise;
 };
+
+let seedStatDataPromise: Promise<void> | null = null;
+
+export const ensureStatDataSeeded = async (): Promise<void> => {
+  if (seedStatDataPromise) return seedStatDataPromise;
+
+  seedStatDataPromise = (async () => {
+    try {
+      // Ensure stats exist before seeding statData
+      await ensureStatsSeeded();
+
+      // Fetch stats and existing statData
+      const { data: statsResp } = await db.queryOnce({
+        stats: { $: { order: { name: "asc" as const } } },
+      });
+
+      const stats = (statsResp?.stats ?? []) as any[];
+
+      const { data: statDataResp } = await db.queryOnce({
+        statData: { $: { order: { name: "asc" as const } } },
+      });
+
+      const existingByComposite = new Map<string, any>();
+      for (const row of statDataResp?.statData ?? []) {
+        const sid = (row as any)?.statId as string | undefined;
+        const nm = (row as any)?.name as string | undefined;
+        const ar = (row as any)?.area as string | undefined;
+        const bt = (row as any)?.boundaryType as string | undefined;
+        const dt = (row as any)?.date as string | undefined;
+        if (sid && nm && ar && bt && dt) {
+          existingByComposite.set(`${sid}::${nm}::${ar}::${bt}::${dt}`.toLowerCase(), row);
+        }
+      }
+
+      const zips = getAllZipCodes();
+
+      const typeForStatName = (name: string): string => {
+        const n = name.toLowerCase();
+        if (n.includes("percent")) return "percent";
+        if (n.includes("unemployment rate")) return "percent";
+        if (n.includes("rate")) return "rate";
+        if (n.includes("life expectancy")) return "years";
+        if (n.includes("income")) return "currency";
+        return "count";
+      };
+
+      const hashToUnit = (key: string): number => {
+        let h = 2166136261 >>> 0;
+        for (let i = 0; i < key.length; i++) {
+          h ^= key.charCodeAt(i);
+          h = Math.imul(h, 16777619);
+        }
+        h ^= h << 13;
+        h ^= h >>> 17;
+        h ^= h << 5;
+        return ((h >>> 0) % 100000) / 100000;
+      };
+
+      const valueFor = (type: string, statName: string, zip: string): number => {
+        const u = hashToUnit(`${statName}::${zip}`);
+        switch (type) {
+          case "percent": {
+            // 5% - 85%, 1 decimal
+            const v = 5 + u * 80;
+            return Math.round(v * 10) / 10;
+          }
+          case "rate": {
+            // Generic rate: 0 - 200 per 1,000
+            const v = u * 200;
+            return Math.round(v * 10) / 10;
+          }
+          case "years": {
+            // Life expectancy: 68 - 84 years
+            const v = 68 + u * 16;
+            return Math.round(v * 10) / 10;
+          }
+          case "currency": {
+            // Income: $35k - $115k; round to nearest $100
+            const raw = 35000 + Math.round(u * 80000);
+            return Math.round(raw / 100) * 100;
+          }
+          case "count":
+          default: {
+            // Count: 100 - 10,000
+            const raw = 100 + Math.round(u * 9900);
+            return raw;
+          }
+        }
+      };
+
+      const txs: any[] = [];
+      for (const s of stats) {
+        const sid = (s as any)?.id as string | undefined;
+        const name = (s as any)?.name as string | undefined;
+        if (!sid || !name) continue;
+
+        const entryName = "root"; // per spec for root stat data
+        const area = "Tulsa";
+        const boundaryType = "ZIP";
+        const date = "2025";
+        const type = typeForStatName(name);
+
+        const dataObj: Record<string, number> = {};
+        for (const zip of zips) {
+          dataObj[zip] = valueFor(type, name, zip);
+        }
+
+        const comp = `${sid}::${entryName}::${area}::${boundaryType}::${date}`.toLowerCase();
+        const existing = existingByComposite.get(comp);
+
+        if (existing && existing.id) {
+          // Update if any identifying fields or data changed
+          const needsUpdate =
+            (existing as any).type !== type ||
+            JSON.stringify((existing as any).data ?? {}) !== JSON.stringify(dataObj);
+          if (needsUpdate) {
+            txs.push(
+              db.tx.statData[existing.id].update({
+                statId: sid,
+                name: entryName,
+                area,
+                boundaryType,
+                date,
+                type,
+                data: dataObj,
+              }),
+            );
+          }
+        } else {
+          txs.push(
+            db.tx.statData[id()].update({
+              statId: sid,
+              name: entryName,
+              area,
+              boundaryType,
+              date,
+              type,
+              data: dataObj,
+            }),
+          );
+        }
+      }
+
+      if (txs.length > 0) {
+        await db.transact(txs);
+      }
+    } catch (error) {
+      console.warn(
+        "InstantDB statData seed encountered an error (likely offline); skipping seed",
+        error,
+      );
+    }
+  })();
+
+  return seedStatDataPromise;
+};

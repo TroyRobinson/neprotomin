@@ -27,6 +27,14 @@ const rules = {
       delete: "true",
     },
   },
+  statData: {
+    allow: {
+      view: "true",
+      create: "true",
+      update: "true",
+      delete: "true",
+    },
+  },
 } satisfies InstantRules;
 
 export default rules;
