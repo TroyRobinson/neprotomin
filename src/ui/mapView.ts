@@ -28,6 +28,7 @@ export interface MapViewController {
   setBoundaryMode: (mode: BoundaryMode) => void;
   setPinnedZips: (zips: string[]) => void;
   setHoveredZip: (zip: string | null) => void;
+  clearTransientSelection: () => void;
   fitAllOrganizations: () => void;
   destroy: () => void;
 }
@@ -1238,6 +1239,9 @@ export const createMapView = ({
       // Update hovered ZIP in labels
       const finalHovered = zip || hoveredZipFromMap;
       zipLabels?.setHoveredZip(finalHovered);
+    },
+    clearTransientSelection: () => {
+      clearZipSelection({ notify: true });
     },
     fitAllOrganizations,
     destroy: () => {

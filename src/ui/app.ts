@@ -222,6 +222,9 @@ export const createApp = (root: HTMLElement): AppInstance => {
     onHoverZip: (zip) => {
       mapView.setHoveredZip(zip);
     },
+    onClearSelection: () => {
+      mapView.clearTransientSelection();
+    },
   });
 
   mapView.setBoundaryMode(defaultBoundary);
