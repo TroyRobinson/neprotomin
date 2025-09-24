@@ -1,4 +1,7 @@
-# Welcome to your InstantDB Vanilla JS app 👋
+# NE Minimal Prototype for testing UX/UI and as a dev guide.
+
+
+--
 
 This is a Vite project scaffolded with create-instant-app.
 
@@ -10,6 +13,3 @@ To push schema changes:
 
 To pull schema changes:
 `npx instant-cli pull`
-
-
-Got any feedback or questions? Join our [Discord](https://discord.gg/hgVf9R6SBm)
