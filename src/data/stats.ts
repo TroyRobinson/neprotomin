@@ -6,6 +6,8 @@ export interface StatSeed {
 }
 
 export const statsSeedData: StatSeed[] = [
+  // Demographic baseline
+  { name: "Population", category: "economy" },
   { name: "Chronic Absenteeism", category: "education" },
   { name: "3rd Grade Reading Percent Proficient", category: "education" },
   // Health

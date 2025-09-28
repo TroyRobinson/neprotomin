@@ -1,11 +1,13 @@
 import type { Organization } from "../types/organization";
 import { createDemographicsBar, type DemographicStats } from "./components/demographicsBar";
 import { getCategoryLabel } from "../types/categories";
+import { createStatViz, type StatVizController } from "./components/statViz";
 
 interface SidebarOptions {
   onHover: (idOrIds: string | string[] | null) => void;
   onZoomOutAll: () => void;
   onCategoryClick?: (categoryId: string) => void;
+  onHoverZip?: (zip: string | null) => void;
 }
 
 export interface SidebarController {
@@ -14,6 +16,17 @@ export interface SidebarController {
   setActiveOrganization: (id: string | null) => void;
   setHighlightedOrganizations: (ids: string[] | null) => void;
   setDemographics: (stats: DemographicStats | null) => void;
+  // Stat viz hooks
+  setStatsMeta: (statsById: Map<string, { id: string; name: string; category: string }>) => void;
+  setStatSeries: (
+    byStatId: Map<
+      string,
+      { date: string; type: string; data: Record<string, number> }[]
+    >,
+  ) => void;
+  setSelectedZips: (zips: string[]) => void;
+  setSelectedStatId: (statId: string | null) => void;
+  setHoveredZip: (zip: string | null) => void;
 }
 
 const createListItem = (
@@ -91,13 +104,14 @@ const createZoomOutListItem = (onZoomOutAll: () => void): HTMLLIElement => {
   return li;
 };
 
-export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: SidebarOptions): SidebarController => {
+export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZip }: SidebarOptions): SidebarController => {
   const container = document.createElement("aside");
   container.className =
     "relative flex w-full max-w-sm flex-col border-r border-slate-200 bg-white/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60";
 
   // Demographics summary bar
   const demographics = createDemographicsBar();
+  const statViz: StatVizController = createStatViz({ onHoverZip: (zip) => onHoverZip?.(zip) });
 
   const header = document.createElement("div");
   header.className = "flex items-center justify-between px-6 pt-4 pb-0";
@@ -311,6 +325,7 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
 
   const content = document.createElement("div");
   content.className = "flex flex-1 flex-col overflow-hidden";
+  // Empty state and lists live in the scroll area
   scroll.appendChild(emptyState);
   scroll.appendChild(inSelHeader);
   scroll.appendChild(listInSelection);
@@ -319,6 +334,8 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
   content.appendChild(scroll);
 
   container.appendChild(demographics.element);
+  // Visualization lives just below demographics bar, above Organizations
+  container.appendChild(statViz.element);
   container.appendChild(header);
   container.appendChild(content);
 
@@ -328,5 +345,10 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick }: Sideba
     setActiveOrganization,
     setHighlightedOrganizations,
     setDemographics: (stats) => demographics.setStats(stats),
+    setStatsMeta: (byId) => statViz.setStatsMeta(byId as any),
+    setStatSeries: (byId) => statViz.setSeries(byId as any),
+    setSelectedZips: (zips) => statViz.setSelectedZips(zips),
+    setSelectedStatId: (id) => statViz.setSelectedStatId(id),
+    setHoveredZip: (zip) => statViz.setHoveredZip(zip),
   };
 };

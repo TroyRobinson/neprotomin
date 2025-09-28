@@ -10,6 +10,7 @@ import { findZipForLocation } from "../lib/zipBoundaries";
 import type { Area } from "../types/area";
 import { areasStore } from "../state/areas";
 import { statDataStore } from "../state/statData";
+import { statSeriesStore } from "../state/statSeries";
 import { statsStore } from "../state/stats";
 import type { Stat } from "../types/stat";
 
@@ -47,6 +48,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
   let currentSelectedStatId: string | null = null;
   let currentSelectedCategoryId: string | null = null;
   let statDataByStatId: Map<string, { type: string; data: Record<string, number> }> = new Map();
+  let statSeriesByStatId: Map<string, { date: string; type: string; data: Record<string, number> }[]> = new Map();
   let statsById: Map<string, Stat> = new Map();
 
   let sidebar: SidebarController | null = null;
@@ -207,9 +209,17 @@ export const createApp = (root: HTMLElement): AppInstance => {
       recalcDemographics();
       // Reflect selected chips in toolbar
       boundaryToolbar.setSelectedZips(Array.from(selectedZips), Array.from(pinnedZips));
+      // Update sidebar stat viz selection
+      sidebar?.setSelectedZips(Array.from(selectedZips));
+    },
+    onZipHoverChange: (zip) => {
+      // Mirror map hover to chips and chart
+      boundaryToolbar.setHoveredZip(zip);
+      sidebar?.setHoveredZip(zip);
     },
     onStatSelectionChange: (statId) => {
       currentSelectedStatId = statId;
+      sidebar?.setSelectedStatId(currentSelectedStatId);
     },
     onCategorySelectionChange: (categoryId) => {
       currentSelectedCategoryId = categoryId;
@@ -219,6 +229,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
     onHover: (id) => handleHover(id),
     onZoomOutAll: () => mapView.fitAllOrganizations(),
     onCategoryClick: (categoryId) => mapView.setCategoryFilter(categoryId),
+    onHoverZip: (zip) => mapView.setHoveredZip(zip),
   });
 
   const boundaryToolbar = createBoundaryToolbar({
@@ -435,6 +446,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
     const map = new Map<string, Stat>();
     for (const s of rows) map.set(s.id, s);
     statsById = map;
+    sidebar?.setStatsMeta(statsById);
   });
   const unsubscribeStatData = statDataStore.subscribe((byId) => {
     const map = new Map<string, { type: string; data: Record<string, number> }>();
@@ -442,6 +454,11 @@ export const createApp = (root: HTMLElement): AppInstance => {
       map.set(id, { type: (entry as any).type, data: (entry as any).data || {} });
     }
     statDataByStatId = map;
+  });
+
+  const unsubscribeStatSeries = statSeriesStore.subscribe((byId) => {
+    statSeriesByStatId = byId as any;
+    sidebar?.setStatSeries(statSeriesByStatId);
   });
 
   root.appendChild(topBar.element);
@@ -454,6 +471,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
       unsubscribeAreas();
       unsubscribeStats();
       unsubscribeStatData();
+      unsubscribeStatSeries();
       topBar.destroy();
       boundaryToolbar.destroy();
       mapView.destroy();
