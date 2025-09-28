@@ -211,6 +211,8 @@ export const createApp = (root: HTMLElement): AppInstance => {
       boundaryToolbar.setSelectedZips(Array.from(selectedZips), Array.from(pinnedZips));
       // Update sidebar stat viz selection
       sidebar?.setSelectedZips(Array.from(selectedZips));
+      // Sync pinned zips to stat viz for bar coloring
+      sidebar?.setPinnedZips(Array.from(pinnedZips));
     },
     onZipHoverChange: (zip) => {
       // Mirror map hover to chips and chart
@@ -223,6 +225,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
     },
     onCategorySelectionChange: (categoryId) => {
       currentSelectedCategoryId = categoryId;
+      sidebar?.setSelectedCategoryId(categoryId);
     },
   });
   sidebar = createSidebar({
@@ -230,6 +233,9 @@ export const createApp = (root: HTMLElement): AppInstance => {
     onZoomOutAll: () => mapView.fitAllOrganizations(),
     onCategoryClick: (categoryId) => mapView.setCategoryFilter(categoryId),
     onHoverZip: (zip) => mapView.setHoveredZip(zip),
+    onStatSelect: (statId) => {
+      mapView.setSelectedStat(statId);
+    },
   });
 
   const boundaryToolbar = createBoundaryToolbar({
@@ -246,12 +252,16 @@ export const createApp = (root: HTMLElement): AppInstance => {
       pinnedZips = next;
       mapView.setPinnedZips(Array.from(pinnedZips));
       boundaryToolbar.setSelectedZips(Array.from(selectedZips), Array.from(pinnedZips));
+      sidebar?.setPinnedZips(Array.from(pinnedZips));
     },
     onHoverZip: (zip) => {
       mapView.setHoveredZip(zip);
     },
     onClearSelection: () => {
       mapView.clearTransientSelection();
+    },
+    onAddZips: (zips: string[]) => {
+      mapView.addTransientZips(zips);
     },
     onExport: () => {
       // Build and download CSV of selected/pinned areas + demographics + selected stat (if any)

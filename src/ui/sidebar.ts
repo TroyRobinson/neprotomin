@@ -2,12 +2,14 @@ import type { Organization } from "../types/organization";
 import { createDemographicsBar, type DemographicStats } from "./components/demographicsBar";
 import { getCategoryLabel } from "../types/categories";
 import { createStatViz, type StatVizController } from "./components/statViz";
+import { createStatList } from "./components/statList";
 
 interface SidebarOptions {
   onHover: (idOrIds: string | string[] | null) => void;
   onZoomOutAll: () => void;
   onCategoryClick?: (categoryId: string) => void;
   onHoverZip?: (zip: string | null) => void;
+  onStatSelect?: (statId: string) => void;
 }
 
 export interface SidebarController {
@@ -27,6 +29,8 @@ export interface SidebarController {
   setSelectedZips: (zips: string[]) => void;
   setSelectedStatId: (statId: string | null) => void;
   setHoveredZip: (zip: string | null) => void;
+  setSelectedCategoryId: (categoryId: string | null) => void;
+  setPinnedZips: (zips: string[]) => void;
 }
 
 const createListItem = (
@@ -104,7 +108,7 @@ const createZoomOutListItem = (onZoomOutAll: () => void): HTMLLIElement => {
   return li;
 };
 
-export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZip }: SidebarOptions): SidebarController => {
+export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZip, onStatSelect }: SidebarOptions): SidebarController => {
   const container = document.createElement("aside");
   container.className =
     "relative flex w-full max-w-sm flex-col border-r border-slate-200 bg-white/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60";
@@ -113,23 +117,32 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
   const demographics = createDemographicsBar();
   const statViz: StatVizController = createStatViz({ onHoverZip: (zip) => onHoverZip?.(zip) });
 
+  // Tabs header under stat viz: [Statistics | Organizations]
   const header = document.createElement("div");
-  header.className = "flex items-center justify-between px-6 pt-4 pb-0";
+  header.className = "flex items-center justify-between px-4 pt-3 mb-2";
 
-  const title = document.createElement("h2");
-  title.className = "text-sm font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-400 pl-2 pt-2";
-  title.textContent = "Organizations";
+  const tabs = document.createElement("div");
+  tabs.className = "flex items-center gap-4";
 
-  const totalLabel = document.createElement("span");
-  totalLabel.className = "text-xs font-medium text-slate-400 dark:text-slate-500";
-  totalLabel.textContent = "0";
+  const mkTabBtn = (label: string) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pb-2 text-[11px] font-semibold uppercase tracking-wide border-b-2 border-transparent text-slate-600 hover:text-brand-700 dark:text-slate-300";
+    btn.textContent = label;
+    return btn;
+  };
 
-  header.appendChild(title);
-  header.appendChild(totalLabel);
+  const tabStats = mkTabBtn("Statistics");
+  const tabOrgs = mkTabBtn("Organizations (0)");
 
-  // Content wrapper (scroll area)
+  tabs.appendChild(tabStats);
+  tabs.appendChild(tabOrgs);
+
+  header.appendChild(tabs);
+
+  // Content wrapper
   const scroll = document.createElement("div");
-  scroll.className = "flex-1 overflow-y-auto";
+  scroll.className = "flex-1 overflow-hidden";
 
   // Section: IN SELECTION
   const inSelHeader = document.createElement("h3");
@@ -152,6 +165,7 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
   let activeId: string | null = null;
   let highlightedIds: Set<string> = new Set();
   let totalCount: number = 0;
+  let selectedZipsCount: number = 0;
 
   // Create the zoom out list item (li > button)
   const zoomOutListItem = createZoomOutListItem(onZoomOutAll);
@@ -275,7 +289,8 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
 
     // Update counts
     const visibleCount = inSel.length + all.length;
-    totalLabel.textContent = `${visibleCount}`;
+    const countForTab = selectedZipsCount > 0 ? inSel.length : totalCount;
+    tabOrgs.textContent = `Organizations (${countForTab})`;
 
     // Section visibility
     inSelHeader.style.display = inSel.length > 0 ? "" : "none";
@@ -325,13 +340,33 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
 
   const content = document.createElement("div");
   content.className = "flex flex-1 flex-col overflow-hidden";
-  // Empty state and lists live in the scroll area
-  scroll.appendChild(emptyState);
-  scroll.appendChild(inSelHeader);
-  scroll.appendChild(listInSelection);
-  scroll.appendChild(allHeader);
-  scroll.appendChild(listAll);
-  content.appendChild(scroll);
+
+  // Two content panes: stats and organizations
+  const statsPane = document.createElement("div");
+  // Make the Statistics tab a scrollable list like Organizations
+  statsPane.className = "flex flex-1 flex-col overflow-y-auto";
+  const statsList = createStatList({ onStatSelect: (id) => onStatSelect?.(id) });
+  statsPane.appendChild(statsList.element);
+
+  const orgsPane = document.createElement("div");
+  // Make the Organizations tab scrollable at the pane level (consistent with Statistics)
+  orgsPane.className = "flex flex-1 flex-col overflow-y-auto";
+  const orgsScroll = document.createElement("div");
+  // Inner container no longer manages scroll; it just lays out content
+  orgsScroll.className = "flex-1";
+  orgsScroll.appendChild(emptyState);
+  orgsScroll.appendChild(inSelHeader);
+  orgsScroll.appendChild(listInSelection);
+  orgsScroll.appendChild(allHeader);
+  orgsScroll.appendChild(listAll);
+  orgsPane.appendChild(orgsScroll);
+
+  // Default: show Statistics
+  statsPane.style.display = "block";
+  orgsPane.style.display = "none";
+
+  content.appendChild(statsPane);
+  content.appendChild(orgsPane);
 
   container.appendChild(demographics.element);
   // Visualization lives just below demographics bar, above Organizations
@@ -339,16 +374,54 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
   container.appendChild(header);
   container.appendChild(content);
 
+  // Tab behavior
+  const setActiveTab = (tab: "stats" | "orgs") => {
+    const activeClasses = "pb-2 text-[11px] font-semibold uppercase tracking-wide border-b-2 border-brand-500 text-brand-700 dark:text-brand-300";
+    const inactiveClasses = "pb-2 text-[11px] font-semibold uppercase tracking-wide border-b-2 border-transparent text-slate-600 hover:text-brand-700 dark:text-slate-300";
+    if (tab === "stats") {
+      statsPane.style.display = "block";
+      orgsPane.style.display = "none";
+      tabStats.className = activeClasses;
+      tabOrgs.className = inactiveClasses;
+    } else {
+      statsPane.style.display = "none";
+      orgsPane.style.display = "block";
+      tabStats.className = inactiveClasses;
+      tabOrgs.className = activeClasses;
+    }
+  };
+  tabStats.addEventListener("click", () => setActiveTab("stats"));
+  tabOrgs.addEventListener("click", () => setActiveTab("orgs"));
+  setActiveTab("stats");
+
   return {
     element: container,
     setOrganizations,
     setActiveOrganization,
     setHighlightedOrganizations,
     setDemographics: (stats) => demographics.setStats(stats),
-    setStatsMeta: (byId) => statViz.setStatsMeta(byId as any),
-    setStatSeries: (byId) => statViz.setSeries(byId as any),
-    setSelectedZips: (zips) => statViz.setSelectedZips(zips),
+    setStatsMeta: (byId) => {
+      statViz.setStatsMeta(byId as any);
+      statsList.setStatsMeta(byId as any);
+    },
+    setStatSeries: (byId) => {
+      statViz.setSeries(byId as any);
+      statsList.setSeries(byId as any);
+    },
+    setSelectedZips: (zips) => {
+      selectedZipsCount = zips.length;
+      statViz.setSelectedZips(zips);
+      statsList.setSelectedZips(zips);
+      // Refresh org tab count text based on current groups (needs latest inSel/all)
+      // We'll reuse current DOM to compute counts if available
+      // No-op here; next setOrganizations will update text. If we want instant update,
+      // we could trigger a recompute by calling setOrganizations with last known groups.
+    },
     setSelectedStatId: (id) => statViz.setSelectedStatId(id),
     setHoveredZip: (zip) => statViz.setHoveredZip(zip),
+    setSelectedCategoryId: (categoryId) => {
+      statsList.setCategoryFilter(categoryId);
+    },
+    setPinnedZips: (zips) => statViz.setPinnedZips(zips),
   };
 };

@@ -27,10 +27,12 @@ export interface MapViewController {
   setOrganizations: (organizations: Organization[]) => void;
   setActiveOrganization: (id: string | null) => void;
   setCategoryFilter: (categoryId: string | null) => void;
+  setSelectedStat: (statId: string | null) => void;
   setBoundaryMode: (mode: BoundaryMode) => void;
   setPinnedZips: (zips: string[]) => void;
   setHoveredZip: (zip: string | null) => void;
   clearTransientSelection: () => void;
+  addTransientZips: (zips: string[]) => void;
   fitAllOrganizations: () => void;
   destroy: () => void;
 }
@@ -1232,6 +1234,18 @@ export const createMapView = ({
     setOrganizations,
     setActiveOrganization,
     setCategoryFilter,
+    setSelectedStat: (statId: string | null) => {
+      selectedStatId = statId;
+      // Reflect in chips without triggering onStatChange
+      categoryChips.setSelectedStat(statId);
+      updateStatDataChoropleth();
+      updateChoroplethLegend();
+      const statData = selectedStatId && statDataByStatId.get(selectedStatId)?.data || null;
+      zipLabels?.setStatOverlay(selectedStatId, statData);
+      if (typeof onStatSelectionChange === 'function') {
+        onStatSelectionChange(selectedStatId);
+      }
+    },
     setBoundaryMode,
     setPinnedZips: (zips: string[]) => {
       const next = new Set(zips);
@@ -1254,6 +1268,13 @@ export const createMapView = ({
     },
     clearTransientSelection: () => {
       clearZipSelection({ notify: true });
+    },
+    addTransientZips: (zips: string[]) => {
+      if (!Array.isArray(zips) || zips.length === 0) return;
+      const next = new Set(transientZips);
+      for (const z of zips) next.add(z);
+      transientZips = next;
+      applyZipSelection({ shouldZoom: false, notify: true });
     },
     fitAllOrganizations,
     destroy: () => {

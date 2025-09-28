@@ -13,10 +13,12 @@ export interface StatVizController {
   setSelectedZips: (zips: string[]) => void;
   setSelectedStatId: (statId: string | null) => void;
   setHoveredZip: (zip: string | null) => void;
+  setPinnedZips: (zips: string[]) => void;
 }
 
 // Line chart palette: brand blue, purple, orange, yellow
 const LINE_COLORS = ["#375bff", "#8f20f8", "#a76d44", "#b4a360"];
+const PINNED_BAR_COLOR = "#85a3ff"; // brand-300 (muted brand blue)
 const getAvgColor = () => (document.documentElement.classList.contains("dark") ? "#b3b6bd" : "#64748b"); // city average line (dashed, brighter in dark mode)
 
 export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void } = {}): StatVizController => {
@@ -37,6 +39,24 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
   graph.className = "relative w-full";
   graph.style.overflow = "visible"; // allow value labels to extend right
 
+  // Tiny popover for line hover labels
+  const hoverTip = document.createElement("div");
+  hoverTip.className =
+    "absolute z-10 hidden rounded border border-black/10 bg-slate-800 px-1.5 py-0.5 text-[10px] text-white shadow-sm " +
+    "dark:border-white/20 dark:bg-slate-200 dark:text-slate-900 pointer-events-none";
+  const showHoverTip = (label: string, clientX: number, clientY: number) => {
+    const rect = graph.getBoundingClientRect();
+    hoverTip.textContent = label;
+    const x = Math.max(4, Math.min(rect.width - 4, clientX - rect.left));
+    const y = Math.max(4, Math.min(rect.height - 4, clientY - rect.top));
+    hoverTip.style.left = `${x + 8}px`;
+    hoverTip.style.top = `${y - 18}px`;
+    hoverTip.classList.remove("hidden");
+  };
+  const hideHoverTip = () => {
+    hoverTip.classList.add("hidden");
+  };
+
   const empty = document.createElement("div");
   empty.className = "text-xs text-slate-400 dark:text-slate-500";
   empty.textContent = "No data";
@@ -51,6 +71,7 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
   let selectedStatId: string | null = null;
   let hoveredZip: string | null = null;
   let collapsed = false;
+  let pinnedZips: Set<string> = new Set();
 
   const getDefaultStatId = (): string | null => {
     for (const s of statsById.values()) {
@@ -78,6 +99,11 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
   const setHoveredZip = (zip: string | null) => {
     hoveredZip = zip;
     // Only meaningful in bar mode; safe to re-render either way
+    render();
+  };
+  const setPinnedZips = (zips: string[]) => {
+    pinnedZips = new Set(zips);
+    // Affects bar mode colors
     render();
   };
 
@@ -167,6 +193,7 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
     const g = document.createElementNS(svg.namespaceURI, "g");
     g.setAttribute("transform", "translate(" + margin.left + "," + margin.top + ")");
     svg.appendChild(g);
+    svg.addEventListener("mouseleave", () => hideHoverTip());
 
     const isDark = document.documentElement.classList.contains("dark");
     const gridStroke = isDark ? "#334155" : "#cbd5e1"; // slate-700 vs slate-300
@@ -214,14 +241,26 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
 
     // lines (smoothed)
     for (const s of series) {
-      const path = document.createElementNS(svg.namespaceURI, "path");
+      const path = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
       const pts = s.points.map((p, i) => ({ x: x(i), y: y(p.value) }));
       const d = buildSmoothPath(pts, 0.2);
       path.setAttribute("d", d);
       path.setAttribute("fill", "none");
       path.setAttribute("stroke", s.color);
-      path.setAttribute("stroke-width", s.label === "CityAv" ? "2.5" : "2");
-      path.setAttribute("stroke-dasharray", s.label === "CityAv" ? "4 3" : "0");
+      // Emphasize the city average line
+      path.setAttribute("stroke-width", s.label === "City Avg" ? "2.5" : "2");
+      path.setAttribute("stroke-dasharray", s.label === "City Avg" ? "4 3" : "0");
+      // Hover label for this line
+      path.style.cursor = "default";
+      path.addEventListener("mouseenter", (ev) => {
+        const e = ev as MouseEvent;
+        showHoverTip(s.label, e.clientX, e.clientY);
+      });
+      path.addEventListener("mousemove", (ev) => {
+        const e = ev as MouseEvent;
+        showHoverTip(s.label, e.clientX, e.clientY);
+      });
+      path.addEventListener("mouseleave", () => hideHoverTip());
       g.appendChild(path);
     }
 
@@ -309,8 +348,11 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
     sub.textContent = "";
 
     graph.replaceChildren();
+    // Ensure tooltip is hidden between renders
+    hideHoverTip();
     if (!stat || series.length === 0) {
       graph.appendChild(empty);
+      graph.appendChild(hoverTip);
       return;
     }
 
@@ -322,13 +364,18 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
       const BAR_COLOR = "#64748b"; // neutral
       const CITY_BAR_COLOR = "#94a3b8"; // slightly lighter for City Avg
       const entries = selected
-        .map((zip) => ({ label: zip, color: BAR_COLOR, value: latest.data[zip] ?? 0 }))
+        .map((zip) => ({
+          label: zip,
+          color: pinnedZips.has(zip) ? PINNED_BAR_COLOR : BAR_COLOR,
+          value: latest.data[zip] ?? 0,
+        }))
         .concat([{ label: "City Avg", color: CITY_BAR_COLOR, value: cityAvg[cityAvg.length - 1]?.value ?? 0 }])
         .sort((a, b) => b.value - a.value);
       // For bar mode, show only the latest year
       sub.textContent = latest?.date || "";
       const svg = buildBars(entries);
       graph.appendChild(svg);
+      graph.appendChild(hoverTip);
     } else {
       const zipSeries = selected.map((zip, i) => ({
         label: zip,
@@ -340,6 +387,7 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
       if (dates.length > 0) sub.textContent = String(dates[0] + "-" + dates[dates.length - 1]);
       const svg = buildLineChart(allSeries);
       graph.appendChild(svg);
+      graph.appendChild(hoverTip);
     }
   };
 
@@ -348,7 +396,7 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
   setCollapsed(false);
   render();
 
-  return { element: container, setStatsMeta, setSeries, setSelectedZips, setSelectedStatId, setHoveredZip };
+  return { element: container, setStatsMeta, setSeries, setSelectedZips, setSelectedStatId, setHoveredZip, setPinnedZips };
 };
 
 // Utility to shade a color by a factor (0.15 -> lighten a bit)
