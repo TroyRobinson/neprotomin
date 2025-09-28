@@ -7,6 +7,7 @@ interface BoundaryToolbarOptions {
   onToggleZipPin?: (zip: string, nextPinned: boolean) => void;
   onHoverZip?: (zip: string | null) => void;
   onClearSelection?: () => void;
+  onExport?: () => void;
 }
 
 export interface BoundaryToolbarController {
@@ -30,6 +31,7 @@ export const createBoundaryToolbar = ({
   onToggleZipPin,
   onHoverZip,
   onClearSelection,
+  onExport,
 }: BoundaryToolbarOptions): BoundaryToolbarController => {
   const container = document.createElement("div");
   container.className =
@@ -131,6 +133,21 @@ export const createBoundaryToolbar = ({
   });
   // Insert before the input to keep it directly to the right of the plus icon
   addWrapper.appendChild(pinAllBtn);
+
+  // "export" link lives immediately after the pin all link
+  const exportBtn = document.createElement("button");
+  exportBtn.type = "button";
+  exportBtn.textContent = "export";
+  exportBtn.className = [
+    "text-xs font-medium text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300",
+    "ml-3 cursor-pointer whitespace-nowrap hidden",
+  ].join(" ");
+  exportBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    // Delegate to app to compute and trigger CSV download
+    onExport?.();
+  });
+  addWrapper.appendChild(exportBtn);
 
   // "clear selection (esc)" link lives to the right of the pin all link
   const clearSelectionBtn = document.createElement("button");
@@ -304,8 +321,10 @@ export const createBoundaryToolbar = ({
     // Show clear selection only when there is at least one selected zip
     if (lastZips.length > 0) {
       clearSelectionBtn.classList.remove("hidden");
+      exportBtn.classList.remove("hidden");
     } else {
       clearSelectionBtn.classList.add("hidden");
+      exportBtn.classList.add("hidden");
     }
   };
 

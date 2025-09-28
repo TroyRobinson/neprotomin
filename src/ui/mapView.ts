@@ -18,6 +18,8 @@ interface MapViewOptions {
   onVisibleIdsChange?: (ids: string[], totalInSource: number, allSourceIds: string[]) => void;
   onZipSelectionChange?: (selectedZips: string[], meta?: { pinned: string[]; transient: string[] }) => void;
   onZipHoverChange?: (zip: string | null) => void;
+  onStatSelectionChange?: (statId: string | null) => void;
+  onCategorySelectionChange?: (categoryId: string | null) => void;
 }
 
 export interface MapViewController {
@@ -81,6 +83,8 @@ export const createMapView = ({
   onVisibleIdsChange,
   onZipSelectionChange,
   onZipHoverChange,
+  onStatSelectionChange,
+  onCategorySelectionChange,
 }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
   container.className = "relative flex flex-1";
@@ -95,6 +99,9 @@ export const createMapView = ({
     onChange: (categoryId) => {
       selectedCategory = categoryId;
       applyData();
+      if (typeof onCategorySelectionChange === 'function') {
+        onCategorySelectionChange(selectedCategory);
+      }
     },
     onStatChange: (statId) => {
       selectedStatId = statId;
@@ -104,6 +111,11 @@ export const createMapView = ({
       // Update ZIP labels with stat overlay info
       const statData = selectedStatId && statDataByStatId.get(selectedStatId)?.data || null;
       zipLabels?.setStatOverlay(selectedStatId, statData);
+
+      // Notify app of stat selection changes
+      if (typeof onStatSelectionChange === 'function') {
+        onStatSelectionChange(selectedStatId);
+      }
     },
   });
   container.appendChild(categoryChips.element);

@@ -289,8 +289,8 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
         return ((h >>> 0) % 100000) / 100000;
       };
 
-      const valueFor = (type: string, statName: string, zip: string): number => {
-        const u = hashToUnit(`${statName}::${zip}`);
+      const valueFor = (type: string, statName: string, zip: string, date: string): number => {
+        const u = hashToUnit(`${statName}::${zip}::${date}`);
         switch (type) {
           case "percent": {
             // 5% - 85%, 1 decimal
@@ -322,6 +322,8 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
       };
 
       const txs: any[] = [];
+      // Seed multiple years so we can render simple time series in UI
+      const YEARS = ["2023", "2024", "2025"] as const;
       for (const s of stats) {
         const sid = (s as any)?.id as string | undefined;
         const name = (s as any)?.name as string | undefined;
@@ -330,25 +332,38 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
         const entryName = "root"; // per spec for root stat data
         const area = "Tulsa";
         const boundaryType = "ZIP";
-        const date = "2025";
         const type = typeForStatName(name);
 
-        const dataObj: Record<string, number> = {};
-        for (const zip of zips) {
-          dataObj[zip] = valueFor(type, name, zip);
-        }
+        for (const date of YEARS) {
+          const dataObj: Record<string, number> = {};
+          for (const zip of zips) {
+            dataObj[zip] = valueFor(type, name, zip, date);
+          }
 
-        const comp = `${sid}::${entryName}::${area}::${boundaryType}::${date}`.toLowerCase();
-        const existing = existingByComposite.get(comp);
+          const comp = `${sid}::${entryName}::${area}::${boundaryType}::${date}`.toLowerCase();
+          const existing = existingByComposite.get(comp);
 
-        if (existing && existing.id) {
-          // Update if any identifying fields or data changed
-          const needsUpdate =
-            (existing as any).type !== type ||
-            JSON.stringify((existing as any).data ?? {}) !== JSON.stringify(dataObj);
-          if (needsUpdate) {
+          if (existing && existing.id) {
+            // Update if any identifying fields or data changed
+            const needsUpdate =
+              (existing as any).type !== type ||
+              JSON.stringify((existing as any).data ?? {}) !== JSON.stringify(dataObj);
+            if (needsUpdate) {
+              txs.push(
+                db.tx.statData[existing.id].update({
+                  statId: sid,
+                  name: entryName,
+                  area,
+                  boundaryType,
+                  date,
+                  type,
+                  data: dataObj,
+                }),
+              );
+            }
+          } else {
             txs.push(
-              db.tx.statData[existing.id].update({
+              db.tx.statData[id()].update({
                 statId: sid,
                 name: entryName,
                 area,
@@ -359,18 +374,6 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
               }),
             );
           }
-        } else {
-          txs.push(
-            db.tx.statData[id()].update({
-              statId: sid,
-              name: entryName,
-              area,
-              boundaryType,
-              date,
-              type,
-              data: dataObj,
-            }),
-          );
         }
       }
 
