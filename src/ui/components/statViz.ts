@@ -248,8 +248,8 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
       path.setAttribute("fill", "none");
       path.setAttribute("stroke", s.color);
       // Emphasize the city average line
-      path.setAttribute("stroke-width", s.label === "City Avg" ? "2.5" : "2");
-      path.setAttribute("stroke-dasharray", s.label === "City Avg" ? "4 3" : "0");
+      path.setAttribute("stroke-width", s.label === "CityAv" ? "2.5" : "2");
+      path.setAttribute("stroke-dasharray", s.label === "CityAv" ? "4 3" : "0");
       // Hover label for this line
       path.style.cursor = "default";
       path.addEventListener("mouseenter", (ev) => {
@@ -303,7 +303,7 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
       rect.setAttribute("width", String(Math.max(0, w)));
       rect.setAttribute("height", String(barH));
       // Slightly shade the hovered ZIP
-      const isZip = e.label && e.label !== "City Avg";
+      const isZip = e.label && e.label !== "CityAv";
       const isHovered = isZip && hoveredZip === e.label;
       rect.setAttribute("fill", isHovered ? shade(e.color, 0.15) : e.color);
       rect.setAttribute("rx", "3");
@@ -362,14 +362,14 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
     if (selected.length >= 4) {
       const latest = series[series.length - 1];
       const BAR_COLOR = "#64748b"; // neutral
-      const CITY_BAR_COLOR = "#94a3b8"; // slightly lighter for City Avg
+      const CITY_BAR_COLOR = "#94a3b8"; // slightly lighter for CityAv
       const entries = selected
         .map((zip) => ({
           label: zip,
           color: pinnedZips.has(zip) ? PINNED_BAR_COLOR : BAR_COLOR,
           value: latest.data[zip] ?? 0,
         }))
-        .concat([{ label: "City Avg", color: CITY_BAR_COLOR, value: cityAvg[cityAvg.length - 1]?.value ?? 0 }])
+        .concat([{ label: "CityAv", color: CITY_BAR_COLOR, value: cityAvg[cityAvg.length - 1]?.value ?? 0 }])
         .sort((a, b) => b.value - a.value);
       // For bar mode, show only the latest year
       sub.textContent = latest?.date || "";
@@ -382,7 +382,7 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
         color: LINE_COLORS[i % LINE_COLORS.length],
         points: series.map((e) => ({ date: e.date, value: e.data[zip] ?? 0 })),
       }));
-      const allSeries = zipSeries.concat([{ label: "City Avg", color: getAvgColor(), points: cityAvg }]);
+      const allSeries = zipSeries.concat([{ label: "CityAv", color: getAvgColor(), points: cityAvg }]);
       // For line mode, show full range
       if (dates.length > 0) sub.textContent = String(dates[0] + "-" + dates[dates.length - 1]);
       const svg = buildLineChart(allSeries);

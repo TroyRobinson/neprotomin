@@ -354,7 +354,14 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
   const orgsScroll = document.createElement("div");
   // Inner container no longer manages scroll; it just lays out content
   orgsScroll.className = "flex-1";
+  // Subtitle for Organizations when a stat is selected
+  const orgsSubtitle = document.createElement("p");
+  orgsSubtitle.className = "px-1 pt-1 pb-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500";
+  orgsSubtitle.style.display = "none";
+  orgsSubtitle.textContent = "Orgs active in most significant areas";
+  orgsSubtitle.classList.add("ml-7");
   orgsScroll.appendChild(emptyState);
+  orgsScroll.appendChild(orgsSubtitle);
   orgsScroll.appendChild(inSelHeader);
   orgsScroll.appendChild(listInSelection);
   orgsScroll.appendChild(allHeader);
@@ -417,7 +424,12 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
       // No-op here; next setOrganizations will update text. If we want instant update,
       // we could trigger a recompute by calling setOrganizations with last known groups.
     },
-    setSelectedStatId: (id) => statViz.setSelectedStatId(id),
+    setSelectedStatId: (id) => {
+      statViz.setSelectedStatId(id);
+      // Toggle orgs subtitle visibility based on stat selection
+      if (id) orgsSubtitle.style.display = "block";
+      else orgsSubtitle.style.display = "none";
+    },
     setHoveredZip: (zip) => statViz.setHoveredZip(zip),
     setSelectedCategoryId: (categoryId) => {
       statsList.setCategoryFilter(categoryId);

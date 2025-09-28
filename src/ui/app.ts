@@ -81,7 +81,34 @@ export const createApp = (root: HTMLElement): AppInstance => {
         });
       }
       const inSelectionIds = new Set(inSelection.map((o) => o.id));
-      const rest = visible.filter((org) => !inSelectionIds.has(org.id));
+      let rest: Organization[] = visible.filter((org) => !inSelectionIds.has(org.id));
+
+      // If a stat is selected, sort organizations by the stat value of their ZIP (desc)
+      if (currentSelectedStatId) {
+        const entry = statDataByStatId.get(currentSelectedStatId);
+        if (entry) {
+          const scoreFor = (org: Organization): number => {
+            const zip = organizationZips.get(org.id);
+            if (!zip) return Number.NEGATIVE_INFINITY;
+            const v = (entry.data || {})[zip];
+            return typeof v === "number" && Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
+          };
+          const cmp = (a: Organization, b: Organization) => {
+            const sa = scoreFor(a);
+            const sb = scoreFor(b);
+            if (sb !== sa) return sb - sa;
+            return a.name.localeCompare(b.name);
+          };
+          inSelection = inSelection.slice().sort(cmp);
+          // Keep rest sorted independently with same comparator
+          const sortedRest = rest.slice().sort(cmp);
+          // Reassign to preserve references used below
+          inSelectionIds.clear();
+          for (const o of inSelection) inSelectionIds.add(o.id);
+          // Replace rest with sortedRest
+          rest = sortedRest;
+        }
+      }
       const totalSourceCount = sourceIds ? sourceIds.size : computeSourceOrganizations().length;
       sidebar.setOrganizations({ inSelection, all: rest, totalSourceCount });
     });
@@ -222,6 +249,8 @@ export const createApp = (root: HTMLElement): AppInstance => {
     onStatSelectionChange: (statId) => {
       currentSelectedStatId = statId;
       sidebar?.setSelectedStatId(currentSelectedStatId);
+      // Resort orgs based on the newly selected stat
+      updateSidebar();
     },
     onCategorySelectionChange: (categoryId) => {
       currentSelectedCategoryId = categoryId;
@@ -464,6 +493,8 @@ export const createApp = (root: HTMLElement): AppInstance => {
       map.set(id, { type: (entry as any).type, data: (entry as any).data || {} });
     }
     statDataByStatId = map;
+    // If a stat is selected, re-sort orgs as data may have changed/arrived
+    if (currentSelectedStatId) updateSidebar();
   });
 
   const unsubscribeStatSeries = statSeriesStore.subscribe((byId) => {
