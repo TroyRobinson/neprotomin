@@ -192,10 +192,25 @@ export const ensureStatsSeeded = async (): Promise<void> => {
         if (n && c) existingByComposite.set(`${n}::${c}`.toLowerCase(), row);
       }
 
+      // Handle legacy renames so we replace any previously seeded "Rate" stats in-place
+      // rather than creating duplicates with new percent-based names.
+      const legacyToNew = new Map<string, string>([
+        ["ER Visits Rate", "ER Visits Percent"],
+        ["Juvenile Arrest Rate", "Juvenile Arrest Percent"],
+        ["Incarceration Rate", "Incarceration Percent"],
+        ["Unemployment Rate", "Unemployment Percent"],
+      ]);
+      const newToLegacyNames = new Map<string, string[]>();
+      for (const [oldName, newName] of legacyToNew) {
+        const arr = newToLegacyNames.get(newName) ?? [];
+        arr.push(oldName);
+        newToLegacyNames.set(newName, arr);
+      }
+
       const txs: any[] = [];
       for (const seed of statsSeedData) {
         const comp = `${seed.name}::${seed.category}`.toLowerCase();
-        const existing = existingByComposite.get(comp);
+        let existing = existingByComposite.get(comp);
         if (existing && existing.id) {
           const needsUpdate =
             (existing as any).name !== seed.name ||
@@ -209,12 +224,31 @@ export const ensureStatsSeeded = async (): Promise<void> => {
             );
           }
         } else {
-          txs.push(
-            db.tx.stats[id()].update({
-              name: seed.name,
-              category: seed.category,
-            }),
-          );
+          // Try to find legacy entry by old name for this category to rename in-place
+          const legacyCandidates = newToLegacyNames.get(seed.name) ?? [];
+          let renamed = false;
+          for (const oldName of legacyCandidates) {
+            const legacyComp = `${oldName}::${seed.category}`.toLowerCase();
+            const legacyExisting = existingByComposite.get(legacyComp);
+            if (legacyExisting && legacyExisting.id) {
+              txs.push(
+                db.tx.stats[legacyExisting.id].update({
+                  name: seed.name,
+                  category: seed.category,
+                }),
+              );
+              renamed = true;
+              break;
+            }
+          }
+          if (!renamed) {
+            txs.push(
+              db.tx.stats[id()].update({
+                name: seed.name,
+                category: seed.category,
+              }),
+            );
+          }
         }
       }
 

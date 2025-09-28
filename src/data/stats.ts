@@ -10,13 +10,16 @@ export const statsSeedData: StatSeed[] = [
   { name: "Population", category: "economy" },
   { name: "Chronic Absenteeism", category: "education" },
   { name: "3rd Grade Reading Percent Proficient", category: "education" },
+  { name: "High School Graduation Percent", category: "education" },
   // Health
-  { name: "ER Visits Rate", category: "health" },
+  { name: "ER Visits Percent", category: "health" },
   { name: "Life Expectancy", category: "health" },
+  { name: "Obesity Percent", category: "health" },
   // Justice
-  { name: "Juvenile Arrest Rate", category: "justice" },
-  { name: "Incarceration Rate", category: "justice" },
+  { name: "Juvenile Arrest Percent", category: "justice" },
+  { name: "Incarceration Percent", category: "justice" },
+  { name: "Recidivism Percent", category: "justice" },
   // Economy
-  { name: "Unemployment Rate", category: "economy" },
+  { name: "Unemployment Percent", category: "economy" },
   { name: "Median Household Income", category: "economy" },
 ];

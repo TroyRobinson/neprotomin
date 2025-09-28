@@ -55,7 +55,7 @@ export const createZipFloatingTitle = ({ map }: ZipFloatingTitleOptions): ZipFlo
     if (!titleElement) {
       titleElement = document.createElement("div");
       titleElement.className = 
-        "absolute z-50 pointer-events-none text-slate-500 text-[12px] font-normal " +
+        "absolute z-0 pointer-events-none text-slate-500 text-[12px] font-normal " +
         "dark:text-slate-400";
       titleElement.style.transform = "translate(-50%, -50%)";
       titleElement.style.opacity = "0.7";

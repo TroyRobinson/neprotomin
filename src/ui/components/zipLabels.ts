@@ -79,7 +79,7 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
     const element = document.createElement("div");
     
     // Container styles
-    element.className = "absolute z-50 flex flex-col items-center";
+    element.className = "absolute z-0 flex flex-col items-center";
     element.style.transform = "translate(-50%, -50%)";
     
     // Main pill label
@@ -116,7 +116,7 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
       // Only enable pill hover for selected/pinned areas
       const isSelectedOrPinned = isSelected || isPinned;
       if (isSelectedOrPinned) {
-        element.className = "absolute z-50 flex flex-col items-center pointer-events-auto cursor-pointer";
+        element.className = "absolute z-0 flex flex-col items-center pointer-events-auto cursor-pointer";
         // Add pill hover for selected/pinned areas only
         pillLabel.addEventListener('mouseenter', () => {
           pillLabel.textContent = zip;
@@ -126,12 +126,12 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
         });
       } else {
         // Non-selected areas: no pill hover interaction
-        element.className = "absolute z-50 flex flex-col items-center pointer-events-none";
+        element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
       }
     } else {
       // Regular mode: always show ZIP, no pointer events
       pillLabel.textContent = zip;
-      element.className = "absolute z-50 flex flex-col items-center pointer-events-none";
+      element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
     }
     
     element.appendChild(pillLabel);
