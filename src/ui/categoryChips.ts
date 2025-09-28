@@ -136,6 +136,16 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   const setSelectedStat = (statId: string | null) => {
     selectedStatId = statId;
+    // If a stat is being programmatically selected, ensure the matching category
+    // is also active so the stat chip is visible in the UI.
+    if (selectedStatId) {
+      const stat = allStats.find((s) => s.id === selectedStatId);
+      if (stat && stat.category !== selectedId) {
+        selectedId = stat.category;
+        update();
+        return; // update() will call renderStatChips and apply selection styles
+      }
+    }
     updateStatSelectionStyles();
   };
 

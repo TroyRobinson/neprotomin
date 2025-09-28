@@ -9,7 +9,8 @@ interface SidebarOptions {
   onZoomOutAll: () => void;
   onCategoryClick?: (categoryId: string) => void;
   onHoverZip?: (zip: string | null) => void;
-  onStatSelect?: (statId: string) => void;
+  onStatSelect?: (statId: string, meta?: { shiftKey?: boolean }) => void;
+  onOrgPinsVisibleChange?: (visible: boolean) => void;
 }
 
 export interface SidebarController {
@@ -28,6 +29,7 @@ export interface SidebarController {
   ) => void;
   setSelectedZips: (zips: string[]) => void;
   setSelectedStatId: (statId: string | null) => void;
+  setSecondaryStatId: (statId: string | null) => void;
   setHoveredZip: (zip: string | null) => void;
   setSelectedCategoryId: (categoryId: string | null) => void;
   setPinnedZips: (zips: string[]) => void;
@@ -108,7 +110,7 @@ const createZoomOutListItem = (onZoomOutAll: () => void): HTMLLIElement => {
   return li;
 };
 
-export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZip, onStatSelect }: SidebarOptions): SidebarController => {
+export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZip, onStatSelect, onOrgPinsVisibleChange }: SidebarOptions): SidebarController => {
   const container = document.createElement("aside");
   container.className =
     "relative flex w-full max-w-sm flex-col border-r border-slate-200 bg-white/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60";
@@ -345,7 +347,7 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
   const statsPane = document.createElement("div");
   // Make the Statistics tab a scrollable list like Organizations
   statsPane.className = "flex flex-1 flex-col overflow-y-auto";
-  const statsList = createStatList({ onStatSelect: (id) => onStatSelect?.(id) });
+  const statsList = createStatList({ onStatSelect: (id, meta) => onStatSelect?.(id, meta) });
   statsPane.appendChild(statsList.element);
 
   const orgsPane = document.createElement("div");
@@ -354,14 +356,53 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
   const orgsScroll = document.createElement("div");
   // Inner container no longer manages scroll; it just lays out content
   orgsScroll.className = "flex-1";
-  // Subtitle for Organizations when a stat is selected
+  // Subtitle for Organizations when a stat is selected + pins toggle
+  const orgsSubtitleRow = document.createElement("div");
+  orgsSubtitleRow.className = "px-1 pt-1 pb-0 flex items-center justify-between";
+  orgsSubtitleRow.style.display = "none";
+
   const orgsSubtitle = document.createElement("p");
-  orgsSubtitle.className = "px-1 pt-1 pb-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500";
-  orgsSubtitle.style.display = "none";
+  orgsSubtitle.className = "text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 ml-7";
   orgsSubtitle.textContent = "Orgs active in most significant areas";
-  orgsSubtitle.classList.add("ml-7");
+
+  // Toggle switch (default on)
+  let orgPinsVisible = true;
+  const toggle = document.createElement("button");
+  toggle.type = "button" as any;
+  toggle.setAttribute("role", "switch");
+  toggle.setAttribute("aria-checked", "true");
+  toggle.className = "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500";
+  const knob = document.createElement("span");
+  knob.className = "inline-block h-4 w-4 transform rounded-full bg-white shadow transition";
+
+  const applyToggleClasses = () => {
+    if (orgPinsVisible) {
+      toggle.classList.remove("bg-slate-400", "dark:bg-slate-600");
+      toggle.classList.add("bg-brand-500");
+      knob.style.transform = "translateX(16px)";
+      toggle.setAttribute("aria-checked", "true");
+      toggle.title = "Hide organization pins";
+    } else {
+      toggle.classList.remove("bg-brand-500");
+      toggle.classList.add("bg-slate-400", "dark:bg-slate-600");
+      knob.style.transform = "translateX(2px)";
+      toggle.setAttribute("aria-checked", "false");
+      toggle.title = "Show organization pins";
+    }
+  };
+  applyToggleClasses();
+  toggle.addEventListener("click", () => {
+    orgPinsVisible = !orgPinsVisible;
+    applyToggleClasses();
+    onOrgPinsVisibleChange?.(orgPinsVisible);
+  });
+  toggle.appendChild(knob);
+
+  orgsSubtitleRow.appendChild(orgsSubtitle);
+  orgsSubtitleRow.appendChild(toggle);
+
   orgsScroll.appendChild(emptyState);
-  orgsScroll.appendChild(orgsSubtitle);
+  orgsScroll.appendChild(orgsSubtitleRow);
   orgsScroll.appendChild(inSelHeader);
   orgsScroll.appendChild(listInSelection);
   orgsScroll.appendChild(allHeader);
@@ -426,9 +467,13 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
     },
     setSelectedStatId: (id) => {
       statViz.setSelectedStatId(id);
+      statsList.setSelectedStatId(id);
       // Toggle orgs subtitle visibility based on stat selection
-      if (id) orgsSubtitle.style.display = "block";
-      else orgsSubtitle.style.display = "none";
+      if (id) orgsSubtitleRow.style.display = "block";
+      else orgsSubtitleRow.style.display = "none";
+    },
+    setSecondaryStatId: (id) => {
+      statsList.setSecondaryStatId(id);
     },
     setHoveredZip: (zip) => statViz.setHoveredZip(zip),
     setSelectedCategoryId: (categoryId) => {

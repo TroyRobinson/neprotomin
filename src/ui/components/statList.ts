@@ -12,9 +12,11 @@ export interface StatListController {
   setSeries: (byStatId: Map<string, SeriesEntry[]>) => void;
   setSelectedZips: (zips: string[]) => void;
   setCategoryFilter: (categoryId: string | null) => void;
+  setSecondaryStatId: (statId: string | null) => void;
+  setSelectedStatId: (statId: string | null) => void;
 }
 
-export const createStatList = (opts: { onStatSelect?: (statId: string) => void } = {}): StatListController => {
+export const createStatList = (opts: { onStatSelect?: (statId: string, meta?: { shiftKey?: boolean }) => void } = {}): StatListController => {
   const wrapper = document.createElement("div");
   wrapper.className = "flex-1 overflow-y-auto px-4 pb-6";
 
@@ -32,6 +34,8 @@ export const createStatList = (opts: { onStatSelect?: (statId: string) => void }
   let seriesByStatId: Map<string, SeriesEntry[]> = new Map();
   let selectedZips: string[] = [];
   let categoryFilter: string | null = null;
+  let secondaryStatId: string | null = null;
+  let selectedPrimaryStatId: string | null = null;
 
   const formatValue = (v: number, type: string): string => {
     if (!isFinite(v)) return "";
@@ -128,16 +132,30 @@ export const createStatList = (opts: { onStatSelect?: (statId: string) => void }
     list.replaceChildren();
     for (const r of rows) {
       const li = document.createElement("li");
-      li.className = "group relative flex items-center justify-between rounded-full border border-slate-200/70 bg-white/70 px-3 py-2 shadow-sm transition-colors hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:hover:border-slate-600 dark:hover:bg-slate-800/70 cursor-pointer";
+      const isPrimarySelected = selectedPrimaryStatId === r.id;
+      li.className = [
+        "group relative flex items-center justify-between rounded-full border px-3 py-2 shadow-sm transition-colors cursor-pointer select-none",
+        // base light/dark
+        "border-slate-200/70 bg-white/70 hover:border-brand-200 hover:bg-brand-50",
+        "dark:border-slate-700/70 dark:bg-slate-900/50 dark:hover:border-slate-600 dark:hover:bg-slate-800/70",
+        // primary selected accent
+        isPrimarySelected ? "border-2 border-brand-300 bg-brand-50 dark:border-brand-400/40" : "",
+      ].filter(Boolean).join(" ");
       li.dataset.statId = r.id;
 
       const left = document.createElement("div");
-      left.className = "min-w-0 flex-1 pr-3 text-sm text-slate-600 dark:text-slate-300";
-      // Ellipsis if too long
+      left.className = "min-w-0 flex flex-1 items-center pr-3 text-sm text-slate-600 dark:text-slate-300";
+      // Ellipsis if too long; keep inline so the dot sits on the same line
       const title = document.createElement("span");
-      title.className = "block truncate";
+      title.className = "truncate whitespace-nowrap";
       title.textContent = r.name;
       left.appendChild(title);
+      // Secondary stat indicator (tiny teal dot to the right of the name)
+      if (secondaryStatId === r.id) {
+        const dot = document.createElement("span");
+        dot.className = "ml-2 inline-block h-2 w-2 rounded-full bg-teal-500 dark:bg-teal-400 shrink-0";
+        left.appendChild(dot);
+      }
 
       const right = document.createElement("div");
       right.className = "ml-2 shrink-0 text-right text-sm font-semibold text-slate-700 tabular-nums dark:text-slate-200 flex items-center";
@@ -183,7 +201,13 @@ export const createStatList = (opts: { onStatSelect?: (statId: string) => void }
       list.appendChild(li);
 
       if (opts.onStatSelect) {
-        li.addEventListener("click", () => opts.onStatSelect!(r.id));
+        li.addEventListener("click", (ev) => {
+          const mouseEvent = ev as MouseEvent;
+          if (mouseEvent.shiftKey) {
+            ev.preventDefault(); // Disable browser default selection behavior
+          }
+          opts.onStatSelect!(r.id, { shiftKey: mouseEvent.shiftKey });
+        });
       }
     }
   };
@@ -204,9 +228,17 @@ export const createStatList = (opts: { onStatSelect?: (statId: string) => void }
     categoryFilter = id;
     render();
   };
+  const setSecondaryStatId = (id: string | null) => {
+    secondaryStatId = id;
+    render();
+  };
+  const setSelectedStatId = (id: string | null) => {
+    selectedPrimaryStatId = id;
+    render();
+  };
 
   // Initial
   render();
 
-  return { element: wrapper, setStatsMeta, setSeries, setSelectedZips, setCategoryFilter };
+  return { element: wrapper, setStatsMeta, setSeries, setSelectedZips, setCategoryFilter, setSecondaryStatId, setSelectedStatId };
 };

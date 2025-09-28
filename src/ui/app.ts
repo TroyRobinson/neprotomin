@@ -46,6 +46,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
   let areasByKey: Map<string, Area> = new Map();
   let currentBoundaryMode: BoundaryMode = defaultBoundary;
   let currentSelectedStatId: string | null = null;
+  let currentSecondaryStatId: string | null = null;
   let currentSelectedCategoryId: string | null = null;
   let statDataByStatId: Map<string, { type: string; data: Record<string, number> }> = new Map();
   let statSeriesByStatId: Map<string, { date: string; type: string; data: Record<string, number> }[]> = new Map();
@@ -248,6 +249,9 @@ export const createApp = (root: HTMLElement): AppInstance => {
     },
     onStatSelectionChange: (statId) => {
       currentSelectedStatId = statId;
+      // Primary stat changed from chips/map: clear secondary overlay indicator
+      currentSecondaryStatId = null;
+      sidebar?.setSecondaryStatId(null);
       sidebar?.setSelectedStatId(currentSelectedStatId);
       // Resort orgs based on the newly selected stat
       updateSidebar();
@@ -262,8 +266,26 @@ export const createApp = (root: HTMLElement): AppInstance => {
     onZoomOutAll: () => mapView.fitAllOrganizations(),
     onCategoryClick: (categoryId) => mapView.setCategoryFilter(categoryId),
     onHoverZip: (zip) => mapView.setHoveredZip(zip),
-    onStatSelect: (statId) => {
-      mapView.setSelectedStat(statId);
+    onStatSelect: (statId, meta) => {
+      if (meta?.shiftKey && currentSelectedStatId) {
+        // Toggle secondary overlay when primary is active
+        if (currentSecondaryStatId === statId) {
+          currentSecondaryStatId = null;
+          mapView.setSecondaryStat?.(null);
+        } else {
+          currentSecondaryStatId = statId;
+          mapView.setSecondaryStat?.(statId);
+        }
+        sidebar?.setSecondaryStatId(currentSecondaryStatId);
+      } else {
+        // Normal click switches primary stat and clears secondary
+        currentSecondaryStatId = null;
+        sidebar?.setSecondaryStatId(null);
+        mapView.setSelectedStat(statId);
+      }
+    },
+    onOrgPinsVisibleChange: (visible: boolean) => {
+      mapView.setOrganizationPinsVisible(visible);
     },
   });
 

@@ -28,12 +28,14 @@ export interface MapViewController {
   setActiveOrganization: (id: string | null) => void;
   setCategoryFilter: (categoryId: string | null) => void;
   setSelectedStat: (statId: string | null) => void;
+  setSecondaryStat?: (statId: string | null) => void;
   setBoundaryMode: (mode: BoundaryMode) => void;
   setPinnedZips: (zips: string[]) => void;
   setHoveredZip: (zip: string | null) => void;
   clearTransientSelection: () => void;
   addTransientZips: (zips: string[]) => void;
   fitAllOrganizations: () => void;
+  setOrganizationPinsVisible: (visible: boolean) => void;
   destroy: () => void;
 }
 
@@ -62,6 +64,12 @@ const BOUNDARY_HOVER_LINE_LAYER_ID = "tulsa-zip-boundaries-hover-line";
 const BOUNDARY_HOVER_FILL_LAYER_ID = "tulsa-zip-boundaries-hover-fill";
 const BOUNDARY_STATDATA_FILL_LAYER_ID = "tulsa-zip-statdata-fill";
 
+// Zip centroid points for overlays
+const ZIP_CENTROIDS_SOURCE_ID = "tulsa-zip-centroids";
+// Secondary-stat overlay circles drawn above labels
+const SECONDARY_STAT_LAYER_ID = "tulsa-zip-secondary-stat-overlay";
+const SECONDARY_STAT_HOVER_LAYER_ID = "tulsa-zip-secondary-stat-overlay-hover";
+
 // Shared brand ramp for choropleth (light -> dark)
 const CHOROPLETH_COLORS = [
   "#e9efff",
@@ -71,6 +79,17 @@ const CHOROPLETH_COLORS = [
   "#6d8afc",
   "#4a6af9",
   "#3755f0",
+];
+
+// Teal ramp for secondary overlay (very-low hue -> strong hue)
+const TEAL_COLORS = [
+  "#f9fffd",
+  "#e9fffb",
+  "#c9fbf2",
+  "#99f0e3",
+  "#63dfd0",
+  "#24c7b8",
+  "#0f766e",
 ];
 
 type FC = GeoJSON.FeatureCollection<
@@ -109,7 +128,10 @@ export const createMapView = ({
       selectedStatId = statId;
       updateStatDataChoropleth();
       updateChoroplethLegend();
-      
+      // Clear any secondary overlay when primary changes
+      secondaryStatId = null;
+      updateSecondaryStatOverlay();
+
       // Update ZIP labels with stat overlay info
       const statData = selectedStatId && statDataByStatId.get(selectedStatId)?.data || null;
       zipLabels?.setStatOverlay(selectedStatId, statData);
@@ -136,6 +158,7 @@ export const createMapView = ({
   let hoveredZipFromToolbar: string | null = null;
   let hoveredZipFromMap: string | null = null;
   let selectedStatId: string | null = null;
+  let secondaryStatId: string | null = null;
 
   // In-memory stat data for quick styling
   let statDataByStatId: Map<
@@ -163,7 +186,9 @@ export const createMapView = ({
   // Keep a copy of all orgs and the last rendered FeatureCollection
   let allOrganizations: Organization[] = [];
   let lastData: FC = emptyFC();
-
+  // Controls visibility of organization pins and clusters
+  let orgPinsVisible: boolean = true;
+  
   map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   // Legend UI overlays atop map DOM, not a MapLibre control
@@ -254,6 +279,12 @@ export const createMapView = ({
     }
     if (map.getLayer(BOUNDARY_STATDATA_FILL_LAYER_ID)) {
       map.setLayoutProperty(BOUNDARY_STATDATA_FILL_LAYER_ID, "visibility", visibility);
+    }
+    if (map.getLayer(SECONDARY_STAT_LAYER_ID)) {
+      map.setLayoutProperty(SECONDARY_STAT_LAYER_ID, "visibility", visibility);
+    }
+    if (map.getLayer(SECONDARY_STAT_HOVER_LAYER_ID)) {
+      map.setLayoutProperty(SECONDARY_STAT_HOVER_LAYER_ID, "visibility", visibility);
     }
     if (map.getLayer(BOUNDARY_LINE_LAYER_ID)) {
       map.setLayoutProperty(BOUNDARY_LINE_LAYER_ID, "visibility", visibility);
@@ -375,6 +406,8 @@ export const createMapView = ({
         }
       }
     }
+    // Keep secondary overlay in sync with hover changes
+    updateSecondaryStatOverlay();
   };
 
   const notifyZipSelectionChange = () => {
@@ -421,6 +454,7 @@ export const createMapView = ({
   const applyZipSelection = ({ shouldZoom, notify }: { shouldZoom: boolean; notify: boolean }) => {
     updateZipSelectionHighlight();
     updateZipHoverOutline();
+    updateSecondaryStatOverlay();
     if (shouldZoom) {
       zoomToSelectedZips();
     }
@@ -610,6 +644,102 @@ export const createMapView = ({
       );
     }
 
+    // Zip centroid source for overlay circles
+    if (!map.getSource(ZIP_CENTROIDS_SOURCE_ID)) {
+      // Geometric (area-weighted) centroid, consistent with zipLabels.ts
+      const ringCentroid = (ring: number[][]): [number, number, number] => {
+        let area = 0;
+        let cx = 0;
+        let cy = 0;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const [x0, y0] = ring[j];
+          const [x1, y1] = ring[i];
+          const cross = x0 * y1 - x1 * y0;
+          area += cross;
+          cx += (x0 + x1) * cross;
+          cy += (y0 + y1) * cross;
+        }
+        area *= 0.5;
+        if (area === 0) {
+          let sx = 0, sy = 0;
+          for (const [x, y] of ring) { sx += x; sy += y; }
+          return [sx / ring.length, sy / ring.length, 0];
+        }
+        return [cx / (6 * area), cy / (6 * area), Math.abs(area)];
+      };
+
+      const features: GeoJSON.Feature<GeoJSON.Point, { zip: string }>[] = [];
+      for (const f of tulsaZipBoundaries.features as any) {
+        const zip = (f.properties?.zip ?? "") as string;
+        if (!zip) continue;
+        let totalArea = 0;
+        let accX = 0, accY = 0;
+        if (f.geometry?.type === "Polygon") {
+          const outer = f.geometry.coordinates[0];
+          const [cx, cy, a] = ringCentroid(outer);
+          totalArea += a; accX += cx * a; accY += cy * a;
+        } else if (f.geometry?.type === "MultiPolygon") {
+          for (const poly of f.geometry.coordinates) {
+            const outer = poly[0];
+            const [cx, cy, a] = ringCentroid(outer);
+            totalArea += a; accX += cx * a; accY += cy * a;
+          }
+        }
+        const center: [number, number] = totalArea > 0 ? [accX / totalArea, accY / totalArea] : [0, 0];
+        features.push({ type: "Feature", properties: { zip }, geometry: { type: "Point", coordinates: center } });
+      }
+      map.addSource(ZIP_CENTROIDS_SOURCE_ID, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features },
+      });
+    }
+
+    // Secondary stat overlay circles
+    if (!map.getLayer(SECONDARY_STAT_LAYER_ID)) {
+      const before = map.getLayer(LAYER_CLUSTERS_ID) ? LAYER_CLUSTERS_ID : undefined;
+      const layer: any = {
+        id: SECONDARY_STAT_LAYER_ID,
+        type: "circle",
+        source: ZIP_CENTROIDS_SOURCE_ID,
+        filter: ["==", ["get", "zip"], "__none__"],
+        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
+        paint: {
+          "circle-radius": 5,
+          "circle-color": "#0f766e",
+          "circle-opacity": 0,
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 1,
+          // Default at centroid (no offset); hover layer handles lift
+          "circle-translate": [0, 0],
+        } as any,
+      };
+      if (before) map.addLayer(layer, before);
+      else map.addLayer(layer);
+    }
+
+    // Hovered secondary circle lifted to peek above secondary pill
+    if (!map.getLayer(SECONDARY_STAT_HOVER_LAYER_ID)) {
+      const before = map.getLayer(LAYER_CLUSTERS_ID) ? LAYER_CLUSTERS_ID : undefined;
+      const layer: any = {
+        id: SECONDARY_STAT_HOVER_LAYER_ID,
+        type: "circle",
+        source: ZIP_CENTROIDS_SOURCE_ID,
+        filter: ["==", ["get", "zip"], "__none__"],
+        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
+        paint: {
+          "circle-radius": 5,
+          "circle-color": "#0f766e",
+          "circle-opacity": 0,
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 1,
+          // ~75% of circle visible above secondary pill
+          "circle-translate": [0, -14],
+        } as any,
+      };
+      if (before) map.addLayer(layer, before);
+      else map.addLayer(layer);
+    }
+
     if (!map.getSource(SOURCE_ID)) {
       map.addSource(SOURCE_ID, {
         type: "geojson",
@@ -746,7 +876,9 @@ export const createMapView = ({
     updateBoundaryVisibility();
     updateZipSelectionHighlight();
     updateStatDataChoropleth();
-
+    updateSecondaryStatOverlay();
+       updateOrganizationPinsVisibility();
+    
     // Recompute visible ids after ensuring layers/sources
     emitVisibleIds();
   };
@@ -976,10 +1108,13 @@ export const createMapView = ({
     statDataByStatId = byStat as any;
     updateStatDataChoropleth();
     updateChoroplethLegend();
+    updateSecondaryStatOverlay();
     
     // Update ZIP labels with new stat data
     const statData = selectedStatId && statDataByStatId.get(selectedStatId)?.data || null;
     zipLabels?.setStatOverlay(selectedStatId, statData);
+    const secondaryData = secondaryStatId && statDataByStatId.get(secondaryStatId)?.data || null;
+    zipLabels?.setSecondaryStatOverlay?.(secondaryStatId, secondaryData);
   });
 
   function updateHighlight() {
@@ -1008,6 +1143,108 @@ export const createMapView = ({
     choroplethLegend.setVisible(true);
   }
 
+  // Secondary stat overlay: circles at centroids for all zips; hovered zip gets a lifted circle
+  function updateSecondaryStatOverlay() {
+    const layerId = SECONDARY_STAT_LAYER_ID;
+    const hoverLayerId = SECONDARY_STAT_HOVER_LAYER_ID;
+    if (!map.getLayer(layerId)) return;
+    // Only in ZIP mode
+    if (boundaryMode !== "zips") {
+      map.setPaintProperty(layerId, "circle-opacity", 0);
+      if (map.getLayer(hoverLayerId)) map.setPaintProperty(hoverLayerId, "circle-opacity", 0);
+      return;
+    }
+    if (!secondaryStatId) {
+      map.setPaintProperty(layerId, "circle-opacity", 0);
+      map.setFilter(layerId, ["==", ["get", "zip"], "__none__"] as any);
+      if (map.getLayer(hoverLayerId)) {
+        map.setPaintProperty(hoverLayerId, "circle-opacity", 0);
+        map.setFilter(hoverLayerId, ["==", ["get", "zip"], "__none__"] as any);
+      }
+      return;
+    }
+    const entry = statDataByStatId.get(secondaryStatId);
+    if (!entry) {
+      map.setPaintProperty(layerId, "circle-opacity", 0);
+      map.setFilter(layerId, ["==", ["get", "zip"], "__none__"] as any);
+      if (map.getLayer(hoverLayerId)) {
+        map.setPaintProperty(hoverLayerId, "circle-opacity", 0);
+        map.setFilter(hoverLayerId, ["==", ["get", "zip"], "__none__"] as any);
+      }
+      return;
+    }
+
+    const hovered = hoveredZipFromToolbar || hoveredZipFromMap || null;
+
+    // Show circles on ALL areas (all ZIP centroids) while secondary is active
+    try {
+      if (hovered) {
+        map.setFilter(layerId, ["all", ["has", "zip"], ["!=", ["get", "zip"], hovered]] as any);
+      } else {
+        map.setFilter(layerId, null as any);
+      }
+    } catch {
+      if (hovered) map.setFilter(layerId, ["all", ["has", "zip"], ["!=", ["get", "zip"], hovered]] as any);
+      else map.setFilter(layerId, ["has", "zip"] as any);
+    }
+
+    const selectedOrPinned = new Set<string>([...pinnedZips, ...transientZips]);
+    const selectedArray = Array.from(selectedOrPinned);
+
+    // Build color ramp mapping per-zip
+    const { data, min, max } = entry;
+    const COLORS = TEAL_COLORS;
+    const classes = COLORS.length;
+    const range = max - min;
+    const idxFor = (v: number) => {
+      if (!Number.isFinite(v)) return 0;
+      if (range <= 0) return Math.floor((classes - 1) / 2);
+      const r = (v - min) / range;
+      return Math.max(0, Math.min(classes - 1, Math.floor(r * (classes - 1))));
+    };
+    const match: any[] = ["match", ["get", "zip"]];
+    for (const f of (tulsaZipBoundaries.features as any)) {
+      const zip = (f.properties?.zip ?? "") as string;
+      if (!zip) continue;
+      const v = data?.[zip];
+      const color = typeof v === "number" ? COLORS[idxFor(v)] : COLORS[0];
+      match.push(zip, color);
+    }
+    match.push(COLORS[0]);
+
+    map.setPaintProperty(layerId, "circle-color", match as any);
+    map.setPaintProperty(layerId, "circle-opacity", 0.95);
+    const translateExpr: any = selectedArray.length
+      ? [
+          "case",
+          ["in", ["get", "zip"], ["literal", selectedArray]],
+          ["literal", [0, -14]],
+          ["literal", [0, 0]],
+        ]
+      : ["literal", [0, 0]];
+    map.setPaintProperty(layerId, "circle-translate", translateExpr);
+
+    // Hovered lifted circle (peeking above secondary pill)
+    if (map.getLayer(hoverLayerId)) {
+      if (hovered) {
+        const v = entry.data?.[hovered as string];
+        let idx = 0;
+        if (typeof v === 'number' && Number.isFinite(v)) {
+          if (range <= 0) idx = Math.floor((classes - 1) / 2);
+          else idx = Math.max(0, Math.min(classes - 1, Math.floor(((v - min) / range) * (classes - 1))));
+        }
+        const color = COLORS[idx];
+        map.setFilter(hoverLayerId, ["==", ["get", "zip"], hovered] as any);
+        map.setPaintProperty(hoverLayerId, "circle-color", color as any);
+        map.setPaintProperty(hoverLayerId, "circle-opacity", 1);
+        map.setPaintProperty(hoverLayerId, "circle-translate", [0, -14] as any);
+      } else {
+        map.setPaintProperty(hoverLayerId, "circle-opacity", 0);
+        map.setFilter(hoverLayerId, ["==", ["get", "zip"], "__none__"] as any);
+      }
+    }
+  }
+
   const setClusterHighlight = (clusterId: number | null) => {
     if (!map.getLayer(LAYER_CLUSTER_HIGHLIGHT_ID)) return;
     const filter = clusterId !== null
@@ -1028,6 +1265,7 @@ export const createMapView = ({
     updateBoundaryVisibility();
     updateStatDataChoropleth();
     updateChoroplethLegend();
+    updateSecondaryStatOverlay();
   };
 
   const clearClusterHighlight = () => setClusterHighlight(null);
@@ -1217,6 +1455,25 @@ export const createMapView = ({
       onVisibleIdsChange(uniqueSorted, lastData.features.length, allSourceIds);
   };
 
+  const updateOrganizationPinsVisibility = () => {
+    const visibility = orgPinsVisible ? "visible" : "none";
+    if (map.getLayer(LAYER_CLUSTERS_ID)) {
+      map.setLayoutProperty(LAYER_CLUSTERS_ID, "visibility", visibility);
+    }
+    if (map.getLayer(LAYER_CLUSTER_COUNT_ID)) {
+      map.setLayoutProperty(LAYER_CLUSTER_COUNT_ID, "visibility", visibility);
+    }
+    if (map.getLayer(LAYER_POINTS_ID)) {
+      map.setLayoutProperty(LAYER_POINTS_ID, "visibility", visibility);
+    }
+    if (map.getLayer(LAYER_HIGHLIGHT_ID)) {
+      map.setLayoutProperty(LAYER_HIGHLIGHT_ID, "visibility", visibility);
+    }
+    if (map.getLayer(LAYER_CLUSTER_HIGHLIGHT_ID)) {
+      map.setLayoutProperty(LAYER_CLUSTER_HIGHLIGHT_ID, "visibility", visibility);
+    }
+  };
+
   // Update visible set on map interactions
   map.on("moveend", () => emitVisibleIds());
   map.on("zoomend", () => emitVisibleIds());
@@ -1240,11 +1497,21 @@ export const createMapView = ({
       categoryChips.setSelectedStat(statId);
       updateStatDataChoropleth();
       updateChoroplethLegend();
+      // Reset secondary overlay on primary stat change
+      secondaryStatId = null;
+      updateSecondaryStatOverlay();
       const statData = selectedStatId && statDataByStatId.get(selectedStatId)?.data || null;
       zipLabels?.setStatOverlay(selectedStatId, statData);
+      zipLabels?.setSecondaryStatOverlay?.(null, null);
       if (typeof onStatSelectionChange === 'function') {
         onStatSelectionChange(selectedStatId);
       }
+    },
+    setSecondaryStat: (statId: string | null) => {
+      secondaryStatId = statId;
+      updateSecondaryStatOverlay();
+      const secondaryData = secondaryStatId && statDataByStatId.get(secondaryStatId)?.data || null;
+      zipLabels?.setSecondaryStatOverlay?.(secondaryStatId, secondaryData);
     },
     setBoundaryMode,
     setPinnedZips: (zips: string[]) => {
@@ -1277,6 +1544,11 @@ export const createMapView = ({
       applyZipSelection({ shouldZoom: false, notify: true });
     },
     fitAllOrganizations,
+    setOrganizationPinsVisible: (visible: boolean) => {
+      if (orgPinsVisible === visible) return;
+      orgPinsVisible = visible;
+      updateOrganizationPinsVisibility();
+    },
     destroy: () => {
       resizeObserver.disconnect();
       unsubscribeTheme();
