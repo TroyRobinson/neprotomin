@@ -1,5 +1,6 @@
 import type { Organization } from "../types/organization";
 import { createDemographicsBar, type DemographicStats } from "./components/demographicsBar";
+import { demographicsStore, type DemographicBreakdown } from "../state/demographics";
 import { getCategoryLabel } from "../types/categories";
 import { createStatViz, type StatVizController } from "./components/statViz";
 import { createStatList } from "./components/statList";
@@ -228,6 +229,8 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
   let highlightedIds: Set<string> = new Set();
   let totalCount: number = 0;
   let selectedZipsCount: number = 0;
+  let selectedZipsList: string[] = [];
+  let latestBreakdownSource: Map<string, DemographicBreakdown> = new Map();
 
   // Create the zoom out list item (li > button)
   const zoomOutListItem = createZoomOutListItem(onZoomOutAll);
@@ -470,6 +473,57 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
   tabOrgs.addEventListener("click", () => setActiveTab("orgs"));
   setActiveTab("stats");
 
+  // Demographics breakdown aggregation
+  const recomputeDemographicBreakdowns = () => {
+    if (!latestBreakdownSource) return;
+    const groups = new Map<string, { key: string; segments: { key: string; label: string; colorToken: string; valuePercent: number }[] }>();
+    const zips = selectedZipsList && selectedZipsList.length > 0
+      ? selectedZipsList
+      : (() => {
+          // Use any group/segment to derive the list of city zips
+          for (const g of latestBreakdownSource.values()) {
+            const firstSeg = g.segments[0];
+            if (firstSeg) return Object.keys(firstSeg.valueByZip || {});
+          }
+          return [] as string[];
+        })();
+    const denom = Math.max(zips.length, 1);
+    for (const [key, g] of latestBreakdownSource) {
+      const segs = g.segments.map((seg) => {
+        let sum = 0;
+        for (const z of zips) {
+          const v = seg.valueByZip[z];
+          if (typeof v === "number" && Number.isFinite(v)) sum += v;
+        }
+        const avg = sum / denom; // simple mean across zips
+        return { key: seg.key, label: seg.label, colorToken: seg.colorToken, valuePercent: Math.max(0, Math.min(100, Math.round(avg))) };
+      });
+      // Normalize rounding drift to sum to 100
+      const total = segs.reduce((a, s) => a + s.valuePercent, 0);
+      let diff = 100 - total;
+      if (diff !== 0 && segs.length > 0) {
+        // Adjust the largest segment by the diff
+        let idx = 0;
+        let max = -1;
+        for (let i = 0; i < segs.length; i++) if (segs[i].valuePercent > max) { max = segs[i].valuePercent; idx = i; }
+        segs[idx] = { ...segs[idx], valuePercent: Math.max(0, Math.min(100, segs[idx].valuePercent + diff)) };
+      }
+      groups.set(key, { key, segments: segs });
+    }
+    demographics.setBreakdowns(groups);
+  };
+
+  // Subscribe to demographic breakdowns
+  demographicsStore.subscribe((byGroup) => {
+    // Map<key, DemographicBreakdown> to Map<string, DemographicBreakdown>
+    const map = new Map<string, DemographicBreakdown>();
+    for (const [k, v] of (byGroup as any as Map<string, DemographicBreakdown>).entries()) {
+      map.set(k, v);
+    }
+    latestBreakdownSource = map;
+    recomputeDemographicBreakdowns();
+  });
+
   return {
     element: container,
     setOrganizations,
@@ -486,12 +540,14 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
     },
     setSelectedZips: (zips) => {
       selectedZipsCount = zips.length;
+      selectedZipsList = zips.slice();
       statViz.setSelectedZips(zips);
       statsList.setSelectedZips(zips);
       // Refresh org tab count text based on current groups (needs latest inSel/all)
       // We'll reuse current DOM to compute counts if available
       // No-op here; next setOrganizations will update text. If we want instant update,
       // we could trigger a recompute by calling setOrganizations with last known groups.
+      recomputeDemographicBreakdowns();
     },
     setSelectedStatId: (id) => {
       statViz.setSelectedStatId(id);

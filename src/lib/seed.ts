@@ -415,6 +415,116 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
         }
       }
 
+      // Additionally seed demographic breakdowns for the Population stat using percent segments
+      // Only for 2025, as the UI consumes the latest snapshot
+      const populationStat = (stats as any[]).find((row) => (row as any)?.name === "Population");
+      if (populationStat && (populationStat as any).id) {
+        const popStatId = (populationStat as any).id as string;
+        const date = "2025";
+        const area = "Tulsa";
+        const boundaryType = "ZIP";
+
+        // Helper to produce integer percent buckets that sum to 100
+        const percentBuckets = (seedKey: string, count: number): number[] => {
+          const weights: { w: number; idx: number }[] = [];
+          let sum = 0;
+          for (let i = 0; i < count; i++) {
+            const u = hashToUnit(`${seedKey}::seg:${i}`);
+            const w = 0.2 + u; // ensure non-zero
+            weights.push({ w, idx: i });
+            sum += w;
+          }
+          const exacts = weights.map((x) => (x.w / sum) * 100);
+          const floors = exacts.map((v) => Math.floor(v));
+          let remainder = 100 - floors.reduce((a, b) => a + b, 0);
+          const frac = exacts.map((v, i) => ({ f: v - floors[i], idx: i })).sort((a, b) => b.f - a.f);
+          const result = floors.slice();
+          for (let i = 0; i < remainder; i++) result[frac[i % frac.length].idx] += 1;
+          return result;
+        };
+
+        type SegmentDef = { key: string; label: string };
+        const groups: { group: string; segments: SegmentDef[] }[] = [
+          {
+            group: "ethnicity",
+            segments: [
+              { key: "white", label: "White" },
+              { key: "black", label: "Black" },
+              { key: "hispanic", label: "Hispanic" },
+              { key: "asian", label: "Asian" },
+              { key: "other", label: "Other" },
+            ],
+          },
+          {
+            group: "income",
+            segments: [
+              { key: "low", label: "Low" },
+              { key: "middle", label: "Middle" },
+              { key: "high", label: "High" },
+            ],
+          },
+          {
+            group: "education",
+            segments: [
+              { key: "hs_or_less", label: "HS or Less" },
+              { key: "some_college", label: "Some College" },
+              { key: "bachelor_plus", label: "Bachelor+" },
+            ],
+          },
+        ];
+
+        for (const { group, segments } of groups) {
+          // Build a percent map per ZIP that sums to 100 across segments
+          const perZipBuckets: Record<string, number[]> = {};
+          for (const zip of zips) {
+            perZipBuckets[zip] = percentBuckets(`Population::${group}::${zip}::${date}`, segments.length);
+          }
+
+          // Emit one statData row per segment (name = `${group}:${segmentKey}`)
+          for (let si = 0; si < segments.length; si++) {
+            const seg = segments[si];
+            const segData: Record<string, number> = {};
+            for (const zip of zips) {
+              segData[zip] = perZipBuckets[zip][si];
+            }
+
+            const entryName = `${group}:${seg.key}`;
+            const comp = `${popStatId}::${entryName}::${area}::${boundaryType}::${date}`.toLowerCase();
+            const existing = existingByComposite.get(comp);
+            if (existing && existing.id) {
+              const needsUpdate =
+                (existing as any).type !== "percent" ||
+                JSON.stringify((existing as any).data ?? {}) !== JSON.stringify(segData);
+              if (needsUpdate) {
+                txs.push(
+                  db.tx.statData[existing.id].update({
+                    statId: popStatId,
+                    name: entryName,
+                    area,
+                    boundaryType,
+                    date,
+                    type: "percent",
+                    data: segData,
+                  }),
+                );
+              }
+            } else {
+              txs.push(
+                db.tx.statData[id()].update({
+                  statId: popStatId,
+                  name: entryName,
+                  area,
+                  boundaryType,
+                  date,
+                  type: "percent",
+                  data: segData,
+                }),
+              );
+            }
+          }
+        }
+      }
+
       if (txs.length > 0) {
         await db.transact(txs);
       }

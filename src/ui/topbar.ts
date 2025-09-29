@@ -1,4 +1,6 @@
 import { themeController } from "./theme";
+import { createLoginModal } from "./loginModal";
+import { db } from "../lib/db";
 
 type ThemeName = "light" | "dark";
 
@@ -31,6 +33,7 @@ const getThemeIcon = (theme: ThemeName): string => {
 export interface TopBarController {
   element: HTMLElement;
   setActiveScreen: (screen: "map" | "report") => void;
+  onSignedIn: (fn: (email: string) => void) => void;
   destroy: () => void;
 }
 
@@ -77,6 +80,13 @@ export const createTopBar = (opts?: { onNavigate?: (screen: "map" | "report") =>
   const controls = document.createElement("div");
   controls.className = "flex items-center gap-4";
 
+  // Login button (to the left of the theme toggle)
+  const loginButton = document.createElement("button");
+  loginButton.type = "button";
+  loginButton.className =
+    "inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white";
+  loginButton.textContent = "Login";
+
   const themeButton = document.createElement("button");
   themeButton.type = "button";
   themeButton.className =
@@ -103,6 +113,19 @@ export const createTopBar = (opts?: { onNavigate?: (screen: "map" | "report") =>
 
   themeButton.addEventListener("click", handleClick);
 
+  let signedInListeners: ((email: string) => void)[] = [];
+  const loginModal = createLoginModal({
+    onSignedIn: ({ email }) => {
+      loginButton.textContent = email;
+      loginButton.setAttribute("aria-label", `Signed in as ${email}`);
+      for (const fn of signedInListeners) fn(email);
+    },
+  });
+
+  const openLogin = () => loginModal.open();
+  loginButton.addEventListener("click", openLogin);
+
+  controls.appendChild(loginButton);
   controls.appendChild(themeButton);
 
   header.appendChild(identity);
@@ -133,14 +156,33 @@ export const createTopBar = (opts?: { onNavigate?: (screen: "map" | "report") =>
   mapLink.addEventListener("click", onMapClick);
   reportLink.addEventListener("click", onReportClick);
 
+  // Initialize auth state and set login button label
+  (async () => {
+    try {
+      const user = await db.getAuth();
+      const email = (user as any)?.email as string | undefined;
+      if (email) {
+        loginButton.textContent = email;
+        loginButton.setAttribute("aria-label", `Signed in as ${email}`);
+      }
+    } catch (_) {
+      // ignore if not signed in
+    }
+  })();
+
   return {
     element: header,
     setActiveScreen,
+    onSignedIn: (fn: (email: string) => void) => {
+      signedInListeners.push(fn);
+    },
     destroy: () => {
       unsubscribeTheme();
       themeButton.removeEventListener("click", handleClick);
+      loginButton.removeEventListener("click", openLogin);
       mapLink.removeEventListener("click", onMapClick);
       reportLink.removeEventListener("click", onReportClick);
+      loginModal.destroy();
     },
   };
 };

@@ -36,6 +36,8 @@ export interface MapViewController {
   addTransientZips: (zips: string[]) => void;
   fitAllOrganizations: () => void;
   setOrganizationPinsVisible: (visible: boolean) => void;
+  setCamera: (centerLng: number, centerLat: number, zoom: number) => void;
+  onCameraChange: (fn: (centerLng: number, centerLat: number, zoom: number) => void) => () => void;
   destroy: () => void;
 }
 
@@ -1487,6 +1489,16 @@ export const createMapView = ({
   };
   window.addEventListener("keydown", handleKeyDown);
 
+  // Camera change emitters for persistence
+  const cameraListeners: ((lng: number, lat: number, zoom: number) => void)[] = [];
+  const emitCamera = () => {
+    const c = map.getCenter();
+    const z = map.getZoom();
+    for (const fn of cameraListeners) fn(c.lng, c.lat, z);
+  };
+  map.on("moveend", emitCamera);
+  map.on("zoomend", emitCamera);
+
   return {
     element: container,
     setOrganizations,
@@ -1551,6 +1563,16 @@ export const createMapView = ({
       if (orgPinsVisible === visible) return;
       orgPinsVisible = visible;
       updateOrganizationPinsVisibility();
+    },
+    setCamera: (centerLng: number, centerLat: number, zoom: number) => {
+      map.jumpTo({ center: [centerLng, centerLat], zoom });
+    },
+    onCameraChange: (fn: (lng: number, lat: number, zoom: number) => void) => {
+      cameraListeners.push(fn);
+      return () => {
+        const idx = cameraListeners.indexOf(fn);
+        if (idx >= 0) cameraListeners.splice(idx, 1);
+      };
     },
     destroy: () => {
       resizeObserver.disconnect();

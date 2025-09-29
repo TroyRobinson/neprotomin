@@ -4,6 +4,7 @@ import { createMapView } from "./mapView";
 import { createSidebar } from "./sidebar";
 import type { SidebarController } from "./sidebar";
 import { createTopBar } from "./topbar";
+import { loadUserState, saveUserState } from "../state/userState";
 import { createBoundaryToolbar } from "./boundaryToolbar";
 import type { BoundaryMode } from "../types/boundaries";
 import { findZipForLocation } from "../lib/zipBoundaries";
@@ -62,6 +63,9 @@ export const createApp = (root: HTMLElement): AppInstance => {
 
   let sidebar: SidebarController | null = null;
   const reportView = createReportView();
+  let restoreUserState: () => Promise<void> = async () => {};
+  topBar.onSignedIn(() => { void restoreUserState(); });
+
 
   const computeSourceOrganizations = () => {
     const sourceFilter = sourceIds;
@@ -252,6 +256,11 @@ export const createApp = (root: HTMLElement): AppInstance => {
       sidebar?.setPinnedZips(Array.from(pinnedZips));
       // Update report view selection
       reportView.setSelectedZips(Array.from(selectedZips));
+      // Persist user state (fire-and-forget)
+      void saveUserState({
+        selectedZips: Array.from(selectedZips),
+        pinnedZips: Array.from(pinnedZips),
+      });
     },
     onZipHoverChange: (zip) => {
       // Mirror map hover to chart only (no chip highlighting)
@@ -270,6 +279,15 @@ export const createApp = (root: HTMLElement): AppInstance => {
       currentSelectedCategoryId = categoryId;
       sidebar?.setSelectedCategoryId(categoryId);
     },
+  });
+  // Persist camera on changes (fire-and-forget)
+  const unsubscribeCamera = mapView.onCameraChange((lng, lat, zoom) => {
+    void saveUserState({
+      selectedZips: Array.from(selectedZips),
+      pinnedZips: Array.from(pinnedZips),
+      mapCenter: { lng, lat },
+      mapZoom: zoom,
+    });
   });
   sidebar = createSidebar({
     onHover: (id) => handleHover(id),
@@ -314,6 +332,11 @@ export const createApp = (root: HTMLElement): AppInstance => {
       mapView.setPinnedZips(Array.from(pinnedZips));
       boundaryToolbar.setSelectedZips(Array.from(selectedZips), Array.from(pinnedZips));
       sidebar?.setPinnedZips(Array.from(pinnedZips));
+      // Persist user state (fire-and-forget)
+      void saveUserState({
+        selectedZips: Array.from(selectedZips),
+        pinnedZips: Array.from(pinnedZips),
+      });
     },
     onHoverZip: (zip) => {
       mapView.setHoveredZip(zip);
@@ -493,6 +516,35 @@ export const createApp = (root: HTMLElement): AppInstance => {
   layout.appendChild(mapView.element);
   layout.appendChild(reportView.element);
 
+  // Define after mapView and toolbar exist so we can drive visuals
+  restoreUserState = async () => {
+    const state = await loadUserState();
+    const sel = Array.isArray(state.selectedZips) ? state.selectedZips : [];
+    const pins = Array.isArray(state.pinnedZips) ? state.pinnedZips : [];
+    // Update local sets
+    selectedZips = new Set(sel);
+    pinnedZips = new Set(pins);
+    // Restore camera first if available
+    if (state.mapCenter && typeof state.mapCenter.lng === "number" && typeof state.mapCenter.lat === "number" && typeof state.mapZoom === "number") {
+      mapView.setCamera(state.mapCenter.lng, state.mapCenter.lat, state.mapZoom);
+    }
+    // Drive map visuals first
+    mapView.setPinnedZips(pins);
+    // For selected (transient) zips, use addTransientZips which updates layers without notifying loops
+    if (sel.length > 0) {
+      mapView.addTransientZips(sel);
+    } else {
+      mapView.clearTransientSelection();
+    }
+    // Reflect across UI
+    boundaryToolbar.setSelectedZips(sel, pins);
+    sidebar?.setSelectedZips(sel);
+    sidebar?.setPinnedZips(pins);
+    reportView.setSelectedZips(sel);
+    updateSidebar();
+    recalcDemographics();
+  };
+
   const applyScreenVisibility = () => {
     const showMap = activeScreen === "map";
     sidebar!.element.style.display = showMap ? "" : "none";
@@ -554,6 +606,17 @@ export const createApp = (root: HTMLElement): AppInstance => {
   root.appendChild(boundaryToolbar.element);
   root.appendChild(layout);
 
+  // Attempt restoring state if already signed in
+  void (async () => {
+    try {
+      const { db } = await import("../lib/db");
+      const user = await db.getAuth();
+      if (user && (user as any).id) {
+        await restoreUserState();
+      }
+    } catch {}
+  })();
+
   // Reflect initial screen in top bar
   topBar.setActiveScreen(activeScreen);
 
@@ -564,6 +627,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
       unsubscribeStats();
       unsubscribeStatData();
       unsubscribeStatSeries();
+      unsubscribeCamera();
       topBar.destroy();
       boundaryToolbar.destroy();
       mapView.destroy();

@@ -35,6 +35,14 @@ const rules = {
       delete: "true",
     },
   },
+  userState: {
+    allow: {
+      view: "true",
+      create: "true",
+      update: "true",
+      delete: "true",
+    },
+  },
 } satisfies InstantRules;
 
 export default rules;
