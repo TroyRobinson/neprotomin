@@ -126,7 +126,7 @@ export const createDemographicsBar = (): DemographicsBarController => {
     clearBar(bar);
     // Build stacked segments across the full width
     let cumulative = 0;
-    segments.forEach((seg, idx) => {
+    segments.forEach((seg) => {
       const width = Math.max(0, Math.min(100, Math.round(seg.valuePercent)));
       if (width <= 0) return;
       const div = document.createElement("div");
