@@ -172,7 +172,7 @@ export const createMapView = ({
     container: mapNode,
     style: getMapStyle(currentTheme),
     center: [TULSA_CENTER.longitude, TULSA_CENTER.latitude],
-    zoom: 12.5,
+    zoom: 10.5,
     attributionControl: false,
     fadeDuration: 0,
     // Disable Shift+drag box zoom so Shift can be used for multi-select
@@ -887,7 +887,7 @@ export const createMapView = ({
   map.once("load", () => {
     map.jumpTo({
       center: [TULSA_CENTER.longitude, TULSA_CENTER.latitude],
-      zoom: 13,
+      zoom: 11,
     });
 
     // Disable focus outline on the map canvas

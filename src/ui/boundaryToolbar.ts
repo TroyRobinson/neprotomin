@@ -70,7 +70,7 @@ export const createBoundaryToolbar = ({
     })),
     onChange: (v) => {
       currentMode = v;
-      const areaLabel = currentMode === "zips" ? "ZIP" : "area";
+      const areaLabel = currentMode === "zips" ? "ZIPs" : "area";
       setAddButtonAppearance(lastZips.length === 0, areaLabel);
       onChange(v);
     },
@@ -456,14 +456,14 @@ export const createBoundaryToolbar = ({
   };
 
   // Initialize add button appearance for empty state
-  setAddButtonAppearance(true, (currentMode === "zips" ? "ZIP" : "area"));
+  setAddButtonAppearance(true, (currentMode === "zips" ? "ZIPs" : "area"));
 
   return {
     element: container,
     setValue: (v: BoundaryMode) => {
       currentMode = v;
       selectController.setValue(v);
-      const areaLabel = currentMode === "zips" ? "ZIP" : "area";
+      const areaLabel = currentMode === "zips" ? "ZIPs" : "area";
       setAddButtonAppearance(lastZips.length === 0, areaLabel);
     },
     setSelectedZips,
