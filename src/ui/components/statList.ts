@@ -1,4 +1,5 @@
 import type { Stat } from "../../types/stat";
+import { formatStatValue } from "../../lib/format";
 
 type SeriesEntry = {
   date: string;
@@ -37,20 +38,9 @@ export const createStatList = (opts: { onStatSelect?: (statId: string, meta?: { 
   let secondaryStatId: string | null = null;
   let selectedPrimaryStatId: string | null = null;
 
+  // Use the shared formatting utility
   const formatValue = (v: number, type: string): string => {
-    if (!isFinite(v)) return "";
-    switch (type) {
-      case "percent":
-        return `${Math.round(v * 10) / 10}\u2009%`;
-      case "currency":
-        return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Math.round(v));
-      case "years":
-      case "rate":
-        return (Math.round(v * 10) / 10).toLocaleString("en-US");
-      case "count":
-      default:
-        return Math.round(v).toLocaleString("en-US");
-    }
+    return formatStatValue(v, type);
   };
 
   const computeCityAvg = (entry: SeriesEntry | undefined): number => {
@@ -139,7 +129,7 @@ export const createStatList = (opts: { onStatSelect?: (statId: string, meta?: { 
         "border-slate-200/70 bg-white/70 hover:border-brand-200 hover:bg-brand-50",
         "dark:border-slate-700/70 dark:bg-slate-900/50 dark:hover:border-slate-600 dark:hover:bg-slate-800/70",
         // primary selected accent
-        isPrimarySelected ? "border-2 border-brand-300 bg-brand-50 dark:border-brand-400/40" : "",
+        isPrimarySelected ? "border-2 border-brand-400 bg-brand-50 dark:border-brand-400 dark:bg-brand-400/10" : "",
       ].filter(Boolean).join(" ");
       li.dataset.statId = r.id;
 

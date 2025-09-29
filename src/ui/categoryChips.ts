@@ -5,7 +5,11 @@ const CATEGORY_CHIP_NEUTRAL_CLASSES =
   "border-slate-200 bg-white/90 text-slate-600 hover:border-brand-200 hover:bg-white hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white";
 
 const CATEGORY_CHIP_SELECTED_CLASSES =
-  "border-transparent bg-brand-500 text-white shadow-floating hover:bg-brand-500 dark:bg-brand-400 dark:text-slate-900";
+  "border-transparent bg-brand-500 text-white shadow-floating hover:bg-brand-500 dark:bg-brand-400 dark:text-white";
+
+// Slightly fainter fill for selected STAT chip in both modes; white text in dark mode
+const STAT_CHIP_SELECTED_CLASSES =
+  "border-transparent bg-brand-100 text-brand-700 shadow-floating hover:bg-brand-100 dark:bg-brand-400/20 dark:text-white";
 
 const CLOSE_ICON = `
   <svg viewBox="0 0 12 12" aria-hidden="true" class="h-3.5 w-3.5">
@@ -226,7 +230,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     statEntries.forEach(({ btn, id, name, labelEl }) => {
       const isSelected = selectedStatId === id;
       btn.className = `${CATEGORY_CHIP_CLASSES} ${
-        isSelected ? CATEGORY_CHIP_SELECTED_CLASSES : CATEGORY_CHIP_NEUTRAL_CLASSES
+        isSelected ? STAT_CHIP_SELECTED_CLASSES : CATEGORY_CHIP_NEUTRAL_CLASSES
       }`;
       // Selected stat shows full name; others truncated
       labelEl.textContent = isSelected ? name : formatStatChipLabel(name);

@@ -1,5 +1,6 @@
 import type maplibregl from "maplibre-gl";
 import { tulsaZipBoundaries } from "../../data/tulsaZipBoundaries";
+import { formatStatValueCompact } from "../../lib/format";
 
 interface ZipLabelsOptions {
   map: maplibregl.Map;
@@ -8,8 +9,8 @@ interface ZipLabelsOptions {
 export interface ZipLabelsController {
   setSelectedZips: (zips: string[], pinnedZips: string[]) => void;
   setHoveredZip: (zip: string | null) => void;
-  setStatOverlay: (statId: string | null, statData: Record<string, number> | null) => void;
-  setSecondaryStatOverlay: (statId: string | null, statData: Record<string, number> | null) => void;
+  setStatOverlay: (statId: string | null, statData: Record<string, number> | null, statType?: string) => void;
+  setSecondaryStatOverlay: (statId: string | null, statData: Record<string, number> | null, statType?: string) => void;
   setTheme: (theme: "light" | "dark") => void;
   destroy: () => void;
 }
@@ -60,18 +61,9 @@ for (const feature of tulsaZipBoundaries.features as any) {
   zipCentroids.set(zip, center);
 }
 
-// Format stat value for display
-const formatStatValue = (value: number): string => {
-  if (value >= 1000000) {
-    return `${(value / 1000000).toFixed(1)}M`;
-  }
-  if (value >= 1000) {
-    return `${(value / 1000).toFixed(0)}k`;
-  }
-  if (value % 1 === 0) {
-    return value.toString();
-  }
-  return value.toFixed(1);
+// Format stat value for display - now uses the shared utility
+const formatStatValue = (value: number, type: string = "count"): string => {
+  return formatStatValueCompact(value, type);
 };
 
 export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController => {
@@ -81,8 +73,10 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
   let currentHoveredZip: string | null = null;
   let currentStatId: string | null = null;
   let currentStatData: Record<string, number> | null = null;
+  let currentStatType: string = "count";
   let currentSecondaryStatId: string | null = null;
   let currentSecondaryData: Record<string, number> | null = null;
+  let currentSecondaryStatType: string = "count";
   let currentTheme: "light" | "dark" = "light";
   let updatePositionHandler: (() => void) | null = null;
 
@@ -177,7 +171,7 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
     // Determine what to show in the pill and whether to enable hover
     if (hasStatOverlay && currentStatData && zip in currentStatData) {
       const statValue = currentStatData[zip];
-      pillLabel.textContent = formatStatValue(statValue);
+      pillLabel.textContent = formatStatValue(statValue, currentStatType);
       
       // Only enable pill hover for selected/pinned areas
       const isSelectedOrPinned = isSelected || isPinned;
@@ -188,7 +182,7 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
           pillLabel.textContent = zip;
         });
         pillLabel.addEventListener('mouseleave', () => {
-          pillLabel.textContent = formatStatValue(statValue);
+          pillLabel.textContent = formatStatValue(statValue, currentStatType);
         });
       } else {
         // Non-selected areas: no pill hover interaction
@@ -251,7 +245,7 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
       secondaryPill.style.color = textColor;
       secondaryPill.style.marginBottom = "-4px"; // tuck under main
       secondaryPill.style.zIndex = "0";
-      secondaryPill.textContent = formatStatValue(secondaryVal);
+      secondaryPill.textContent = formatStatValue(secondaryVal, currentSecondaryStatType);
       element.appendChild(secondaryPill);
     }
     element.appendChild(pillLabel);
@@ -353,15 +347,17 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
     updateLabels();
   };
 
-  const setStatOverlay = (statId: string | null, statData: Record<string, number> | null) => {
+  const setStatOverlay = (statId: string | null, statData: Record<string, number> | null, statType?: string) => {
     currentStatId = statId;
     currentStatData = statData;
+    if (statType) currentStatType = statType;
     updateLabels();
   };
 
-  const setSecondaryStatOverlay = (statId: string | null, statData: Record<string, number> | null) => {
+  const setSecondaryStatOverlay = (statId: string | null, statData: Record<string, number> | null, statType?: string) => {
     currentSecondaryStatId = statId;
     currentSecondaryData = statData;
+    if (statType) currentSecondaryStatType = statType;
     updateLabels();
   };
 

@@ -1,4 +1,5 @@
 import type { Stat } from "../../types/stat";
+import { formatStatValue } from "../../lib/format";
 
 type SeriesEntry = {
   date: string;
@@ -321,7 +322,10 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
       val.setAttribute("dominant-baseline", "middle");
       val.setAttribute("fill", "#94a3b8");
       val.setAttribute("font-size", "10");
-      val.textContent = String(Math.round(e.value));
+      // Get the stat type from the series data to format the value properly
+      const series = selectedStatId ? seriesByStatId.get(selectedStatId) || [] : [];
+      const statType = series.length > 0 ? series[0].type : "count";
+      val.textContent = formatStatValue(e.value, statType);
       svg.appendChild(val);
     });
 

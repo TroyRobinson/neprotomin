@@ -129,18 +129,78 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
   const mkTabBtn = (label: string) => {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "pb-2 text-[11px] font-semibold uppercase tracking-wide border-b-2 border-transparent text-slate-600 hover:text-brand-700 dark:text-slate-300";
-    btn.textContent = label;
-    return btn;
+    btn.className = "pb-2 text-[11px] font-semibold uppercase tracking-wide border-b-2 border-transparent text-slate-600 hover:text-brand-700 dark:text-slate-300 inline-flex items-center gap-2";
+    const span = document.createElement("span");
+    span.textContent = label;
+    btn.appendChild(span);
+    return { btn, span };
   };
 
-  const tabStats = mkTabBtn("Statistics");
-  const tabOrgs = mkTabBtn("Organizations (0)");
+  const { btn: tabStats } = mkTabBtn("Statistics");
+  const { btn: tabOrgs, span: tabOrgsLabel } = mkTabBtn("Organizations (0)");
 
   tabs.appendChild(tabStats);
   tabs.appendChild(tabOrgs);
 
   header.appendChild(tabs);
+
+  // Keep/persist orgs visibility toggle embedded in the Organizations tab label
+  let activeTab: "stats" | "orgs" = "stats";
+  let keepOrgsOnMap = false; // default OFF; orgs are hidden unless in Orgs tab
+  // Use a span with role="switch" to avoid nesting a <button> inside a <button>
+  const orgsToggle = document.createElement("span");
+  orgsToggle.setAttribute("role", "switch");
+  orgsToggle.setAttribute("aria-checked", "false");
+  orgsToggle.setAttribute("aria-label", "Keep Orgs On Map");
+  orgsToggle.title = "Keep Orgs On Map";
+  orgsToggle.tabIndex = 0;
+  orgsToggle.className = "relative inline-flex h-3 w-6 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500";
+  const orgsToggleKnob = document.createElement("span");
+  orgsToggleKnob.className = "inline-block h-2 w-2 transform rounded-full bg-white shadow transition";
+  orgsToggle.appendChild(orgsToggleKnob);
+
+  const applyOrgsToggleClasses = () => {
+    if (keepOrgsOnMap) {
+      orgsToggle.classList.remove("bg-slate-300", "dark:bg-slate-500");
+      orgsToggle.classList.add("bg-brand-500");
+      orgsToggleKnob.style.transform = "translateX(14px)";
+      orgsToggle.setAttribute("aria-checked", "true");
+    } else {
+      orgsToggle.classList.remove("bg-brand-500");
+      orgsToggle.classList.add("bg-slate-300", "dark:bg-slate-500");
+      orgsToggleKnob.style.transform = "translateX(2px)";
+      orgsToggle.setAttribute("aria-checked", "false");
+    }
+  };
+  const updateOrgPinsVisibility = () => {
+    const visible = keepOrgsOnMap || activeTab === "orgs";
+    onOrgPinsVisibleChange?.(visible);
+  };
+  const toggleAndUpdate = () => {
+    keepOrgsOnMap = !keepOrgsOnMap;
+    applyOrgsToggleClasses();
+    updateOrgPinsVisibility();
+  };
+  // Prevent tab switch when interacting with the toggle inside the tab button
+  const stop = (e: Event) => { e.stopPropagation(); };
+  orgsToggle.addEventListener("mousedown", stop);
+  orgsToggle.addEventListener("pointerdown", stop as any);
+  orgsToggle.addEventListener("touchstart", stop as any, { passive: true } as any);
+  orgsToggle.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleAndUpdate();
+  });
+  orgsToggle.addEventListener("keydown", (e: KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleAndUpdate();
+    }
+  });
+  applyOrgsToggleClasses();
+  // Append the tiny toggle to the Organizations tab button, right of the text
+  tabOrgs.appendChild(orgsToggle);
 
   // Content wrapper
   const scroll = document.createElement("div");
@@ -292,7 +352,7 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
     // Update counts
     const visibleCount = inSel.length + all.length;
     const countForTab = selectedZipsCount > 0 ? inSel.length : totalCount;
-    tabOrgs.textContent = `Organizations (${countForTab})`;
+    tabOrgsLabel.textContent = `Organizations (${countForTab})`;
 
     // Section visibility
     inSelHeader.style.display = inSel.length > 0 ? "" : "none";
@@ -365,41 +425,7 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
   orgsSubtitle.className = "text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 ml-7";
   orgsSubtitle.textContent = "Orgs active in most significant areas";
 
-  // Toggle switch (default on)
-  let orgPinsVisible = true;
-  const toggle = document.createElement("button");
-  toggle.type = "button" as any;
-  toggle.setAttribute("role", "switch");
-  toggle.setAttribute("aria-checked", "true");
-  toggle.className = "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500";
-  const knob = document.createElement("span");
-  knob.className = "inline-block h-4 w-4 transform rounded-full bg-white shadow transition";
-
-  const applyToggleClasses = () => {
-    if (orgPinsVisible) {
-      toggle.classList.remove("bg-slate-400", "dark:bg-slate-600");
-      toggle.classList.add("bg-brand-500");
-      knob.style.transform = "translateX(16px)";
-      toggle.setAttribute("aria-checked", "true");
-      toggle.title = "Hide organization pins";
-    } else {
-      toggle.classList.remove("bg-brand-500");
-      toggle.classList.add("bg-slate-400", "dark:bg-slate-600");
-      knob.style.transform = "translateX(2px)";
-      toggle.setAttribute("aria-checked", "false");
-      toggle.title = "Show organization pins";
-    }
-  };
-  applyToggleClasses();
-  toggle.addEventListener("click", () => {
-    orgPinsVisible = !orgPinsVisible;
-    applyToggleClasses();
-    onOrgPinsVisibleChange?.(orgPinsVisible);
-  });
-  toggle.appendChild(knob);
-
   orgsSubtitleRow.appendChild(orgsSubtitle);
-  orgsSubtitleRow.appendChild(toggle);
 
   orgsScroll.appendChild(emptyState);
   orgsScroll.appendChild(orgsSubtitleRow);
@@ -424,19 +450,21 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
 
   // Tab behavior
   const setActiveTab = (tab: "stats" | "orgs") => {
+    activeTab = tab;
     const activeClasses = "pb-2 text-[11px] font-semibold uppercase tracking-wide border-b-2 border-brand-500 text-brand-700 dark:text-brand-300";
     const inactiveClasses = "pb-2 text-[11px] font-semibold uppercase tracking-wide border-b-2 border-transparent text-slate-600 hover:text-brand-700 dark:text-slate-300";
     if (tab === "stats") {
       statsPane.style.display = "block";
       orgsPane.style.display = "none";
-      tabStats.className = activeClasses;
-      tabOrgs.className = inactiveClasses;
+      tabStats.className = activeClasses + " inline-flex items-center gap-2";
+      tabOrgs.className = inactiveClasses + " inline-flex items-center gap-2";
     } else {
       statsPane.style.display = "none";
       orgsPane.style.display = "block";
-      tabStats.className = inactiveClasses;
-      tabOrgs.className = activeClasses;
+      tabStats.className = inactiveClasses + " inline-flex items-center gap-2";
+      tabOrgs.className = activeClasses + " inline-flex items-center gap-2";
     }
+    updateOrgPinsVisibility();
   };
   tabStats.addEventListener("click", () => setActiveTab("stats"));
   tabOrgs.addEventListener("click", () => setActiveTab("orgs"));

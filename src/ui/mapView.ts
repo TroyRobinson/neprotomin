@@ -134,7 +134,8 @@ export const createMapView = ({
 
       // Update ZIP labels with stat overlay info
       const statData = selectedStatId && statDataByStatId.get(selectedStatId)?.data || null;
-      zipLabels?.setStatOverlay(selectedStatId, statData);
+      const statType = selectedStatId && statDataByStatId.get(selectedStatId)?.type || "count";
+      zipLabels?.setStatOverlay(selectedStatId, statData, statType);
 
       // Notify app of stat selection changes
       if (typeof onStatSelectionChange === 'function') {
@@ -186,8 +187,8 @@ export const createMapView = ({
   // Keep a copy of all orgs and the last rendered FeatureCollection
   let allOrganizations: Organization[] = [];
   let lastData: FC = emptyFC();
-  // Controls visibility of organization pins and clusters
-  let orgPinsVisible: boolean = true;
+  // Controls visibility of organization pins and clusters (default hidden)
+  let orgPinsVisible: boolean = false;
   
   map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
@@ -757,7 +758,7 @@ export const createMapView = ({
         source: SOURCE_ID,
         filter: ["has", "point_count"],
         paint: {
-          "circle-color": "#3755f0",
+          "circle-color": "#f97316",
           "circle-opacity": 0.85,
           "circle-radius": [
             "step",
@@ -801,7 +802,7 @@ export const createMapView = ({
           // animate in: start at 0 and grow/fade to target
           "circle-radius": 0,
           "circle-opacity": 0,
-          "circle-color": "#3755f0", // brand-500
+          "circle-color": "#f97316",
           "circle-stroke-color": "#ffffff",
           "circle-stroke-width": 2,
           "circle-radius-transition": { duration: 200, delay: 0 },
@@ -829,7 +830,7 @@ export const createMapView = ({
         ],
         paint: {
           "circle-radius": 9,
-          "circle-color": "#85a3ff", // brand-300
+          "circle-color": "#fdba74",
           "circle-stroke-color": "#ffffff",
           "circle-stroke-width": 2,
           "circle-opacity": 1,
@@ -858,9 +859,9 @@ export const createMapView = ({
             25,
             28,
           ],
-          "circle-color": "#85a3ff",
+          "circle-color": "#fdba74",
           "circle-opacity": 0.35,
-          "circle-stroke-color": "#85a3ff",
+          "circle-stroke-color": "#fdba74",
           "circle-stroke-width": 2,
         },
       });
@@ -1501,7 +1502,8 @@ export const createMapView = ({
       secondaryStatId = null;
       updateSecondaryStatOverlay();
       const statData = selectedStatId && statDataByStatId.get(selectedStatId)?.data || null;
-      zipLabels?.setStatOverlay(selectedStatId, statData);
+      const statType = selectedStatId && statDataByStatId.get(selectedStatId)?.type || "count";
+      zipLabels?.setStatOverlay(selectedStatId, statData, statType);
       zipLabels?.setSecondaryStatOverlay?.(null, null);
       if (typeof onStatSelectionChange === 'function') {
         onStatSelectionChange(selectedStatId);
@@ -1511,7 +1513,8 @@ export const createMapView = ({
       secondaryStatId = statId;
       updateSecondaryStatOverlay();
       const secondaryData = secondaryStatId && statDataByStatId.get(secondaryStatId)?.data || null;
-      zipLabels?.setSecondaryStatOverlay?.(secondaryStatId, secondaryData);
+      const secondaryStatType = secondaryStatId && statDataByStatId.get(secondaryStatId)?.type || "count";
+      zipLabels?.setSecondaryStatOverlay?.(secondaryStatId, secondaryData, secondaryStatType);
     },
     setBoundaryMode,
     setPinnedZips: (zips: string[]) => {

@@ -80,7 +80,7 @@ export const createBoundaryToolbar = ({
 
   // Left side: chips + add button group
   const chipsWrapper = document.createElement("div");
-  chipsWrapper.className = "flex flex-1 items-center gap-2 overflow-x-auto self-center px-1 py-1";
+  chipsWrapper.className = "flex flex-1 items-center gap-2 overflow-x-auto self-center pl-0 pr-1 py-1";
   chipsWrapper.style.clipPath = "inset(-4px -4px -4px -4px)"; // Allow highlights to extend beyond container
   container.appendChild(chipsWrapper);
 
@@ -119,6 +119,8 @@ export const createBoundaryToolbar = ({
       addBtn.innerHTML = `${PLUS_SVG}<span class=\"ml-1 whitespace-nowrap\">add ${areaLabel}</span>`;
       addBtn.title = `Add ${areaLabel}`;
       addBtn.setAttribute("aria-label", `Add ${areaLabel}`);
+      // Remove left margin when in descriptive mode (no selections) for better alignment
+      addWrapper.className = "flex items-center gap-1 -ml-2";
     } else {
       addBtn.className = [
         "inline-flex h-6 w-6 items-center justify-center rounded-full border",
@@ -129,6 +131,8 @@ export const createBoundaryToolbar = ({
       addBtn.innerHTML = PLUS_SVG;
       addBtn.title = `Add ${areaLabel}`;
       addBtn.setAttribute("aria-label", `Add ${areaLabel}`);
+      // Use normal spacing when there are selections
+      addWrapper.className = "flex items-center gap-1";
     }
   };
 
