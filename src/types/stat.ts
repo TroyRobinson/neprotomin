@@ -4,4 +4,5 @@ export interface Stat {
   id: string;
   name: string;
   category: Category;
+  goodIfUp?: boolean;
 }

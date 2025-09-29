@@ -13,6 +13,7 @@ import { statDataStore } from "../state/statData";
 import { statSeriesStore } from "../state/statSeries";
 import { statsStore } from "../state/stats";
 import type { Stat } from "../types/stat";
+import { createReportView } from "./report";
 
 export interface AppInstance {
   destroy: () => void;
@@ -27,7 +28,14 @@ export const createApp = (root: HTMLElement): AppInstance => {
   root.className =
     "flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-950";
 
-  const topBar = createTopBar();
+  let activeScreen: "map" | "report" = "map";
+  const topBar = createTopBar({
+    onNavigate: (screen) => {
+      activeScreen = screen;
+      applyScreenVisibility();
+      topBar.setActiveScreen(screen);
+    },
+  });
   const defaultBoundary: BoundaryMode = "zips";
   const CITY_LABEL = "TULSA";
 
@@ -53,6 +61,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
   let statsById: Map<string, Stat> = new Map();
 
   let sidebar: SidebarController | null = null;
+  const reportView = createReportView();
 
   const computeSourceOrganizations = () => {
     const sourceFilter = sourceIds;
@@ -241,6 +250,8 @@ export const createApp = (root: HTMLElement): AppInstance => {
       sidebar?.setSelectedZips(Array.from(selectedZips));
       // Sync pinned zips to stat viz for bar coloring
       sidebar?.setPinnedZips(Array.from(pinnedZips));
+      // Update report view selection
+      reportView.setSelectedZips(Array.from(selectedZips));
     },
     onZipHoverChange: (zip) => {
       // Mirror map hover to chart only (no chip highlighting)
@@ -480,12 +491,23 @@ export const createApp = (root: HTMLElement): AppInstance => {
 
   layout.appendChild(sidebar.element);
   layout.appendChild(mapView.element);
+  layout.appendChild(reportView.element);
+
+  const applyScreenVisibility = () => {
+    const showMap = activeScreen === "map";
+    sidebar!.element.style.display = showMap ? "" : "none";
+    mapView.element.style.display = showMap ? "" : "none";
+    reportView.element.style.display = showMap ? "none" : "";
+  };
+  applyScreenVisibility();
 
   const unsubscribe = organizationStore.subscribe((next) => {
     organizations = next;
     recomputeOrganizationZips(organizations);
     mapView.setOrganizations(organizations);
     updateSidebar();
+    // Update report view
+    reportView.setOrganizations(organizations, organizationZips);
 
     if (activeId && !organizations.some((org) => org.id === activeId)) {
       activeId = null;
@@ -499,6 +521,8 @@ export const createApp = (root: HTMLElement): AppInstance => {
     for (const a of rows) map.set(a.key, a);
     areasByKey = map;
     recalcDemographics();
+    // Update report view
+    reportView.setAreasByKey(areasByKey);
   });
 
   // Subscribe to stats and stat data for export/meta
@@ -507,6 +531,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
     for (const s of rows) map.set(s.id, s);
     statsById = map;
     sidebar?.setStatsMeta(statsById);
+    reportView.setStatsMeta(statsById);
   });
   const unsubscribeStatData = statDataStore.subscribe((byId) => {
     const map = new Map<string, { type: string; data: Record<string, number> }>();
@@ -516,16 +541,21 @@ export const createApp = (root: HTMLElement): AppInstance => {
     statDataByStatId = map;
     // If a stat is selected, re-sort orgs as data may have changed/arrived
     if (currentSelectedStatId) updateSidebar();
+    reportView.setStatDataById(statDataByStatId as any);
   });
 
   const unsubscribeStatSeries = statSeriesStore.subscribe((byId) => {
     statSeriesByStatId = byId as any;
     sidebar?.setStatSeries(statSeriesByStatId);
+    reportView.setStatSeriesById(statSeriesByStatId as any);
   });
 
   root.appendChild(topBar.element);
   root.appendChild(boundaryToolbar.element);
   root.appendChild(layout);
+
+  // Reflect initial screen in top bar
+  topBar.setActiveScreen(activeScreen);
 
   return {
     destroy: () => {
@@ -537,6 +567,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
       topBar.destroy();
       boundaryToolbar.destroy();
       mapView.destroy();
+      // report view is passive, no destroy needed
       root.innerHTML = "";
     },
   };

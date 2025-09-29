@@ -214,12 +214,14 @@ export const ensureStatsSeeded = async (): Promise<void> => {
         if (existing && existing.id) {
           const needsUpdate =
             (existing as any).name !== seed.name ||
-            (existing as any).category !== seed.category;
+            (existing as any).category !== seed.category ||
+            (existing as any).goodIfUp !== (seed as any).goodIfUp;
           if (needsUpdate) {
             txs.push(
               db.tx.stats[existing.id].update({
                 name: seed.name,
                 category: seed.category,
+                goodIfUp: (seed as any).goodIfUp,
               }),
             );
           }
@@ -235,6 +237,7 @@ export const ensureStatsSeeded = async (): Promise<void> => {
                 db.tx.stats[legacyExisting.id].update({
                   name: seed.name,
                   category: seed.category,
+                  goodIfUp: (seed as any).goodIfUp,
                 }),
               );
               renamed = true;
@@ -246,6 +249,7 @@ export const ensureStatsSeeded = async (): Promise<void> => {
               db.tx.stats[id()].update({
                 name: seed.name,
                 category: seed.category,
+                goodIfUp: (seed as any).goodIfUp,
               }),
             );
           }

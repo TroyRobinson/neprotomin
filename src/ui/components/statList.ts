@@ -123,14 +123,20 @@ export const createStatList = (opts: { onStatSelect?: (statId: string, meta?: { 
     for (const r of rows) {
       const li = document.createElement("li");
       const isPrimarySelected = selectedPrimaryStatId === r.id;
-      li.className = [
-        "group relative flex items-center justify-between rounded-full border px-3 py-2 shadow-sm transition-colors cursor-pointer select-none",
-        // base light/dark
-        "border-slate-200/70 bg-white/70 hover:border-brand-200 hover:bg-brand-50",
-        "dark:border-slate-700/70 dark:bg-slate-900/50 dark:hover:border-slate-600 dark:hover:bg-slate-800/70",
-        // primary selected accent
-        isPrimarySelected ? "border-2 border-brand-400 bg-brand-50 dark:border-brand-400 dark:bg-brand-400/10" : "",
-      ].filter(Boolean).join(" ");
+      const common = "group relative flex items-center justify-between rounded-full border px-3 py-2 shadow-sm transition-colors cursor-pointer select-none";
+      li.className = isPrimarySelected
+        ? [
+            common,
+            // Selected: strong brand border + faint brand fill (avoid neutral base utilities)
+            "border-2 border-brand-500 bg-brand-50",
+            "dark:border-brand-400 dark:bg-brand-400/15",
+          ].join(" ")
+        : [
+            common,
+            // Default base + hover accents
+            "border-slate-200/70 bg-white/70 hover:border-brand-200 hover:bg-brand-50",
+            "dark:border-slate-700/70 dark:bg-slate-900/50 dark:hover:border-slate-600 dark:hover:bg-slate-800/70",
+          ].join(" ");
       li.dataset.statId = r.id;
 
       const left = document.createElement("div");

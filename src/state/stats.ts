@@ -44,6 +44,7 @@ class StatsStore {
             id: row.id,
             name: (row as any).name,
             category: (row as any).category,
+            goodIfUp: typeof (row as any).goodIfUp === "boolean" ? (row as any).goodIfUp : undefined,
           }));
         this.data = normalized;
         this.emit();

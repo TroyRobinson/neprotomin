@@ -30,13 +30,14 @@ const getThemeIcon = (theme: ThemeName): string => {
 
 export interface TopBarController {
   element: HTMLElement;
+  setActiveScreen: (screen: "map" | "report") => void;
   destroy: () => void;
 }
 
 const NAV_LINK_CLASSES =
   "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white";
 
-export const createTopBar = (): TopBarController => {
+export const createTopBar = (opts?: { onNavigate?: (screen: "map" | "report") => void }): TopBarController => {
   const header = document.createElement("header");
   header.className =
     "sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white/80 px-6 backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/80";
@@ -62,7 +63,13 @@ export const createTopBar = (): TopBarController => {
   mapLink.className = `${NAV_LINK_CLASSES} bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white`;
   mapLink.textContent = "Map";
 
+  const reportLink = document.createElement("a");
+  reportLink.href = "#report";
+  reportLink.className = NAV_LINK_CLASSES;
+  reportLink.textContent = "Report";
+
   nav.appendChild(mapLink);
+  nav.appendChild(reportLink);
 
   identity.appendChild(brandLink);
   identity.appendChild(nav);
@@ -101,11 +108,39 @@ export const createTopBar = (): TopBarController => {
   header.appendChild(identity);
   header.appendChild(controls);
 
+  const setActiveScreen = (screen: "map" | "report") => {
+    if (screen === "map") {
+      mapLink.className = `${NAV_LINK_CLASSES} bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white`;
+      mapLink.setAttribute("aria-current", "page");
+      reportLink.className = NAV_LINK_CLASSES;
+      reportLink.removeAttribute("aria-current");
+    } else {
+      reportLink.className = `${NAV_LINK_CLASSES} bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white`;
+      reportLink.setAttribute("aria-current", "page");
+      mapLink.className = NAV_LINK_CLASSES;
+      mapLink.removeAttribute("aria-current");
+    }
+  };
+
+  const handleNavClick = (screen: "map" | "report") => (e: Event) => {
+    e.preventDefault();
+    setActiveScreen(screen);
+    opts?.onNavigate?.(screen);
+  };
+
+  const onMapClick = handleNavClick("map");
+  const onReportClick = handleNavClick("report");
+  mapLink.addEventListener("click", onMapClick);
+  reportLink.addEventListener("click", onReportClick);
+
   return {
     element: header,
+    setActiveScreen,
     destroy: () => {
       unsubscribeTheme();
       themeButton.removeEventListener("click", handleClick);
+      mapLink.removeEventListener("click", onMapClick);
+      reportLink.removeEventListener("click", onReportClick);
     },
   };
 };

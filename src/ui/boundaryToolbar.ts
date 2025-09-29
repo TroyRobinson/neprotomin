@@ -1,5 +1,6 @@
 import type { BoundaryMode } from "../types/boundaries";
 import { createSelect } from "./components/Select";
+import { themeController } from "./theme";
 
 interface BoundaryToolbarOptions {
   defaultValue: BoundaryMode;
@@ -411,6 +412,11 @@ export const createBoundaryToolbar = ({
     }
   };
 
+  // Re-render chips when theme switches so inline colors reflect dark/light
+  const unsubscribeTheme = themeController.subscribe(() => {
+    renderChips();
+  });
+
   const setSelectedZips = (zips: string[], pinned: string[]) => {
     lastZips = Array.from(new Set(zips));
     lastPinned = new Set(pinned);
@@ -469,6 +475,7 @@ export const createBoundaryToolbar = ({
     setSelectedZips,
     setHoveredZip,
     destroy: () => {
+      unsubscribeTheme();
       document.removeEventListener("pointerdown", onDocumentPointerDown, true);
       selectController.destroy();
     },

@@ -28,6 +28,7 @@ const _schema = i.schema({
     stats: i.entity({
       name: i.string().indexed(),
       category: i.string().indexed(),
+      goodIfUp: i.boolean().optional(),
     }),
     statData: i.entity({
       statId: i.string().indexed(),
