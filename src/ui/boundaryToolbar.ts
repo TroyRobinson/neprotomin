@@ -104,9 +104,9 @@ export const createBoundaryToolbar = ({
   addBtn.title = "Add ZIPs";
   addBtn.setAttribute("aria-label", "Add ZIPs");
   // Class/label are adjusted dynamically depending on whether there are any selections
-  const PLUS_SVG = `
+  const SEARCH_SVG = `
     <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px]" aria-hidden="true">
-      <path fill-rule=\"evenodd\" d=\"M10 3.5a.75.75 0 01.75.75v5h5a.75.75 0 010 1.5h-5v5a.75.75 0 01-1.5 0v-5h-5a.75.75 0 010-1.5h5v-5A.75.75 0 0110 3.5z\" clip-rule=\"evenodd\" />
+      <path fill-rule=\"evenodd\" d=\"M9 3.5a5.5 5.5 0 013.894 9.394l3.703 3.703a.75.75 0 11-1.06 1.06l-3.703-3.703A5.5 5.5 0 119 3.5zm0 1.5a4 4 0 100 8 4 4 0 000-8z\" clip-rule=\"evenodd\" />
     </svg>
   `;
   const setAddButtonAppearance = (descriptive: boolean, areaLabel: string) => {
@@ -117,7 +117,7 @@ export const createBoundaryToolbar = ({
         "dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300",
         "transition-colors",
       ].join(" ");
-      addBtn.innerHTML = `${PLUS_SVG}<span class=\"ml-1 whitespace-nowrap\">add ${areaLabel}</span>`;
+      addBtn.innerHTML = `${SEARCH_SVG}<span class=\"ml-1 whitespace-nowrap\">add ${areaLabel}</span>`;
       addBtn.title = `Add ${areaLabel}`;
       addBtn.setAttribute("aria-label", `Add ${areaLabel}`);
       // Remove left margin when in descriptive mode (no selections) for better alignment
@@ -129,7 +129,7 @@ export const createBoundaryToolbar = ({
         "dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400",
         "transition-colors",
       ].join(" ");
-      addBtn.innerHTML = PLUS_SVG;
+      addBtn.innerHTML = SEARCH_SVG;
       addBtn.title = `Add ${areaLabel}`;
       addBtn.setAttribute("aria-label", `Add ${areaLabel}`);
       // Use normal spacing when there are selections
@@ -333,6 +333,24 @@ export const createBoundaryToolbar = ({
   let currentMode: BoundaryMode = defaultValue;
   const chipByZip = new Map<string, HTMLButtonElement>();
 
+  // Remove a zip from the toolbar selection regardless of pin state
+  const removeZip = (zip: string) => {
+    const wasPinned = lastPinned.has(zip);
+    // Preserve all other unpinned (transient) zips except the one being removed
+    const remainingUnpinned = lastZips.filter((z) => !lastPinned.has(z) && z !== zip);
+
+    // If it was pinned, unpin it first
+    if (wasPinned) {
+      onToggleZipPin?.(zip, false);
+    }
+
+    // Rebuild transient selection without the removed zip
+    onClearSelection?.();
+    if (remainingUnpinned.length > 0) {
+      onAddZips?.(remainingUnpinned);
+    }
+  };
+
   const renderChips = () => {
     // Simple redraw (small counts)
     chipsContainer.innerHTML = "";
@@ -390,16 +408,21 @@ export const createBoundaryToolbar = ({
       chip.classList.add("group");
 
       chip.addEventListener("mouseenter", () => {
+        // Always show an "x" on hover to indicate removal action
+        icon.textContent = "×";
         icon.classList.remove("hidden");
         onHoverZip?.(zip);
       });
       chip.addEventListener("mouseleave", () => {
+        // Restore icon state when not hovered
+        icon.textContent = pinned ? "×" : "+";
         icon.classList.add("hidden");
         onHoverZip?.(null);
       });
 
       chip.addEventListener("click", () => {
-        onToggleZipPin?.(zip, !pinned);
+        // Clicking a chip removes it entirely, even if it was pinned
+        removeZip(zip);
       });
 
       // Visual highlight when hovered via map

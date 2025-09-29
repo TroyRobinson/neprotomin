@@ -476,36 +476,43 @@ export const createMapView = ({
   };
 
   const toggleZipSelection = (zip: string, additive: boolean, shouldZoom: boolean = false) => {
-    // Check if zip is already selected (either pinned or transient)
-    const isAlreadyPinned = pinnedZips.has(zip);
-    const isAlreadyTransient = transientZips.has(zip);
-    const isAlreadySelected = isAlreadyPinned || isAlreadyTransient;
-    
-    if (isAlreadySelected) {
-      // Remove from both pinned and transient if already selected
-      if (isAlreadyPinned) {
-        const nextPinned = new Set(pinnedZips);
-        nextPinned.delete(zip);
-        pinnedZips = nextPinned;
-      }
-      if (isAlreadyTransient) {
-        const nextTransient = new Set(transientZips);
-        nextTransient.delete(zip);
-        transientZips = nextTransient;
+    const isPinned = pinnedZips.has(zip);
+    const isTransient = transientZips.has(zip);
+    const isSelected = isPinned || isTransient;
+
+    if (additive) {
+      // Shift-click: toggle membership of the clicked ZIP only, keep others
+      if (isSelected) {
+        if (isPinned) {
+          const nextPinned = new Set(pinnedZips);
+          nextPinned.delete(zip);
+          pinnedZips = nextPinned;
+        }
+        if (isTransient) {
+          const nextTransient = new Set(transientZips);
+          nextTransient.delete(zip);
+          transientZips = nextTransient;
+        }
+      } else {
+        const next = new Set(transientZips);
+        next.add(zip);
+        transientZips = next;
       }
     } else {
-      // Original selection logic for unselected zips
-      const next = new Set(transientZips);
-      if (additive) {
-        next.add(zip);
+      // Non-shift click: collapse selection to the clicked ZIP (+ any pinned)
+      if (isPinned) {
+        // Keep all pins; clear transient selections
+        if (transientZips.size > 0) transientZips = new Set();
+      } else if (isTransient) {
+        // Keep only the clicked transient, remove other transients
+        transientZips = new Set([zip]);
       } else {
-        next.clear();
-        next.add(zip);
+        // Not selected yet: single-select this zip
+        transientZips = new Set([zip]);
       }
-      transientZips = next;
     }
-    
-    applyZipSelection({ shouldZoom: shouldZoom && !isAlreadySelected, notify: true });
+
+    applyZipSelection({ shouldZoom: shouldZoom && !isSelected, notify: true });
   };
 
   const ensureSourcesAndLayers = () => {

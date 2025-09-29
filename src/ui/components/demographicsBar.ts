@@ -181,9 +181,15 @@ export const createDemographicsBar = (): DemographicsBarController => {
     if (expanded) {
       panel.classList.remove("hidden");
       headerRow.setAttribute("aria-expanded", "true");
+      // Add a very slight grey tint when expanded
+      container.classList.remove("bg-white/70", "dark:bg-slate-900/70");
+      container.classList.add("bg-slate-50/70", "dark:bg-slate-800/70");
     } else {
       panel.classList.add("hidden");
       headerRow.setAttribute("aria-expanded", "false");
+      // Revert tint when collapsed
+      container.classList.add("bg-white/70", "dark:bg-slate-900/70");
+      container.classList.remove("bg-slate-50/70", "dark:bg-slate-800/70");
     }
   };
   headerRow.addEventListener("click", () => { expanded = !expanded; applyExpanded(); });

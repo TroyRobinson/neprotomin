@@ -111,6 +111,20 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
   const setCollapsed = (next: boolean) => {
     collapsed = next;
     graph.style.display = collapsed ? "none" : "block";
+    // Apply a very slight grey tint when expanded (not collapsed)
+    if (!collapsed) {
+      container.classList.remove("bg-white/70", "dark:bg-slate-900/70");
+      container.classList.add("bg-slate-50/70", "dark:bg-slate-800/70");
+      // Restore default spacing under the title when expanded
+      title.classList.add("mb-2");
+      title.classList.remove("mb-1");
+    } else {
+      container.classList.add("bg-white/70", "dark:bg-slate-900/70");
+      container.classList.remove("bg-slate-50/70", "dark:bg-slate-800/70");
+      // Slightly reduce the space under the title when collapsed
+      title.classList.remove("mb-2");
+      title.classList.add("mb-0");
+    }
     // Always re-render so the subtitle switches between date range and value summary
     render();
   };

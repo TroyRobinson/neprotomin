@@ -80,12 +80,49 @@ export const createTopBar = (opts?: { onNavigate?: (screen: "map" | "report") =>
   const controls = document.createElement("div");
   controls.className = "flex items-center gap-4";
 
+  // Login group (email button + hover-only logout button)
+  const loginGroup = document.createElement("div");
+  loginGroup.className = "group inline-flex items-center";
+
   // Login button (to the left of the theme toggle)
   const loginButton = document.createElement("button");
   loginButton.type = "button";
   loginButton.className =
     "inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white";
   loginButton.textContent = "Login";
+
+  const logoutButton = document.createElement("button");
+  logoutButton.type = "button";
+  logoutButton.setAttribute("aria-label", "Sign out");
+  logoutButton.title = "Sign out";
+  logoutButton.className =
+    "ml-1 inline-flex h-6 w-6 items-center justify-center rounded text-slate-500 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-500/50 dark:text-slate-400";
+  logoutButton.innerHTML = `
+    <svg viewBox="0 0 20 20" aria-hidden="true" class="h-4 w-4">
+      <path fill="currentColor" d="M11.28 4.22a.75.75 0 10-1.06 1.06L12.94 8H7a.75.75 0 000 1.5h5.94l-2.72 2.72a.75.75 0 101.06 1.06l4-4a.75.75 0 000-1.06l-4-4z"/>
+      <path fill="currentColor" d="M4.5 3A1.5 1.5 0 003 4.5v11A1.5 1.5 0 004.5 17h4a.75.75 0 000-1.5h-4a.5.5 0 01-.5-.5v-11a.5.5 0 01.5-.5h4A.75.75 0 008.5 3h-4z"/>
+    </svg>`;
+
+  let isSignedIn = false;
+
+  const renderSignedOut = () => {
+    isSignedIn = false;
+    loginButton.innerHTML = "Login";
+    loginButton.setAttribute("aria-label", "Login");
+    logoutButton.style.display = "none";
+  };
+
+  const renderSignedIn = (email: string) => {
+    isSignedIn = true;
+    // Clear and rebuild button content: [email]
+    loginButton.innerHTML = "";
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = email;
+    labelSpan.className = "truncate max-w-[14ch]";
+    loginButton.appendChild(labelSpan);
+    loginButton.setAttribute("aria-label", `Signed in as ${email}`);
+    logoutButton.style.display = "inline-flex";
+  };
 
   const themeButton = document.createElement("button");
   themeButton.type = "button";
@@ -116,16 +153,36 @@ export const createTopBar = (opts?: { onNavigate?: (screen: "map" | "report") =>
   let signedInListeners: ((email: string) => void)[] = [];
   const loginModal = createLoginModal({
     onSignedIn: ({ email }) => {
-      loginButton.textContent = email;
-      loginButton.setAttribute("aria-label", `Signed in as ${email}`);
+      renderSignedIn(email);
       for (const fn of signedInListeners) fn(email);
     },
   });
 
-  const openLogin = () => loginModal.open();
-  loginButton.addEventListener("click", openLogin);
+  const onLoginButtonClick = () => {
+    if (!isSignedIn) loginModal.open();
+  };
+  const onLogoutButtonClick = async (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      console.debug("[topbar] signOut click");
+      await db.auth.signOut();
+      console.debug("[topbar] signOut done");
+    } catch (err) {
+      console.debug("[topbar] signOut error", err);
+    }
+    renderSignedOut();
+  };
+  loginButton.addEventListener("click", onLoginButtonClick);
+  logoutButton.addEventListener("click", onLogoutButtonClick);
 
-  controls.appendChild(loginButton);
+  // Build login group
+  loginGroup.appendChild(loginButton);
+  loginGroup.appendChild(logoutButton);
+  // Hidden by default until signed in
+  logoutButton.style.display = "none";
+
+  controls.appendChild(loginGroup);
   controls.appendChild(themeButton);
 
   header.appendChild(identity);
@@ -162,8 +219,7 @@ export const createTopBar = (opts?: { onNavigate?: (screen: "map" | "report") =>
       const user = await db.getAuth();
       const email = (user as any)?.email as string | undefined;
       if (email) {
-        loginButton.textContent = email;
-        loginButton.setAttribute("aria-label", `Signed in as ${email}`);
+        renderSignedIn(email);
       }
     } catch (_) {
       // ignore if not signed in
@@ -179,7 +235,8 @@ export const createTopBar = (opts?: { onNavigate?: (screen: "map" | "report") =>
     destroy: () => {
       unsubscribeTheme();
       themeButton.removeEventListener("click", handleClick);
-      loginButton.removeEventListener("click", openLogin);
+      loginButton.removeEventListener("click", onLoginButtonClick);
+      logoutButton.removeEventListener("click", onLogoutButtonClick);
       mapLink.removeEventListener("click", onMapClick);
       reportLink.removeEventListener("click", onReportClick);
       loginModal.destroy();
