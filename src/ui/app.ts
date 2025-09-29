@@ -243,8 +243,7 @@ export const createApp = (root: HTMLElement): AppInstance => {
       sidebar?.setPinnedZips(Array.from(pinnedZips));
     },
     onZipHoverChange: (zip) => {
-      // Mirror map hover to chips and chart
-      boundaryToolbar.setHoveredZip(zip);
+      // Mirror map hover to chart only (no chip highlighting)
       sidebar?.setHoveredZip(zip);
     },
     onStatSelectionChange: (statId) => {

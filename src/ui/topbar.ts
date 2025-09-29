@@ -42,13 +42,13 @@ export const createTopBar = (): TopBarController => {
     "sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white/80 px-6 backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/80";
 
   const identity = document.createElement("div");
-  identity.className = "flex items-center gap-6";
+  identity.className = "flex items-center gap-4";
 
   const brandLink = document.createElement("a");
   brandLink.href = "#";
-  brandLink.className = "flex items-center gap-3 text-sm font-medium text-slate-500 dark:text-slate-400";
+  brandLink.className = "flex items-center gap-3 text-sm font-medium text-slate-500 dark:text-slate-400 -ml-2";
   brandLink.innerHTML = `
-    <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-500 font-display text-lg font-semibold tracking-tight text-white shadow-floating">
+    <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-500 font-display text-lg font-semibold tracking-wider text-white shadow-floating">
       NE
     </span>
   `;

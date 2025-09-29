@@ -17,8 +17,8 @@ export interface StatVizController {
   setPinnedZips: (zips: string[]) => void;
 }
 
-// Line chart palette: brand blue, purple, orange, yellow
-const LINE_COLORS = ["#375bff", "#8f20f8", "#a76d44", "#b4a360"];
+// Line chart palette: brand blue, purple, orange, tangerine
+const LINE_COLORS = ["#375bff", "#8f20f8", "#cf873f", "#ff7f00"];
 const PINNED_BAR_COLOR = "#85a3ff"; // brand-300 (muted brand blue)
 const getAvgColor = () => (document.documentElement.classList.contains("dark") ? "#b3b6bd" : "#64748b"); // city average line (dashed, brighter in dark mode)
 
@@ -172,17 +172,26 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
   ): SVGSVGElement => {
     const width = Math.max(280, Math.floor(graph.clientWidth || 320));
     const height = 120;
-    const margin = { top: 8, right: 8, bottom: 16, left: 48 };
+    
+    // Calculate dynamic left margin based on the width of the largest Y-axis number
+    const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
+    const allVals: number[] = [];
+    for (const s of series) for (const p of s.points) allVals.push(p.value);
+    const maxVRaw = Math.max(0, ...allVals);
+    const yMin = 0;
+    const yPad = maxVRaw * 0.08;
+    const yMax = Math.max(1, maxVRaw + yPad);
+    
+    // Calculate the width of the largest number (approximate: 6px per character for 10px font)
+    const maxLabel = fmt(yMax);
+    const labelWidth = maxLabel.length * 6; // Approximate character width
+    const dynamicLeftMargin = Math.max(16, labelWidth + 8); // Minimum 16px, or label width + 8px padding
+    
+    const margin = { top: 8, right: 8, bottom: 16, left: dynamicLeftMargin };
     const innerW = width - margin.left - margin.right;
     const innerH = height - margin.top - margin.bottom;
 
     const dates = series.length > 0 ? series[0].points.map((p) => p.date) : [];
-    const allVals: number[] = [];
-    for (const s of series) for (const p of s.points) allVals.push(p.value);
-    const maxVRaw = Math.max(0, ...allVals);
-    const yMin = 0; // lock baseline at zero
-    const yPad = maxVRaw * 0.08;
-    const yMax = Math.max(1, maxVRaw + yPad);
     const y = (v: number) => innerH - ((v - yMin) / (yMax - yMin)) * innerH;
     const x = (i: number) => (dates.length <= 1 ? innerW / 2 : (i / (dates.length - 1)) * innerW);
 
@@ -199,7 +208,6 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
     const isDark = document.documentElement.classList.contains("dark");
     const gridStroke = isDark ? "#334155" : "#cbd5e1"; // slate-700 vs slate-300
     const gridOpacity = "0.35"; // lower contrast in both modes
-    const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 
     // y grid + ticks
     const ticks = 3;
@@ -218,11 +226,12 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
       g.appendChild(line);
 
       const txt = document.createElementNS(svg.namespaceURI, "text");
-      txt.setAttribute("x", "-6");
+      // Position labels at the left edge of the dynamic margin area (negative position to go outside chart area)
+      txt.setAttribute("x", String(-margin.left));
       txt.setAttribute("y", String(yPos));
-      txt.setAttribute("text-anchor", "end");
+      txt.setAttribute("text-anchor", "start");
       txt.setAttribute("dominant-baseline", "middle");
-      txt.setAttribute("fill", "#94a3b8");
+      txt.setAttribute("fill", "#64748b"); // Fainter color for Y-axis labels
       txt.setAttribute("font-size", "10");
       txt.textContent = fmt(v);
       g.appendChild(txt);
@@ -234,7 +243,7 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
       txt.setAttribute("x", String(x(i)));
       txt.setAttribute("y", String(innerH + 12));
       txt.setAttribute("text-anchor", i === 0 ? "start" : i === dates.length - 1 ? "end" : "middle");
-      txt.setAttribute("fill", "#94a3b8");
+      txt.setAttribute("fill", "#64748b"); // Fainter color for X-axis labels
       txt.setAttribute("font-size", "10");
       txt.textContent = d;
       g.appendChild(txt);
@@ -248,6 +257,7 @@ export const createStatViz = (opts: { onHoverZip?: (zip: string | null) => void 
       path.setAttribute("d", d);
       path.setAttribute("fill", "none");
       path.setAttribute("stroke", s.color);
+      path.setAttribute("stroke-opacity", "0.6");
       // Emphasize the city average line
       path.setAttribute("stroke-width", s.label === "CityAv" ? "2.5" : "2");
       path.setAttribute("stroke-dasharray", s.label === "CityAv" ? "4 3" : "0");

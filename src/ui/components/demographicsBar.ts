@@ -54,14 +54,14 @@ export const createDemographicsBar = (): DemographicsBarController => {
     title.textContent = nextTitle;
 
     if (!s || s.selectedCount <= 0) {
-      pop.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Pop:</span> <span class="text-slate-400 dark:text-slate-500">—</span>`;
-      age.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Avg Age:</span> <span class="text-slate-400 dark:text-slate-500">—</span>`;
-      married.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Married:</span> <span class="text-slate-400 dark:text-slate-500">—</span>`;
+      pop.innerHTML = `<span class="font-medium text-slate-400 dark:text-slate-500">Pop:</span> <span class="text-slate-400 dark:text-slate-500">—</span>`;
+      age.innerHTML = `<span class="font-medium text-slate-400 dark:text-slate-500">Avg Age:</span> <span class="text-slate-400 dark:text-slate-500">—</span>`;
+      married.innerHTML = `<span class="font-medium text-slate-400 dark:text-slate-500">Married:</span> <span class="text-slate-400 dark:text-slate-500">—</span>`;
       return;
     }
-    pop.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Pop:</span> <span class="text-slate-400 dark:text-slate-500">${formatPopulation(s.population)}</span>`;
-    age.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Avg Age:</span> <span class="text-slate-400 dark:text-slate-500">${formatNumber(s.avgAge)}</span>`;
-    married.innerHTML = `<span class="font-semibold text-slate-500 dark:text-slate-400">Married:</span> <span class="text-slate-400 dark:text-slate-500">${formatPercent(s.marriedPercent)}</span>`;
+    pop.innerHTML = `<span class="font-medium text-slate-400 dark:text-slate-500">Pop:</span> <span class="text-slate-400 dark:text-slate-500">${formatPopulation(s.population)}</span>`;
+    age.innerHTML = `<span class="font-medium text-slate-400 dark:text-slate-500">Avg Age:</span> <span class="text-slate-400 dark:text-slate-500">${formatNumber(s.avgAge)}</span>`;
+    married.innerHTML = `<span class="font-medium text-slate-400 dark:text-slate-500">Married:</span> <span class="text-slate-400 dark:text-slate-500">${formatPercent(s.marriedPercent)}</span>`;
   };
 
   // Initialize empty state

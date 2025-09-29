@@ -129,7 +129,7 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
   const mkTabBtn = (label: string) => {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "pb-2 text-[11px] font-semibold uppercase tracking-wide border-b-2 border-transparent text-slate-600 hover:text-brand-700 dark:text-slate-300 inline-flex items-center gap-2";
+    btn.className = "pb-2 text-[11px] font-semibold uppercase tracking-wide border-b-2 border-transparent text-slate-500 hover:text-brand-700 dark:text-slate-500 inline-flex items-center gap-2";
     const span = document.createElement("span");
     span.textContent = label;
     btn.appendChild(span);
@@ -452,7 +452,7 @@ export const createSidebar = ({ onHover, onZoomOutAll, onCategoryClick, onHoverZ
   const setActiveTab = (tab: "stats" | "orgs") => {
     activeTab = tab;
     const activeClasses = "pb-2 text-[11px] font-semibold uppercase tracking-wide border-b-2 border-brand-500 text-brand-700 dark:text-brand-300";
-    const inactiveClasses = "pb-2 text-[11px] font-semibold uppercase tracking-wide border-b-2 border-transparent text-slate-600 hover:text-brand-700 dark:text-slate-300";
+    const inactiveClasses = "pb-2 text-[11px] font-semibold uppercase tracking-wide border-b-2 border-transparent text-slate-500 hover:text-brand-700 dark:text-slate-500";
     if (tab === "stats") {
       statsPane.style.display = "block";
       orgsPane.style.display = "none";

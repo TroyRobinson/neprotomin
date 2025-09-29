@@ -214,11 +214,25 @@ export const createBoundaryToolbar = ({
   // "clear selection (esc)" link lives to the right of the pin all link
   const clearSelectionBtn = document.createElement("button");
   clearSelectionBtn.type = "button";
-  clearSelectionBtn.textContent = "clear selection (esc)";
   clearSelectionBtn.className = [
-    "text-xs font-medium text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300",
+    "inline-flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300",
     "ml-3 cursor-pointer whitespace-nowrap hidden",
   ].join(" ");
+  
+  // Add tiny x icon
+  const clearIcon = document.createElement("span");
+  clearIcon.innerHTML = `
+    <svg viewBox="0 0 16 16" fill="currentColor" class="h-3 w-3" aria-hidden="true">
+      <path d="M4.28 3.22a.75.75 0 00-1.06 1.06L6.94 8l-3.72 3.72a.75.75 0 101.06 1.06L8 9.06l3.72 3.72a.75.75 0 101.06-1.06L9.06 8l3.72-3.72a.75.75 0 00-1.06-1.06L8 6.94 4.28 3.22z"/>
+    </svg>
+  `;
+  
+  const clearText = document.createElement("span");
+  clearText.textContent = "clear selection (esc)";
+  
+  clearSelectionBtn.appendChild(clearIcon);
+  clearSelectionBtn.appendChild(clearText);
+  
   clearSelectionBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     onClearSelection?.();
