@@ -40,7 +40,7 @@ export interface TopBarController {
 const NAV_LINK_CLASSES =
   "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white";
 
-export const createTopBar = (opts?: { onNavigate?: (screen: "map" | "report") => void }): TopBarController => {
+export const createTopBar = (opts?: { onNavigate?: (screen: "map" | "report") => void; onBrandClick?: () => void }): TopBarController => {
   const header = document.createElement("header");
   header.className =
     "sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white/80 px-6 backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/80";
@@ -56,6 +56,13 @@ export const createTopBar = (opts?: { onNavigate?: (screen: "map" | "report") =>
       NE
     </span>
   `;
+
+  // Clicking the brand should reset map state (handled by app via onBrandClick)
+  brandLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    opts?.onBrandClick?.();
+  });
 
   const nav = document.createElement("nav");
   nav.className = "flex items-center gap-3";

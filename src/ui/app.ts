@@ -1,5 +1,6 @@
 import { organizationStore } from "../state/organizations";
 import type { Organization } from "../types/organization";
+import { TULSA_CENTER } from "../types/organization";
 import { createMapView } from "./mapView";
 import { createSidebar } from "./sidebar";
 import type { SidebarController } from "./sidebar";
@@ -35,6 +36,17 @@ export const createApp = (root: HTMLElement): AppInstance => {
       activeScreen = screen;
       applyScreenVisibility();
       topBar.setActiveScreen(screen);
+    },
+    onBrandClick: () => {
+      // Mirror boundary toolbar's clear: clear transient selections only
+      // Also navigate back to the map and reset camera to default Tulsa view
+      if (activeScreen !== "map") {
+        activeScreen = "map";
+        applyScreenVisibility();
+        topBar.setActiveScreen("map");
+      }
+      mapView.clearTransientSelection();
+      mapView.setCamera(TULSA_CENTER.longitude, TULSA_CENTER.latitude, 10.5);
     },
   });
   const defaultBoundary: BoundaryMode = "zips";
