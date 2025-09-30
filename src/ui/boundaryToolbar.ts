@@ -156,6 +156,12 @@ export const createBoundaryToolbar = ({
   addWrapper.appendChild(addBtn);
   // Input should appear immediately to the right of the plus button when opened
   addWrapper.appendChild(inputWrapper);
+  const multiSelectHint = document.createElement("span");
+  multiSelectHint.textContent = "hold shift to select multiple map areas";
+  multiSelectHint.className = [
+    "text-xs font-medium text-slate-400 dark:text-slate-500 whitespace-nowrap hidden pl-2",
+  ].join(" ");
+  addWrapper.appendChild(multiSelectHint);
   // "pin all" quick action follows the input (pushed right when input is visible)
   const pinAllBtn = document.createElement("button");
   pinAllBtn.type = "button";
@@ -248,11 +254,24 @@ export const createBoundaryToolbar = ({
   rightSide.appendChild(label);
 
   let inputOpen = false;
+  let lastZips: string[] = [];
+  let lastPinned = new Set<string>();
+  let hoveredZip: string | null = null;
+  let currentMode: BoundaryMode = defaultValue;
+  const chipByZip = new Map<string, HTMLButtonElement>();
+  const updateMultiSelectHint = () => {
+    if (lastZips.length === 0 && !inputOpen) {
+      multiSelectHint.classList.remove("hidden");
+    } else {
+      multiSelectHint.classList.add("hidden");
+    }
+  };
 
   const showInput = () => {
     if (inputOpen) return;
     inputOpen = true;
     inputWrapper.classList.remove("hidden");
+    updateMultiSelectHint();
     // Slight delay ensures layout is applied before focus
     setTimeout(() => {
       input.focus();
@@ -265,6 +284,7 @@ export const createBoundaryToolbar = ({
     inputOpen = false;
     inputWrapper.classList.add("hidden");
     input.value = "";
+    updateMultiSelectHint();
   };
 
   const parseZips = (raw: string): string[] => {
@@ -327,11 +347,7 @@ export const createBoundaryToolbar = ({
   };
   document.addEventListener("pointerdown", onDocumentPointerDown, true);
 
-  let lastZips: string[] = [];
-  let lastPinned = new Set<string>();
-  let hoveredZip: string | null = null;
-  let currentMode: BoundaryMode = defaultValue;
-  const chipByZip = new Map<string, HTMLButtonElement>();
+  updateMultiSelectHint();
 
   // Remove a zip from the toolbar selection regardless of pin state
   const removeZip = (zip: string) => {
@@ -448,6 +464,7 @@ export const createBoundaryToolbar = ({
     const hasAny = lastZips.length > 0;
     const areaLabel = currentMode === "zips" ? "ZIP" : "area";
     setAddButtonAppearance(!hasAny, areaLabel);
+    updateMultiSelectHint();
     // Decide between "pin all" vs "clear pins"
     const pinnedCount = lastZips.filter((z) => lastPinned.has(z)).length;
     const unpinnedCount = lastZips.length - pinnedCount;
@@ -494,6 +511,7 @@ export const createBoundaryToolbar = ({
       selectController.setValue(v);
       const areaLabel = currentMode === "zips" ? "ZIPs" : "area";
       setAddButtonAppearance(lastZips.length === 0, areaLabel);
+      updateMultiSelectHint();
     },
     setSelectedZips,
     setHoveredZip,
