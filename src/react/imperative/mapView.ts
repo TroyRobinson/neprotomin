@@ -55,26 +55,27 @@ const MAP_STYLE_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/st
 const getMapStyle = (theme: ThemeName): string =>
   theme === "dark" ? MAP_STYLE_DARK : MAP_STYLE_LIGHT;
 
-const SOURCE_ID = "organizations";
-const LAYER_CLUSTERS_ID = "organizations-clusters";
-const LAYER_CLUSTER_COUNT_ID = "organizations-cluster-count";
-const LAYER_POINTS_ID = "organizations-points";
-const LAYER_HIGHLIGHT_ID = "organizations-highlight";
-const LAYER_CLUSTER_HIGHLIGHT_ID = "organizations-cluster-highlight";
-const BOUNDARY_SOURCE_ID = "tulsa-zip-boundaries";
-const BOUNDARY_FILL_LAYER_ID = "tulsa-zip-boundaries-fill";
-const BOUNDARY_LINE_LAYER_ID = "tulsa-zip-boundaries-outline";
-const BOUNDARY_HIGHLIGHT_FILL_LAYER_ID = "tulsa-zip-boundaries-highlight-fill";
-const BOUNDARY_HIGHLIGHT_LINE_LAYER_ID = "tulsa-zip-boundaries-highlight-line";
-const BOUNDARY_PINNED_FILL_LAYER_ID = "tulsa-zip-boundaries-pinned-fill";
-const BOUNDARY_PINNED_LINE_LAYER_ID = "tulsa-zip-boundaries-pinned-line";
-const BOUNDARY_HOVER_LINE_LAYER_ID = "tulsa-zip-boundaries-hover-line";
-const BOUNDARY_HOVER_FILL_LAYER_ID = "tulsa-zip-boundaries-hover-fill";
-const BOUNDARY_STATDATA_FILL_LAYER_ID = "tulsa-zip-statdata-fill";
-
-const ZIP_CENTROIDS_SOURCE_ID = "tulsa-zip-centroids";
-const SECONDARY_STAT_LAYER_ID = "tulsa-zip-secondary-stat-overlay";
-const SECONDARY_STAT_HOVER_LAYER_ID = "tulsa-zip-secondary-stat-overlay-hover";
+import {
+  SOURCE_ID,
+  LAYER_CLUSTERS_ID,
+  LAYER_CLUSTER_COUNT_ID,
+  LAYER_POINTS_ID,
+  LAYER_HIGHLIGHT_ID,
+  LAYER_CLUSTER_HIGHLIGHT_ID,
+  BOUNDARY_SOURCE_ID,
+  BOUNDARY_FILL_LAYER_ID,
+  BOUNDARY_LINE_LAYER_ID,
+  BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+  BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+  BOUNDARY_PINNED_FILL_LAYER_ID,
+  BOUNDARY_PINNED_LINE_LAYER_ID,
+  BOUNDARY_HOVER_LINE_LAYER_ID,
+  BOUNDARY_HOVER_FILL_LAYER_ID,
+  BOUNDARY_STATDATA_FILL_LAYER_ID,
+  ZIP_CENTROIDS_SOURCE_ID,
+  SECONDARY_STAT_LAYER_ID,
+  SECONDARY_STAT_HOVER_LAYER_ID,
+} from "./constants/map";
 
 // colors and class index provided by lib/choropleth
 

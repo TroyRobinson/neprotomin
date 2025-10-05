@@ -4,6 +4,7 @@ import { tulsaZipBoundaries } from "../../../data/tulsaZipBoundaries";
 import type { BoundaryMode } from "../../../types/boundaries";
 import { getZipCentroidFeatureCollection } from "../../../lib/zipCentroids";
 import { getBoundaryPalette } from "../styles/boundaryPalettes";
+import { LAYER_CLUSTERS_ID } from "../constants/map";
 
 export interface BoundaryLayerIds {
   BOUNDARY_SOURCE_ID: string;
@@ -166,7 +167,7 @@ export const ensureBoundaryLayers = (
   }
 
   if (!map.getLayer(SECONDARY_STAT_LAYER_ID)) {
-    const before = map.getLayer("organizations-clusters") ? "organizations-clusters" : undefined;
+    const before = map.getLayer(LAYER_CLUSTERS_ID) ? LAYER_CLUSTERS_ID : undefined;
     const layer: any = {
       id: SECONDARY_STAT_LAYER_ID,
       type: "circle",
