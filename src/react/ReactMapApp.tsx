@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from "react";
+import { useState, lazy, Suspense, useEffect } from "react";
 import { TopBar } from "./components/TopBar";
 import { BoundaryToolbar } from "./components/BoundaryToolbar";
 import { MapLibreMap } from "./components/MapLibreMap";
@@ -11,6 +11,8 @@ import { findZipForLocation } from "../lib/zipBoundaries";
 import { useMemo } from "react";
 import type { BoundaryMode } from "../types/boundaries";
 import { useAreas } from "./hooks/useAreas";
+import { AuthModal } from "./components/AuthModal";
+import { db } from "../lib/reactDb";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 
 export const ReactMapApp = () => {
@@ -24,6 +26,17 @@ export const ReactMapApp = () => {
   const [secondaryStatId, setSecondaryStatId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [activeScreen, setActiveScreen] = useState<"map" | "report">("map");
+  const [authOpen, setAuthOpen] = useState(false);
+
+  const { isLoading: isAuthLoading, user } = db.useAuth();
+  useEffect(() => {
+    if (isAuthLoading) return;
+    if (!user) {
+      db.auth.signInAsGuest().catch(() => {
+        // ignore; may be offline or already attempted
+      });
+    }
+  }, [isAuthLoading, user]);
 
   // Subscribe to demographics and stats stores
   const { demographics, breakdowns } = useDemographics(selectedZips);
@@ -262,7 +275,7 @@ export const ReactMapApp = () => {
 
   return (
     <div className="relative flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
-      <TopBar onBrandClick={handleBrandClick} onNavigate={setActiveScreen} active={activeScreen} />
+      <TopBar onBrandClick={handleBrandClick} onNavigate={setActiveScreen} active={activeScreen} onOpenAuth={() => setAuthOpen(true)} />
       {/* Map section (always mounted) */}
           <BoundaryToolbar
             selectedZips={selectedZips}
@@ -417,6 +430,7 @@ export const ReactMapApp = () => {
           )}
         </div>
       </div>
+      <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
     </div>
   );
 };

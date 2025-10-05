@@ -4,4 +4,4 @@ Before generating a new next app you check to see if a next project already exis
 
 If the Instant MCP is available use the tools to create apps and manage schema.
 
-Before you write ANY code you read ALL of instant-rules.md to understand how to use InstantDB in your code.
+! IMPORTANT: Before you write ANY code you read ALL of AGENTS.md to understand how to use InstantDB in your code.

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { db } from "../../lib/reactDb";
 import { themeController } from "../imperative/theme";
 
 type ThemeName = "light" | "dark";
@@ -42,10 +43,12 @@ interface TopBarProps {
   onBrandClick?: () => void;
   onNavigate?: (screen: "map" | "report") => void;
   active?: "map" | "report";
+  onOpenAuth?: () => void;
 }
 
-export const TopBar = ({ onBrandClick, onNavigate, active = "map" }: TopBarProps) => {
+export const TopBar = ({ onBrandClick, onNavigate, active = "map", onOpenAuth }: TopBarProps) => {
   const [theme, setTheme] = useState<ThemeName>("light");
+  const { isLoading, user } = db.useAuth();
 
   useEffect(() => {
     const unsubscribe = themeController.subscribe((current) => {
@@ -115,6 +118,28 @@ export const TopBar = ({ onBrandClick, onNavigate, active = "map" }: TopBarProps
       </div>
 
       <div className="flex items-center gap-4">
+        {!isLoading && (!user || user.isGuest) && (
+          <button
+            type="button"
+            onClick={onOpenAuth}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+          >
+            Login
+          </button>
+        )}
+        {!isLoading && user && !user.isGuest && (
+          <button
+            type="button"
+            onClick={() => db.auth.signOut()}
+            className="group inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+            title="Sign out"
+          >
+            <span className="max-w-[16ch] truncate">{user.email}</span>
+            <span className="opacity-0 transition-opacity group-hover:opacity-100 text-slate-500 group-hover:text-current">
+              <LogoutIcon />
+            </span>
+          </button>
+        )}
         <button
           type="button"
           onClick={handleThemeToggle}

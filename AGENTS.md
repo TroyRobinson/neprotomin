@@ -45,6 +45,12 @@ Agent playbook (concise)
 - Dev ergonomics
   - Node: Vite expects >=20.19 or >=22.12. Use `npm run dev` for local, `npm run build` for CI checks.
 
+## React imports & auth guardrails
+
+- When adding React hooks, import them in the same edit from 'react'. Common set: `useState`, `useEffect`, `useMemo`, `useRef`, `Suspense`, `lazy`.
+- Use `db.useAuth()` for headers/layouts or anywhere that can render signed out. Only use `db.useUser()` inside `<db.SignedIn>` or after confirming `useAuth().user`.
+- Treat "identifier is not defined" as a blocker; verify all identifiers are imported before committing. Run `npm run build` if unsure.
+
 
 --
 
