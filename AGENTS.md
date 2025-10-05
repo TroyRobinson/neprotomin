@@ -25,9 +25,19 @@ Agent playbook (concise)
   - Make seeding idempotent by checking existing records (e.g., by name) before `transact`. See `src/lib/seed.ts:23`.
   - Keep schema minimal but indexed for lookups (e.g., `name`). See `src/instant.schema.ts:14`.
 
+- React + InstantDB integration
+  - **CRITICAL**: For React components, ALWAYS use `@instantdb/react` with `db.useQuery()`, NOT `@instantdb/core` with custom stores/subscriptions.
+  - Initialize a React-specific db instance in `src/lib/reactDb.ts` using `init` from `@instantdb/react`.
+  - Use `db.useQuery()` directly in hooks - it returns `{ data, isLoading, error }` and auto-updates on data changes.
+  - Transform query results with `useMemo()` to derive Maps, filtered lists, or aggregated data.
+  - DON'T create custom store classes that wrap `db.subscribeQuery()` - this adds unnecessary abstraction.
+  - The vanilla JS app (non-React) uses `@instantdb/core` in `src/lib/db.ts` with manual stores - this is correct for imperative DOM updates.
+  - See `src/react/hooks/useStats.ts` and `src/react/hooks/useDemographics.ts` for reference patterns.
+
 - UI architecture
   - Keep modules small and single‑purpose: `topbar` (theme + nav), `sidebar` (list + hover), `mapView` (render + hover), `state/organizations` (subscribe + normalize), `lib/seed` (seed once).
   - Cross‑component hover/selection flows through explicit setters (`setActiveOrganization`) rather than shared DOM.
+  - React components live in `src/react/` and use InstantDB React hooks; vanilla components in `src/ui/` use imperative stores.
 
 - Theming
   - Tailwind `darkMode: "class"`; manage a root `dark` class and persist choice to `localStorage`. See `src/ui/theme.ts:31` and `tailwind.config.js:6`.

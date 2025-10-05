@@ -13,7 +13,6 @@ const wrap = (n: number, digits = 1): string => {
 const formatValue = (value: number, type?: string): string => {
   const t = (type || "").toLowerCase();
   if (t === "currency") {
-    // Show compact like $35k
     const k = Math.round(value / 1000);
     return `$${k}k`;
   }
@@ -25,17 +24,14 @@ const formatValue = (value: number, type?: string): string => {
     const hasFrac = Math.abs(value % 1) > 1e-6;
     return hasFrac ? wrap(value, 1) : String(Math.round(value));
   }
-  // Default: integer, compact for large counts
   if (Math.abs(value) >= 1000) return `${Math.round(value / 1000)}k`;
   return String(Math.round(value));
 };
 
 export const createChoroplethLegend = (): ChoroplethLegendController => {
-  // Outer wrapper to position in map container
   const wrapper = document.createElement("div");
   wrapper.className = "pointer-events-none absolute bottom-4 right-4 z-10";
 
-  // Inner pill
   const pill = document.createElement("div");
   pill.className = [
     "inline-flex items-center gap-3 rounded-lg border px-3 py-1.5 text-xs font-medium",
@@ -43,7 +39,6 @@ export const createChoroplethLegend = (): ChoroplethLegendController => {
     "dark:bg-slate-900/80 dark:text-slate-300 dark:border-slate-700",
   ].join(" ");
 
-  // Left (min)
   const minGroup = document.createElement("div");
   minGroup.className = "flex items-center gap-2";
   const minDot = document.createElement("span");
@@ -53,12 +48,10 @@ export const createChoroplethLegend = (): ChoroplethLegendController => {
   minGroup.appendChild(minDot);
   minGroup.appendChild(minLabel);
 
-  // Separator
   const sep = document.createElement("span");
   sep.textContent = "–";
   sep.className = "opacity-60";
 
-  // Right (max)
   const maxGroup = document.createElement("div");
   maxGroup.className = "flex items-center gap-2";
   const maxDot = document.createElement("span");
@@ -91,9 +84,9 @@ export const createChoroplethLegend = (): ChoroplethLegendController => {
     wrapper.remove();
   };
 
-  // Start hidden
   setVisible(false);
 
   return { element: wrapper, setVisible, setRange, setColors, destroy };
 };
+
 

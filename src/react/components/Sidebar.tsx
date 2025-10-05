@@ -1,0 +1,321 @@
+import { useState } from "react";
+import { DemographicsBar, type DemographicStats, type BreakdownGroup } from "./DemographicsBar";
+import { StatViz } from "./StatViz";
+import { StatList } from "./StatList";
+import type { Organization } from "../../types/organization";
+import type { Stat } from "../../types/stat";
+import { getCategoryLabel } from "../../types/categories";
+
+interface SeriesEntry {
+  date: string;
+  type: string;
+  data: Record<string, number>;
+}
+
+interface SidebarProps {
+  // Organization data
+  organizations?: {
+    inSelection: Organization[];
+    all: Organization[];
+    totalSourceCount?: number;
+  };
+  activeOrganizationId?: string | null;
+  highlightedOrganizationIds?: string[] | null;
+
+  // Demographics data
+  demographics?: DemographicStats | null;
+  breakdowns?: Map<string, BreakdownGroup>;
+
+  // Stat visualization data
+  statsById?: Map<string, Stat>;
+  seriesByStatId?: Map<string, SeriesEntry[]>;
+  selectedZips?: string[];
+  selectedStatId?: string | null;
+  secondaryStatId?: string | null;
+  categoryFilter?: string | null;
+  hoveredZip?: string | null;
+  pinnedZips?: string[];
+
+  // Callbacks
+  onHover?: (idOrIds: string | string[] | null) => void;
+  onZoomOutAll?: () => void;
+  onCategoryClick?: (categoryId: string) => void;
+  onHoverZip?: (zip: string | null) => void;
+  onStatSelect?: (statId: string, meta?: { shiftKey?: boolean }) => void;
+  onOrgPinsVisibleChange?: (visible: boolean) => void;
+  onVisibleIdsChange?: (ids: string[], totalInSource: number, allSourceIds: string[]) => void;
+}
+
+type TabType = "stats" | "orgs";
+
+export const Sidebar = ({
+  organizations = { inSelection: [], all: [], totalSourceCount: 0 },
+  activeOrganizationId = null,
+  highlightedOrganizationIds = null,
+  demographics = null,
+  breakdowns = new Map(),
+  statsById = new Map(),
+  seriesByStatId = new Map(),
+  selectedZips = [],
+  selectedStatId = null,
+  secondaryStatId = null,
+  categoryFilter = null,
+  hoveredZip = null,
+  pinnedZips = [],
+  onHover,
+  onZoomOutAll,
+  onCategoryClick,
+  onHoverZip,
+  onStatSelect,
+  onOrgPinsVisibleChange,
+}: SidebarProps) => {
+  const [activeTab, setActiveTab] = useState<TabType>("stats");
+  const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(false);
+
+  const { inSelection = [], all = [], totalSourceCount = 0 } = organizations;
+  const highlightedIds = new Set(highlightedOrganizationIds ?? []);
+
+  const visibleCount = inSelection.length + all.length;
+  const totalCount = typeof totalSourceCount === "number" ? totalSourceCount : visibleCount;
+  const countForTab = selectedZips.length > 0 ? inSelection.length : totalCount;
+  const missingCount = Math.max(totalCount - visibleCount, 0);
+
+  const handleToggleKeepOrgs = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
+    const newValue = !keepOrgsOnMap;
+    setKeepOrgsOnMap(newValue);
+    const visible = newValue || activeTab === "orgs";
+    onOrgPinsVisibleChange?.(visible);
+  };
+
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+    const visible = keepOrgsOnMap || tab === "orgs";
+    onOrgPinsVisibleChange?.(visible);
+  };
+
+  const tabClasses = (isActive: boolean) =>
+    `pb-2 text-[11px] font-semibold uppercase tracking-wide border-b-2 inline-flex items-center gap-2 ${
+      isActive
+        ? "border-brand-500 text-brand-700 dark:text-brand-300"
+        : "border-transparent text-slate-500 hover:text-brand-700 dark:text-slate-500"
+    }`;
+
+  return (
+    <aside className="relative flex w-full max-w-sm flex-col border-r border-slate-200 bg-white/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60">
+      {/* Demographics Bar */}
+      <DemographicsBar stats={demographics} breakdowns={breakdowns} />
+
+      {/* Stat Visualization */}
+      <StatViz
+        statsById={statsById}
+        seriesByStatId={seriesByStatId}
+        selectedZips={selectedZips}
+        selectedStatId={selectedStatId}
+        hoveredZip={hoveredZip}
+        pinnedZips={pinnedZips}
+        onHoverZip={onHoverZip}
+      />
+
+      {/* Tabs Header */}
+      <div className="flex items-center justify-between px-4 pt-3 mb-2">
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            className={tabClasses(activeTab === "stats")}
+            onClick={() => handleTabChange("stats")}
+          >
+            <span>Statistics</span>
+          </button>
+          <button
+            type="button"
+            className={tabClasses(activeTab === "orgs")}
+            onClick={() => handleTabChange("orgs")}
+          >
+            <span>Organizations ({countForTab})</span>
+            {/* Keep Orgs On Map Toggle */}
+            <span
+              role="switch"
+              aria-checked={keepOrgsOnMap}
+              aria-label="Keep Orgs On Map"
+              title="Keep Orgs On Map"
+              tabIndex={0}
+              className={`relative inline-flex h-3 w-6 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+                keepOrgsOnMap ? "bg-brand-500" : "bg-slate-300 dark:bg-slate-500"
+              }`}
+              onClick={handleToggleKeepOrgs}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleToggleKeepOrgs(e);
+                }
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              <span
+                className="inline-block h-2 w-2 transform rounded-full bg-white shadow transition"
+                style={{ transform: keepOrgsOnMap ? "translateX(14px)" : "translateX(2px)" }}
+              />
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Statistics Tab */}
+        {activeTab === "stats" && (
+          <StatList
+            statsById={statsById}
+            seriesByStatId={seriesByStatId}
+            selectedZips={selectedZips}
+            categoryFilter={categoryFilter}
+            secondaryStatId={secondaryStatId}
+            selectedStatId={selectedStatId}
+            onStatSelect={onStatSelect}
+          />
+        )}
+
+        {/* Organizations Tab */}
+        {activeTab === "orgs" && (
+          <div className="flex flex-1 flex-col overflow-y-auto">
+            {visibleCount === 0 && missingCount === 0 ? (
+              <p className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
+                No organizations found. Add one to get started.
+              </p>
+            ) : (
+              <div className="flex-1">
+                {selectedStatId && (
+                  <div className="px-1 pt-1 pb-0 flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 ml-7">
+                      Orgs active in most significant areas
+                    </p>
+                  </div>
+                )}
+
+                {/* In Selection Section */}
+                {inSelection.length > 0 && (
+                  <>
+                    <h3 className="px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                      IN SELECTION
+                    </h3>
+                    <ul className="space-y-2 px-4">
+                      {inSelection.map((org) => (
+                        <OrganizationListItem
+                          key={org.id}
+                          org={org}
+                          isActive={
+                            org.id === activeOrganizationId || highlightedIds.has(org.id)
+                          }
+                          onHover={onHover}
+                          onCategoryClick={onCategoryClick}
+                        />
+                      ))}
+                    </ul>
+                  </>
+                )}
+
+                {/* All Section */}
+                <h3 className="px-8 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  ALL
+                </h3>
+                <ul className="space-y-2 px-4 pb-6">
+                  {all.map((org) => (
+                    <OrganizationListItem
+                      key={org.id}
+                      org={org}
+                      isActive={org.id === activeOrganizationId || highlightedIds.has(org.id)}
+                      onHover={onHover}
+                      onCategoryClick={onCategoryClick}
+                    />
+                  ))}
+
+                  {/* Zoom Out Link */}
+                  {missingCount > 0 && (
+                    <li className="px-0 pt-0 pb-0">
+                      <button
+                        type="button"
+                        className="block w-full text-left text-xs font-normal text-brand-300 hover:text-brand-800 dark:text-brand-400 dark:hover:text-brand-200 px-4 pb-4 pt-2 transition-colors"
+                        onClick={onZoomOutAll}
+                      >
+                        {missingCount} more not visible (Zoom out)
+                      </button>
+                    </li>
+                  )}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+};
+
+interface OrganizationListItemProps {
+  org: Organization;
+  isActive: boolean;
+  onHover?: (idOrIds: string | string[] | null) => void;
+  onCategoryClick?: (categoryId: string) => void;
+}
+
+const OrganizationListItem = ({
+  org,
+  isActive,
+  onHover,
+  onCategoryClick,
+}: OrganizationListItemProps) => {
+  const handleMouseEnter = () => onHover?.(org.id);
+  const handleMouseLeave = () => onHover?.(null);
+
+  const handleCategoryClick = () => {
+    const cat = (org as any).category as string | undefined;
+    if (cat) {
+      onCategoryClick?.(cat);
+    }
+  };
+
+  return (
+    <li
+      data-org-id={org.id}
+      className={`group relative rounded-xl border px-4 py-3 transition duration-200 ease-out ${
+        isActive
+          ? "border-brand-300 ring-2 ring-brand-200/80 bg-brand-50/70 dark:bg-slate-800"
+          : "border-transparent bg-slate-100/40 hover:border-brand-200 hover:bg-brand-50 dark:bg-slate-800/20 dark:hover:border-slate-700 dark:hover:bg-slate-800/70"
+      }`}
+      onMouseEnter={handleMouseEnter}
+      onFocus={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onBlur={handleMouseLeave}
+    >
+      <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{org.name}</p>
+      <a
+        href={org.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-400 transition-colors hover:text-brand-900 dark:text-slate-300 dark:hover:text-slate-100"
+      >
+        Visit site
+        <span aria-hidden="true" className="text-[1em] leading-none">
+          ↗
+        </span>
+      </a>
+      <span
+        role="button"
+        tabIndex={0}
+        className="mt-1 ml-2 inline-flex items-center rounded-full bg-slate-50 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-800/70 dark:text-slate-300 cursor-pointer"
+        onClick={handleCategoryClick}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleCategoryClick();
+          }
+        }}
+      >
+        {getCategoryLabel(org.category)}
+      </span>
+    </li>
+  );
+};

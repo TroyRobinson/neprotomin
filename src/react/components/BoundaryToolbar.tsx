@@ -1,0 +1,345 @@
+import { useState, useEffect, useRef } from "react";
+import type { BoundaryMode } from "../../types/boundaries";
+import { themeController } from "../imperative/theme";
+import { CustomSelect } from "./CustomSelect";
+
+interface BoundaryToolbarProps {
+  selectedZips?: string[];
+  pinnedZips?: string[];
+  boundaryMode?: BoundaryMode;
+  hoveredZip?: string | null;
+  // Controls the sticky top offset class (e.g., "top-16" for below topbar, "top-0" inside overlays)
+  stickyTopClass?: string;
+  onBoundaryModeChange?: (mode: BoundaryMode) => void;
+  onToggleZipPin?: (zip: string, pinned: boolean) => void;
+  onHoverZip?: (zip: string | null) => void;
+  onClearSelection?: () => void;
+  onExport?: () => void;
+  onAddZips?: (zips: string[]) => void;
+}
+
+const LINE_COLORS = ["#375bff", "#8f20f8", "#a76d44", "#b4a360"];
+
+function shade(hex: string, amount: number): string {
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  const m = hex.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  if (!m) return hex;
+  const r = parseInt(m[1], 16),
+    g = parseInt(m[2], 16),
+    b = parseInt(m[3], 16);
+  const adj = (c: number) => (amount >= 0 ? c + (255 - c) * amount : c + c * amount);
+  return (
+    "#" +
+    clamp(adj(r)).toString(16).padStart(2, "0") +
+    clamp(adj(g)).toString(16).padStart(2, "0") +
+    clamp(adj(b)).toString(16).padStart(2, "0")
+  );
+}
+
+export const BoundaryToolbar = ({
+  selectedZips = [],
+  pinnedZips = [],
+  boundaryMode = "zips",
+  hoveredZip = null,
+  stickyTopClass = "top-16",
+  onBoundaryModeChange,
+  onToggleZipPin,
+  onHoverZip,
+  onClearSelection,
+  onExport,
+  onAddZips,
+}: BoundaryToolbarProps) => {
+  const [inputOpen, setInputOpen] = useState(false);
+  const [inputValue, setInputValue] = useState("");
+  const [isDark, setIsDark] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputWrapperRef = useRef<HTMLDivElement>(null);
+  const addBtnRef = useRef<HTMLButtonElement>(null);
+
+  const pinnedSet = new Set(pinnedZips);
+  const hasSelections = selectedZips.length > 0;
+  const areaLabel = boundaryMode === "zips" ? "ZIP" : "area";
+  const inLineMode = selectedZips.length > 0 && selectedZips.length < 4;
+
+  useEffect(() => {
+    const unsubscribe = themeController.subscribe((theme) => {
+      setIsDark(theme === "dark");
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (inputOpen && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [inputOpen]);
+
+  useEffect(() => {
+    const handlePointerDown = (e: PointerEvent) => {
+      if (!inputOpen) return;
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (
+        !inputWrapperRef.current?.contains(target) &&
+        !addBtnRef.current?.contains(target)
+      ) {
+        setInputOpen(false);
+        setInputValue("");
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [inputOpen]);
+
+  const parseZips = (raw: string): string[] => {
+    const matches = raw.match(/\b\d{5}\b/g) || [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const m of matches) {
+      if (!seen.has(m)) {
+        seen.add(m);
+        out.push(m);
+      }
+    }
+    return out;
+  };
+
+  const submitZips = () => {
+    const zips = parseZips(inputValue);
+    if (zips.length > 0) {
+      if (onAddZips) {
+        onAddZips(zips);
+      } else {
+        for (const z of zips) {
+          onToggleZipPin?.(z, true);
+        }
+      }
+    }
+    setInputOpen(false);
+    setInputValue("");
+  };
+
+  const handleInputKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submitZips();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setInputOpen(false);
+      setInputValue("");
+    }
+  };
+
+  const removeZip = (zip: string) => {
+    const wasPinned = pinnedSet.has(zip);
+    const remainingUnpinned = selectedZips.filter((z) => !pinnedSet.has(z) && z !== zip);
+
+    if (wasPinned) {
+      onToggleZipPin?.(zip, false);
+    }
+
+    onClearSelection?.();
+    if (remainingUnpinned.length > 0) {
+      onAddZips?.(remainingUnpinned);
+    }
+  };
+
+  const handleChipHover = (zip: string | null) => {
+    onHoverZip?.(zip);
+  };
+
+  const pinnedCount = selectedZips.filter((z) => pinnedSet.has(z)).length;
+  const unpinnedCount = selectedZips.length - pinnedCount;
+
+  const handlePinAllClick = () => {
+    if (pinnedCount >= 2) {
+      // Clear pins
+      const toUnpin = selectedZips.filter((z) => pinnedSet.has(z));
+      for (const z of toUnpin) {
+        onToggleZipPin?.(z, false);
+      }
+    } else {
+      // Pin all
+      const toPin = selectedZips.filter((z) => !pinnedSet.has(z));
+      for (const z of toPin) {
+        onToggleZipPin?.(z, true);
+      }
+    }
+  };
+
+  // Build color mapping by selection order
+  const colorByZip = new Map<string, string>();
+  if (inLineMode) {
+    selectedZips.forEach((z, i) => colorByZip.set(z, LINE_COLORS[i % LINE_COLORS.length]));
+  }
+
+  // Sort: pinned first, then unpinned
+  const pinned = selectedZips.filter((zip) => pinnedSet.has(zip)).sort();
+  const unpinned = selectedZips.filter((zip) => !pinnedSet.has(zip)).sort();
+  const sortedZips = [...pinned, ...unpinned];
+
+  return (
+    <div className={`sticky ${stickyTopClass} z-10 flex h-10 w-full items-center gap-3 border-b border-slate-200 bg-slate-100/70 px-4 text-sm text-slate-600 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300`}>
+      {/* Chips and Add Button */}
+      <div className="flex flex-1 items-center gap-2 overflow-x-auto self-center py-1 pl-0 pr-1">
+        {/* Chips Container */}
+        <div className="flex items-center gap-2">
+          {sortedZips.map((zip) => {
+            const isPinned = pinnedSet.has(zip);
+            const isHovered = hoveredZip === zip;
+            let chipStyle: React.CSSProperties = {};
+            let chipClasses =
+              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors group";
+
+            if (inLineMode) {
+              const col = colorByZip.get(zip);
+              if (col) {
+                const bg = isDark ? shade(col, -0.82) : shade(col, 0.85);
+                const border = isDark ? shade(col, -0.35) : shade(col, 0.55);
+                chipStyle = {
+                  backgroundColor: bg,
+                  borderColor: border,
+                  color: col,
+                };
+              }
+            } else {
+              chipClasses += isPinned
+                ? " border-brand-300 bg-brand-50 text-brand-700 dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
+                : " border-slate-300 bg-white/70 text-slate-600 hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300";
+            }
+
+            if (isHovered) {
+              chipClasses += " ring-1 ring-brand-300";
+            }
+
+            return (
+              <button
+                key={zip}
+                type="button"
+                className={chipClasses}
+                style={chipStyle}
+                onMouseEnter={() => handleChipHover(zip)}
+                onMouseLeave={() => handleChipHover(null)}
+                onClick={() => removeZip(zip)}
+              >
+                <span>{zip}</span>
+                <span className="ml-0.5 hidden text-brand-600 group-hover:inline">×</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Add Button and Input */}
+        <div className={`flex items-center gap-1 ${!hasSelections && !inputOpen ? "-ml-2" : ""}`}>
+          <button
+            ref={addBtnRef}
+            type="button"
+            onClick={() => setInputOpen(!inputOpen)}
+            className={
+              !hasSelections && !inputOpen
+                ? "inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/70 px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300"
+                : "inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-white/70 text-slate-500 transition-colors hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400"
+            }
+            title={`Add ${areaLabel}`}
+            aria-label={`Add ${areaLabel}`}
+          >
+            <svg
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px]"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M9 3.5a5.5 5.5 0 013.894 9.394l3.703 3.703a.75.75 0 11-1.06 1.06l-3.703-3.703A5.5 5.5 0 119 3.5zm0 1.5a4 4 0 100 8 4 4 0 000-8z"
+                clipRule="evenodd"
+              />
+            </svg>
+            {!hasSelections && !inputOpen && <span className="ml-1 whitespace-nowrap">add {areaLabel}s</span>}
+          </button>
+
+          <div ref={inputWrapperRef} className={inputOpen ? "" : "hidden"}>
+            <textarea
+              ref={inputRef}
+              rows={1}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              placeholder="Add ZIPs (comma or space separated)"
+              className="ml-1 mt-1.5 h-7 min-h-[1.75rem] w-56 resize-none rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50 md:w-64"
+            />
+          </div>
+
+          {!hasSelections && !inputOpen && (
+            <span className="whitespace-nowrap pl-2 text-xs font-medium text-slate-400 dark:text-slate-500">
+              hold shift to select multiple map areas
+            </span>
+          )}
+
+          {/* Pin All / Clear Pins Button */}
+          {((pinnedCount >= 2) || (selectedZips.length >= 2 && unpinnedCount > 0)) && (
+            <button
+              type="button"
+              onClick={handlePinAllClick}
+              className="ml-2 cursor-pointer whitespace-nowrap text-xs font-medium text-brand-400 hover:text-brand-600/90"
+            >
+              {pinnedCount >= 2 ? "clear pins" : "pin all"}
+            </button>
+          )}
+
+          {/* Clear Selection Button */}
+          {hasSelections && (
+            <button
+              type="button"
+              onClick={onClearSelection}
+              className="ml-3 inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+            >
+              <svg
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                className="h-3 w-3"
+                aria-hidden="true"
+              >
+                <path d="M4.28 3.22a.75.75 0 00-1.06 1.06L6.94 8l-3.72 3.72a.75.75 0 101.06 1.06L8 9.06l3.72 3.72a.75.75 0 101.06-1.06L9.06 8l3.72-3.72a.75.75 0 00-1.06-1.06L8 6.94 4.28 3.22z" />
+              </svg>
+              <span>clear selection (esc)</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Right Side: Export and Boundary Selector */}
+      <div className="ml-auto flex items-center gap-2">
+        {/* Export Button */}
+        {hasSelections && onExport && (
+          <button
+            type="button"
+            onClick={onExport}
+            onMouseEnter={(e) => (e.currentTarget.textContent = "export (CSV report)")}
+            onMouseLeave={(e) => (e.currentTarget.textContent = "export")}
+            className="inline-flex cursor-pointer items-center whitespace-nowrap rounded bg-slate-200/60 px-2 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-300/60 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/60"
+          >
+            export
+          </button>
+        )}
+
+        {/* Areas Selector */}
+        <label className="flex items-center gap-2 font-medium" htmlFor="boundary-select">
+          Areas
+          <CustomSelect
+            id="boundary-select"
+            value={boundaryMode}
+            options={[
+              { value: "zips", label: "ZIPs" },
+              { value: "none", label: "None" }
+            ]}
+            onChange={(value) => onBoundaryModeChange?.(value as BoundaryMode)}
+          />
+        </label>
+      </div>
+    </div>
+  );
+};

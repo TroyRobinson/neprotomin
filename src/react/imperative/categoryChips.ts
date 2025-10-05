@@ -20,9 +20,9 @@ const CLOSE_ICON = `
   </svg>
 `;
 
-import { CATEGORIES as categories } from "../types/categories";
-import type { Stat } from "../types/stat";
-import { statsStore } from "../state/stats";
+import { CATEGORIES as categories } from "../../types/categories";
+import type { Stat } from "../../types/stat";
+import { statsStore } from "../../state/stats";
 
 export interface CategoryChipsController {
   element: HTMLElement;
@@ -264,3 +264,5 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   return { element: wrapper, setSelected, setSelectedStat, destroy };
 };
+
+
