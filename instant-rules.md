@@ -1,63 +1,5 @@
-Agent playbook (concise)
-
-# Misc Notes & Instructions:
-
-- IGNORE FILES: (don't read):
-  - tulsaZipBoundaries.ts
-
-- Dev Server: 
-  - Assume the dev server is already running by the user and *don't* attempt to start it.
-
-- Styles:
-  - Note that we're using Tailwind (see setup)
-
-- Map markers
-  - Prefer MapLibre-rendered layers over DOM markers to avoid zoom drift. Use a GeoJSON `source` + `circle` layers for pins and a separate highlight layer filtered by id. See `src/ui/mapView.ts:96`.
-  - Avoid CSS transforms on marker containers; let the renderer position features. If needed, use layer paint props instead of DOM styling.
-  - MapLibre `setStyle()` clears custom sources/layers. On theme/basemap swap, listen for `styledata`/`idle` and re-add sources/layers, then repopulate data and filters.
-  - Lingering cluster numbers: Set `fadeDuration: 0` in Map constructor to disable symbol cross-fade. Paint transitions don't control this - it's MapLibre's built-in symbol placement fade.
-
-- Map config
-  - Use a light street basemap (Carto Positron GL) and center on Tulsa. Disable rotation for predictable UX. See `src/ui/mapView.ts:17` and `src/ui/mapView.ts:111`.
-
-- InstantDB data
-  - Entity ids must be UUIDs. Generate with `id()`; do not write custom seed ids. See `src/lib/seed.ts:39`.
-  - Make seeding idempotent by checking existing records (e.g., by name) before `transact`. See `src/lib/seed.ts:23`.
-  - Keep schema minimal but indexed for lookups (e.g., `name`). See `src/instant.schema.ts:14`.
-
-- React + InstantDB integration
-  - **CRITICAL**: For React components, ALWAYS use `@instantdb/react` with `db.useQuery()`, NOT `@instantdb/core` with custom stores/subscriptions.
-  - Initialize a React-specific db instance in `src/lib/reactDb.ts` using `init` from `@instantdb/react`.
-  - Use `db.useQuery()` directly in hooks - it returns `{ data, isLoading, error }` and auto-updates on data changes.
-  - Transform query results with `useMemo()` to derive Maps, filtered lists, or aggregated data.
-  - DON'T create custom store classes that wrap `db.subscribeQuery()` - this adds unnecessary abstraction.
-  - The vanilla JS app (non-React) uses `@instantdb/core` in `src/lib/db.ts` with manual stores - this is correct for imperative DOM updates.
-  - See `src/react/hooks/useStats.ts` and `src/react/hooks/useDemographics.ts` for reference patterns.
-
-- UI architecture
-  - Keep modules small and single‑purpose: `topbar` (theme + nav), `sidebar` (list + hover), `mapView` (render + hover), `state/organizations` (subscribe + normalize), `lib/seed` (seed once).
-  - Cross‑component hover/selection flows through explicit setters (`setActiveOrganization`) rather than shared DOM.
-  - React components live in `src/react/` and use InstantDB React hooks; vanilla components in `src/ui/` use imperative stores.
-
-- Theming
-  - Tailwind `darkMode: "class"`; manage a root `dark` class and persist choice to `localStorage`. See `src/ui/theme.ts:31` and `tailwind.config.js:6`.
-
-- Dev ergonomics
-  - Node: Vite expects >=20.19 or >=22.12. Use `npm run dev` for local, `npm run build` for CI checks.
-
-
---
-
-# Working with our Database InstantDB
-Note: we're using Vanilla TS, Vite, Tailwind + Maplibre GL
-
-You are an expert developer who writes full-stack apps in InstantDB, Vanilla Typescript + Vite and/or Next.js, and Tailwind developer. However InstantDB is not in your training set and you are not familiar with it.
-
-Before generating a new next app you check to see if a next project already exists in the current directory. If it does you do not generate a new next app.
-
-If the Instant MCP is available use the tools to create apps and manage schema.
-
 # About InstantDB
+Codebase Note: we're using Vanilla TS, Vite, Tailwind + Maplibre GL + React
 
 Instant is the Modern Firebase. With Instant you can easily build realtime and collaborative apps. You can get started for free at https://instantdb.com
 
@@ -66,6 +8,61 @@ Instant is the Modern Firebase. With Instant you can easily build realtime and c
 Instant offers client side javascript packages for vanilla JS, react, and react native. Instant also offers a javascript admin SDK that can be used on the backend.
 
 If you want to use Instant with react you should only use `@instantdb/react`. For react-native you should only use `@instantdb/react-native`. For scripts or server environments you should only use the admin SDK `@instantdb/admin`. For other client-side frameworks or vanilla js you should only use `@instantdb/core`
+
+## CRITICAL: React Integration Pattern
+
+**This codebase has BOTH vanilla JS and React implementations:**
+
+1. **React components** (`src/react/`):
+   - MUST use `@instantdb/react`
+   - Initialize db with: `import { init } from '@instantdb/react'` in `src/lib/reactDb.ts`
+   - Query data with: `const { data, isLoading, error } = db.useQuery({ ... })`
+   - Transform with `useMemo()` - do NOT create custom store classes
+   - See reference: `src/react/hooks/useStats.ts`, `src/react/hooks/useDemographics.ts`
+
+2. **Vanilla JS components** (`src/ui/`):
+   - Use `@instantdb/core`
+   - Initialize db with: `import { init } from '@instantdb/core'` in `src/lib/db.ts`
+   - Use manual subscriptions with stores (e.g., `statsStore`, `organizationStore`)
+   - This is correct for imperative DOM manipulation
+
+**DON'T mix patterns!** If you're in React, use React hooks. If you're in vanilla JS, use stores.
+
+### Example: React Hook Pattern (CORRECT)
+
+```typescript
+// src/react/hooks/useStats.ts
+import { useMemo } from "react";
+import { db } from "../../lib/reactDb"; // Uses @instantdb/react
+
+export const useStats = () => {
+  // Direct query - auto-updates on changes
+  const { data, isLoading, error } = db.useQuery({
+    stats: { $: { order: { name: "asc" } } },
+    statData: { $: { order: { date: "asc" } } }
+  });
+
+  // Transform to Map with useMemo
+  const statsById = useMemo(() => {
+    const map = new Map();
+    data?.stats?.forEach(stat => map.set(stat.id, stat));
+    return map;
+  }, [data?.stats]);
+
+  return { statsById, isLoading, error };
+};
+```
+
+### Anti-Pattern: Custom Store Wrapper (WRONG for React)
+
+```typescript
+// ❌ DON'T DO THIS in React!
+class StatsStore {
+  subscribe(listener) {
+    this.unsubscribe = db.subscribeQuery(...); // Wrong for React
+  }
+}
+```
 
 CRITICAL: To use the admin SDK you MUST get an admin token for the app. You can get the admin token with the MCP tool via `create-app`. The admin token is SENSITIVE and should be stored in an environment variable. Do not hardcode it in your script.
 

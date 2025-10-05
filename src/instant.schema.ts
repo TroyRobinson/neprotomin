@@ -37,7 +37,12 @@ const _schema = i.schema({
       type: i.string(), // e.g., count | percent | rate | years | currency
       data: i.json<Record<string, number>>(), // map of area key (e.g., ZIP) -> value
     }),
-    // (per-user UI state removed)
+    // Persisted per-user/per-guest UI state
+    uiState: i.entity({
+      owner: i.string().indexed(), // auth.id (works for guests too)
+      selection: i.json<{ zips: string[]; pinned: string[]; boundaryMode: string | null }>(),
+      updatedAt: i.number().indexed(),
+    }),
   },
   links: {},
   rooms: {},

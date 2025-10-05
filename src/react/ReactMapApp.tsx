@@ -38,6 +38,66 @@ export const ReactMapApp = () => {
     }
   }, [isAuthLoading, user]);
 
+  // Persisted UI state: load on auth ready
+  useEffect(() => {
+    if (isAuthLoading) return;
+    const owner = user?.id;
+    const load = async () => {
+      // Try server first
+      if (owner) {
+        try {
+          const { data } = await db.queryOnce({
+            uiState: {
+              $: { where: { owner }, limit: 1, order: { updatedAt: "desc" } },
+            },
+          });
+          const entry = (data as any)?.uiState?.[0];
+          if (entry?.selection) {
+            const sel = entry.selection as { zips?: string[]; pinned?: string[]; boundaryMode?: string | null };
+            if (Array.isArray(sel.zips)) setSelectedZips(sel.zips);
+            if (Array.isArray(sel.pinned)) setPinnedZips(sel.pinned);
+            if (sel.boundaryMode === "zips" || sel.boundaryMode === "neighborhoods") setBoundaryMode(sel.boundaryMode as BoundaryMode);
+            return;
+          }
+        } catch {}
+      }
+      // Fallback to localStorage
+      try {
+        const raw = localStorage.getItem("uiState.selection");
+        if (raw) {
+          const sel = JSON.parse(raw);
+          if (Array.isArray(sel.zips)) setSelectedZips(sel.zips);
+          if (Array.isArray(sel.pinned)) setPinnedZips(sel.pinned);
+          if (sel.boundaryMode === "zips" || sel.boundaryMode === "neighborhoods") setBoundaryMode(sel.boundaryMode);
+        }
+      } catch {}
+    };
+    load();
+    // only when auth readiness changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthLoading, user?.id]);
+
+  // Persisted UI state: save with debounce
+  useEffect(() => {
+    const owner = user?.id;
+    const selection = { zips: selectedZips, pinned: pinnedZips, boundaryMode };
+    const updatedAt = Date.now();
+    const timeout = setTimeout(() => {
+      // Save to localStorage always for fast restore
+      try {
+        localStorage.setItem("uiState.selection", JSON.stringify(selection));
+      } catch {}
+      // Save to server for cross-device
+      if (owner) {
+        const id = owner; // one row per owner; use stable id
+        db.transact(
+          db.tx.uiState[id].update({ owner, selection, updatedAt })
+        ).catch(() => {});
+      }
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [user?.id, selectedZips, pinnedZips, boundaryMode]);
+
   // Subscribe to demographics and stats stores
   const { demographics, breakdowns } = useDemographics(selectedZips);
   const { statsById, seriesByStatId } = useStats();
