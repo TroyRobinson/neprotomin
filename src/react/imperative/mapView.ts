@@ -1,22 +1,25 @@
 import maplibregl from "maplibre-gl";
 
 // tulsaZipBoundaries no longer needed here (used in boundary layer module)
-import { getZipBounds, getAllZipCodes } from "../../lib/zipBoundaries";
+import { getZipBounds } from "../../lib/zipBoundaries";
 import { computeToggle, computeAddTransient, computeClearTransient } from "./state/zipSelection";
 import type { BoundsArray } from "../../lib/zipBoundaries";
 import type { BoundaryMode } from "../../types/boundaries";
 import type { Organization } from "../../types/organization";
 import { TULSA_CENTER } from "../../types/organization";
 import { themeController } from "./theme";
-import { getBoundaryPalette, getHoverColors } from "./styles/boundaryPalettes";
+// palettes/hover are used inside boundary layer helpers now
 import { createCategoryChips } from "./categoryChips";
 import { statDataStore } from "../../state/statData";
 import { createZipFloatingTitle, type ZipFloatingTitleController } from "./components/zipFloatingTitle";
 import { createZipLabels, type ZipLabelsController } from "./components/zipLabels";
 import { createChoroplethLegend, type ChoroplethLegendController } from "./components/choroplethLegend";
-import { CHOROPLETH_COLORS, TEAL_COLORS, getClassIndex } from "../../lib/choropleth";
-import { ensureBoundaryLayers } from "./layers/boundaries";
+// choropleth helpers are used only inside overlays/stats now
+import { updateChoroplethLegend as extUpdateLegend, updateSecondaryStatOverlay as extUpdateSecondaryOverlay, updateStatDataChoropleth as extUpdatePrimaryChoropleth } from "./overlays/stats";
+import { ensureBoundaryLayers, updateBoundaryPaint as extUpdateBoundaryPaint, updateBoundaryVisibility as extUpdateBoundaryVisibility, updateZipSelectionHighlight as extUpdateZipSelectionHighlight, updateZipHoverOutline as extUpdateZipHoverOutline } from "./layers/boundaries";
 import { ensureOrganizationLayers } from "./layers/organizations";
+import { setClusterHighlight as extSetClusterHighlight, highlightClusterContainingOrg as extHighlightClusterContainingOrg } from "./organizationsHighlight";
+import { wireVisibleIds } from "./visibilityTracker";
 
 interface MapViewOptions {
   onHover: (idOrIds: string | string[] | null) => void;
@@ -184,165 +187,77 @@ export const createMapView = ({
 
   // getBoundaryPalette and getHoverColors moved to styles/boundaryPalettes
 
-  const updateBoundaryPaint = () => {
-    const palette = getBoundaryPalette(currentTheme);
-    if (map.getLayer(BOUNDARY_FILL_LAYER_ID)) {
-      map.setPaintProperty(BOUNDARY_FILL_LAYER_ID, "fill-color", palette.fillColor);
-      map.setPaintProperty(BOUNDARY_FILL_LAYER_ID, "fill-opacity", palette.fillOpacity);
-    }
-    if (map.getLayer(BOUNDARY_LINE_LAYER_ID)) {
-      map.setPaintProperty(BOUNDARY_LINE_LAYER_ID, "line-color", palette.lineColor);
-      map.setPaintProperty(BOUNDARY_LINE_LAYER_ID, "line-opacity", palette.lineOpacity);
-    }
-    if (map.getLayer(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID)) {
-      map.setPaintProperty(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, "fill-color", "#3755f0");
-      map.setPaintProperty(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, "fill-opacity", currentTheme === "dark" ? 0.26 : 0.20);
-    }
-    if (map.getLayer(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID)) {
-      map.setPaintProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "line-color", "#6d8afc");
-      map.setPaintProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "line-width", 1);
-      map.setPaintProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "line-opacity", 0.9);
-    }
-    if (map.getLayer(BOUNDARY_PINNED_FILL_LAYER_ID)) {
-      map.setPaintProperty(BOUNDARY_PINNED_FILL_LAYER_ID, "fill-color", "#3755f0");
-      map.setPaintProperty(BOUNDARY_PINNED_FILL_LAYER_ID, "fill-opacity", currentTheme === "dark" ? 0.26 : 0.20);
-    }
-    if (map.getLayer(BOUNDARY_PINNED_LINE_LAYER_ID)) {
-      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-color", "#6d8afc");
-      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-width", 1);
-      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-opacity", 0.9);
-    }
-    if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
-      map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-width", 0.9);
-      map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity-transition", { duration: 150, delay: 0 } as any);
-    }
-    if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
-      map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity-transition", { duration: 150, delay: 0 } as any);
-    }
-  };
+  const updateBoundaryPaint = () => extUpdateBoundaryPaint(map, {
+    BOUNDARY_SOURCE_ID,
+    BOUNDARY_FILL_LAYER_ID,
+    BOUNDARY_LINE_LAYER_ID,
+    BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+    BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+    BOUNDARY_PINNED_FILL_LAYER_ID,
+    BOUNDARY_PINNED_LINE_LAYER_ID,
+    BOUNDARY_HOVER_LINE_LAYER_ID,
+    BOUNDARY_HOVER_FILL_LAYER_ID,
+    BOUNDARY_STATDATA_FILL_LAYER_ID,
+    ZIP_CENTROIDS_SOURCE_ID,
+    SECONDARY_STAT_LAYER_ID,
+    SECONDARY_STAT_HOVER_LAYER_ID,
+  }, currentTheme);
 
-  const updateBoundaryVisibility = () => {
-    const visibility = boundaryMode === "zips" ? "visible" : "none";
-    if (map.getLayer(BOUNDARY_FILL_LAYER_ID)) {
-      map.setLayoutProperty(BOUNDARY_FILL_LAYER_ID, "visibility", visibility);
-    }
-    if (map.getLayer(BOUNDARY_STATDATA_FILL_LAYER_ID)) {
-      map.setLayoutProperty(BOUNDARY_STATDATA_FILL_LAYER_ID, "visibility", visibility);
-    }
-    if (map.getLayer(SECONDARY_STAT_LAYER_ID)) {
-      map.setLayoutProperty(SECONDARY_STAT_LAYER_ID, "visibility", visibility);
-    }
-    if (map.getLayer(SECONDARY_STAT_HOVER_LAYER_ID)) {
-      map.setLayoutProperty(SECONDARY_STAT_HOVER_LAYER_ID, "visibility", visibility);
-    }
-    if (map.getLayer(BOUNDARY_LINE_LAYER_ID)) {
-      map.setLayoutProperty(BOUNDARY_LINE_LAYER_ID, "visibility", visibility);
-    }
-    if (map.getLayer(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID)) {
-      map.setLayoutProperty(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, "visibility", visibility);
-    }
-    if (map.getLayer(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID)) {
-      map.setLayoutProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "visibility", visibility);
-    }
-    if (map.getLayer(BOUNDARY_PINNED_FILL_LAYER_ID)) {
-      map.setLayoutProperty(BOUNDARY_PINNED_FILL_LAYER_ID, "visibility", visibility);
-    }
-    if (map.getLayer(BOUNDARY_PINNED_LINE_LAYER_ID)) {
-      map.setLayoutProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "visibility", visibility);
-    }
-    if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
-      map.setLayoutProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "visibility", visibility);
-    }
-    if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
-      map.setLayoutProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "visibility", visibility);
-    }
-  };
+  const updateBoundaryVisibility = () => extUpdateBoundaryVisibility(map, {
+    BOUNDARY_SOURCE_ID,
+    BOUNDARY_FILL_LAYER_ID,
+    BOUNDARY_LINE_LAYER_ID,
+    BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+    BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+    BOUNDARY_PINNED_FILL_LAYER_ID,
+    BOUNDARY_PINNED_LINE_LAYER_ID,
+    BOUNDARY_HOVER_LINE_LAYER_ID,
+    BOUNDARY_HOVER_FILL_LAYER_ID,
+    BOUNDARY_STATDATA_FILL_LAYER_ID,
+    ZIP_CENTROIDS_SOURCE_ID,
+    SECONDARY_STAT_LAYER_ID,
+    SECONDARY_STAT_HOVER_LAYER_ID,
+  }, boundaryMode);
 
   const getUnionZips = (): string[] => {
     const u = new Set<string>([...pinnedZips, ...transientZips]);
     return Array.from(u);
   };
 
-  const updateZipSelectionHighlight = () => {
-    const pinned = Array.from(pinnedZips);
-    const transient = Array.from(transientZips).filter((z) => !pinnedZips.has(z));
-    const pinnedFilter = pinned.length
-      ? (["in", ["get", "zip"], ["literal", pinned]] as any)
-      : (["==", ["get", "zip"], "__none__"] as any);
-    const transFilter = transient.length
-      ? (["in", ["get", "zip"], ["literal", transient]] as any)
-      : (["==", ["get", "zip"], "__none__"] as any);
-      
-    const hasStatOverlay = Boolean(selectedStatId);
-    const fillFilter = hasStatOverlay ? (["==", ["get", "zip"], "__none__"] as any) : null;
-    
-    if (map.getLayer(BOUNDARY_PINNED_FILL_LAYER_ID)) {
-      map.setFilter(BOUNDARY_PINNED_FILL_LAYER_ID, fillFilter || pinnedFilter);
-    }
-    if (map.getLayer(BOUNDARY_PINNED_LINE_LAYER_ID)) {
-      map.setFilter(BOUNDARY_PINNED_LINE_LAYER_ID, pinnedFilter);
-      const lineWidth = hasStatOverlay ? 1.5 : 1;
-      const lineColor = hasStatOverlay
-        ? (currentTheme === "dark" ? "#e6e6e6" : "#94a3b8")
-        : "#6d8afc";
-      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-width", lineWidth);
-      map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-color", lineColor);
-    }
-    if (map.getLayer(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID)) {
-      map.setFilter(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, fillFilter || transFilter);
-    }
-    if (map.getLayer(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID)) {
-      map.setFilter(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, transFilter);
-      const lineWidth = hasStatOverlay ? 1.5 : 1;
-      const lineColor = hasStatOverlay
-        ? (currentTheme === "dark" ? "#e6e6e6" : "#94a3b8")
-        : "#6d8afc";
-      map.setPaintProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "line-width", lineWidth);
-      map.setPaintProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "line-color", lineColor);
-    }
-  };
+  const updateZipSelectionHighlight = () => extUpdateZipSelectionHighlight(map, {
+    BOUNDARY_SOURCE_ID,
+    BOUNDARY_FILL_LAYER_ID,
+    BOUNDARY_LINE_LAYER_ID,
+    BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+    BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+    BOUNDARY_PINNED_FILL_LAYER_ID,
+    BOUNDARY_PINNED_LINE_LAYER_ID,
+    BOUNDARY_HOVER_LINE_LAYER_ID,
+    BOUNDARY_HOVER_FILL_LAYER_ID,
+    BOUNDARY_STATDATA_FILL_LAYER_ID,
+    ZIP_CENTROIDS_SOURCE_ID,
+    SECONDARY_STAT_LAYER_ID,
+    SECONDARY_STAT_HOVER_LAYER_ID,
+  }, currentTheme, selectedStatId, pinnedZips, transientZips);
 
   const updateZipHoverOutline = () => {
     const hovered = hoveredZipFromToolbar || hoveredZipFromMap;
-    const filter = hovered
-      ? (["==", ["get", "zip"], hovered] as any)
-      : (["==", ["get", "zip"], "__none__"] as any);
-    
-    if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) map.setFilter(BOUNDARY_HOVER_LINE_LAYER_ID, filter);
-    if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) map.setFilter(BOUNDARY_HOVER_FILL_LAYER_ID, filter);
-    
+    extUpdateZipHoverOutline(map, {
+      BOUNDARY_SOURCE_ID,
+      BOUNDARY_FILL_LAYER_ID,
+      BOUNDARY_LINE_LAYER_ID,
+      BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+      BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+      BOUNDARY_PINNED_FILL_LAYER_ID,
+      BOUNDARY_PINNED_LINE_LAYER_ID,
+      BOUNDARY_HOVER_LINE_LAYER_ID,
+      BOUNDARY_HOVER_FILL_LAYER_ID,
+      BOUNDARY_STATDATA_FILL_LAYER_ID,
+      ZIP_CENTROIDS_SOURCE_ID,
+      SECONDARY_STAT_LAYER_ID,
+      SECONDARY_STAT_HOVER_LAYER_ID,
+    }, currentTheme, selectedStatId, pinnedZips, transientZips, hovered || null);
     zipLabels?.setHoveredZip(hovered || null);
-    
-    if (hovered) {
-      const isPinned = pinnedZips.has(hovered);
-      const isSelected = transientZips.has(hovered);
-      const hasStatOverlay = Boolean(selectedStatId);
-
-      if (hasStatOverlay && (isSelected || isPinned)) {
-        if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
-          const hoverLineColor = currentTheme === "dark" ? "#ffffff" : "#94a3b8";
-          map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-color", hoverLineColor);
-          map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity", 0.95);
-          map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-width", 3.0);
-        }
-        if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
-          const overlayColor = currentTheme === "dark" ? "#ffffff" : "#000000";
-          const overlayOpacity = currentTheme === "dark" ? 0.12 : 0.10;
-          map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-color", overlayColor);
-          map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity", overlayOpacity);
-        }
-      } else {
-        const hoverColors = getHoverColors(currentTheme, isSelected, isPinned);
-        if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
-          map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-color", hoverColors.lineColor);
-          map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity", hoverColors.lineOpacity);
-        }
-        if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
-          map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-color", hoverColors.fillColor);
-          map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity", hoverColors.fillOpacity);
-        }
-      }
-    }
     updateSecondaryStatOverlay();
   };
 
@@ -420,12 +335,12 @@ export const createMapView = ({
     ensureBoundaryLayers(map, {
       BOUNDARY_SOURCE_ID,
       BOUNDARY_FILL_LAYER_ID,
-      BOUNDARY_LINE_LAYER_ID,
+        BOUNDARY_LINE_LAYER_ID,
       BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
       BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
       BOUNDARY_PINNED_FILL_LAYER_ID,
       BOUNDARY_PINNED_LINE_LAYER_ID,
-      BOUNDARY_HOVER_LINE_LAYER_ID,
+        BOUNDARY_HOVER_LINE_LAYER_ID,
       BOUNDARY_HOVER_FILL_LAYER_ID,
       BOUNDARY_STATDATA_FILL_LAYER_ID,
       ZIP_CENTROIDS_SOURCE_ID,
@@ -449,7 +364,7 @@ export const createMapView = ({
     updateStatDataChoropleth();
     updateSecondaryStatOverlay();
     updateOrganizationPinsVisibility();
-    emitVisibleIds();
+    // visibility will be emitted by the wired tracker on next move/zoom end
   };
 
   map.once("load", () => {
@@ -468,7 +383,7 @@ export const createMapView = ({
     zipLabels.setTheme(currentTheme);
 
     const unwireCanvasDrag = (() => {
-      let isDragging = false;
+    let isDragging = false;
       const onMouseDown = () => { isDragging = true; map.getCanvas().style.cursor = "grabbing"; };
       const onMouseUp = () => { isDragging = false; map.getCanvas().style.cursor = "pointer"; };
       const onCanvasLeave = () => { if (isDragging) { isDragging = false; map.getCanvas().style.cursor = "pointer"; } };
@@ -498,30 +413,30 @@ export const createMapView = ({
       const onClustersMouseLeave = () => { map.getCanvas().style.cursor = "pointer"; clearClusterHighlight(); onHover(null); };
       const onClustersMouseMove = async (e: any) => {
         const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS_ID] });
-        const feature = features[0];
-        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-        const clusterId = feature?.properties?.cluster_id as number | undefined;
-        if (!feature || !source || clusterId === undefined) return;
-        try {
-          setClusterHighlight(clusterId);
-          const leaves = await source.getClusterLeaves(clusterId, 1000, 0);
+      const feature = features[0];
+      const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      const clusterId = feature?.properties?.cluster_id as number | undefined;
+      if (!feature || !source || clusterId === undefined) return;
+      try {
+        setClusterHighlight(clusterId);
+        const leaves = await source.getClusterLeaves(clusterId, 1000, 0);
           const ids = leaves.map((f: any) => f?.properties?.id).filter((v: any): v is string => typeof v === "string");
-          onHover(ids);
-        } catch {}
+        onHover(ids);
+      } catch {}
       };
       const onClustersClick = async (e: any) => {
         const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS_ID] });
-        const feature = features[0];
-        if (!feature || feature.geometry?.type !== "Point") return;
-        const clusterId = feature.properties?.cluster_id as number | undefined;
-        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-        if (!source || clusterId === undefined) return;
-        try {
-          const zoom = await source.getClusterExpansionZoom(clusterId);
-          const point = feature.geometry as GeoJSON.Point;
-          const [lng, lat] = point.coordinates as [number, number];
-          map.easeTo({ center: [lng, lat], zoom });
-        } catch {}
+      const feature = features[0];
+      if (!feature || feature.geometry?.type !== "Point") return;
+      const clusterId = feature.properties?.cluster_id as number | undefined;
+      const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      if (!source || clusterId === undefined) return;
+      try {
+        const zoom = await source.getClusterExpansionZoom(clusterId);
+        const point = feature.geometry as GeoJSON.Point;
+        const [lng, lat] = point.coordinates as [number, number];
+        map.easeTo({ center: [lng, lat], zoom });
+      } catch {}
       };
       map.on("mouseenter", LAYER_CLUSTERS_ID, onClustersMouseEnter);
       map.on("mouseleave", LAYER_CLUSTERS_ID, onClustersMouseLeave);
@@ -540,15 +455,15 @@ export const createMapView = ({
     })();
 
     const boundaryLayerOrder = [
-      BOUNDARY_HOVER_FILL_LAYER_ID,
-      BOUNDARY_HOVER_LINE_LAYER_ID,
-      BOUNDARY_PINNED_FILL_LAYER_ID,
-      BOUNDARY_PINNED_LINE_LAYER_ID,
-      BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
-      BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
-      BOUNDARY_STATDATA_FILL_LAYER_ID,
-      BOUNDARY_FILL_LAYER_ID,
-      BOUNDARY_LINE_LAYER_ID,
+          BOUNDARY_HOVER_FILL_LAYER_ID,
+          BOUNDARY_HOVER_LINE_LAYER_ID,
+          BOUNDARY_PINNED_FILL_LAYER_ID,
+          BOUNDARY_PINNED_LINE_LAYER_ID,
+          BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+          BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+          BOUNDARY_STATDATA_FILL_LAYER_ID,
+          BOUNDARY_FILL_LAYER_ID,
+          BOUNDARY_LINE_LAYER_ID,
     ];
     const unwireBoundaries = (() => {
       const handleZipClick = (e: maplibregl.MapLayerMouseEvent) => {
@@ -556,45 +471,45 @@ export const createMapView = ({
         const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
         if (orgFeatures.length > 0) return;
         const features = map.queryRenderedFeatures(e.point, { layers: boundaryLayerOrder });
-        const feature = features[0];
-        const zip = feature?.properties?.zip as string | undefined;
-        if (!zip) return;
-        const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
-        toggleZipSelection(zip, additive, false);
-      };
-      const handleZipDoubleClick = (e: maplibregl.MapLayerMouseEvent) => {
-        if (boundaryMode !== "zips") return;
-        e.preventDefault();
+      const feature = features[0];
+      const zip = feature?.properties?.zip as string | undefined;
+      if (!zip) return;
+      const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
+      toggleZipSelection(zip, additive, false);
+    };
+    const handleZipDoubleClick = (e: maplibregl.MapLayerMouseEvent) => {
+      if (boundaryMode !== "zips") return;
+      e.preventDefault();
         const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
-        if (orgFeatures.length > 0) return;
+      if (orgFeatures.length > 0) return;
         const features = map.queryRenderedFeatures(e.point, { layers: boundaryLayerOrder });
-        const feature = features[0];
-        const zip = feature?.properties?.zip as string | undefined;
-        if (!zip) return;
-        const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
-        toggleZipSelection(zip, additive, true);
-      };
+      const feature = features[0];
+      const zip = feature?.properties?.zip as string | undefined;
+      if (!zip) return;
+      const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
+      toggleZipSelection(zip, additive, true);
+    };
       const onBoundaryMouseEnter = () => { if (boundaryMode !== "zips") return; map.getCanvas().style.cursor = "pointer"; };
       const onBoundaryMouseLeave = () => { map.getCanvas().style.cursor = "pointer"; hoveredZipFromMap = null; updateZipHoverOutline(); onZipHoverChange?.(null); };
-      const onZipMouseMove = (e: any) => {
-        if (boundaryMode !== "zips") return;
+    const onZipMouseMove = (e: any) => {
+      if (boundaryMode !== "zips") return;
         const features = map.queryRenderedFeatures(e.point, { layers: [BOUNDARY_FILL_LAYER_ID, BOUNDARY_STATDATA_FILL_LAYER_ID] });
-        const feature = features[0];
-        const zip = feature?.properties?.zip as string | undefined;
-        if (!zip) return;
-        if (hoveredZipFromMap === zip) return;
-        hoveredZipFromMap = zip;
-        updateZipHoverOutline();
-        onZipHoverChange?.(zip);
-      };
+      const feature = features[0];
+      const zip = feature?.properties?.zip as string | undefined;
+      if (!zip) return;
+      if (hoveredZipFromMap === zip) return;
+      hoveredZipFromMap = zip;
+      updateZipHoverOutline();
+      onZipHoverChange?.(zip);
+    };
       map.on("click", handleZipClick);
       map.on("dblclick", handleZipDoubleClick);
       map.on("mouseenter", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseEnter);
       map.on("mouseenter", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseEnter);
       map.on("mouseleave", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseLeave);
       map.on("mouseleave", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseLeave);
-      map.on("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
-      map.on("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
+    map.on("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
+    map.on("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
       return () => {
         map.off("click", handleZipClick);
         map.off("dblclick", handleZipDoubleClick);
@@ -653,122 +568,20 @@ export const createMapView = ({
   }
 
   function updateChoroplethLegend() {
-    if (!selectedStatId || boundaryMode !== "zips") {
-      choroplethLegend.setVisible(false);
-      return;
-    }
-    const entry = statDataByStatId.get(selectedStatId);
-    const hasData = !!entry && Object.keys(entry.data || {}).length > 0;
-    if (!hasData) {
-      choroplethLegend.setVisible(false);
-      return;
-    }
-    choroplethLegend.setColors(CHOROPLETH_COLORS[0], CHOROPLETH_COLORS[CHOROPLETH_COLORS.length - 1]);
-    choroplethLegend.setRange(entry!.min, entry!.max, (entry as any).type as string);
-    choroplethLegend.setVisible(true);
+    if (boundaryMode !== "zips") { choroplethLegend.setVisible(false); return; }
+    extUpdateLegend(choroplethLegend, selectedStatId, statDataByStatId as any);
   }
 
   function updateSecondaryStatOverlay() {
-    const layerId = SECONDARY_STAT_LAYER_ID;
-    const hoverLayerId = SECONDARY_STAT_HOVER_LAYER_ID;
-    if (!map.getLayer(layerId)) return;
-    if (boundaryMode !== "zips") {
-      map.setPaintProperty(layerId, "circle-opacity", 0);
-      if (map.getLayer(hoverLayerId)) map.setPaintProperty(hoverLayerId, "circle-opacity", 0);
-      return;
-    }
-    if (!secondaryStatId) {
-      map.setPaintProperty(layerId, "circle-opacity", 0);
-      map.setFilter(layerId, ["==", ["get", "zip"], "__none__"] as any);
-      if (map.getLayer(hoverLayerId)) {
-        map.setPaintProperty(hoverLayerId, "circle-opacity", 0);
-        map.setFilter(hoverLayerId, ["==", ["get", "zip"], "__none__"] as any);
-      }
-      return;
-    }
-    const entry = statDataByStatId.get(secondaryStatId);
-    if (!entry) {
-      map.setPaintProperty(layerId, "circle-opacity", 0);
-      map.setFilter(layerId, ["==", ["get", "zip"], "__none__"] as any);
-      if (map.getLayer(hoverLayerId)) {
-        map.setPaintProperty(hoverLayerId, "circle-opacity", 0);
-        map.setFilter(hoverLayerId, ["==", ["get", "zip"], "__none__"] as any);
-      }
-      return;
-    }
-
-    const hovered = hoveredZipFromToolbar || hoveredZipFromMap || null;
-
-    try {
-      if (hovered) {
-        map.setFilter(layerId, ["all", ["has", "zip"], ["!=", ["get", "zip"], hovered]] as any);
-      } else {
-        map.setFilter(layerId, null as any);
-      }
-    } catch {
-      if (hovered) map.setFilter(layerId, ["all", ["has", "zip"], ["!=", ["get", "zip"], hovered]] as any);
-      else map.setFilter(layerId, ["has", "zip"] as any);
-    }
-
-    const selectedOrPinned = new Set<string>([...pinnedZips, ...transientZips]);
-    const selectedArray = Array.from(selectedOrPinned);
-
-    const { data, min, max } = entry;
-    const COLORS = TEAL_COLORS;
-    const classes = COLORS.length;
-    const range = max - min;
-    const idxFor = (v: number) => {
-      if (!Number.isFinite(v)) return 0;
-      if (range <= 0) return Math.floor((classes - 1) / 2);
-      const r = (v - min) / range;
-      return Math.max(0, Math.min(classes - 1, Math.floor(r * (classes - 1))));
-    };
-    const match: any[] = ["match", ["get", "zip"]];
-    for (const zip of getAllZipCodes()) {
-      const v = data?.[zip];
-      const color = typeof v === "number" ? COLORS[idxFor(v)] : COLORS[0];
-      match.push(zip, color);
-    }
-    match.push(COLORS[0]);
-
-    map.setPaintProperty(layerId, "circle-color", match as any);
-    map.setPaintProperty(layerId, "circle-opacity", 0.95);
-    const translateExpr: any = selectedArray.length
-      ? [
-          "case",
-          ["in", ["get", "zip"], ["literal", selectedArray]],
-          ["literal", [0, -14]],
-          ["literal", [0, 0]],
-        ]
-      : ["literal", [0, 0]];
-    map.setPaintProperty(layerId, "circle-translate", translateExpr);
-
-    if (map.getLayer(hoverLayerId)) {
-      if (hovered) {
-        const v = entry.data?.[hovered as string];
-        let idx = 0;
-        if (typeof v === 'number' && Number.isFinite(v)) {
-          if (range <= 0) idx = Math.floor((classes - 1) / 2);
-          else idx = Math.max(0, Math.min(classes - 1, Math.floor(((v - min) / range) * (classes - 1))));
-        }
-        const color = COLORS[idx];
-        map.setFilter(hoverLayerId, ["==", ["get", "zip"], hovered] as any);
-        map.setPaintProperty(hoverLayerId, "circle-color", color as any);
-        map.setPaintProperty(hoverLayerId, "circle-opacity", 1);
-        map.setPaintProperty(hoverLayerId, "circle-translate", [0, -14] as any);
-      } else {
-        map.setPaintProperty(hoverLayerId, "circle-opacity", 0);
-        map.setFilter(hoverLayerId, ["==", ["get", "zip"], "__none__"] as any);
-      }
-    }
+    extUpdateSecondaryOverlay(map, {
+      BOUNDARY_STATDATA_FILL_LAYER_ID,
+      SECONDARY_STAT_LAYER_ID,
+      SECONDARY_STAT_HOVER_LAYER_ID,
+    }, boundaryMode, currentTheme, secondaryStatId, statDataByStatId as any, pinnedZips, transientZips, (hoveredZipFromToolbar || hoveredZipFromMap || null));
   }
 
   const setClusterHighlight = (clusterId: number | null) => {
-    if (!map.getLayer(LAYER_CLUSTER_HIGHLIGHT_ID)) return;
-    const filter = clusterId !== null
-      ? ["all", ["has", "point_count"], ["==", ["get", "cluster_id"], clusterId]]
-      : ["all", ["has", "point_count"], ["==", ["get", "cluster_id"], -1]];
-    map.setFilter(LAYER_CLUSTER_HIGHLIGHT_ID, filter as any);
+    extSetClusterHighlight(map, LAYER_CLUSTER_HIGHLIGHT_ID, clusterId);
   };
 
   const setBoundaryMode = (mode: BoundaryMode) => {
@@ -788,32 +601,7 @@ export const createMapView = ({
   const clearClusterHighlight = () => setClusterHighlight(null);
 
   const highlightClusterContainingOrg = async (id: string | null) => {
-    if (!id) {
-      clearClusterHighlight();
-      return;
-    }
-    const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    if (!source) return;
-    try {
-      const canvas = map.getCanvas();
-      const clusters = map
-        .queryRenderedFeatures([[0, 0], [canvas.width, canvas.height]] as any, {
-          layers: [LAYER_CLUSTERS_ID],
-        })
-        .filter((f) => typeof (f.properties as any)?.cluster_id === "number");
-
-      for (const f of clusters) {
-        const cid = (f.properties as any).cluster_id as number;
-        const leaves = await source.getClusterLeaves(cid, 1000, 0);
-        if (leaves.some((lf: any) => lf?.properties?.id === id)) {
-          setClusterHighlight(cid);
-          return;
-        }
-      }
-      clearClusterHighlight();
-    } catch {
-      clearClusterHighlight();
-    }
+    await extHighlightClusterContainingOrg(map, SOURCE_ID, LAYER_CLUSTERS_ID, LAYER_CLUSTER_HIGHLIGHT_ID, id);
   };
 
   const setOrganizations = (organizations: Organization[]) => {
@@ -822,45 +610,11 @@ export const createMapView = ({
   };
 
   function updateStatDataChoropleth() {
-    const layerId = BOUNDARY_STATDATA_FILL_LAYER_ID;
-    if (!map.getLayer(layerId)) return;
-    if (!selectedStatId) {
-      map.setPaintProperty(layerId, "fill-opacity", 0);
-      return;
-    }
-    const entry = statDataByStatId.get(selectedStatId);
-    if (!entry) {
-      map.setPaintProperty(layerId, "fill-opacity", 0);
-      return;
-    }
-    const { data, min, max } = entry;
-    const zips = Object.keys(data || {});
-    if (zips.length === 0) {
-      map.setPaintProperty(layerId, "fill-opacity", 0);
-      return;
-    }
-
-    const COLORS = CHOROPLETH_COLORS;
-    const classes = COLORS.length;
-
-    const match: any[] = ["match", ["get", "zip"]];
-    for (const zip of zips) {
-      const v = data[zip];
-      const color = COLORS[getClassIndex(v, min, max, classes)];
-      match.push(zip, color);
-    }
-    match.push("#000000");
-
-    const baseOpacity = currentTheme === "dark" ? 0.35 : 0.45;
-    const opacityExpr: any = [
-      "case",
-      ["in", ["get", "zip"], ["literal", zips]],
-      baseOpacity,
-      0,
-    ];
-
-    map.setPaintProperty(layerId, "fill-color", match as any);
-    map.setPaintProperty(layerId, "fill-opacity", opacityExpr as any);
+    extUpdatePrimaryChoropleth(map, {
+      BOUNDARY_STATDATA_FILL_LAYER_ID,
+      SECONDARY_STAT_LAYER_ID,
+      SECONDARY_STAT_HOVER_LAYER_ID,
+    }, currentTheme, selectedStatId, statDataByStatId as any);
   }
 
   const applyData = () => {
@@ -890,7 +644,7 @@ export const createMapView = ({
       clearClusterHighlight();
     }
 
-    emitVisibleIds();
+    // visibility will be emitted by the wired tracker on next move/zoom end
   };
 
   const setActiveOrganization = (id: string | null) => {
@@ -941,24 +695,12 @@ export const createMapView = ({
     zipLabels?.setTheme(nextTheme);
   });
 
-  const emitVisibleIds = () => {
-    const bounds = map.getBounds();
-    const ids = lastData.features
-      .filter((f) => {
-        const [lng, lat] = f.geometry.coordinates as [number, number];
-        return bounds.contains([lng, lat]);
-      })
-      .map((f) => (f.properties as any).id);
-
-    const uniqueSorted = Array.from(new Set(ids)).sort();
-    const allSourceIds = lastData.features.map((f) => (f.properties as any).id);
-    const key = `${uniqueSorted.join("|")}::${allSourceIds.length}`;
+  const unwireVisibleIds = wireVisibleIds(map, () => lastData, (ids, total, all) => {
+    const key = `${ids.join("|")}::${all.length}`;
     if (key === lastVisibleIdsKey) return;
     lastVisibleIdsKey = key;
-
-    if (onVisibleIdsChange)
-      onVisibleIdsChange(uniqueSorted, lastData.features.length, allSourceIds);
-  };
+    onVisibleIdsChange?.(ids, total, all);
+  });
 
   const updateOrganizationPinsVisibility = () => {
     const visibility = orgPinsVisible ? "visible" : "none";
@@ -979,8 +721,7 @@ export const createMapView = ({
     }
   };
 
-  map.on("moveend", () => emitVisibleIds());
-  map.on("zoomend", () => emitVisibleIds());
+  // visibility listeners are managed by wireVisibleIds
 
   const handleKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
@@ -1072,6 +813,7 @@ export const createMapView = ({
       map.resize();
     },
     destroy: () => {
+      try { unwireVisibleIds(); } catch {}
       // unwind wired events
       while (destroyFns.length) {
         const fn = destroyFns.pop();
