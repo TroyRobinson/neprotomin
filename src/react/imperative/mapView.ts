@@ -1,7 +1,7 @@
 import maplibregl from "maplibre-gl";
 
-import { tulsaZipBoundaries } from "../../data/tulsaZipBoundaries";
-import { getZipBounds } from "../../lib/zipBoundaries";
+// tulsaZipBoundaries no longer needed here (used in boundary layer module)
+import { getZipBounds, getAllZipCodes } from "../../lib/zipBoundaries";
 import type { BoundsArray } from "../../lib/zipBoundaries";
 import type { BoundaryMode } from "../../types/boundaries";
 import type { Organization } from "../../types/organization";
@@ -12,8 +12,9 @@ import { statDataStore } from "../../state/statData";
 import { createZipFloatingTitle, type ZipFloatingTitleController } from "./components/zipFloatingTitle";
 import { createZipLabels, type ZipLabelsController } from "./components/zipLabels";
 import { createChoroplethLegend, type ChoroplethLegendController } from "./components/choroplethLegend";
-import { getZipCentroidFeatureCollection } from "../../lib/zipCentroids";
 import { CHOROPLETH_COLORS, TEAL_COLORS, getClassIndex } from "../../lib/choropleth";
+import { ensureBoundaryLayers } from "./layers/boundaries";
+import { ensureOrganizationLayers } from "./layers/organizations";
 
 interface MapViewOptions {
   onHover: (idOrIds: string | string[] | null) => void;
@@ -470,316 +471,30 @@ export const createMapView = ({
   const ensureSourcesAndLayers = () => {
     if (!map.isStyleLoaded()) return;
 
-    if (!map.getSource(BOUNDARY_SOURCE_ID)) {
-      map.addSource(BOUNDARY_SOURCE_ID, {
-        type: "geojson",
-        data: tulsaZipBoundaries,
-      });
-    }
+    ensureBoundaryLayers(map, {
+      BOUNDARY_SOURCE_ID,
+      BOUNDARY_FILL_LAYER_ID,
+      BOUNDARY_LINE_LAYER_ID,
+      BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+      BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+      BOUNDARY_PINNED_FILL_LAYER_ID,
+      BOUNDARY_PINNED_LINE_LAYER_ID,
+      BOUNDARY_HOVER_LINE_LAYER_ID,
+      BOUNDARY_HOVER_FILL_LAYER_ID,
+      BOUNDARY_STATDATA_FILL_LAYER_ID,
+      ZIP_CENTROIDS_SOURCE_ID,
+      SECONDARY_STAT_LAYER_ID,
+      SECONDARY_STAT_HOVER_LAYER_ID,
+    }, boundaryMode, currentTheme);
 
-    const boundarySource = map.getSource(BOUNDARY_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    if (boundarySource) {
-      boundarySource.setData(tulsaZipBoundaries);
-    }
-
-    if (!map.getLayer(BOUNDARY_FILL_LAYER_ID)) {
-      const palette = getBoundaryPalette(currentTheme);
-      map.addLayer({
-        id: BOUNDARY_FILL_LAYER_ID,
-        type: "fill",
-        source: BOUNDARY_SOURCE_ID,
-        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
-        paint: {
-          "fill-color": palette.fillColor,
-          "fill-opacity": palette.fillOpacity,
-        },
-      });
-    }
-
-    if (!map.getLayer(BOUNDARY_STATDATA_FILL_LAYER_ID)) {
-      map.addLayer({
-        id: BOUNDARY_STATDATA_FILL_LAYER_ID,
-        type: "fill",
-        source: BOUNDARY_SOURCE_ID,
-        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
-        paint: {
-          "fill-opacity": 0,
-        },
-      });
-    }
-
-    if (!map.getLayer(BOUNDARY_LINE_LAYER_ID)) {
-      const palette = getBoundaryPalette(currentTheme);
-      map.addLayer({
-        id: BOUNDARY_LINE_LAYER_ID,
-        type: "line",
-        source: BOUNDARY_SOURCE_ID,
-        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
-        paint: {
-          "line-color": palette.lineColor,
-          "line-opacity": palette.lineOpacity,
-          "line-width": 0.6,
-        },
-      });
-    }
-
-    if (!map.getLayer(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID)) {
-      map.addLayer(
-        {
-          id: BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
-          type: "fill",
-          source: BOUNDARY_SOURCE_ID,
-          filter: ["==", ["get", "zip"], "__none__"],
-          layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
-          paint: {},
-        },
-        BOUNDARY_LINE_LAYER_ID,
-      );
-    }
-
-    if (!map.getLayer(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID)) {
-      map.addLayer({
-        id: BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
-        type: "line",
-        source: BOUNDARY_SOURCE_ID,
-        filter: ["==", ["get", "zip"], "__none__"],
-        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
-        paint: {},
-      });
-    }
-
-    if (!map.getLayer(BOUNDARY_PINNED_FILL_LAYER_ID)) {
-      map.addLayer(
-        {
-          id: BOUNDARY_PINNED_FILL_LAYER_ID,
-          type: "fill",
-          source: BOUNDARY_SOURCE_ID,
-          filter: ["==", ["get", "zip"], "__none__"],
-          layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
-          paint: {},
-        },
-        BOUNDARY_LINE_LAYER_ID,
-      );
-    }
-    if (!map.getLayer(BOUNDARY_PINNED_LINE_LAYER_ID)) {
-      map.addLayer({
-        id: BOUNDARY_PINNED_LINE_LAYER_ID,
-        type: "line",
-        source: BOUNDARY_SOURCE_ID,
-        filter: ["==", ["get", "zip"], "__none__"],
-        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
-        paint: {},
-      });
-    }
-
-    if (!map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
-      map.addLayer({
-        id: BOUNDARY_HOVER_LINE_LAYER_ID,
-        type: "line",
-        source: BOUNDARY_SOURCE_ID,
-        filter: ["==", ["get", "zip"], "__none__"],
-        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
-        paint: {
-          "line-opacity-transition": { duration: 150, delay: 0 } as any,
-        },
-      });
-    }
-
-    if (!map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
-      map.addLayer(
-        {
-          id: BOUNDARY_HOVER_FILL_LAYER_ID,
-          type: "fill",
-          source: BOUNDARY_SOURCE_ID,
-          filter: ["==", ["get", "zip"], "__none__"],
-          layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
-          paint: {
-            "fill-opacity-transition": { duration: 150, delay: 0 } as any,
-          },
-        },
-        BOUNDARY_HOVER_LINE_LAYER_ID,
-      );
-    }
-
-    if (!map.getSource(ZIP_CENTROIDS_SOURCE_ID)) {
-      map.addSource(ZIP_CENTROIDS_SOURCE_ID, {
-        type: "geojson",
-        data: getZipCentroidFeatureCollection(),
-      });
-    } else {
-      const src = map.getSource(ZIP_CENTROIDS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-      try { src?.setData(getZipCentroidFeatureCollection()); } catch {}
-    }
-
-    if (!map.getLayer(SECONDARY_STAT_LAYER_ID)) {
-      const before = map.getLayer(LAYER_CLUSTERS_ID) ? LAYER_CLUSTERS_ID : undefined;
-      const layer: any = {
-        id: SECONDARY_STAT_LAYER_ID,
-        type: "circle",
-        source: ZIP_CENTROIDS_SOURCE_ID,
-        filter: ["==", ["get", "zip"], "__none__"],
-        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
-        paint: {
-          "circle-radius": 5,
-          "circle-color": "#0f766e",
-          "circle-opacity": 0,
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 1,
-          "circle-translate": [0, 0],
-        } as any,
-      };
-      if (before) map.addLayer(layer, before);
-      else map.addLayer(layer);
-    }
-
-    if (!map.getLayer(SECONDARY_STAT_HOVER_LAYER_ID)) {
-      const before = map.getLayer(LAYER_CLUSTERS_ID) ? LAYER_CLUSTERS_ID : undefined;
-      const layer: any = {
-        id: SECONDARY_STAT_HOVER_LAYER_ID,
-        type: "circle",
-        source: ZIP_CENTROIDS_SOURCE_ID,
-        filter: ["==", ["get", "zip"], "__none__"],
-        layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
-        paint: {
-          "circle-radius": 5,
-          "circle-color": "#0f766e",
-          "circle-opacity": 0,
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 1,
-          "circle-translate": [0, -14],
-        } as any,
-      };
-      if (before) map.addLayer(layer, before);
-      else map.addLayer(layer);
-    }
-
-    if (!map.getSource(SOURCE_ID)) {
-      map.addSource(SOURCE_ID, {
-        type: "geojson",
-        data: emptyFC(),
-        cluster: true,
-        clusterMaxZoom: 14,
-        clusterRadius: 50,
-      });
-    }
-
-    if (!map.getLayer(LAYER_CLUSTERS_ID)) {
-      map.addLayer({
-        id: LAYER_CLUSTERS_ID,
-        type: "circle",
-        source: SOURCE_ID,
-        filter: ["has", "point_count"],
-        paint: {
-          "circle-color": "#f97316",
-          "circle-opacity": 0.85,
-          "circle-radius": [
-            "step",
-            ["get", "point_count"],
-            14,
-            10,
-            18,
-            25,
-            24,
-          ],
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 2,
-        },
-      });
-    }
-
-    if (!map.getLayer(LAYER_CLUSTER_COUNT_ID)) {
-      map.addLayer({
-        id: LAYER_CLUSTER_COUNT_ID,
-        type: "symbol",
-        source: SOURCE_ID,
-        filter: ["has", "point_count"],
-        layout: {
-          "text-field": ["get", "point_count_abbreviated"],
-          "text-font": ["literal", ["Open Sans Bold", "Arial Unicode MS Bold"]],
-          "text-size": 12,
-        },
-        paint: {
-          "text-color": "#ffffff",
-        },
-      });
-    }
-
-    if (!map.getLayer(LAYER_POINTS_ID)) {
-      map.addLayer({
-        id: LAYER_POINTS_ID,
-        type: "circle",
-        source: SOURCE_ID,
-        filter: ["!", ["has", "point_count"]],
-        paint: {
-          "circle-radius": 0,
-          "circle-opacity": 0,
-          "circle-color": "#f97316",
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 2,
-          "circle-radius-transition": { duration: 200, delay: 0 },
-          "circle-opacity-transition": { duration: 200, delay: 0 },
-        } as any,
-      });
-
-      requestAnimationFrame(() => {
-        if (!map.getLayer(LAYER_POINTS_ID)) return;
-        map.setPaintProperty(LAYER_POINTS_ID, "circle-radius", 6);
-        map.setPaintProperty(LAYER_POINTS_ID, "circle-opacity", 1);
-      });
-    }
-
-    if (!map.getLayer(LAYER_HIGHLIGHT_ID)) {
-      map.addLayer({
-        id: LAYER_HIGHLIGHT_ID,
-        type: "circle",
-        source: SOURCE_ID,
-        filter: [
-          "all",
-          ["!", ["has", "point_count"]],
-          ["==", ["get", "id"], "__none__"],
-        ],
-        paint: {
-          "circle-radius": 9,
-          "circle-color": "#fdba74",
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 2,
-          "circle-opacity": 1,
-        },
-      });
-    }
-
-    if (!map.getLayer(LAYER_CLUSTER_HIGHLIGHT_ID)) {
-      map.addLayer({
-        id: LAYER_CLUSTER_HIGHLIGHT_ID,
-        type: "circle",
-        source: SOURCE_ID,
-        filter: [
-          "all",
-          ["has", "point_count"],
-          ["==", ["get", "cluster_id"], -1],
-        ],
-        paint: {
-          "circle-radius": [
-            "step",
-            ["get", "point_count"],
-            18,
-            10,
-            22,
-            25,
-            28,
-          ],
-          "circle-color": "#fdba74",
-          "circle-opacity": 0.35,
-          "circle-stroke-color": "#fdba74",
-          "circle-stroke-width": 2,
-        },
-      });
-    }
-
-    const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    if (source) {
-      source.setData(lastData);
-    }
+    ensureOrganizationLayers(map, {
+      SOURCE_ID,
+      LAYER_CLUSTERS_ID,
+      LAYER_CLUSTER_COUNT_ID,
+      LAYER_POINTS_ID,
+      LAYER_HIGHLIGHT_ID,
+      LAYER_CLUSTER_HIGHLIGHT_ID,
+    }, lastData);
 
     updateHighlight();
     updateBoundaryPaint();
@@ -1091,9 +806,7 @@ export const createMapView = ({
       return Math.max(0, Math.min(classes - 1, Math.floor(r * (classes - 1))));
     };
     const match: any[] = ["match", ["get", "zip"]];
-    for (const f of (tulsaZipBoundaries.features as any)) {
-      const zip = (f.properties?.zip ?? "") as string;
-      if (!zip) continue;
+    for (const zip of getAllZipCodes()) {
       const v = data?.[zip];
       const color = typeof v === "number" ? COLORS[idxFor(v)] : COLORS[0];
       match.push(zip, color);
