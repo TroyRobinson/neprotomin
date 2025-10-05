@@ -3,6 +3,7 @@ import type maplibregl from "maplibre-gl";
 import { tulsaZipBoundaries } from "../../../data/tulsaZipBoundaries";
 import type { BoundaryMode } from "../../../types/boundaries";
 import { getZipCentroidFeatureCollection } from "../../../lib/zipCentroids";
+import { getBoundaryPalette } from "../styles/boundaryPalettes";
 
 export interface BoundaryLayerIds {
   BOUNDARY_SOURCE_ID: string;
@@ -43,11 +44,6 @@ export const ensureBoundaryLayers = (
     SECONDARY_STAT_LAYER_ID,
     SECONDARY_STAT_HOVER_LAYER_ID,
   } = ids;
-
-  const getBoundaryPalette = (t: "light" | "dark") =>
-    t === "dark"
-      ? { fillColor: "#94a3b8", fillOpacity: 0.08, lineColor: "#f1f5f9", lineOpacity: 0.45 }
-      : { fillColor: "#1f2937", fillOpacity: 0.04, lineColor: "#94a3b8", lineOpacity: 0.35 };
 
   if (!map.getSource(BOUNDARY_SOURCE_ID)) {
     map.addSource(BOUNDARY_SOURCE_ID, { type: "geojson", data: tulsaZipBoundaries });

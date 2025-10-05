@@ -7,6 +7,7 @@ import type { BoundaryMode } from "../../types/boundaries";
 import type { Organization } from "../../types/organization";
 import { TULSA_CENTER } from "../../types/organization";
 import { themeController } from "./theme";
+import { getBoundaryPalette, getHoverColors } from "./styles/boundaryPalettes";
 import { createCategoryChips } from "./categoryChips";
 import { statDataStore } from "../../state/statData";
 import { createZipFloatingTitle, type ZipFloatingTitleController } from "./components/zipFloatingTitle";
@@ -179,38 +180,7 @@ export const createMapView = ({
   let activeId: string | null = null;
   let lastVisibleIdsKey: string | null = null;
 
-  const getBoundaryPalette = (theme: ThemeName) =>
-    theme === "dark"
-      ? {
-          fillColor: "#94a3b8",
-          fillOpacity: 0.08,
-          lineColor: "#f1f5f9",
-          lineOpacity: 0.45,
-        }
-      : {
-          fillColor: "#1f2937",
-          fillOpacity: 0.04,
-          lineColor: "#94a3b8",
-          lineOpacity: 0.35,
-        };
-
-  const getHoverColors = (theme: ThemeName, isSelected: boolean, isPinned: boolean) => {
-    if (isPinned || isSelected) {
-      return {
-        fillColor: "#3755f0",
-        fillOpacity: theme === "dark" ? 0.32 : 0.26,
-        lineColor: "#4f46e5",
-        lineOpacity: 0.90,
-      };
-    }
-    const palette = getBoundaryPalette(theme);
-    return {
-      fillColor: palette.fillColor,
-      fillOpacity: palette.fillOpacity * 1.8,
-      lineColor: theme === "dark" ? "#cbd5e1" : "#475569",
-      lineOpacity: palette.lineOpacity * 1.5,
-    };
-  };
+  // getBoundaryPalette and getHoverColors moved to styles/boundaryPalettes
 
   const updateBoundaryPaint = () => {
     const palette = getBoundaryPalette(currentTheme);
