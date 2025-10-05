@@ -129,7 +129,10 @@ export const DemographicsBar = ({ stats, breakdowns }: DemographicsBarProps) => 
   const [expanded, setExpanded] = useState(false);
 
   const title = stats?.label?.trim() ? stats.label : DEFAULT_TITLE;
-  const hasData = stats && stats.selectedCount > 0;
+  const hasData =
+    Number.isFinite((stats?.population as number) ?? NaN) &&
+    Number.isFinite((stats?.avgAge as number) ?? NaN) &&
+    Number.isFinite((stats?.marriedPercent as number) ?? NaN);
 
   const ethnicity = breakdowns?.get("ethnicity");
   const income = breakdowns?.get("income");

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { db } from "../../lib/reactDb";
 import type { DemographicStats, BreakdownGroup } from "../components/DemographicsBar";
+import { useAreas } from "./useAreas";
 
 type BreakdownGroupKey = "ethnicity" | "income" | "education";
 
@@ -32,6 +33,9 @@ export const useDemographics = (selectedZips: string[]) => {
       },
     },
   });
+
+  // Areas (ZIPs) with core demographics
+  const { areasByKey } = useAreas();
 
   // Find the Population stat ID
   const populationStatId = useMemo(() => {
@@ -83,25 +87,45 @@ export const useDemographics = (selectedZips: string[]) => {
     return map;
   }, [data?.statData, populationStatId]);
 
-  // Compute demographics stats based on selected zips
+  // Compute demographics stats based on selected zips (or all zips when none selected)
   const demographics = useMemo<DemographicStats | null>(() => {
-    if (selectedZips.length === 0) {
+    // If areas have not loaded yet, don't show anything
+    if (!areasByKey || areasByKey.size === 0) return null;
+
+    const zips = selectedZips.length > 0 ? selectedZips : Array.from(areasByKey.keys());
+
+    let totalPop = 0;
+    let weightedAge = 0;
+    let weightedMarried = 0;
+
+    for (const z of zips) {
+      const a = areasByKey.get(z);
+      if (!a) continue;
+      const p = Math.max(0, Math.round(a.population));
+      totalPop += p;
+      weightedAge += a.avgAge * p;
+      weightedMarried += a.marriedPercent * p;
+    }
+
+    if (totalPop <= 0) {
+      // No valid population data; surface a header/label but no values
       return {
-        selectedCount: 0,
-        label: "TULSA",
+        selectedCount: selectedZips.length,
+        label: selectedZips.length === 0 ? "TULSA" : selectedZips.length === 1 ? selectedZips[0] : `${selectedZips.length} ZIPs`,
       };
     }
 
-    // TODO: Compute actual demographic stats from areas data
-    // For now, return placeholder
+    const avgAge = weightedAge / totalPop;
+    const avgMarried = weightedMarried / totalPop;
+
     return {
       selectedCount: selectedZips.length,
-      label: selectedZips.length === 1 ? selectedZips[0] : `${selectedZips.length} ZIPs`,
-      population: 0,
-      avgAge: 0,
-      marriedPercent: 0,
+      label: selectedZips.length === 0 ? "TULSA" : selectedZips.length === 1 ? selectedZips[0] : `${selectedZips.length} ZIPs`,
+      population: totalPop,
+      avgAge,
+      marriedPercent: avgMarried,
     };
-  }, [selectedZips]);
+  }, [areasByKey, selectedZips]);
 
   // Compute breakdowns (aggregated by selected zips)
   const breakdowns = useMemo<Map<string, BreakdownGroup>>(() => {
