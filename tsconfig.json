@@ -20,7 +20,8 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
-    "strictNullChecks": true
+    "strictNullChecks": true,
+    "types": []
   },
-  "include": ["src"]
+  "include": ["src", "vitest.setup.ts", "src/**/*.test.ts"]
 }
