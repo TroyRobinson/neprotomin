@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { TopBar } from "./components/TopBar";
 import { BoundaryToolbar } from "./components/BoundaryToolbar";
 import { MapLibreMap } from "./components/MapLibreMap";
@@ -11,7 +11,7 @@ import { findZipForLocation } from "../lib/zipBoundaries";
 import { useMemo } from "react";
 import type { BoundaryMode } from "../types/boundaries";
 import { useAreas } from "./hooks/useAreas";
-import { ReportScreen } from "./components/ReportScreen";
+const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 
 export const ReactMapApp = () => {
   const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>("zips");
@@ -394,23 +394,27 @@ export const ReactMapApp = () => {
               onHoverZip={setHoveredZip}
             />
           </div>
-          <ReportScreen
-            selectedZips={selectedZips}
-            areasByKey={areasByKey}
-            organizations={organizations}
-            orgZipById={orgZipById}
-            statsById={statsById}
-            statDataById={(() => {
-              const map = new Map<string, { type: string; data: Record<string, number> }>();
-              for (const [id, series] of (seriesByStatId || new Map())) {
-                const last = series[series.length - 1];
-                if (!last) continue;
-                map.set(id, { type: last.type, data: last.data });
-              }
-              return map;
-            })()}
-            seriesByStatId={seriesByStatId}
-          />
+          {activeScreen === "report" && (
+            <Suspense fallback={<div className="flex flex-1 items-center justify-center text-sm text-slate-500">Loading report…</div>}>
+              <ReportScreen
+                selectedZips={selectedZips}
+                areasByKey={areasByKey}
+                organizations={organizations}
+                orgZipById={orgZipById}
+                statsById={statsById}
+                statDataById={(() => {
+                  const map = new Map<string, { type: string; data: Record<string, number> }>();
+                  for (const [id, series] of (seriesByStatId || new Map())) {
+                    const last = series[series.length - 1];
+                    if (!last) continue;
+                    map.set(id, { type: last.type, data: last.data });
+                  }
+                  return map;
+                })()}
+                seriesByStatId={seriesByStatId}
+              />
+            </Suspense>
+          )}
         </div>
       </div>
     </div>

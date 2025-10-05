@@ -54,17 +54,26 @@ export const MapLibreMap = ({
 
   // Use refs for callbacks so we can update them in the wrapper
   const onZipSelectionChangeRef = useRef(onZipSelectionChange);
-  useEffect(() => {
-    onZipSelectionChangeRef.current = onZipSelectionChange;
-  }, [onZipSelectionChange]);
+  const onHoverRef = useRef(onHover);
+  const onVisibleIdsChangeRef = useRef(onVisibleIdsChange);
+  const onZipHoverChangeRef = useRef(onZipHoverChange);
+  const onStatSelectionChangeRef = useRef(onStatSelectionChange);
+  const onCategorySelectionChangeRef = useRef(onCategorySelectionChange);
+
+  useEffect(() => { onZipSelectionChangeRef.current = onZipSelectionChange; }, [onZipSelectionChange]);
+  useEffect(() => { onHoverRef.current = onHover; }, [onHover]);
+  useEffect(() => { onVisibleIdsChangeRef.current = onVisibleIdsChange; }, [onVisibleIdsChange]);
+  useEffect(() => { onZipHoverChangeRef.current = onZipHoverChange; }, [onZipHoverChange]);
+  useEffect(() => { onStatSelectionChangeRef.current = onStatSelectionChange; }, [onStatSelectionChange]);
+  useEffect(() => { onCategorySelectionChangeRef.current = onCategorySelectionChange; }, [onCategorySelectionChange]);
 
   // Initialize map once on mount
   useEffect(() => {
     if (!containerRef.current) return;
 
     const mapController = createMapView({
-      onHover: onHover || (() => {}),
-      onVisibleIdsChange,
+      onHover: (v) => onHoverRef.current?.(v),
+      onVisibleIdsChange: (ids, total, all) => onVisibleIdsChangeRef.current?.(ids, total, all),
       onZipSelectionChange: (zips, meta) => {
         // Mark that this is coming from the map, not from React
         isInternalUpdateRef.current = true;
@@ -74,9 +83,9 @@ export const MapLibreMap = ({
           isInternalUpdateRef.current = false;
         }, 0);
       },
-      onZipHoverChange,
-      onStatSelectionChange,
-      onCategorySelectionChange,
+      onZipHoverChange: (zip) => onZipHoverChangeRef.current?.(zip),
+      onStatSelectionChange: (id) => onStatSelectionChangeRef.current?.(id),
+      onCategorySelectionChange: (id) => onCategorySelectionChangeRef.current?.(id),
     });
 
     containerRef.current.appendChild(mapController.element);
@@ -154,7 +163,7 @@ export const MapLibreMap = ({
 
   // Update secondary stat
   useEffect(() => {
-    if (mapControllerRef.current && mapControllerRef.current.setSecondaryStat) {
+    if (mapControllerRef.current) {
       mapControllerRef.current.setSecondaryStat(secondaryStatId);
     }
   }, [secondaryStatId]);

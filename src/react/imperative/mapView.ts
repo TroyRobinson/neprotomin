@@ -28,7 +28,7 @@ export interface MapViewController {
   setActiveOrganization: (id: string | null) => void;
   setCategoryFilter: (categoryId: string | null) => void;
   setSelectedStat: (statId: string | null) => void;
-  setSecondaryStat?: (statId: string | null) => void;
+  setSecondaryStat: (statId: string | null) => void;
   setBoundaryMode: (mode: BoundaryMode) => void;
   setPinnedZips: (zips: string[]) => void;
   setHoveredZip: (zip: string | null) => void;

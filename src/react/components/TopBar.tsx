@@ -114,6 +114,8 @@ export const TopBar = ({ onBrandClick, onNavigate, active = "map" }: TopBarProps
           </a>
           <a
             href="#report"
+            onMouseEnter={() => { import("../components/ReportScreen"); }}
+            onFocus={() => { import("../components/ReportScreen"); }}
             onClick={(e) => {
               e.preventDefault();
               onNavigate?.("report");
