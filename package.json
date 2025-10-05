@@ -19,7 +19,7 @@
     "vite": "^7.1.2"
   },
   "dependencies": {
-    "@instantdb/core": "^0.20.27",
+    "@instantdb/core": "^0.22.5",
     "@instantdb/react": "^0.22.5",
     "maplibre-gl": "^5.7.3",
     "react": "^19.2.0",
