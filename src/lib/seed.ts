@@ -310,7 +310,7 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
         if (n.includes("percent")) return "percent";
         if (n.includes("unemployment rate")) return "percent";
         if (n.includes("rate")) return "rate";
-        if (n.includes("life expectancy")) return "years";
+        if (n.includes("life expectancy") || n.includes("average age")) return "years";
         if (n.includes("income")) return "currency";
         return "count";
       };

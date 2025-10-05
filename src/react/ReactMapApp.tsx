@@ -10,7 +10,6 @@ import type { Organization } from "../types/organization";
 import { findZipForLocation } from "../lib/zipBoundaries";
 import { useMemo } from "react";
 import type { BoundaryMode } from "../types/boundaries";
-import { useAreas } from "./hooks/useAreas";
 import { AuthModal } from "./components/AuthModal";
 import { db } from "../lib/reactDb";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
@@ -102,7 +101,7 @@ export const ReactMapApp = () => {
   const { demographics, breakdowns } = useDemographics(selectedZips);
   const { statsById, seriesByStatId } = useStats();
   const { organizations } = useOrganizations();
-  const { areasByKey } = useAreas();
+  // areasByKey removed; population/age/married now sourced from statData
   const orgZipById = useMemo(() => {
     const map = new Map<string, string | null>();
     for (const o of organizations) {
@@ -216,18 +215,30 @@ export const ReactMapApp = () => {
     const statSums = new Map<string, number>();
     const statCounts = new Map<string, number>();
 
+    // Helpers to look up stat data by stat name
+    const getEntryByName = (name: string): { data: Record<string, number> } | null => {
+      for (const [statId, entry] of statDataByStatId) {
+        const s = statsById.get(statId);
+        if (s?.name === name) return entry as any;
+      }
+      return null;
+    };
+
+    const popEntry = getEntryByName("Population");
+    const ageEntry = getEntryByName("Average Age");
+    const marriedEntry = getEntryByName("Married Percent");
+    if (!popEntry) return;
+
     for (const zip of zips) {
-      const area = areasByKey.get(zip);
-      if (!area) continue;
-      const pop = Math.max(0, Math.round(area.population));
-      const age = area.avgAge;
-      const married = area.marriedPercent;
+      const pop = Math.max(0, Math.round((popEntry.data || ({} as any))[zip] || 0));
+      const age = (ageEntry?.data || ({} as any))[zip];
+      const married = (marriedEntry?.data || ({} as any))[zip];
 
       totalPop += pop;
       weightedAge += age * pop;
       weightedMarried += married * pop;
 
-      const base: (string | number)[] = [zip, pop, r1(age), r1(married)];
+      const base: (string | number)[] = [zip, pop, typeof age === "number" ? r1(age) : "", typeof married === "number" ? r1(married) : ""];
       if (orgCountHeader) base.splice(4, 0, activeOrgsByZip.get(zip) || 0);
       const row: (string | number)[] = base;
 
@@ -257,7 +268,7 @@ export const ReactMapApp = () => {
       else summary.push("");
     }
 
-    const allCityZips = Array.from(areasByKey.keys()).sort();
+    const allCityZips = Object.keys(popEntry.data || {}).sort();
     let cityPop = 0;
     let cityWeightedAge = 0;
     let cityWeightedMarried = 0;
@@ -268,12 +279,12 @@ export const ReactMapApp = () => {
       cityOrgCount = Array.from(activeOrgsByZip.values()).reduce((a, b) => a + b, 0);
     }
     for (const zip of allCityZips) {
-      const a = areasByKey.get(zip);
-      if (!a) continue;
-      const p = Math.max(0, Math.round(a.population));
+      const p = Math.max(0, Math.round((popEntry.data || ({} as any))[zip] || 0));
       cityPop += p;
-      cityWeightedAge += a.avgAge * p;
-      cityWeightedMarried += a.marriedPercent * p;
+      const age = (ageEntry?.data || ({} as any))[zip];
+      const married = (marriedEntry?.data || ({} as any))[zip];
+      if (typeof age === "number") cityWeightedAge += age * p;
+      if (typeof married === "number") cityWeightedMarried += married * p;
       for (const col of statColumns) {
         const sd = statDataByStatId.get(col.id);
         const v = sd?.data?.[zip];
@@ -471,7 +482,6 @@ export const ReactMapApp = () => {
             <Suspense fallback={<div className="flex flex-1 items-center justify-center text-sm text-slate-500">Loading report…</div>}>
               <ReportScreen
                 selectedZips={selectedZips}
-                areasByKey={areasByKey}
                 organizations={organizations}
                 orgZipById={orgZipById}
                 statsById={statsById}

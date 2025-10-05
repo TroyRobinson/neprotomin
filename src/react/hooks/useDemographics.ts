@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { db } from "../../lib/reactDb";
 import type { DemographicStats, BreakdownGroup } from "../components/DemographicsBar";
-import { useAreas } from "./useAreas";
 
 type BreakdownGroupKey = "ethnicity" | "income" | "education";
 
@@ -34,15 +33,66 @@ export const useDemographics = (selectedZips: string[]) => {
     },
   });
 
-  // Areas (ZIPs) with core demographics
-  const { areasByKey } = useAreas();
 
-  // Find the Population stat ID
+  // Population/AvgAge/Married stat ids (prefer provided constant for population; others by name)
   const populationStatId = useMemo(() => {
-    if (!data?.stats) return null;
-    const pop = data.stats.find((s) => s?.name === "Population");
-    return pop?.id || null;
+    const PROVIDED = "29d2b2e4-52e1-4f36-b212-abd06de3f92a";
+    if (data?.stats?.some((s) => s?.id === PROVIDED)) return PROVIDED;
+    const byName = data?.stats?.find((s) => s?.name === "Population");
+    return byName?.id || null;
   }, [data?.stats]);
+
+  const avgAgeStatId = useMemo(() => {
+    return data?.stats?.find((s) => s?.name === "Average Age")?.id || null;
+  }, [data?.stats]);
+
+  const marriedPercentStatId = useMemo(() => {
+    return data?.stats?.find((s) => s?.name === "Married Percent")?.id || null;
+  }, [data?.stats]);
+
+  // Population values per ZIP from statData root row
+  const populationByZip = useMemo(() => {
+    const empty: Record<string, number> = {};
+    if (!data?.statData || !populationStatId) return empty;
+    const row = data.statData.find(
+      (r) =>
+        r?.statId === populationStatId &&
+        r?.name === "root" &&
+        r?.area === "Tulsa" &&
+        r?.boundaryType === "ZIP" &&
+        r?.date === "2025"
+    );
+    return ((row?.data as Record<string, number>) || empty);
+  }, [data?.statData, populationStatId]);
+
+  // Optional: avg age + married percent by ZIP from statData if present
+  const avgAgeByZip = useMemo(() => {
+    const empty: Record<string, number> = {};
+    if (!data?.statData || !avgAgeStatId) return empty;
+    const row = data.statData.find(
+      (r) =>
+        r?.statId === avgAgeStatId &&
+        r?.name === "root" &&
+        r?.area === "Tulsa" &&
+        r?.boundaryType === "ZIP" &&
+        r?.date === "2025"
+    );
+    return ((row?.data as Record<string, number>) || empty);
+  }, [data?.statData, avgAgeStatId]);
+
+  const marriedPercentByZip = useMemo(() => {
+    const empty: Record<string, number> = {};
+    if (!data?.statData || !marriedPercentStatId) return empty;
+    const row = data.statData.find(
+      (r) =>
+        r?.statId === marriedPercentStatId &&
+        r?.name === "root" &&
+        r?.area === "Tulsa" &&
+        r?.boundaryType === "ZIP" &&
+        r?.date === "2025"
+    );
+    return ((row?.data as Record<string, number>) || empty);
+  }, [data?.statData, marriedPercentStatId]);
 
   // Build breakdown source from statData
   const breakdownsSource = useMemo(() => {
@@ -89,43 +139,42 @@ export const useDemographics = (selectedZips: string[]) => {
 
   // Compute demographics stats based on selected zips (or all zips when none selected)
   const demographics = useMemo<DemographicStats | null>(() => {
-    // If areas have not loaded yet, don't show anything
-    if (!areasByKey || areasByKey.size === 0) return null;
+    // If we don't even have population yet, defer rendering
+    const availableZips = Object.keys(populationByZip);
+    if (availableZips.length === 0) return null;
 
-    const zips = selectedZips.length > 0 ? selectedZips : Array.from(areasByKey.keys());
+    const zips = selectedZips.length > 0 ? selectedZips : availableZips;
 
     let totalPop = 0;
     let weightedAge = 0;
     let weightedMarried = 0;
 
     for (const z of zips) {
-      const a = areasByKey.get(z);
-      if (!a) continue;
-      const p = Math.max(0, Math.round(a.population));
+      const p = Math.max(0, Math.round(populationByZip[z] || 0));
       totalPop += p;
-      weightedAge += a.avgAge * p;
-      weightedMarried += a.marriedPercent * p;
+      // Use statData-based values for age and married percent
+      const age = avgAgeByZip[z];
+      const married = marriedPercentByZip[z];
+      if (typeof age === "number" && p > 0) weightedAge += age * p;
+      if (typeof married === "number" && p > 0) weightedMarried += married * p;
     }
 
-    if (totalPop <= 0) {
-      // No valid population data; surface a header/label but no values
-      return {
-        selectedCount: selectedZips.length,
-        label: selectedZips.length === 0 ? "TULSA" : selectedZips.length === 1 ? selectedZips[0] : `${selectedZips.length} ZIPs`,
-      };
-    }
+    const label = selectedZips.length === 0 ? "TULSA" : selectedZips.length === 1 ? selectedZips[0] : `${selectedZips.length} ZIPs`;
 
-    const avgAge = weightedAge / totalPop;
-    const avgMarried = weightedMarried / totalPop;
+    if (totalPop <= 0) return { selectedCount: selectedZips.length, label };
 
-    return {
+    const result: DemographicStats = {
       selectedCount: selectedZips.length,
-      label: selectedZips.length === 0 ? "TULSA" : selectedZips.length === 1 ? selectedZips[0] : `${selectedZips.length} ZIPs`,
+      label,
       population: totalPop,
-      avgAge,
-      marriedPercent: avgMarried,
     };
-  }, [areasByKey, selectedZips]);
+
+    // Age / married stay best-effort until we migrate them too
+    if (weightedAge > 0 && totalPop > 0) result.avgAge = weightedAge / totalPop;
+    if (weightedMarried > 0 && totalPop > 0) result.marriedPercent = weightedMarried / totalPop;
+
+    return result;
+  }, [populationByZip, avgAgeByZip, marriedPercentByZip, selectedZips]);
 
   // Compute breakdowns (aggregated by selected zips)
   const breakdowns = useMemo<Map<string, BreakdownGroup>>(() => {

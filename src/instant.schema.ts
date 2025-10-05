@@ -16,13 +16,6 @@ const _schema = i.schema({
       longitude: i.number(),
       category: i.string().indexed(),
     }),
-    areas: i.entity({
-      key: i.string().unique().indexed(),
-      type: i.string().indexed(),
-      population: i.number(),
-      avgAge: i.number(),
-      marriedPercent: i.number(),
-    }),
     stats: i.entity({
       name: i.string().indexed(),
       category: i.string().indexed(),

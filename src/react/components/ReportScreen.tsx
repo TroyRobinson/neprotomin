@@ -7,7 +7,6 @@ type SeriesEntry = { date: string; type: string; data: Record<string, number> };
 
 interface ReportScreenProps {
   selectedZips: string[];
-  areasByKey: Map<string, { population: number; avgAge: number; marriedPercent: number } & { key: string; type: string }>;
   organizations: Organization[];
   orgZipById: Map<string, string | null>;
   statsById: Map<string, Stat>;
@@ -32,7 +31,6 @@ function formatYears(n: number): string {
 
 export const ReportScreen = ({
   selectedZips,
-  areasByKey,
   organizations,
   orgZipById,
   statsById,
@@ -51,22 +49,37 @@ export const ReportScreen = ({
 
   const callouts = useMemo(() => {
     if (selectedZips.length === 0) return { population: "—", avgAge: "—", married: "—" };
+
+    // Pull population, average age and married percent from statData
+    const getByName = (name: string): { data: Record<string, number> } | null => {
+      for (const [statId, entry] of statDataById) {
+        const s = statsById.get(statId);
+        if (s?.name === name) return entry;
+      }
+      return null;
+    };
+
+    const popEntry = getByName("Population");
+    const ageEntry = getByName("Average Age");
+    const marriedEntry = getByName("Married Percent");
+    if (!popEntry) return { population: "—", avgAge: "—", married: "—" };
+
     let totalPop = 0;
     let weightedAge = 0;
     let weightedMarried = 0;
     for (const z of selectedZips) {
-      const a = areasByKey.get(z);
-      if (!a) continue;
-      const p = Math.max(0, Math.round(a.population));
+      const p = Math.max(0, Math.round((popEntry.data || ({} as any))[z] || 0));
       totalPop += p;
-      weightedAge += a.avgAge * p;
-      weightedMarried += a.marriedPercent * p;
+      const age = (ageEntry?.data || ({} as any))[z];
+      if (typeof age === "number") weightedAge += age * p;
+      const married = (marriedEntry?.data || ({} as any))[z];
+      if (typeof married === "number") weightedMarried += married * p;
     }
     if (totalPop === 0) return { population: "—", avgAge: "—", married: "—" };
-    const avgAge = weightedAge / totalPop;
-    const avgMarried = weightedMarried / totalPop;
+    const avgAge = weightedAge > 0 ? weightedAge / totalPop : NaN;
+    const avgMarried = weightedMarried > 0 ? weightedMarried / totalPop : NaN;
     return { population: formatNumber(totalPop), avgAge: formatYears(avgAge), married: formatPercent(avgMarried) };
-  }, [selectedZips, areasByKey]);
+  }, [selectedZips, statDataById, statsById]);
 
   const ranking = useMemo(() => {
     type Row = { statId: string; name: string; type: string; selectedValue: number; cityValue: number; diff: number; score: number };
