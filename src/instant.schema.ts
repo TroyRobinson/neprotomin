@@ -8,9 +8,7 @@ const _schema = i.schema({
       path: i.string().unique().indexed(),
       url: i.string(),
     }),
-    $users: i.entity({
-      email: i.string().unique().indexed().optional(),
-    }),
+    // (users/auth removed)
     organizations: i.entity({
       name: i.string().indexed(),
       url: i.string(),
@@ -39,14 +37,7 @@ const _schema = i.schema({
       type: i.string(), // e.g., count | percent | rate | years | currency
       data: i.json<Record<string, number>>(), // map of area key (e.g., ZIP) -> value
     }),
-    userState: i.entity({
-      userId: i.string().indexed(),
-      selectedZips: i.json<string[]>(),
-      pinnedZips: i.json<string[]>(),
-      mapCenter: i.json<{ lng: number; lat: number }>().optional(),
-      mapZoom: i.number().optional(),
-      // Optional versioning or future fields can go here
-    }),
+    // (per-user UI state removed)
   },
   links: {},
   rooms: {},

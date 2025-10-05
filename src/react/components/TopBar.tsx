@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
 import { themeController } from "../imperative/theme";
-import { db } from "../../lib/reactDb";
-import { LoginModal } from "./LoginModal";
 
 type ThemeName = "light" | "dark";
 
@@ -48,8 +46,6 @@ interface TopBarProps {
 
 export const TopBar = ({ onBrandClick, onNavigate, active = "map" }: TopBarProps) => {
   const [theme, setTheme] = useState<ThemeName>("light");
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const { user } = db.useAuth();
 
   useEffect(() => {
     const unsubscribe = themeController.subscribe((current) => {
@@ -63,21 +59,7 @@ export const TopBar = ({ onBrandClick, onNavigate, active = "map" }: TopBarProps
     themeController.toggle();
   };
 
-  const handleLoginClick = () => {
-    if (!user) {
-      setIsLoginModalOpen(true);
-    }
-  };
-
-  const handleLogout = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    try {
-      await db.auth.signOut();
-    } catch (err) {
-      console.error("[TopBar] signOut error", err);
-    }
-  };
+  
 
   const handleBrandClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -133,31 +115,6 @@ export const TopBar = ({ onBrandClick, onNavigate, active = "map" }: TopBarProps
       </div>
 
       <div className="flex items-center gap-4">
-        <div className="group inline-flex items-center">
-          <button
-            type="button"
-            onClick={handleLoginClick}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-          >
-            {user?.email ? (
-              <span className="truncate max-w-[14ch]">{user.email}</span>
-            ) : (
-              "Login"
-            )}
-          </button>
-          {user && (
-            <button
-              type="button"
-              onClick={handleLogout}
-              aria-label="Sign out"
-              title="Sign out"
-              className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded text-slate-500 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-500/50 dark:text-slate-400"
-            >
-              <LogoutIcon />
-            </button>
-          )}
-        </div>
-
         <button
           type="button"
           onClick={handleThemeToggle}
@@ -168,8 +125,6 @@ export const TopBar = ({ onBrandClick, onNavigate, active = "map" }: TopBarProps
           {theme === "dark" ? <MoonIcon /> : <SunIcon />}
         </button>
       </div>
-
-      <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
     </header>
   );
 };
