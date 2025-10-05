@@ -13,16 +13,19 @@ export const useAreas = () => {
     const map = new Map<string, Area>();
     for (const row of data?.areas ?? []) {
       if (
+        row?.id &&
+        typeof row.id === "string" &&
         row?.key &&
         typeof row.key === "string" &&
-        typeof row.type === "string" &&
+        row?.type === "ZIP" &&
         typeof row.population === "number" &&
         typeof row.avgAge === "number" &&
         typeof row.marriedPercent === "number"
       ) {
         map.set(row.key, {
+          id: row.id,
           key: row.key,
-          type: row.type,
+          type: "ZIP",
           population: row.population,
           avgAge: row.avgAge,
           marriedPercent: row.marriedPercent,

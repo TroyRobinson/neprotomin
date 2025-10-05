@@ -87,6 +87,8 @@ export const updateSecondaryStatOverlay = (
   transientZips: Set<string>,
   hoveredZip: string | null,
 ) => {
+  // theme currently does not affect rendering for secondary overlay; keep param for parity
+  void theme;
   const { SECONDARY_STAT_LAYER_ID, SECONDARY_STAT_HOVER_LAYER_ID } = ids;
   if (!map.getLayer(SECONDARY_STAT_LAYER_ID)) return;
   if (boundaryMode !== "zips") {
