@@ -143,6 +143,7 @@ export const createMapView = ({
     { type: string; data: Record<string, number>; min: number; max: number }
   > = new Map();
   let unsubscribeStatData: (() => void) | null = null;
+  const destroyFns: Array<() => void> = [];
 
   const map = new maplibregl.Map({
     container: mapNode,
@@ -521,185 +522,157 @@ export const createMapView = ({
     zipLabels = createZipLabels({ map });
     zipLabels.setTheme(currentTheme);
 
-    let isDragging = false;
-    
-    map.on("mousedown", () => {
-      isDragging = true;
-      map.getCanvas().style.cursor = "grabbing";
-    });
-    
-    map.on("mouseup", () => {
-      isDragging = false;
+    const unwireCanvasDrag = (() => {
+      let isDragging = false;
+      const onMouseDown = () => { isDragging = true; map.getCanvas().style.cursor = "grabbing"; };
+      const onMouseUp = () => { isDragging = false; map.getCanvas().style.cursor = "pointer"; };
+      const onCanvasLeave = () => { if (isDragging) { isDragging = false; map.getCanvas().style.cursor = "pointer"; } };
+      map.on("mousedown", onMouseDown);
+      map.on("mouseup", onMouseUp);
+      const canvas = map.getCanvas();
+      canvas.addEventListener("mouseleave", onCanvasLeave);
       map.getCanvas().style.cursor = "pointer";
-    });
-    
-    map.getCanvas().addEventListener("mouseleave", () => {
-      if (isDragging) {
-        isDragging = false;
-        map.getCanvas().style.cursor = "pointer";
+      return () => {
+        map.off("mousedown", onMouseDown);
+        map.off("mouseup", onMouseUp);
+        canvas.removeEventListener("mouseleave", onCanvasLeave);
+      };
+    })();
+
+    const unwireOrganizations = (() => {
+      const onPointsMouseEnter = () => { map.getCanvas().style.cursor = "pointer"; };
+      const onPointsMouseLeave = () => { map.getCanvas().style.cursor = "pointer"; clearClusterHighlight(); onHover(null); };
+      const onPointsMouseMove = (e: any) => { const f = e.features?.[0]; const id = f?.properties?.id as string | undefined; clearClusterHighlight(); onHover(id || null); };
+      const onPointsClick = (e: any) => { e.originalEvent.stopPropagation(); };
+      map.on("mouseenter", LAYER_POINTS_ID, onPointsMouseEnter);
+      map.on("mouseleave", LAYER_POINTS_ID, onPointsMouseLeave);
+      map.on("mousemove", LAYER_POINTS_ID, onPointsMouseMove);
+      map.on("click", LAYER_POINTS_ID, onPointsClick);
+
+      const onClustersMouseEnter = () => { map.getCanvas().style.cursor = "pointer"; };
+      const onClustersMouseLeave = () => { map.getCanvas().style.cursor = "pointer"; clearClusterHighlight(); onHover(null); };
+      const onClustersMouseMove = async (e: any) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS_ID] });
+        const feature = features[0];
+        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+        const clusterId = feature?.properties?.cluster_id as number | undefined;
+        if (!feature || !source || clusterId === undefined) return;
+        try {
+          setClusterHighlight(clusterId);
+          const leaves = await source.getClusterLeaves(clusterId, 1000, 0);
+          const ids = leaves.map((f: any) => f?.properties?.id).filter((v: any): v is string => typeof v === "string");
+          onHover(ids);
+        } catch {}
+      };
+      const onClustersClick = async (e: any) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS_ID] });
+        const feature = features[0];
+        if (!feature || feature.geometry?.type !== "Point") return;
+        const clusterId = feature.properties?.cluster_id as number | undefined;
+        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+        if (!source || clusterId === undefined) return;
+        try {
+          const zoom = await source.getClusterExpansionZoom(clusterId);
+          const point = feature.geometry as GeoJSON.Point;
+          const [lng, lat] = point.coordinates as [number, number];
+          map.easeTo({ center: [lng, lat], zoom });
+        } catch {}
+      };
+      map.on("mouseenter", LAYER_CLUSTERS_ID, onClustersMouseEnter);
+      map.on("mouseleave", LAYER_CLUSTERS_ID, onClustersMouseLeave);
+      map.on("mousemove", LAYER_CLUSTERS_ID, onClustersMouseMove);
+      map.on("click", LAYER_CLUSTERS_ID, onClustersClick);
+      return () => {
+        map.off("mouseenter", LAYER_POINTS_ID, onPointsMouseEnter);
+        map.off("mouseleave", LAYER_POINTS_ID, onPointsMouseLeave);
+        map.off("mousemove", LAYER_POINTS_ID, onPointsMouseMove);
+        map.off("click", LAYER_POINTS_ID, onPointsClick);
+        map.off("mouseenter", LAYER_CLUSTERS_ID, onClustersMouseEnter);
+        map.off("mouseleave", LAYER_CLUSTERS_ID, onClustersMouseLeave);
+        map.off("mousemove", LAYER_CLUSTERS_ID, onClustersMouseMove);
+        map.off("click", LAYER_CLUSTERS_ID, onClustersClick);
+      };
+    })();
+
+    const boundaryLayerOrder = [
+      BOUNDARY_HOVER_FILL_LAYER_ID,
+      BOUNDARY_HOVER_LINE_LAYER_ID,
+      BOUNDARY_PINNED_FILL_LAYER_ID,
+      BOUNDARY_PINNED_LINE_LAYER_ID,
+      BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+      BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+      BOUNDARY_STATDATA_FILL_LAYER_ID,
+      BOUNDARY_FILL_LAYER_ID,
+      BOUNDARY_LINE_LAYER_ID,
+    ];
+    const unwireBoundaries = (() => {
+      const handleZipClick = (e: maplibregl.MapLayerMouseEvent) => {
+        if (boundaryMode !== "zips") return;
+        const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
+        if (orgFeatures.length > 0) return;
+        const features = map.queryRenderedFeatures(e.point, { layers: boundaryLayerOrder });
+        const feature = features[0];
+        const zip = feature?.properties?.zip as string | undefined;
+        if (!zip) return;
+        const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
+        toggleZipSelection(zip, additive, false);
+      };
+      const handleZipDoubleClick = (e: maplibregl.MapLayerMouseEvent) => {
+        if (boundaryMode !== "zips") return;
+        e.preventDefault();
+        const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
+        if (orgFeatures.length > 0) return;
+        const features = map.queryRenderedFeatures(e.point, { layers: boundaryLayerOrder });
+        const feature = features[0];
+        const zip = feature?.properties?.zip as string | undefined;
+        if (!zip) return;
+        const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
+        toggleZipSelection(zip, additive, true);
+      };
+      const onBoundaryMouseEnter = () => { if (boundaryMode !== "zips") return; map.getCanvas().style.cursor = "pointer"; };
+      const onBoundaryMouseLeave = () => { map.getCanvas().style.cursor = "pointer"; hoveredZipFromMap = null; updateZipHoverOutline(); onZipHoverChange?.(null); };
+      const onZipMouseMove = (e: any) => {
+        if (boundaryMode !== "zips") return;
+        const features = map.queryRenderedFeatures(e.point, { layers: [BOUNDARY_FILL_LAYER_ID, BOUNDARY_STATDATA_FILL_LAYER_ID] });
+        const feature = features[0];
+        const zip = feature?.properties?.zip as string | undefined;
+        if (!zip) return;
+        if (hoveredZipFromMap === zip) return;
+        hoveredZipFromMap = zip;
+        updateZipHoverOutline();
+        onZipHoverChange?.(zip);
+      };
+      map.on("click", handleZipClick);
+      map.on("dblclick", handleZipDoubleClick);
+      map.on("mouseenter", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseEnter);
+      map.on("mouseenter", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseEnter);
+      map.on("mouseleave", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseLeave);
+      map.on("mouseleave", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseLeave);
+      map.on("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
+      map.on("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
+      return () => {
+        map.off("click", handleZipClick);
+        map.off("dblclick", handleZipDoubleClick);
+        map.off("mouseenter", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseEnter);
+        map.off("mouseenter", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseEnter);
+        map.off("mouseleave", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseLeave);
+        map.off("mouseleave", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseLeave);
+        map.off("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
+        map.off("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
+      };
+    })();
+
+    // Ensure all listeners are cleaned up when controller is destroyed
+    const previousDestroy = destroyFns.pop?.();
+    const cleanup = () => {
+      try { unwireCanvasDrag(); } catch {}
+      try { unwireOrganizations(); } catch {}
+      try { unwireBoundaries(); } catch {}
+      if (typeof previousDestroy === 'function') {
+        try { previousDestroy(); } catch {}
       }
-    });
-
-    map.getCanvas().style.cursor = "pointer";
-
-    map.on("mouseenter", LAYER_POINTS_ID, () => {
-      map.getCanvas().style.cursor = "pointer";
-    });
-    map.on("mouseleave", LAYER_POINTS_ID, () => {
-      map.getCanvas().style.cursor = "pointer";
-      clearClusterHighlight();
-      onHover(null);
-    });
-    map.on("mousemove", LAYER_POINTS_ID, (e: any) => {
-      const f = e.features?.[0];
-      const id = f?.properties?.id as string | undefined;
-      clearClusterHighlight();
-      onHover(id || null);
-    });
-    
-    map.on("click", LAYER_POINTS_ID, (e) => {
-      e.originalEvent.stopPropagation();
-    });
-
-    map.on("mouseenter", LAYER_CLUSTERS_ID, () => {
-      map.getCanvas().style.cursor = "pointer";
-    });
-    map.on("mouseleave", LAYER_CLUSTERS_ID, () => {
-      map.getCanvas().style.cursor = "pointer";
-      clearClusterHighlight();
-      onHover(null);
-    });
-    map.on("mousemove", LAYER_CLUSTERS_ID, async (e: any) => {
-      const features = map.queryRenderedFeatures(e.point, {
-        layers: [LAYER_CLUSTERS_ID],
-      });
-      const feature = features[0];
-      const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-      const clusterId = feature?.properties?.cluster_id as number | undefined;
-      if (!feature || !source || clusterId === undefined) return;
-      try {
-        setClusterHighlight(clusterId);
-        const leaves = await source.getClusterLeaves(clusterId, 1000, 0);
-        const ids = leaves
-          .map((f: any) => f?.properties?.id)
-          .filter((v: any): v is string => typeof v === "string");
-        onHover(ids);
-      } catch {}
-    });
-    map.on("click", LAYER_CLUSTERS_ID, async (e) => {
-      const features = map.queryRenderedFeatures(e.point, {
-        layers: [LAYER_CLUSTERS_ID],
-      });
-      const feature = features[0];
-      if (!feature || feature.geometry?.type !== "Point") return;
-      const clusterId = feature.properties?.cluster_id as number | undefined;
-      const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-      if (!source || clusterId === undefined) return;
-      try {
-        const zoom = await source.getClusterExpansionZoom(clusterId);
-        const point = feature.geometry as GeoJSON.Point;
-        const [lng, lat] = point.coordinates as [number, number];
-        map.easeTo({ center: [lng, lat], zoom });
-      } catch {}
-    });
-
-    const handleZipClick = (e: maplibregl.MapLayerMouseEvent) => {
-      if (boundaryMode !== "zips") return;
-      
-      const orgFeatures = map.queryRenderedFeatures(e.point, {
-        layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID],
-      });
-      if (orgFeatures.length > 0) return;
-      
-      const features = map.queryRenderedFeatures(e.point, {
-        layers: [
-          BOUNDARY_HOVER_FILL_LAYER_ID,
-          BOUNDARY_HOVER_LINE_LAYER_ID,
-          BOUNDARY_PINNED_FILL_LAYER_ID,
-          BOUNDARY_PINNED_LINE_LAYER_ID,
-          BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
-          BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
-          BOUNDARY_STATDATA_FILL_LAYER_ID,
-          BOUNDARY_FILL_LAYER_ID,
-          BOUNDARY_LINE_LAYER_ID,
-        ],
-      });
-      const feature = features[0];
-      const zip = feature?.properties?.zip as string | undefined;
-      if (!zip) return;
-      const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
-      toggleZipSelection(zip, additive, false);
     };
-
-    const handleZipDoubleClick = (e: maplibregl.MapLayerMouseEvent) => {
-      if (boundaryMode !== "zips") return;
-      e.preventDefault();
-      
-      const orgFeatures = map.queryRenderedFeatures(e.point, {
-        layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID],
-      });
-      if (orgFeatures.length > 0) return;
-      
-      const features = map.queryRenderedFeatures(e.point, {
-        layers: [
-          BOUNDARY_HOVER_FILL_LAYER_ID,
-          BOUNDARY_HOVER_LINE_LAYER_ID,
-          BOUNDARY_PINNED_FILL_LAYER_ID,
-          BOUNDARY_PINNED_LINE_LAYER_ID,
-          BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
-          BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
-          BOUNDARY_STATDATA_FILL_LAYER_ID,
-          BOUNDARY_FILL_LAYER_ID,
-          BOUNDARY_LINE_LAYER_ID,
-        ],
-      });
-      const feature = features[0];
-      const zip = feature?.properties?.zip as string | undefined;
-      if (!zip) return;
-      const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
-      toggleZipSelection(zip, additive, true);
-    };
-
-    map.on("click", handleZipClick);
-    map.on("dblclick", handleZipDoubleClick);
-
-    map.on("mouseenter", BOUNDARY_FILL_LAYER_ID, () => {
-      if (boundaryMode !== "zips") return;
-      map.getCanvas().style.cursor = "pointer";
-    });
-    map.on("mouseenter", BOUNDARY_STATDATA_FILL_LAYER_ID, () => {
-      if (boundaryMode !== "zips") return;
-      map.getCanvas().style.cursor = "pointer";
-    });
-    map.on("mouseleave", BOUNDARY_FILL_LAYER_ID, () => {
-      map.getCanvas().style.cursor = "pointer";
-      hoveredZipFromMap = null;
-      updateZipHoverOutline();
-      onZipHoverChange?.(null);
-    });
-    map.on("mouseleave", BOUNDARY_STATDATA_FILL_LAYER_ID, () => {
-      map.getCanvas().style.cursor = "pointer";
-      hoveredZipFromMap = null;
-      updateZipHoverOutline();
-      onZipHoverChange?.(null);
-    });
-
-    const onZipMouseMove = (e: any) => {
-      if (boundaryMode !== "zips") return;
-      const features = map.queryRenderedFeatures(e.point, { 
-        layers: [BOUNDARY_FILL_LAYER_ID, BOUNDARY_STATDATA_FILL_LAYER_ID] 
-      });
-      const feature = features[0];
-      const zip = feature?.properties?.zip as string | undefined;
-      if (!zip) return;
-      if (hoveredZipFromMap === zip) return;
-      hoveredZipFromMap = zip;
-      updateZipHoverOutline();
-      
-      onZipHoverChange?.(zip);
-    };
-    map.on("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
-    map.on("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
+    destroyFns.push(cleanup);
   });
 
   map.on("load", () => {
@@ -1155,6 +1128,11 @@ export const createMapView = ({
       map.resize();
     },
     destroy: () => {
+      // unwind wired events
+      while (destroyFns.length) {
+        const fn = destroyFns.pop();
+        try { fn && fn(); } catch {}
+      }
       resizeObserver.disconnect();
       unsubscribeTheme();
       categoryChips.destroy();
