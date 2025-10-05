@@ -12,6 +12,7 @@ import { statDataStore } from "../../state/statData";
 import { createZipFloatingTitle, type ZipFloatingTitleController } from "./components/zipFloatingTitle";
 import { createZipLabels, type ZipLabelsController } from "./components/zipLabels";
 import { createChoroplethLegend, type ChoroplethLegendController } from "./components/choroplethLegend";
+import { getZipCentroidFeatureCollection } from "../../lib/zipCentroids";
 
 interface MapViewOptions {
   onHover: (idOrIds: string | string[] | null) => void;
@@ -618,51 +619,13 @@ export const createMapView = ({
     }
 
     if (!map.getSource(ZIP_CENTROIDS_SOURCE_ID)) {
-      const ringCentroid = (ring: number[][]): [number, number, number] => {
-        let area = 0;
-        let cx = 0;
-        let cy = 0;
-        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-          const [x0, y0] = ring[j];
-          const [x1, y1] = ring[i];
-          const cross = x0 * y1 - x1 * y0;
-          area += cross;
-          cx += (x0 + x1) * cross;
-          cy += (y0 + y1) * cross;
-        }
-        area *= 0.5;
-        if (area === 0) {
-          let sx = 0, sy = 0;
-          for (const [x, y] of ring) { sx += x; sy += y; }
-          return [sx / ring.length, sy / ring.length, 0];
-        }
-        return [cx / (6 * area), cy / (6 * area), Math.abs(area)];
-      };
-
-      const features: GeoJSON.Feature<GeoJSON.Point, { zip: string }>[] = [];
-      for (const f of tulsaZipBoundaries.features as any) {
-        const zip = (f.properties?.zip ?? "") as string;
-        if (!zip) continue;
-        let totalArea = 0;
-        let accX = 0, accY = 0;
-        if (f.geometry?.type === "Polygon") {
-          const outer = f.geometry.coordinates[0];
-          const [cx, cy, a] = ringCentroid(outer);
-          totalArea += a; accX += cx * a; accY += cy * a;
-        } else if (f.geometry?.type === "MultiPolygon") {
-          for (const poly of f.geometry.coordinates) {
-            const outer = poly[0];
-            const [cx, cy, a] = ringCentroid(outer);
-            totalArea += a; accX += cx * a; accY += cy * a;
-          }
-        }
-        const center: [number, number] = totalArea > 0 ? [accX / totalArea, accY / totalArea] : [0, 0];
-        features.push({ type: "Feature", properties: { zip }, geometry: { type: "Point", coordinates: center } });
-      }
       map.addSource(ZIP_CENTROIDS_SOURCE_ID, {
         type: "geojson",
-        data: { type: "FeatureCollection", features },
+        data: getZipCentroidFeatureCollection(),
       });
+    } else {
+      const src = map.getSource(ZIP_CENTROIDS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      try { src?.setData(getZipCentroidFeatureCollection()); } catch {}
     }
 
     if (!map.getLayer(SECONDARY_STAT_LAYER_ID)) {

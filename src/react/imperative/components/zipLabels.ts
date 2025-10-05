@@ -1,6 +1,6 @@
 import type maplibregl from "maplibre-gl";
-import { tulsaZipBoundaries } from "../../../data/tulsaZipBoundaries";
 import { formatStatValueCompact } from "../../../lib/format";
+import { getZipCentroidsMap } from "../../../lib/zipCentroids";
 
 interface ZipLabelsOptions {
   map: maplibregl.Map;
@@ -15,50 +15,7 @@ export interface ZipLabelsController {
   destroy: () => void;
 }
 
-const zipCentroids = new Map<string, [number, number]>();
-
-const ringCentroid = (ring: number[][]): [number, number, number] => {
-  let area = 0;
-  let cx = 0;
-  let cy = 0;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [x0, y0] = ring[j];
-    const [x1, y1] = ring[i];
-    const cross = x0 * y1 - x1 * y0;
-    area += cross;
-    cx += (x0 + x1) * cross;
-    cy += (y0 + y1) * cross;
-  }
-  area *= 0.5;
-  if (area === 0) {
-    let sx = 0, sy = 0;
-    for (const [x, y] of ring) { sx += x; sy += y; }
-    return [sx / ring.length, sy / ring.length, 0];
-  }
-  return [cx / (6 * area), cy / (6 * area), Math.abs(area)];
-};
-
-for (const feature of tulsaZipBoundaries.features as any) {
-  const zip = feature.properties.zip as string;
-  if (!zip) continue;
-  let totalArea = 0;
-  let accX = 0, accY = 0;
-  if (feature.geometry.type === "Polygon") {
-    const [cx, cy, a] = ringCentroid(feature.geometry.coordinates[0]);
-    totalArea += a;
-    accX += cx * a;
-    accY += cy * a;
-  } else if (feature.geometry.type === "MultiPolygon") {
-    for (const poly of feature.geometry.coordinates) {
-      const [cx, cy, a] = ringCentroid(poly[0]);
-      totalArea += a;
-      accX += cx * a;
-      accY += cy * a;
-    }
-  }
-  const center: [number, number] = totalArea > 0 ? [accX / totalArea, accY / totalArea] : [0, 0];
-  zipCentroids.set(zip, center);
-}
+const zipCentroids = getZipCentroidsMap();
 
 const formatStatValue = (value: number, type: string = "count"): string => {
   return formatStatValueCompact(value, type);
