@@ -2,6 +2,7 @@ import maplibregl from "maplibre-gl";
 
 // tulsaZipBoundaries no longer needed here (used in boundary layer module)
 import { getZipBounds, getAllZipCodes } from "../../lib/zipBoundaries";
+import { computeToggle, computeAddTransient, computeClearTransient } from "./state/zipSelection";
 import type { BoundsArray } from "../../lib/zipBoundaries";
 import type { BoundaryMode } from "../../types/boundaries";
 import type { Organization } from "../../types/organization";
@@ -405,38 +406,11 @@ export const createMapView = ({
   };
 
   const toggleZipSelection = (zip: string, additive: boolean, shouldZoom: boolean = false) => {
-    const isPinned = pinnedZips.has(zip);
-    const isTransient = transientZips.has(zip);
-    const isSelected = isPinned || isTransient;
-
-    if (additive) {
-      if (isSelected) {
-        if (isPinned) {
-          const nextPinned = new Set(pinnedZips);
-          nextPinned.delete(zip);
-          pinnedZips = nextPinned;
-        }
-        if (isTransient) {
-          const nextTransient = new Set(transientZips);
-          nextTransient.delete(zip);
-          transientZips = nextTransient;
-        }
-      } else {
-        const next = new Set(transientZips);
-        next.add(zip);
-        transientZips = next;
-      }
-    } else {
-      if (isPinned) {
-        if (transientZips.size > 0) transientZips = new Set();
-      } else if (isTransient) {
-        transientZips = new Set([zip]);
-      } else {
-        transientZips = new Set([zip]);
-      }
-    }
-
-    applyZipSelection({ shouldZoom: shouldZoom && !isSelected, notify: true });
+    const wasSelected = pinnedZips.has(zip) || transientZips.has(zip);
+    const next = computeToggle(zip, additive, pinnedZips, transientZips);
+    pinnedZips = next.pinned;
+    transientZips = next.transient;
+    applyZipSelection({ shouldZoom: shouldZoom && !wasSelected, notify: true });
   };
 
   const ensureSourcesAndLayers = () => {
@@ -1069,13 +1043,12 @@ export const createMapView = ({
       zipLabels?.setHoveredZip(finalHovered);
     },
     clearTransientSelection: () => {
-      clearZipSelection({ notify: true });
+      transientZips = computeClearTransient();
+      applyZipSelection({ shouldZoom: false, notify: true });
     },
     addTransientZips: (zips: string[]) => {
       if (!Array.isArray(zips) || zips.length === 0) return;
-      const next = new Set(transientZips);
-      for (const z of zips) next.add(z);
-      transientZips = next;
+      transientZips = computeAddTransient(zips, transientZips);
       applyZipSelection({ shouldZoom: false, notify: true });
     },
     fitAllOrganizations,
