@@ -1,6 +1,7 @@
 import type maplibregl from "maplibre-gl";
 import { formatStatValueCompact } from "../../../lib/format";
 import { getZipCentroidsMap } from "../../../lib/zipCentroids";
+import { CHOROPLETH_COLORS, TEAL_COLORS, getClassIndex } from "../../../lib/choropleth";
 
 interface ZipLabelsOptions {
   map: maplibregl.Map;
@@ -51,29 +52,13 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
 
     let pillClassName, backgroundColor, textColor;
     if (hasStatOverlay && currentStatData && zip in currentStatData) {
-      const CHOROPLETH_COLORS = [
-        "#e9efff",
-        "#cdd9ff",
-        "#aebfff",
-        "#85a3ff",
-        "#6d8afc",
-        "#4a6af9",
-        "#3755f0",
-      ];
       const allValues = Object.values(currentStatData || {});
       const numericValues = allValues.filter(v => typeof v === 'number' && Number.isFinite(v)) as number[];
       const min = numericValues.length > 0 ? Math.min(...numericValues) : 0;
       const max = numericValues.length > 0 ? Math.max(...numericValues) : 1;
-      const range = max - min;
       const classes = CHOROPLETH_COLORS.length;
-      const idxFor = (v: number) => {
-        if (!Number.isFinite(v)) return 0;
-        if (range <= 0) return Math.floor((classes - 1) / 2);
-        const r = (v - min) / range;
-        return Math.max(0, Math.min(classes - 1, Math.floor(r * (classes - 1))));
-      };
       const statValue = currentStatData[zip];
-      const colorIndex = idxFor(statValue);
+      const colorIndex = getClassIndex(statValue, min, max, classes);
       backgroundColor = CHOROPLETH_COLORS[colorIndex];
       const isLightColor = colorIndex <= 2;
       textColor = isLightColor ? '#000000' : 'white';
@@ -123,28 +108,12 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
     if (shouldShowSecondary) {
       const secondaryVal = currentSecondaryData![zip];
       secondaryPill = document.createElement("div");
-      const TEAL_COLORS = [
-        "#f9fffd",
-        "#e9fffb",
-        "#c9fbf2",
-        "#99f0e3",
-        "#63dfd0",
-        "#24c7b8",
-        "#0f766e",
-      ];
       const allValues = Object.values(currentSecondaryData || {});
       const numericValues = allValues.filter(v => typeof v === 'number' && Number.isFinite(v)) as number[];
       const min = numericValues.length > 0 ? Math.min(...numericValues) : 0;
       const max = numericValues.length > 0 ? Math.max(...numericValues) : 1;
-      const range = max - min;
       const classes = TEAL_COLORS.length;
-      const idxFor = (v: number) => {
-        if (!Number.isFinite(v)) return 0;
-        if (range <= 0) return Math.floor((classes - 1) / 2);
-        const r = (v - min) / range;
-        return Math.max(0, Math.min(classes - 1, Math.floor(r * (classes - 1))));
-      };
-      const colorIndex = idxFor(secondaryVal);
+      const colorIndex = getClassIndex(secondaryVal, min, max, classes);
       const backgroundColor = TEAL_COLORS[colorIndex];
       const isLightColor = colorIndex <= 2;
       const textColor = isLightColor ? '#64748b' : 'white';

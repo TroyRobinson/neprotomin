@@ -13,6 +13,7 @@ import { createZipFloatingTitle, type ZipFloatingTitleController } from "./compo
 import { createZipLabels, type ZipLabelsController } from "./components/zipLabels";
 import { createChoroplethLegend, type ChoroplethLegendController } from "./components/choroplethLegend";
 import { getZipCentroidFeatureCollection } from "../../lib/zipCentroids";
+import { CHOROPLETH_COLORS, TEAL_COLORS, getClassIndex } from "../../lib/choropleth";
 
 interface MapViewOptions {
   onHover: (idOrIds: string | string[] | null) => void;
@@ -72,25 +73,7 @@ const ZIP_CENTROIDS_SOURCE_ID = "tulsa-zip-centroids";
 const SECONDARY_STAT_LAYER_ID = "tulsa-zip-secondary-stat-overlay";
 const SECONDARY_STAT_HOVER_LAYER_ID = "tulsa-zip-secondary-stat-overlay-hover";
 
-const CHOROPLETH_COLORS = [
-  "#e9efff",
-  "#cdd9ff",
-  "#aebfff",
-  "#85a3ff",
-  "#6d8afc",
-  "#4a6af9",
-  "#3755f0",
-];
-
-const TEAL_COLORS = [
-  "#f9fffd",
-  "#e9fffb",
-  "#c9fbf2",
-  "#99f0e3",
-  "#63dfd0",
-  "#24c7b8",
-  "#0f766e",
-];
+// colors and class index provided by lib/choropleth
 
 type FC = GeoJSON.FeatureCollection<
   GeoJSON.Point,
@@ -1228,19 +1211,11 @@ export const createMapView = ({
 
     const COLORS = CHOROPLETH_COLORS;
     const classes = COLORS.length;
-    const range = max - min;
-    const idxFor = (v: number) => {
-      if (!Number.isFinite(v)) return 0;
-      if (range <= 0) return Math.floor((classes - 1) / 2);
-      const r = (v - min) / range;
-      const idx = Math.max(0, Math.min(classes - 1, Math.floor(r * (classes - 1))));
-      return idx;
-    };
 
     const match: any[] = ["match", ["get", "zip"]];
     for (const zip of zips) {
       const v = data[zip];
-      const color = COLORS[idxFor(v)];
+      const color = COLORS[getClassIndex(v, min, max, classes)];
       match.push(zip, color);
     }
     match.push("#000000");
