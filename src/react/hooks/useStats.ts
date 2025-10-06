@@ -10,19 +10,26 @@ interface SeriesEntry {
 }
 
 export const useStats = () => {
+  const { isLoading: isAuthLoading } = db.useAuth();
+
   // Query stats and statData directly from InstantDB
-  const { data, isLoading, error } = db.useQuery({
-    stats: {
-      $: {
-        order: { name: "asc" as const },
-      },
-    },
-    statData: {
-      $: {
-        order: { date: "asc" as const },
-      },
-    },
-  });
+  // Wait for auth to be ready to avoid race conditions (especially in Safari)
+  const { data, isLoading, error } = db.useQuery(
+    isAuthLoading
+      ? null
+      : {
+          stats: {
+            $: {
+              order: { name: "asc" as const },
+            },
+          },
+          statData: {
+            $: {
+              order: { date: "asc" as const },
+            },
+          },
+        }
+  );
 
   // Transform stats into a Map
   const statsById = useMemo(() => {

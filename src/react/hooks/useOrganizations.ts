@@ -3,13 +3,20 @@ import { db } from "../../lib/reactDb";
 import type { Organization } from "../../types/organization";
 
 export const useOrganizations = () => {
-  const { data, isLoading, error } = db.useQuery({
-    organizations: {
-      $: {
-        order: { name: "asc" as const },
-      },
-    },
-  });
+  const { isLoading: isAuthLoading } = db.useAuth();
+
+  // Wait for auth to be ready to avoid race conditions (especially in Safari)
+  const { data, isLoading, error } = db.useQuery(
+    isAuthLoading
+      ? null
+      : {
+          organizations: {
+            $: {
+              order: { name: "asc" as const },
+            },
+          },
+        }
+  );
 
   const organizations = useMemo<Organization[]>(() => {
     const rows = data?.organizations ?? [];

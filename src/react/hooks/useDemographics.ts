@@ -19,19 +19,26 @@ const SEGMENT_ORDER: Record<BreakdownGroupKey, string[]> = {
 const BRAND_SHADE_TOKENS = ["brand-200", "brand-300", "brand-400", "brand-500", "brand-700"];
 
 export const useDemographics = (selectedZips: string[]) => {
+  const { isLoading: isAuthLoading } = db.useAuth();
+
   // Query stats and statData directly from InstantDB
-  const { data } = db.useQuery({
-    stats: {
-      $: {
-        order: { name: "asc" as const },
-      },
-    },
-    statData: {
-      $: {
-        order: { date: "asc" as const },
-      },
-    },
-  });
+  // Wait for auth to be ready to avoid race conditions (especially in Safari)
+  const { data } = db.useQuery(
+    isAuthLoading
+      ? null
+      : {
+          stats: {
+            $: {
+              order: { name: "asc" as const },
+            },
+          },
+          statData: {
+            $: {
+              order: { date: "asc" as const },
+            },
+          },
+        }
+  );
 
 
   // Population/AvgAge/Married stat ids (prefer provided constant for population; others by name)
