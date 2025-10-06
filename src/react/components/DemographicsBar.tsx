@@ -168,7 +168,7 @@ export const DemographicsBar = ({ stats, breakdowns }: DemographicsBarProps) => 
               Pop:
             </span>{" "}
             <span className={hasData ? "text-slate-400 dark:text-slate-500" : "text-slate-400 dark:text-slate-500"}>
-              {hasData ? formatPopulation(stats.population) : "—"}
+              {hasData && stats ? formatPopulation(stats.population) : "—"}
             </span>
           </span>
           <span>
@@ -176,7 +176,7 @@ export const DemographicsBar = ({ stats, breakdowns }: DemographicsBarProps) => 
               Avg Age:
             </span>{" "}
             <span className={hasData ? "text-slate-400 dark:text-slate-500" : "text-slate-400 dark:text-slate-500"}>
-              {hasData ? formatNumber(stats.avgAge) : "—"}
+              {hasData && stats ? formatNumber(stats.avgAge) : "—"}
             </span>
           </span>
           <span>
@@ -184,7 +184,7 @@ export const DemographicsBar = ({ stats, breakdowns }: DemographicsBarProps) => 
               Married:
             </span>{" "}
             <span className={hasData ? "text-slate-400 dark:text-slate-500" : "text-slate-400 dark:text-slate-500"}>
-              {hasData ? formatPercent(stats.marriedPercent) : "—%"}
+              {hasData && stats ? formatPercent(stats.marriedPercent) : "—%"}
             </span>
           </span>
         </div>
