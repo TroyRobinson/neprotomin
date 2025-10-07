@@ -8,6 +8,8 @@ interface SeriesEntry {
   data: Record<string, number>;
 }
 
+type StatSelectMeta = { shiftKey?: boolean; clear?: boolean };
+
 interface StatListProps {
   statsById?: Map<string, Stat>;
   seriesByStatId?: Map<string, SeriesEntry[]>;
@@ -15,7 +17,7 @@ interface StatListProps {
   categoryFilter?: string | null;
   secondaryStatId?: string | null;
   selectedStatId?: string | null;
-  onStatSelect?: (statId: string, meta?: { shiftKey?: boolean }) => void;
+  onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
 }
 
 interface StatRow {
@@ -141,7 +143,7 @@ interface StatListItemProps {
   isSelected: boolean;
   isSecondary: boolean;
   showCityAvg: boolean;
-  onStatSelect?: (statId: string, meta?: { shiftKey?: boolean }) => void;
+  onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
 }
 
 const StatListItem = ({
@@ -152,6 +154,7 @@ const StatListItem = ({
   onStatSelect,
 }: StatListItemProps) => {
   const [showTooltip, setShowTooltip] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
   const handleClick = (e: React.MouseEvent) => {
@@ -178,8 +181,24 @@ const StatListItem = ({
     ? `${common} border-2 border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-400/15`
     : `${common} border-slate-200/70 bg-white/70 hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:hover:border-slate-600 dark:hover:bg-slate-800/70`;
 
+  const handleClearClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    setShowTooltip(false);
+    setIsHovered(false);
+    onStatSelect?.(null, { clear: true });
+  };
+
   return (
-    <li className={className} data-stat-id={row.id} onClick={handleClick}>
+    <li
+      className={className}
+      data-stat-id={row.id}
+      onClick={handleClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        setShowTooltip(false);
+      }}
+    >
       <div className="min-w-0 flex flex-1 items-center pr-3 text-sm text-slate-600 dark:text-slate-300">
         <span className="truncate whitespace-nowrap">{row.name}</span>
         {isSecondary && (
@@ -200,6 +219,17 @@ const StatListItem = ({
         )}
         <span>{formatStatValue(row.value, row.type)}</span>
       </div>
+
+      {isSelected && isHovered && (
+        <button
+          type="button"
+          className="absolute right-1 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-brand-50/90 text-xs font-bold text-brand-500 shadow-sm transition hover:bg-brand-50 hover:text-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-brand-400/20 dark:text-brand-100 dark:hover:text-white"
+          onClick={handleClearClick}
+        >
+          <span aria-hidden="true">×</span>
+          <span className="sr-only">Clear selected stat</span>
+        </button>
+      )}
 
       {showTooltip && (
         <div

@@ -334,7 +334,19 @@ export const ReactMapApp = () => {
     setZoomOutNonce((n) => n + 1);
   };
 
-  const handleStatSelect = (statId: string, meta?: { shiftKey?: boolean }) => {
+  const handleStatSelect = (
+    statId: string | null,
+    meta?: { shiftKey?: boolean; clear?: boolean }
+  ) => {
+    if (statId === null) {
+      setSelectedStatId(null);
+      setSecondaryStatId(null);
+      if (meta?.clear) {
+        setCategoryFilter(null);
+      }
+      return;
+    }
+
     if (meta?.shiftKey) {
       // Shift-click: toggle secondary stat
       setSecondaryStatId((prev) => (prev === statId ? null : statId));

@@ -41,7 +41,7 @@ interface SidebarProps {
   onZoomOutAll?: () => void;
   onCategoryClick?: (categoryId: string) => void;
   onHoverZip?: (zip: string | null) => void;
-  onStatSelect?: (statId: string, meta?: { shiftKey?: boolean }) => void;
+  onStatSelect?: (statId: string | null, meta?: { shiftKey?: boolean; clear?: boolean }) => void;
   onOrgPinsVisibleChange?: (visible: boolean) => void;
   onVisibleIdsChange?: (ids: string[], totalInSource: number, allSourceIds: string[]) => void;
 }

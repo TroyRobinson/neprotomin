@@ -291,7 +291,7 @@ export const updateZipSelectionHighlight = (
   if (map.getLayer(BOUNDARY_PINNED_LINE_LAYER_ID)) {
     map.setFilter(BOUNDARY_PINNED_LINE_LAYER_ID, pinnedFilter);
     const lineWidth = hasStatOverlay ? 1.5 : 1;
-    const lineColor = hasStatOverlay ? (theme === "dark" ? "#e6e6e6" : "#94a3b8") : "#6d8afc";
+    const lineColor = hasStatOverlay ? (theme === "dark" ? "#e6e6e6" : "#46576f") : "#6d8afc";
     map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-width", lineWidth);
     map.setPaintProperty(BOUNDARY_PINNED_LINE_LAYER_ID, "line-color", lineColor);
   }
@@ -299,7 +299,7 @@ export const updateZipSelectionHighlight = (
   if (map.getLayer(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID)) {
     map.setFilter(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, transFilter);
     const lineWidth = hasStatOverlay ? 1.5 : 1;
-    const lineColor = hasStatOverlay ? (theme === "dark" ? "#e6e6e6" : "#94a3b8") : "#6d8afc";
+    const lineColor = hasStatOverlay ? (theme === "dark" ? "#e6e6e6" : "#46576f") : "#6d8afc";
     map.setPaintProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "line-width", lineWidth);
     map.setPaintProperty(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, "line-color", lineColor);
   }
@@ -324,7 +324,7 @@ export const updateZipHoverOutline = (
   const hasStatOverlay = Boolean(selectedStatId);
   if (hasStatOverlay && (isSelected || isPinned)) {
     if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
-      const hoverLineColor = theme === "dark" ? "#ffffff" : "#94a3b8";
+      const hoverLineColor = theme === "dark" ? "#ffffff" : "#000000";
       map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-color", hoverLineColor);
       map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity", 0.95);
     }
