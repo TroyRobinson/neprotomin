@@ -7,6 +7,8 @@ interface MapLibreMapProps {
   organizations?: Organization[];
   orgPinsVisible?: boolean;
   zoomOutRequestNonce?: number;
+  // When incremented, explicitly clear the map's category chips
+  clearMapCategoryNonce?: number;
   boundaryMode?: BoundaryMode;
   selectedZips?: string[];
   pinnedZips?: string[];
@@ -33,6 +35,7 @@ export const MapLibreMap = ({
   organizations = [],
   orgPinsVisible = false,
   zoomOutRequestNonce,
+  clearMapCategoryNonce,
   boundaryMode = "zips",
   selectedZips = [],
   pinnedZips = [],
@@ -118,6 +121,13 @@ export const MapLibreMap = ({
       mapControllerRef.current.fitAllOrganizations();
     }
   }, [zoomOutRequestNonce]);
+
+  // Explicitly clear category chips when requested (e.g., clearing from sidebar)
+  useEffect(() => {
+    if (typeof clearMapCategoryNonce === "number" && mapControllerRef.current) {
+      mapControllerRef.current.setCategoryFilter(null);
+    }
+  }, [clearMapCategoryNonce]);
 
   // Update boundary mode
   useEffect(() => {

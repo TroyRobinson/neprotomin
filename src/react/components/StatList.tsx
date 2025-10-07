@@ -160,8 +160,15 @@ const StatListItem = ({
   const handleClick = (e: React.MouseEvent) => {
     if (e.shiftKey) {
       e.preventDefault();
+      onStatSelect?.(row.id, { shiftKey: true });
+      return;
     }
-    onStatSelect?.(row.id, { shiftKey: e.shiftKey });
+
+    if (isSelected) {
+      onStatSelect?.(null, { clear: true });
+    } else {
+      onStatSelect?.(row.id);
+    }
   };
 
   const handleAvgHover = (e: React.MouseEvent) => {

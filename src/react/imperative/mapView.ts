@@ -655,7 +655,9 @@ export const createMapView = ({
   };
 
   const setCategoryFilter = (categoryId: string | null) => {
-    if (selectedCategory === categoryId) return;
+    // Always sync the chips UI, even if our internal filter hasn't changed.
+    // This ensures cases where a stat selection temporarily selects a category
+    // (without changing the filter) can be cleared from external callers.
     selectedCategory = categoryId;
     categoryChips.setSelected(selectedCategory);
     applyData();
@@ -831,5 +833,4 @@ export const createMapView = ({
     },
   };
 };
-
 

@@ -126,6 +126,8 @@ export const ReactMapApp = () => {
   const [orgsVisibleIds, setOrgsVisibleIds] = useState<string[]>([]);
   const [orgsAllSourceIds, setOrgsAllSourceIds] = useState<string[]>([]);
   const [zoomOutNonce, setZoomOutNonce] = useState(0);
+  // Nonce to explicitly clear map category chips when clearing stat from sidebar
+  const [clearMapCategoryNonce, setClearMapCategoryNonce] = useState(0);
 
   const handleBrandClick = () => {
     console.log("Brand clicked - would reset map view");
@@ -343,6 +345,9 @@ export const ReactMapApp = () => {
       setSecondaryStatId(null);
       if (meta?.clear) {
         setCategoryFilter(null);
+        // Ensure the map overlay category chip also clears even if
+        // categoryFilter was already null (no state change to trigger effects).
+        setClearMapCategoryNonce((n) => n + 1);
       }
       return;
     }
@@ -441,6 +446,7 @@ export const ReactMapApp = () => {
                 organizations={organizations}
                 orgPinsVisible={orgPinsVisible}
                 zoomOutRequestNonce={zoomOutNonce}
+                clearMapCategoryNonce={clearMapCategoryNonce}
                 boundaryMode={boundaryMode}
                 selectedZips={selectedZips}
                 pinnedZips={pinnedZips}
