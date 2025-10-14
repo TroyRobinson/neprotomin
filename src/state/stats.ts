@@ -53,8 +53,8 @@ class StatsStore {
       console.error("Failed to subscribe to stats", error);
     }
 
+    // Only seed synthetic data in dev mode (guards are inside the functions)
     void ensureStatsSeeded();
-    // Also seed stat data (root, Tulsa ZIP 2025) once
     void ensureStatDataSeeded();
   }
 

@@ -13,6 +13,7 @@ import type { BoundaryMode } from "../types/boundaries";
 import { AuthModal } from "./components/AuthModal";
 import { db } from "../lib/reactDb";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
+const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
 
 export const ReactMapApp = () => {
   const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>("zips");
@@ -24,7 +25,7 @@ export const ReactMapApp = () => {
   const [selectedStatId, setSelectedStatId] = useState<string | null>(null);
   const [secondaryStatId, setSecondaryStatId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
-  const [activeScreen, setActiveScreen] = useState<"map" | "report">("map");
+  const [activeScreen, setActiveScreen] = useState<"map" | "report" | "data">("map");
   const [authOpen, setAuthOpen] = useState(false);
 
   const { isLoading: isAuthLoading, user } = db.useAuth();
@@ -517,6 +518,21 @@ export const ReactMapApp = () => {
             </Suspense>
           )}
         </div>
+      </div>
+
+      {/* Data overlay */}
+      <div
+        aria-hidden={activeScreen !== "data"}
+        style={{ visibility: activeScreen === "data" ? "visible" : "hidden" }}
+        className="absolute left-0 right-0 bottom-0 top-16 z-30"
+      >
+        {activeScreen === "data" && (
+          <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-slate-500">Loading data…</div>}>
+            <div className="flex h-full w-full overflow-auto bg-white dark:bg-slate-900">
+              <DataScreen />
+            </div>
+          </Suspense>
+        )}
       </div>
       <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
     </div>

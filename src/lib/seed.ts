@@ -79,6 +79,11 @@ export const ensureOrganizationsSeeded = async (): Promise<void> => {
 let seedStatsPromise: Promise<void> | null = null;
 
 export const ensureStatsSeeded = async (): Promise<void> => {
+  // Skip synthetic seeding in production or if any real NE data exists
+  if (!import.meta.env.DEV && !import.meta.env.VITE_ENABLE_SYNTHETIC_SEED) {
+    return;
+  }
+
   if (seedStatsPromise) return seedStatsPromise;
 
   seedStatsPromise = (async () => {
@@ -88,6 +93,13 @@ export const ensureStatsSeeded = async (): Promise<void> => {
           $: { order: { name: "asc" } },
         },
       });
+
+      // Safety check: if any stats have neId, skip synthetic seeding entirely
+      const hasRealData = (data.stats ?? []).some((s: any) => s?.neId);
+      if (hasRealData) {
+        console.log('[seed] Real NE data detected (stats with neId); skipping synthetic seed');
+        return;
+      }
 
       const existingByComposite = new Map<string, any>();
       for (const row of data.stats ?? []) {
@@ -177,12 +189,27 @@ export const ensureStatsSeeded = async (): Promise<void> => {
 let seedStatDataPromise: Promise<void> | null = null;
 
 export const ensureStatDataSeeded = async (): Promise<void> => {
+  // Skip synthetic seeding in production or if any real NE data exists
+  if (!import.meta.env.DEV && !import.meta.env.VITE_ENABLE_SYNTHETIC_SEED) {
+    return;
+  }
+
   if (seedStatDataPromise) return seedStatDataPromise;
 
   seedStatDataPromise = (async () => {
     try {
       // Ensure stats exist before seeding statData
       await ensureStatsSeeded();
+
+      // Check for real data again (stats check would have returned early if found)
+      const { data: checkStats } = await db.queryOnce({
+        stats: { $: { order: { name: "asc" } } },
+      });
+      const hasRealData = (checkStats.stats ?? []).some((s: any) => s?.neId);
+      if (hasRealData) {
+        console.log('[seed] Real NE data detected; skipping synthetic statData seed');
+        return;
+      }
 
       // Fetch stats and existing statData
       const { data: statsResp } = await db.queryOnce({

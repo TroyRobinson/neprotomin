@@ -61,24 +61,34 @@ class StatDataStore {
             (row) =>
               (row as any).area === "Tulsa" &&
               (row as any).boundaryType === "ZIP" &&
-              (row as any).date === "2025" &&
               (row as any).name === "root",
           ) as StatData[];
 
-        const map = new Map<string, StatDataEntry>();
+        // Group by statId and select the latest date for each stat
+        const byStatIdDate = new Map<string, StatData[]>();
         for (const row of filtered) {
-          const entries = Object.values(row.data ?? {}) as number[];
+          const list = byStatIdDate.get(row.statId) || [];
+          list.push(row);
+          byStatIdDate.set(row.statId, list);
+        }
+
+        const map = new Map<string, StatDataEntry>();
+        for (const [statId, list] of byStatIdDate) {
+          // Sort by date descending, pick the latest
+          list.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+          const latest = list[0];
+          const entries = Object.values(latest.data ?? {}) as number[];
           const min = entries.length ? Math.min(...entries) : 0;
           const max = entries.length ? Math.max(...entries) : 0;
-          map.set(row.statId, {
-            id: row.id,
-            statId: row.statId,
-            name: row.name,
-            area: row.area,
-            boundaryType: row.boundaryType,
-            date: row.date,
-            type: row.type,
-            data: row.data ?? {},
+          map.set(statId, {
+            id: latest.id,
+            statId: latest.statId,
+            name: latest.name,
+            area: latest.area,
+            boundaryType: latest.boundaryType,
+            date: latest.date,
+            type: latest.type,
+            data: latest.data ?? {},
             min,
             max,
           });
