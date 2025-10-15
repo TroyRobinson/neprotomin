@@ -38,7 +38,11 @@
     "ne:clean:synthetic": "node scripts/ne-clean-synthetic.js",
     "ne:clean:synthetic:dry": "node scripts/ne-clean-synthetic.js --dry=1",
     "ne:clean:unnamed": "node scripts/ne-clean-unnamed.js",
-    "ne:clean:unnamed:dry": "node scripts/ne-clean-unnamed.js --dry=1"
+    "ne:clean:unnamed:dry": "node scripts/ne-clean-unnamed.js --dry=1",
+    "ne:speed:test": "node scripts/ne-speed-test.js",
+    "ne:speed:test:staging": "NE_BASE=https://neighborhood-explorer-staging.herokuapp.com node scripts/ne-speed-test.js",
+    "ne:speed:test:prod": "NE_BASE=https://www.neighborhoodexplorer.org node scripts/ne-speed-test.js",
+    "ne:speed:test:debug": "DEBUG=1 node scripts/ne-speed-test.js"
   },
   "devDependencies": {
     "dotenv": "^16.4.7",
