@@ -2,8 +2,10 @@ Agent playbook (concise)
 
 # Misc Notes & Instructions:
 
+- Comments: Add very concise comments for large sections of the code that you've created to help junior coders understand what's goind on. Comments should be ONLY be stating the current state of the code (NOT what used to be) -- update existing comments if necessary to keep fresh. Especially include comments for tricky parts of the code so all developers will be able to maintain the codebase.
+
 - IGNORE FILES: (don't read):
-  - tulsaZipBoundaries.ts
+  - data/oklahomaCountyBoundaries.ts, tulsaZipBoundaries.ts, etc. large data files (takes too many tokens)
 
 - Dev Server: 
   - Assume the dev server is already running by the user and *don't* attempt to start it.

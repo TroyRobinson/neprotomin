@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { BoundaryMode } from "../../types/boundaries";
+import { getCountyName } from "../../lib/countyBoundaries";
 import { themeController } from "../imperative/theme";
 import { CustomSelect } from "./CustomSelect";
 
@@ -8,6 +9,9 @@ interface BoundaryToolbarProps {
   pinnedZips?: string[];
   boundaryMode?: BoundaryMode;
   hoveredZip?: string | null;
+  selectedCounties?: string[];
+  pinnedCounties?: string[];
+  hoveredCounty?: string | null;
   // Controls the sticky top offset class (e.g., "top-16" for below topbar, "top-0" inside overlays)
   stickyTopClass?: string;
   onBoundaryModeChange?: (mode: BoundaryMode) => void;
@@ -16,6 +20,10 @@ interface BoundaryToolbarProps {
   onClearSelection?: () => void;
   onExport?: () => void;
   onAddZips?: (zips: string[]) => void;
+  onToggleCountyPin?: (county: string, pinned: boolean) => void;
+  onHoverCounty?: (county: string | null) => void;
+  onClearCountySelection?: () => void;
+  onAddCounties?: (counties: string[]) => void;
 }
 
 const LINE_COLORS = ["#375bff", "#8f20f8", "#a76d44", "#b4a360"];
@@ -41,6 +49,9 @@ export const BoundaryToolbar = ({
   pinnedZips = [],
   boundaryMode = "zips",
   hoveredZip = null,
+  selectedCounties = [],
+  pinnedCounties = [],
+  hoveredCounty = null,
   stickyTopClass = "top-16",
   onBoundaryModeChange,
   onToggleZipPin,
@@ -48,6 +59,10 @@ export const BoundaryToolbar = ({
   onClearSelection,
   onExport,
   onAddZips,
+  onToggleCountyPin,
+  onHoverCounty,
+  onClearCountySelection,
+  onAddCounties,
 }: BoundaryToolbarProps) => {
   const [inputOpen, setInputOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
@@ -57,8 +72,12 @@ export const BoundaryToolbar = ({
   const addBtnRef = useRef<HTMLButtonElement>(null);
 
   const pinnedSet = new Set(pinnedZips);
-  const hasSelections = selectedZips.length > 0;
+  const pinnedCountySet = new Set(pinnedCounties);
+  const hasZipSelections = selectedZips.length > 0;
+  const hasCountySelections = selectedCounties.length > 0;
+  const hasSelections = hasZipSelections || hasCountySelections;
   const areaLabel = boundaryMode === "zips" ? "ZIP" : boundaryMode === "counties" ? "County" : "area";
+  const areaPluralLabel = areaLabel === "County" ? "Counties" : `${areaLabel}s`;
   const inLineMode = selectedZips.length > 0 && selectedZips.length < 4;
 
   useEffect(() => {
@@ -154,6 +173,41 @@ export const BoundaryToolbar = ({
   const pinnedCount = selectedZips.filter((z) => pinnedSet.has(z)).length;
   const unpinnedCount = selectedZips.length - pinnedCount;
 
+  const removeCounty = (county: string) => {
+    const wasPinned = pinnedCountySet.has(county);
+    const remainingUnpinned = selectedCounties.filter((c) => !pinnedCountySet.has(c) && c !== county);
+
+    if (wasPinned) {
+      onToggleCountyPin?.(county, false);
+    }
+
+    onClearCountySelection?.();
+    if (remainingUnpinned.length > 0) {
+      onAddCounties?.(remainingUnpinned);
+    }
+  };
+
+  const handleCountyChipHover = (county: string | null) => {
+    onHoverCounty?.(county);
+  };
+
+  const countyPinnedCount = selectedCounties.filter((c) => pinnedCountySet.has(c)).length;
+  const countyUnpinnedCount = selectedCounties.length - countyPinnedCount;
+
+  const handleCountyPinAllClick = () => {
+    if (countyPinnedCount >= 2) {
+      const toUnpin = selectedCounties.filter((c) => pinnedCountySet.has(c));
+      for (const c of toUnpin) {
+        onToggleCountyPin?.(c, false);
+      }
+    } else {
+      const toPin = selectedCounties.filter((c) => !pinnedCountySet.has(c));
+      for (const c of toPin) {
+        onToggleCountyPin?.(c, true);
+      }
+    }
+  };
+
   const handlePinAllClick = () => {
     if (pinnedCount >= 2) {
       // Clear pins
@@ -180,6 +234,10 @@ export const BoundaryToolbar = ({
   const pinned = selectedZips.filter((zip) => pinnedSet.has(zip)).sort();
   const unpinned = selectedZips.filter((zip) => !pinnedSet.has(zip)).sort();
   const sortedZips = [...pinned, ...unpinned];
+
+  const countyPinned = selectedCounties.filter((id) => pinnedCountySet.has(id)).sort();
+  const countyUnpinned = selectedCounties.filter((id) => !pinnedCountySet.has(id)).sort();
+  const sortedCounties = [...countyPinned, ...countyUnpinned];
 
   return (
     <div className={`sticky ${stickyTopClass} z-10 flex h-10 w-full items-center gap-3 border-b border-slate-200 bg-slate-100/70 px-4 text-sm text-slate-600 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300`}>
@@ -230,6 +288,36 @@ export const BoundaryToolbar = ({
               </button>
             );
           })}
+          {sortedCounties.map((county) => {
+            const isPinned = pinnedCountySet.has(county);
+            const isHovered = hoveredCounty === county;
+            let chipClasses =
+              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors group";
+
+            chipClasses += isPinned
+              ? " border-brand-300 bg-brand-50 text-brand-700 dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
+              : " border-slate-300 bg-white/70 text-slate-600 hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300";
+
+            if (isHovered) {
+              chipClasses += " ring-1 ring-brand-300";
+            }
+
+            const label = getCountyName(county) ?? county;
+
+            return (
+              <button
+                key={`county-${county}`}
+                type="button"
+                className={chipClasses}
+                onMouseEnter={() => handleCountyChipHover(county)}
+                onMouseLeave={() => handleCountyChipHover(null)}
+                onClick={() => removeCounty(county)}
+              >
+                <span>{label}</span>
+                <span className="ml-0.5 hidden text-brand-600 group-hover:inline">×</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Add Button and Input */}
@@ -258,7 +346,7 @@ export const BoundaryToolbar = ({
                 clipRule="evenodd"
               />
             </svg>
-            {!hasSelections && !inputOpen && <span className="ml-1 whitespace-nowrap">add {areaLabel}s</span>}
+            {!hasSelections && !inputOpen && <span className="ml-1 whitespace-nowrap">add {areaPluralLabel}</span>}
           </button>
 
           <div ref={inputWrapperRef} className={inputOpen ? "" : "hidden"}>
@@ -268,7 +356,7 @@ export const BoundaryToolbar = ({
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleInputKeyDown}
-              placeholder="Add ZIPs (comma or space separated)"
+              placeholder={`Add ${areaPluralLabel} (comma or space separated)`}
               className="ml-1 mt-1.5 h-7 min-h-[1.75rem] w-56 resize-none rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50 md:w-64"
             />
           </div>
@@ -290,11 +378,24 @@ export const BoundaryToolbar = ({
             </button>
           )}
 
+          {((countyPinnedCount >= 2) || (selectedCounties.length >= 2 && countyUnpinnedCount > 0)) && (
+            <button
+              type="button"
+              onClick={handleCountyPinAllClick}
+              className="ml-2 cursor-pointer whitespace-nowrap text-xs font-medium text-brand-400 hover:text-brand-600/90"
+            >
+              {countyPinnedCount >= 2 ? "clear county pins" : "pin all counties"}
+            </button>
+          )}
+
           {/* Clear Selection Button */}
           {hasSelections && (
             <button
               type="button"
-              onClick={onClearSelection}
+              onClick={() => {
+                onClearSelection?.();
+                onClearCountySelection?.();
+              }}
               className="ml-3 inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
             >
               <svg

@@ -6,6 +6,7 @@ import type { ChoroplethLegendController } from "../components/choroplethLegend"
 
 export interface StatOverlayIds {
   BOUNDARY_STATDATA_FILL_LAYER_ID: string;
+  COUNTY_STATDATA_FILL_LAYER_ID: string;
   SECONDARY_STAT_LAYER_ID: string;
   SECONDARY_STAT_HOVER_LAYER_ID: string;
 }
@@ -14,65 +15,75 @@ export const updateStatDataChoropleth = (
   map: maplibregl.Map,
   ids: StatOverlayIds,
   theme: "light" | "dark",
+  boundaryMode: "zips" | "counties" | string,
   selectedStatId: string | null,
-  statDataByStatId: Map<string, { type: string; data: Record<string, number>; min: number; max: number }>,
+  statDataByStatId: Map<string, Partial<Record<"ZIP" | "COUNTY", { type: string; data: Record<string, number>; min: number; max: number }>>>,
 ) => {
-  const { BOUNDARY_STATDATA_FILL_LAYER_ID } = ids;
-  if (!map.getLayer(BOUNDARY_STATDATA_FILL_LAYER_ID)) return;
-  if (!selectedStatId) {
-    map.setPaintProperty(BOUNDARY_STATDATA_FILL_LAYER_ID, "fill-opacity", 0);
-    return;
-  }
-  const entry = statDataByStatId.get(selectedStatId);
-  if (!entry) {
-    map.setPaintProperty(BOUNDARY_STATDATA_FILL_LAYER_ID, "fill-opacity", 0);
-    return;
-  }
-  const { data, min, max } = entry;
-  const zips = Object.keys(data || {});
-  if (zips.length === 0) {
-    map.setPaintProperty(BOUNDARY_STATDATA_FILL_LAYER_ID, "fill-opacity", 0);
-    return;
-  }
+  const { BOUNDARY_STATDATA_FILL_LAYER_ID, COUNTY_STATDATA_FILL_LAYER_ID } = ids;
 
-  const COLORS = CHOROPLETH_COLORS;
-  const classes = COLORS.length;
-  const match: any[] = ["match", ["get", "zip"]];
-  for (const zip of zips) {
-    const v = data[zip];
-    const color = COLORS[getClassIndex(v, min, max, classes)];
-    match.push(zip, color);
-  }
-  match.push("#000000");
+  const applyEntry = (
+    layerId: string,
+    featureKey: "zip" | "county",
+    entry: { data: Record<string, number>; min: number; max: number } | undefined,
+    active: boolean,
+  ) => {
+    if (!map.getLayer(layerId)) return;
+    if (!active || !entry) {
+      map.setPaintProperty(layerId, "fill-opacity", 0);
+      return;
+    }
+    const keys = Object.keys(entry.data || {});
+    if (keys.length === 0) {
+      map.setPaintProperty(layerId, "fill-opacity", 0);
+      return;
+    }
+    const COLORS = CHOROPLETH_COLORS;
+    const classes = COLORS.length;
+    const match: any[] = ["match", ["get", featureKey]];
+    for (const id of keys) {
+      const v = entry.data[id];
+      const color = COLORS[getClassIndex(v, entry.min, entry.max, classes)];
+      match.push(id, color);
+    }
+    match.push("#000000");
 
-  const baseOpacity = theme === "dark" ? 0.35 : 0.45;
-  const opacityExpr: any = [
-    "case",
-    ["in", ["get", "zip"], ["literal", zips]],
-    baseOpacity,
-    0,
-  ];
-  map.setPaintProperty(BOUNDARY_STATDATA_FILL_LAYER_ID, "fill-color", match as any);
-  map.setPaintProperty(BOUNDARY_STATDATA_FILL_LAYER_ID, "fill-opacity", opacityExpr as any);
+    const baseOpacity = theme === "dark" ? 0.35 : 0.45;
+    const opacityExpr: any = [
+      "case",
+      ["in", ["get", featureKey], ["literal", keys]],
+      baseOpacity,
+      0,
+    ];
+    map.setPaintProperty(layerId, "fill-color", match as any);
+    map.setPaintProperty(layerId, "fill-opacity", opacityExpr as any);
+  };
+
+  const entry = selectedStatId ? statDataByStatId.get(selectedStatId) : undefined;
+  const zipEntry = entry?.ZIP;
+  const countyEntry = entry?.COUNTY;
+
+  applyEntry(BOUNDARY_STATDATA_FILL_LAYER_ID, "zip", zipEntry, Boolean(selectedStatId) && boundaryMode === "zips");
+  applyEntry(COUNTY_STATDATA_FILL_LAYER_ID, "county", countyEntry, Boolean(selectedStatId) && boundaryMode === "counties");
 };
 
 export const updateChoroplethLegend = (
   legend: ChoroplethLegendController,
   selectedStatId: string | null,
-  statDataByStatId: Map<string, { type: string; data: Record<string, number>; min: number; max: number }>,
+  boundaryMode: "zips" | "counties" | string,
+  statDataByStatId: Map<string, Partial<Record<"ZIP" | "COUNTY", { type: string; data: Record<string, number>; min: number; max: number }>>>,
 ) => {
   if (!selectedStatId) {
     legend.setVisible(false);
     return;
   }
   const entry = statDataByStatId.get(selectedStatId);
-  const hasData = !!entry && Object.keys(entry.data || {}).length > 0;
-  if (!hasData) {
+  const dataEntry = boundaryMode === "counties" ? entry?.COUNTY : entry?.ZIP;
+  if (!dataEntry || Object.keys(dataEntry.data || {}).length === 0) {
     legend.setVisible(false);
     return;
   }
   legend.setColors(CHOROPLETH_COLORS[0], CHOROPLETH_COLORS[CHOROPLETH_COLORS.length - 1]);
-  legend.setRange(entry!.min, entry!.max, (entry as any).type as string);
+  legend.setRange(dataEntry.min, dataEntry.max, dataEntry.type);
   legend.setVisible(true);
 };
 
@@ -82,7 +93,7 @@ export const updateSecondaryStatOverlay = (
   boundaryMode: "zips" | string,
   theme: "light" | "dark",
   secondaryStatId: string | null,
-  statDataByStatId: Map<string, { type: string; data: Record<string, number>; min: number; max: number }>,
+  statDataByStatId: Map<string, Partial<Record<"ZIP" | "COUNTY", { type: string; data: Record<string, number>; min: number; max: number }>>>,
   pinnedZips: Set<string>,
   transientZips: Set<string>,
   hoveredZip: string | null,
@@ -105,7 +116,7 @@ export const updateSecondaryStatOverlay = (
     }
     return;
   }
-  const entry = statDataByStatId.get(secondaryStatId);
+  const entry = statDataByStatId.get(secondaryStatId)?.ZIP;
   if (!entry) {
     map.setPaintProperty(SECONDARY_STAT_LAYER_ID, "circle-opacity", 0);
     map.setFilter(SECONDARY_STAT_LAYER_ID, ["==", ["get", "zip"], "__none__"] as any);
@@ -173,5 +184,3 @@ export const updateSecondaryStatOverlay = (
     }
   }
 };
-
-

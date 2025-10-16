@@ -13,6 +13,9 @@ interface MapLibreMapProps {
   selectedZips?: string[];
   pinnedZips?: string[];
   hoveredZip?: string | null;
+  selectedCounties?: string[];
+  pinnedCounties?: string[];
+  hoveredCounty?: string | null;
   activeOrganizationId?: string | null;
   categoryFilter?: string | null;
   selectedStatId?: string | null;
@@ -21,6 +24,8 @@ interface MapLibreMapProps {
   onVisibleIdsChange?: (ids: string[], totalInSource: number, allSourceIds: string[]) => void;
   onZipSelectionChange?: (selectedZips: string[], meta?: { pinned: string[]; transient: string[] }) => void;
   onZipHoverChange?: (zip: string | null) => void;
+  onCountySelectionChange?: (selectedCounties: string[], meta?: { pinned: string[]; transient: string[] }) => void;
+  onCountyHoverChange?: (county: string | null) => void;
   onStatSelectionChange?: (statId: string | null) => void;
   onCategorySelectionChange?: (categoryId: string | null) => void;
   onBoundaryModeChange?: (mode: BoundaryMode) => void;
@@ -41,6 +46,9 @@ export const MapLibreMap = ({
   selectedZips = [],
   pinnedZips = [],
   hoveredZip = null,
+  selectedCounties = [],
+  pinnedCounties = [],
+  hoveredCounty = null,
   activeOrganizationId = null,
   categoryFilter = null,
   selectedStatId = null,
@@ -49,6 +57,8 @@ export const MapLibreMap = ({
   onVisibleIdsChange,
   onZipSelectionChange,
   onZipHoverChange,
+  onCountySelectionChange,
+  onCountyHoverChange,
   onStatSelectionChange,
   onCategorySelectionChange,
   onBoundaryModeChange,
@@ -63,6 +73,8 @@ export const MapLibreMap = ({
   const onHoverRef = useRef(onHover);
   const onVisibleIdsChangeRef = useRef(onVisibleIdsChange);
   const onZipHoverChangeRef = useRef(onZipHoverChange);
+  const onCountySelectionChangeRef = useRef(onCountySelectionChange);
+  const onCountyHoverChangeRef = useRef(onCountyHoverChange);
   const onStatSelectionChangeRef = useRef(onStatSelectionChange);
   const onCategorySelectionChangeRef = useRef(onCategorySelectionChange);
   const onBoundaryModeChangeRef = useRef(onBoundaryModeChange);
@@ -71,6 +83,8 @@ export const MapLibreMap = ({
   useEffect(() => { onHoverRef.current = onHover; }, [onHover]);
   useEffect(() => { onVisibleIdsChangeRef.current = onVisibleIdsChange; }, [onVisibleIdsChange]);
   useEffect(() => { onZipHoverChangeRef.current = onZipHoverChange; }, [onZipHoverChange]);
+  useEffect(() => { onCountySelectionChangeRef.current = onCountySelectionChange; }, [onCountySelectionChange]);
+  useEffect(() => { onCountyHoverChangeRef.current = onCountyHoverChange; }, [onCountyHoverChange]);
   useEffect(() => { onStatSelectionChangeRef.current = onStatSelectionChange; }, [onStatSelectionChange]);
   useEffect(() => { onCategorySelectionChangeRef.current = onCategorySelectionChange; }, [onCategorySelectionChange]);
   useEffect(() => { onBoundaryModeChangeRef.current = onBoundaryModeChange; }, [onBoundaryModeChange]);
@@ -92,6 +106,14 @@ export const MapLibreMap = ({
         }, 0);
       },
       onZipHoverChange: (zip) => onZipHoverChangeRef.current?.(zip),
+      onCountySelectionChange: (counties, meta) => {
+        isInternalUpdateRef.current = true;
+        onCountySelectionChangeRef.current?.(counties, meta);
+        setTimeout(() => {
+          isInternalUpdateRef.current = false;
+        }, 0);
+      },
+      onCountyHoverChange: (county) => onCountyHoverChangeRef.current?.(county),
       onStatSelectionChange: (id) => onStatSelectionChangeRef.current?.(id),
       onCategorySelectionChange: (id) => onCategorySelectionChangeRef.current?.(id),
       onBoundaryModeChange: (mode) => {
@@ -155,12 +177,26 @@ export const MapLibreMap = ({
     }
   }, [pinnedZips]);
 
+  // Update pinned counties
+  useEffect(() => {
+    if (mapControllerRef.current) {
+      mapControllerRef.current.setPinnedCounties(pinnedCounties);
+    }
+  }, [pinnedCounties]);
+
   // Update hovered zip
   useEffect(() => {
     if (mapControllerRef.current) {
       mapControllerRef.current.setHoveredZip(hoveredZip);
     }
   }, [hoveredZip]);
+
+  // Update hovered county
+  useEffect(() => {
+    if (mapControllerRef.current) {
+      mapControllerRef.current.setHoveredCounty(hoveredCounty);
+    }
+  }, [hoveredCounty]);
 
   // Update active organization
   useEffect(() => {
@@ -193,6 +229,7 @@ export const MapLibreMap = ({
   // Handle selected zips changes from external sources (like toolbar add button)
   // Track what we last sent to prevent circular updates from map callbacks
   const lastSentZipsRef = useRef<string>("");
+  const lastSentCountiesRef = useRef<string>("");
 
   useEffect(() => {
     if (!mapControllerRef.current || isInternalUpdateRef.current) return;
@@ -216,6 +253,23 @@ export const MapLibreMap = ({
       }
     }
   }, [selectedZips, pinnedZips]);
+
+  useEffect(() => {
+    if (!mapControllerRef.current || isInternalUpdateRef.current) return;
+
+    const pinnedKey = [...pinnedCounties].sort().join(",");
+    const selectedKey = [...selectedCounties].sort().join(",");
+    const currentKey = `${selectedKey}|${pinnedKey}`;
+
+    if (currentKey !== lastSentCountiesRef.current) {
+      lastSentCountiesRef.current = currentKey;
+      const transient = selectedCounties.filter((id) => !pinnedCounties.includes(id));
+      mapControllerRef.current.clearCountyTransientSelection();
+      if (transient.length > 0) {
+        mapControllerRef.current.addTransientCounties(transient);
+      }
+    }
+  }, [selectedCounties, pinnedCounties]);
 
   return (
     <div

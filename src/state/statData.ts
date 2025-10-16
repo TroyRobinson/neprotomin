@@ -1,7 +1,7 @@
 import type { StatData } from "../types/statData";
 import { db } from "../lib/db";
 
-type StatDataEntry = {
+type BoundaryStatEntry = {
   id: string;
   statId: string;
   name: string;
@@ -14,7 +14,11 @@ type StatDataEntry = {
   max: number;
 };
 
-type Listener = (byStatId: Map<string, StatDataEntry>) => void;
+type BoundaryTypeKey = "ZIP" | "COUNTY";
+
+type StatDataMapEntry = Partial<Record<BoundaryTypeKey, BoundaryStatEntry>>;
+
+type Listener = (byStatId: Map<string, StatDataMapEntry>) => void;
 
 const QUERY = {
   statData: {
@@ -33,7 +37,7 @@ const getParentArea = (row: any): string | undefined => {
 
 class StatDataStore {
   private listeners = new Set<Listener>();
-  private byStatId: Map<string, StatDataEntry> = new Map();
+  private byStatId: Map<string, StatDataMapEntry> = new Map();
   private unsubscribe: (() => void) | null = null;
 
   subscribe(listener: Listener): () => void {
@@ -51,56 +55,63 @@ class StatDataStore {
     try {
       this.unsubscribe = db.subscribeQuery(QUERY, (resp) => {
         const rows = (resp?.data?.statData ?? []) as any[];
-        const filtered = rows
-          .filter((row) =>
-            Boolean(
-              row?.id &&
-                typeof (row as any)?.statId === "string" &&
-                typeof (row as any)?.name === "string" &&
-                typeof (row as any)?.boundaryType === "string" &&
-                typeof (row as any)?.date === "string" &&
-                typeof (row as any)?.type === "string" &&
-                typeof (row as any)?.data === "object" &&
-                typeof getParentArea(row) === "string",
-            ),
-          )
-          .filter(
-            (row) =>
-              getParentArea(row) === "Tulsa" &&
-              (row as any).boundaryType === "ZIP" &&
-              (row as any).name === "root",
-          ) as StatData[];
+        const filtered = rows.filter((row) =>
+          Boolean(
+            row?.id &&
+              typeof (row as any)?.statId === "string" &&
+              typeof (row as any)?.name === "string" &&
+              typeof (row as any)?.boundaryType === "string" &&
+              typeof (row as any)?.date === "string" &&
+              typeof (row as any)?.type === "string" &&
+              typeof (row as any)?.data === "object" &&
+              typeof getParentArea(row) === "string",
+          ),
+        ) as StatData[];
 
-        // Group by statId and select the latest date for each stat
-        const byStatIdDate = new Map<string, StatData[]>();
+        const relevantBoundaryTypes: Record<string, string> = {
+          ZIP: "Tulsa",
+          COUNTY: "Oklahoma",
+        };
+
+        const grouped = new Map<string, StatData[]>();
         for (const row of filtered) {
-          const list = byStatIdDate.get(row.statId) || [];
+          const boundaryType = row.boundaryType as BoundaryTypeKey;
+          const parentArea = getParentArea(row);
+          if (!parentArea) continue;
+          const expectedArea = relevantBoundaryTypes[boundaryType];
+          if (!expectedArea || parentArea !== expectedArea) continue;
+          if (row.name !== "root") continue;
+          const key = `${row.statId}::${boundaryType}`;
+          const list = grouped.get(key) || [];
           list.push(row);
-          byStatIdDate.set(row.statId, list);
+          grouped.set(key, list);
         }
 
-        const map = new Map<string, StatDataEntry>();
-        for (const [statId, list] of byStatIdDate) {
-          // Sort by date descending, pick the latest
+        const map = new Map<string, StatDataMapEntry>();
+        for (const [, list] of grouped) {
           list.sort((a, b) => String(b.date).localeCompare(String(a.date)));
           const latest = list[0];
           const entries = Object.values(latest.data ?? {}) as number[];
           const min = entries.length ? Math.min(...entries) : 0;
           const max = entries.length ? Math.max(...entries) : 0;
-          const latestParentArea = getParentArea(latest);
-          if (!latestParentArea) continue;
-          map.set(statId, {
+          const boundaryType = latest.boundaryType as BoundaryTypeKey;
+          const parentArea = getParentArea(latest);
+          if (!parentArea) continue;
+          const statEntry: BoundaryStatEntry = {
             id: latest.id,
             statId: latest.statId,
             name: latest.name,
-            parentArea: latestParentArea,
+            parentArea,
             boundaryType: latest.boundaryType,
             date: latest.date,
             type: latest.type,
             data: latest.data ?? {},
             min,
             max,
-          });
+          };
+          const statMapEntry = map.get(latest.statId) || {};
+          statMapEntry[boundaryType] = statEntry;
+          map.set(latest.statId, statMapEntry);
         }
 
         this.byStatId = map;

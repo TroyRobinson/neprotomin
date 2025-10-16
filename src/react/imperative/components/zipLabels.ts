@@ -5,6 +5,8 @@ import { CHOROPLETH_COLORS, TEAL_COLORS, getClassIndex } from "../../../lib/chor
 
 interface ZipLabelsOptions {
   map: maplibregl.Map;
+  getCentroidsMap?: () => Map<string, [number, number]>;
+  labelForId?: (id: string) => string;
 }
 
 export interface ZipLabelsController {
@@ -13,16 +15,19 @@ export interface ZipLabelsController {
   setStatOverlay: (statId: string | null, statData: Record<string, number> | null, statType?: string) => void;
   setSecondaryStatOverlay: (statId: string | null, statData: Record<string, number> | null, statType?: string) => void;
   setTheme: (theme: "light" | "dark") => void;
+  setVisible?: (visible: boolean) => void;
   destroy: () => void;
 }
 
-const zipCentroids = getZipCentroidsMap();
+const defaultCentroids = getZipCentroidsMap();
 
 const formatStatValue = (value: number, type: string = "count"): string => {
   return formatStatValueCompact(value, type);
 };
 
-export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController => {
+export const createZipLabels = ({ map, getCentroidsMap, labelForId }: ZipLabelsOptions): ZipLabelsController => {
+  const centroids = getCentroidsMap ? getCentroidsMap() : defaultCentroids;
+  const idToLabel = labelForId || ((id: string) => id);
   const labelElements = new Map<string, HTMLElement>();
   let currentSelectedZips = new Set<string>();
   let currentPinnedZips = new Set<string>();
@@ -35,10 +40,11 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
   let currentSecondaryStatType: string = "count";
   let currentTheme: "light" | "dark" = "light";
   let updatePositionHandler: (() => void) | null = null;
+  let visible = true;
 
   const createLabelElement = (zip: string, isSelected: boolean, isPinned: boolean, isHovered: boolean): HTMLElement => {
-    const centroid = zipCentroids.get(zip);
-    if (!centroid) throw new Error(`No centroid found for ZIP ${zip}`);
+    const centroid = centroids.get(zip);
+    if (!centroid) throw new Error(`No centroid found for ${zip}`);
 
     const [lng, lat] = centroid;
     const element = document.createElement("div");
@@ -98,7 +104,7 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
         element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
       }
     } else {
-      pillLabel.textContent = zip;
+      pillLabel.textContent = idToLabel(zip);
       element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
     }
 
@@ -141,7 +147,7 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
 
   const updateAllPositions = () => {
     for (const [zipCode, element] of labelElements) {
-      const centroid = zipCentroids.get(zipCode);
+      const centroid = centroids.get(zipCode);
       if (!centroid) continue;
       const [lng, lat] = centroid;
       const point = map.project([lng, lat]);
@@ -223,6 +229,23 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
     updateLabels();
   };
 
+  const setVisible = (v: boolean) => {
+    if (visible === v) return;
+    visible = v;
+    if (!visible) {
+      // Remove all elements and stop tracking
+      if (updatePositionHandler) {
+        map.off("move", updatePositionHandler);
+        map.off("zoom", updatePositionHandler);
+        updatePositionHandler = null;
+      }
+      for (const [, el] of labelElements) el.remove();
+      labelElements.clear();
+    } else {
+      updateLabels();
+    }
+  };
+
   const destroy = () => {
     if (updatePositionHandler) {
       map.off("move", updatePositionHandler);
@@ -240,8 +263,7 @@ export const createZipLabels = ({ map }: ZipLabelsOptions): ZipLabelsController 
     setStatOverlay,
     setSecondaryStatOverlay,
     setTheme,
+    setVisible,
     destroy,
   };
 };
-
-

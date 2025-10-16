@@ -2,6 +2,7 @@ import { id } from "@instantdb/core";
 
 import { organizationSeedData } from "../data/organizations";
 import { getAllZipCodes } from "./zipBoundaries";
+import { getAllCountyIds } from "./countyBoundaries";
 import { db } from "./db";
 import { statsSeedData } from "../data/stats";
 
@@ -228,10 +229,12 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
         stats: { $: { order: { name: "asc" } } },
       });
       const hasRealData = (checkStats.stats ?? []).some((s: any) => s?.neId);
+      let skipZipSynthetic = false;
       if (hasRealData) {
         await backfillLegacyParentArea();
-        console.log('[seed] Real NE data detected; skipping synthetic statData seed');
-        return;
+        // We still want to seed COUNTY synthetic data if missing
+        skipZipSynthetic = true;
+        console.log('[seed] Real NE data detected; skipping ZIP synthetic seed (will seed COUNTY if missing)');
       }
 
       // Fetch stats and existing statData
@@ -264,6 +267,7 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
       }
 
       const zips = getAllZipCodes();
+      const counties = getAllCountyIds();
 
       const typeForStatName = (name: string): string => {
         const n = name.toLowerCase();
@@ -337,24 +341,38 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
         const boundaryType = "ZIP";
         const type = typeForStatName(name);
 
-        for (const date of YEARS) {
-          const dataObj: Record<string, number> = {};
-          for (const zip of zips) {
-            dataObj[zip] = valueFor(type, name, zip, date);
-          }
+        if (!skipZipSynthetic) {
+          for (const date of YEARS) {
+            const dataObj: Record<string, number> = {};
+            for (const zip of zips) {
+              dataObj[zip] = valueFor(type, name, zip, date);
+            }
 
-          const comp = `${sid}::${entryName}::${parentArea}::${boundaryType}::${date}`.toLowerCase();
-          const existing = existingByComposite.get(comp);
+            const comp = `${sid}::${entryName}::${parentArea}::${boundaryType}::${date}`.toLowerCase();
+            const existing = existingByComposite.get(comp);
 
-          if (existing && existing.id) {
-            // Update if any identifying fields or data changed
-            const needsUpdate =
-              (existing as any).type !== type ||
-              JSON.stringify((existing as any).data ?? {}) !== JSON.stringify(dataObj) ||
-              (existing as any).parentArea !== parentArea;
-            if (needsUpdate) {
+            if (existing && existing.id) {
+              // Update if any identifying fields or data changed
+              const needsUpdate =
+                (existing as any).type !== type ||
+                JSON.stringify((existing as any).data ?? {}) !== JSON.stringify(dataObj) ||
+                (existing as any).parentArea !== parentArea;
+              if (needsUpdate) {
+                txs.push(
+                  db.tx.statData[existing.id].update({
+                    statId: sid,
+                    name: entryName,
+                    parentArea,
+                    boundaryType,
+                    date,
+                    type,
+                    data: dataObj,
+                  }),
+                );
+              }
+            } else {
               txs.push(
-                db.tx.statData[existing.id].update({
+                db.tx.statData[id()].update({
                   statId: sid,
                   name: entryName,
                   parentArea,
@@ -365,18 +383,62 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
                 }),
               );
             }
-          } else {
-            txs.push(
-              db.tx.statData[id()].update({
-                statId: sid,
-                name: entryName,
-                parentArea,
-                boundaryType,
-                date,
-                type,
-                data: dataObj,
-              }),
-            );
+          }
+        }
+      }
+
+      // Seed county-level aggregates for Oklahoma
+      if (counties.length > 0) {
+        for (const s of stats) {
+          const sid = (s as any)?.id as string | undefined;
+          const name = (s as any)?.name as string | undefined;
+          if (!sid || !name) continue;
+
+          const entryName = "root";
+          const parentArea = "Oklahoma";
+          const boundaryType = "COUNTY";
+          const type = typeForStatName(name);
+
+          for (const date of YEARS) {
+            const dataObj: Record<string, number> = {};
+            for (const county of counties) {
+              dataObj[county] = valueFor(type, name, county, `${county}::${date}`);
+            }
+
+            const comp = `${sid}::${entryName}::${parentArea}::${boundaryType}::${date}`.toLowerCase();
+            const existing = existingByComposite.get(comp);
+
+            if (existing && existing.id) {
+              const needsUpdate =
+                (existing as any).type !== type ||
+                JSON.stringify((existing as any).data ?? {}) !== JSON.stringify(dataObj) ||
+                (existing as any).parentArea !== parentArea;
+              if (needsUpdate) {
+                txs.push(
+                  db.tx.statData[existing.id].update({
+                    statId: sid,
+                    name: entryName,
+                    parentArea,
+                    boundaryType,
+                    date,
+                    type,
+                    data: dataObj,
+                  }),
+                );
+              }
+            } else {
+              txs.push(
+                db.tx.statData[id()].update({
+                  statId: sid,
+                  name: entryName,
+                  parentArea,
+                  boundaryType,
+                  date,
+                  type,
+                  data: dataObj,
+                }),
+              );
+            }
           }
         }
       }

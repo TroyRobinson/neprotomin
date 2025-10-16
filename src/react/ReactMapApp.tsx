@@ -20,6 +20,9 @@ export const ReactMapApp = () => {
   const [selectedZips, setSelectedZips] = useState<string[]>([]);
   const [pinnedZips, setPinnedZips] = useState<string[]>([]);
   const [hoveredZip, setHoveredZip] = useState<string | null>(null);
+  const [selectedCounties, setSelectedCounties] = useState<string[]>([]);
+  const [pinnedCounties, setPinnedCounties] = useState<string[]>([]);
+  const [hoveredCounty, setHoveredCounty] = useState<string | null>(null);
   const [activeOrganizationId, setActiveOrganizationId] = useState<string | null>(null);
   const [highlightedOrganizationIds, setHighlightedOrganizationIds] = useState<string[] | null>(null);
   const [selectedStatId, setSelectedStatId] = useState<string | null>(null);
@@ -53,9 +56,18 @@ export const ReactMapApp = () => {
           });
           const entry = (data as any)?.uiState?.[0];
           if (entry?.selection) {
-            const sel = entry.selection as { zips?: string[]; pinned?: string[]; boundaryMode?: string | null };
+            const sel = entry.selection as {
+              zips?: string[];
+              pinned?: string[];
+              counties?: { selected?: string[]; pinned?: string[] };
+              boundaryMode?: string | null;
+            };
             if (Array.isArray(sel.zips)) setSelectedZips(sel.zips);
             if (Array.isArray(sel.pinned)) setPinnedZips(sel.pinned);
+            if (sel.counties) {
+              if (Array.isArray(sel.counties.selected)) setSelectedCounties(sel.counties.selected);
+              if (Array.isArray(sel.counties.pinned)) setPinnedCounties(sel.counties.pinned);
+            }
             if (sel.boundaryMode === "neighborhoods") setBoundaryMode("zips");
             else if (sel.boundaryMode === "zips" || sel.boundaryMode === "counties" || sel.boundaryMode === "none") {
               setBoundaryMode(sel.boundaryMode as BoundaryMode);
@@ -71,10 +83,17 @@ export const ReactMapApp = () => {
           const sel = JSON.parse(raw);
           if (Array.isArray(sel.zips)) setSelectedZips(sel.zips);
           if (Array.isArray(sel.pinned)) setPinnedZips(sel.pinned);
+          if (sel.counties) {
+            if (Array.isArray(sel.counties.selected)) setSelectedCounties(sel.counties.selected);
+            if (Array.isArray(sel.counties.pinned)) setPinnedCounties(sel.counties.pinned);
+          }
           if (sel.boundaryMode === "neighborhoods") setBoundaryMode("zips");
           else if (sel.boundaryMode === "zips" || sel.boundaryMode === "counties" || sel.boundaryMode === "none") {
             setBoundaryMode(sel.boundaryMode as BoundaryMode);
           }
+        } else {
+          setSelectedCounties([]);
+          setPinnedCounties([]);
         }
       } catch {}
     };
@@ -86,7 +105,12 @@ export const ReactMapApp = () => {
   // Persisted UI state: save with debounce
   useEffect(() => {
     const owner = user?.id;
-    const selection = { zips: selectedZips, pinned: pinnedZips, boundaryMode };
+    const selection = {
+      zips: selectedZips,
+      pinned: pinnedZips,
+      counties: { selected: selectedCounties, pinned: pinnedCounties },
+      boundaryMode,
+    };
     const updatedAt = Date.now();
     const timeout = setTimeout(() => {
       // Save to localStorage always for fast restore
@@ -102,7 +126,7 @@ export const ReactMapApp = () => {
       }
     }, 500);
     return () => clearTimeout(timeout);
-  }, [user?.id, selectedZips, pinnedZips, boundaryMode]);
+  }, [user?.id, selectedZips, pinnedZips, selectedCounties, pinnedCounties, boundaryMode]);
 
   // Subscribe to demographics and stats stores
   const { demographics, breakdowns } = useDemographics(selectedZips);
@@ -140,6 +164,8 @@ export const ReactMapApp = () => {
     console.log("Brand clicked - would reset map view");
     setSelectedZips([]);
     setPinnedZips([]);
+    setSelectedCounties([]);
+    setPinnedCounties([]);
     setActiveScreen("map");
   };
 
@@ -173,6 +199,29 @@ export const ReactMapApp = () => {
   const handleClearSelection = () => {
     setSelectedZips([]);
     setPinnedZips([]);
+  };
+
+  const handleToggleCountyPin = (county: string, pinned: boolean) => {
+    if (pinned) {
+      setPinnedCounties((prev) => [...prev, county]);
+      if (!selectedCounties.includes(county)) {
+        setSelectedCounties((prev) => [...prev, county]);
+      }
+    } else {
+      setPinnedCounties((prev) => prev.filter((c) => c !== county));
+    }
+  };
+
+  const handleAddCounties = (counties: string[]) => {
+    setSelectedCounties((prev) => {
+      const next = new Set([...prev, ...counties]);
+      return Array.from(next);
+    });
+  };
+
+  const handleClearCountySelection = () => {
+    setSelectedCounties([]);
+    setPinnedCounties([]);
   };
 
   const handleExport = () => {
@@ -377,6 +426,9 @@ export const ReactMapApp = () => {
             pinnedZips={pinnedZips}
             boundaryMode={boundaryMode}
             hoveredZip={hoveredZip}
+            selectedCounties={selectedCounties}
+            pinnedCounties={pinnedCounties}
+            hoveredCounty={hoveredCounty}
             stickyTopClass="top-16"
             onBoundaryModeChange={setBoundaryMode}
             onToggleZipPin={handleToggleZipPin}
@@ -384,6 +436,10 @@ export const ReactMapApp = () => {
             onClearSelection={handleClearSelection}
             onExport={handleExport}
             onHoverZip={setHoveredZip}
+            onToggleCountyPin={handleToggleCountyPin}
+            onHoverCounty={setHoveredCounty}
+            onClearCountySelection={handleClearCountySelection}
+            onAddCounties={handleAddCounties}
           />
           <main className="flex flex-1 overflow-hidden">
             {/* Sidebar */}
@@ -454,28 +510,37 @@ export const ReactMapApp = () => {
                 orgPinsVisible={orgPinsVisible}
                 zoomOutRequestNonce={zoomOutNonce}
                 clearMapCategoryNonce={clearMapCategoryNonce}
-                boundaryMode={boundaryMode}
-                selectedZips={selectedZips}
-                pinnedZips={pinnedZips}
-                hoveredZip={hoveredZip}
-                activeOrganizationId={activeOrganizationId}
-                onHover={handleHover}
-                selectedStatId={selectedStatId}
-                secondaryStatId={secondaryStatId}
-                categoryFilter={categoryFilter}
-                onZipSelectionChange={(zips, meta) => {
-                  console.log("ZIP selection changed:", zips, meta);
+              boundaryMode={boundaryMode}
+              selectedZips={selectedZips}
+              pinnedZips={pinnedZips}
+              hoveredZip={hoveredZip}
+              selectedCounties={selectedCounties}
+              pinnedCounties={pinnedCounties}
+              hoveredCounty={hoveredCounty}
+              activeOrganizationId={activeOrganizationId}
+              onHover={handleHover}
+              selectedStatId={selectedStatId}
+              secondaryStatId={secondaryStatId}
+              categoryFilter={categoryFilter}
+              onZipSelectionChange={(zips, meta) => {
+                  setSelectedZips(zips);
                   if (meta) {
-                    setSelectedZips(zips);
                     setPinnedZips(meta.pinned);
                   }
                 }}
-                onZipHoverChange={setHoveredZip}
-                onStatSelectionChange={setSelectedStatId}
-                onCategorySelectionChange={setCategoryFilter}
-                onVisibleIdsChange={(ids, _totalInSource, allSourceIds) => {
-                  setOrgsVisibleIds(ids);
-                  setOrgsAllSourceIds(allSourceIds);
+              onZipHoverChange={setHoveredZip}
+              onCountySelectionChange={(counties, meta) => {
+                  setSelectedCounties(counties);
+                  if (meta) {
+                    setPinnedCounties(meta.pinned);
+                  }
+                }}
+              onCountyHoverChange={setHoveredCounty}
+              onStatSelectionChange={setSelectedStatId}
+              onCategorySelectionChange={setCategoryFilter}
+              onVisibleIdsChange={(ids, _totalInSource, allSourceIds) => {
+                setOrgsVisibleIds(ids);
+                setOrgsAllSourceIds(allSourceIds);
                 }}
                 onBoundaryModeChange={setBoundaryMode}
               />
@@ -495,6 +560,9 @@ export const ReactMapApp = () => {
               pinnedZips={pinnedZips}
               boundaryMode={boundaryMode}
               hoveredZip={hoveredZip}
+              selectedCounties={selectedCounties}
+              pinnedCounties={pinnedCounties}
+              hoveredCounty={hoveredCounty}
               stickyTopClass="top-0"
               onBoundaryModeChange={setBoundaryMode}
               onToggleZipPin={handleToggleZipPin}
@@ -502,6 +570,10 @@ export const ReactMapApp = () => {
               onClearSelection={handleClearSelection}
               onExport={handleExport}
               onHoverZip={setHoveredZip}
+              onToggleCountyPin={handleToggleCountyPin}
+              onHoverCounty={setHoveredCounty}
+              onClearCountySelection={handleClearCountySelection}
+              onAddCounties={handleAddCounties}
             />
           </div>
           {activeScreen === "report" && (
