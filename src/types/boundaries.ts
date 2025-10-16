@@ -1,1 +1,1 @@
-export type BoundaryMode = "none" | "zips";
+export type BoundaryMode = "none" | "zips" | "counties";

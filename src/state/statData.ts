@@ -5,7 +5,7 @@ type StatDataEntry = {
   id: string;
   statId: string;
   name: string;
-  area: string;
+  parentArea: string;
   boundaryType: string;
   date: string;
   type: string;
@@ -22,6 +22,13 @@ const QUERY = {
       order: { date: "asc" as const },
     },
   },
+};
+
+const getParentArea = (row: any): string | undefined => {
+  if (row && typeof row.parentArea === "string" && row.parentArea.length > 0) {
+    return row.parentArea;
+  }
+  return undefined;
 };
 
 class StatDataStore {
@@ -50,16 +57,16 @@ class StatDataStore {
               row?.id &&
                 typeof (row as any)?.statId === "string" &&
                 typeof (row as any)?.name === "string" &&
-                typeof (row as any)?.area === "string" &&
                 typeof (row as any)?.boundaryType === "string" &&
                 typeof (row as any)?.date === "string" &&
                 typeof (row as any)?.type === "string" &&
-                typeof (row as any)?.data === "object",
+                typeof (row as any)?.data === "object" &&
+                typeof getParentArea(row) === "string",
             ),
           )
           .filter(
             (row) =>
-              (row as any).area === "Tulsa" &&
+              getParentArea(row) === "Tulsa" &&
               (row as any).boundaryType === "ZIP" &&
               (row as any).name === "root",
           ) as StatData[];
@@ -80,11 +87,13 @@ class StatDataStore {
           const entries = Object.values(latest.data ?? {}) as number[];
           const min = entries.length ? Math.min(...entries) : 0;
           const max = entries.length ? Math.max(...entries) : 0;
+          const latestParentArea = getParentArea(latest);
+          if (!latestParentArea) continue;
           map.set(statId, {
             id: latest.id,
             statId: latest.statId,
             name: latest.name,
-            area: latest.area,
+            parentArea: latestParentArea,
             boundaryType: latest.boundaryType,
             date: latest.date,
             type: latest.type,
@@ -115,4 +124,3 @@ class StatDataStore {
 }
 
 export const statDataStore = new StatDataStore();
-

@@ -1,6 +1,7 @@
 import type maplibregl from "maplibre-gl";
 
 import { tulsaZipBoundaries } from "../../../data/tulsaZipBoundaries";
+import { oklahomaCountyBoundaries } from "../../../data/oklahomaCountyBoundaries";
 import type { BoundaryMode } from "../../../types/boundaries";
 import { getZipCentroidFeatureCollection } from "../../../lib/zipCentroids";
 import { getBoundaryPalette } from "../styles/boundaryPalettes";
@@ -20,6 +21,11 @@ export interface BoundaryLayerIds {
   ZIP_CENTROIDS_SOURCE_ID: string;
   SECONDARY_STAT_LAYER_ID: string;
   SECONDARY_STAT_HOVER_LAYER_ID: string;
+  COUNTY_BOUNDARY_SOURCE_ID: string;
+  COUNTY_BOUNDARY_FILL_LAYER_ID: string;
+  COUNTY_BOUNDARY_LINE_LAYER_ID: string;
+  COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID: string;
+  COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID: string;
 }
 
 export const ensureBoundaryLayers = (
@@ -44,6 +50,11 @@ export const ensureBoundaryLayers = (
     ZIP_CENTROIDS_SOURCE_ID,
     SECONDARY_STAT_LAYER_ID,
     SECONDARY_STAT_HOVER_LAYER_ID,
+    COUNTY_BOUNDARY_SOURCE_ID,
+    COUNTY_BOUNDARY_FILL_LAYER_ID,
+    COUNTY_BOUNDARY_LINE_LAYER_ID,
+    COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+    COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
   } = ids;
 
   if (!map.getSource(BOUNDARY_SOURCE_ID)) {
@@ -207,6 +218,66 @@ export const ensureBoundaryLayers = (
     if (before) map.addLayer(layer, before);
     else map.addLayer(layer);
   }
+
+  if (!map.getSource(COUNTY_BOUNDARY_SOURCE_ID)) {
+    map.addSource(COUNTY_BOUNDARY_SOURCE_ID, { type: "geojson", data: oklahomaCountyBoundaries });
+  } else {
+    const source = map.getSource(COUNTY_BOUNDARY_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    try { source?.setData(oklahomaCountyBoundaries as any); } catch {}
+  }
+
+  const countyPalette = theme === "dark"
+    ? { fillColor: "#1f2937", fillOpacity: 0.28, lineColor: "#94a3b8", lineOpacity: 0.65 }
+    : { fillColor: "#e2e8f0", fillOpacity: 0.18, lineColor: "#475569", lineOpacity: 0.6 };
+
+  if (!map.getLayer(COUNTY_BOUNDARY_FILL_LAYER_ID)) {
+    map.addLayer({
+      id: COUNTY_BOUNDARY_FILL_LAYER_ID,
+      type: "fill",
+      source: COUNTY_BOUNDARY_SOURCE_ID,
+      layout: { visibility: boundaryMode === "counties" ? "visible" : "none" },
+      paint: {
+        "fill-color": countyPalette.fillColor,
+        "fill-opacity": countyPalette.fillOpacity,
+      },
+    });
+  }
+
+  if (!map.getLayer(COUNTY_BOUNDARY_LINE_LAYER_ID)) {
+    map.addLayer({
+      id: COUNTY_BOUNDARY_LINE_LAYER_ID,
+      type: "line",
+      source: COUNTY_BOUNDARY_SOURCE_ID,
+      layout: { visibility: boundaryMode === "counties" ? "visible" : "none" },
+      paint: {
+        "line-color": countyPalette.lineColor,
+        "line-opacity": countyPalette.lineOpacity,
+        "line-width": 0.9,
+      },
+    });
+  }
+
+  if (!map.getLayer(COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID)) {
+    map.addLayer({
+      id: COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+      type: "fill",
+      source: COUNTY_BOUNDARY_SOURCE_ID,
+      filter: ["==", ["get", "county"], "__none__"],
+      layout: { visibility: boundaryMode === "counties" ? "visible" : "none" },
+      paint: {},
+    });
+  }
+
+  if (!map.getLayer(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID)) {
+    map.addLayer({
+      id: COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
+      type: "line",
+      source: COUNTY_BOUNDARY_SOURCE_ID,
+      filter: ["==", ["get", "county"], "__none__"],
+      layout: { visibility: boundaryMode === "counties" ? "visible" : "none" },
+      paint: {},
+    });
+  }
 };
 
 export const updateBoundaryPaint = (
@@ -214,7 +285,20 @@ export const updateBoundaryPaint = (
   ids: BoundaryLayerIds,
   theme: "light" | "dark",
 ) => {
-  const { BOUNDARY_FILL_LAYER_ID, BOUNDARY_LINE_LAYER_ID, BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, BOUNDARY_PINNED_FILL_LAYER_ID, BOUNDARY_PINNED_LINE_LAYER_ID, BOUNDARY_HOVER_LINE_LAYER_ID, BOUNDARY_HOVER_FILL_LAYER_ID } = ids;
+  const {
+    BOUNDARY_FILL_LAYER_ID,
+    BOUNDARY_LINE_LAYER_ID,
+    BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+    BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+    BOUNDARY_PINNED_FILL_LAYER_ID,
+    BOUNDARY_PINNED_LINE_LAYER_ID,
+    BOUNDARY_HOVER_LINE_LAYER_ID,
+    BOUNDARY_HOVER_FILL_LAYER_ID,
+    COUNTY_BOUNDARY_FILL_LAYER_ID,
+    COUNTY_BOUNDARY_LINE_LAYER_ID,
+    COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+    COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
+  } = ids;
   const palette = getBoundaryPalette(theme);
   if (map.getLayer(BOUNDARY_FILL_LAYER_ID)) {
     map.setPaintProperty(BOUNDARY_FILL_LAYER_ID, "fill-color", palette.fillColor);
@@ -249,6 +333,26 @@ export const updateBoundaryPaint = (
   if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
     map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity-transition", { duration: 150, delay: 0 } as any);
   }
+  const countyPalette = theme === "dark"
+    ? { fillColor: "#1f2937", fillOpacity: 0.28, lineColor: "#94a3b8", lineOpacity: 0.65, hoverFillOpacity: 0.32, hoverFillColor: "#0f172a", hoverLineColor: "#e2e8f0", hoverLineOpacity: 0.9 }
+    : { fillColor: "#e2e8f0", fillOpacity: 0.18, lineColor: "#475569", lineOpacity: 0.6, hoverFillOpacity: 0.26, hoverFillColor: "#cbd5f5", hoverLineColor: "#334155", hoverLineOpacity: 0.85 };
+  if (map.getLayer(COUNTY_BOUNDARY_FILL_LAYER_ID)) {
+    map.setPaintProperty(COUNTY_BOUNDARY_FILL_LAYER_ID, "fill-color", countyPalette.fillColor);
+    map.setPaintProperty(COUNTY_BOUNDARY_FILL_LAYER_ID, "fill-opacity", countyPalette.fillOpacity);
+  }
+  if (map.getLayer(COUNTY_BOUNDARY_LINE_LAYER_ID)) {
+    map.setPaintProperty(COUNTY_BOUNDARY_LINE_LAYER_ID, "line-color", countyPalette.lineColor);
+    map.setPaintProperty(COUNTY_BOUNDARY_LINE_LAYER_ID, "line-opacity", countyPalette.lineOpacity);
+  }
+  if (map.getLayer(COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID)) {
+    map.setPaintProperty(COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, "fill-color", countyPalette.hoverFillColor);
+    map.setPaintProperty(COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity", countyPalette.hoverFillOpacity);
+  }
+  if (map.getLayer(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID)) {
+    map.setPaintProperty(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID, "line-color", countyPalette.hoverLineColor);
+    map.setPaintProperty(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity", countyPalette.hoverLineOpacity);
+    map.setPaintProperty(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID, "line-width", 1.1);
+  }
 };
 
 export const updateBoundaryVisibility = (
@@ -256,20 +360,43 @@ export const updateBoundaryVisibility = (
   ids: BoundaryLayerIds,
   boundaryMode: BoundaryMode,
 ) => {
-  const { BOUNDARY_FILL_LAYER_ID, BOUNDARY_STATDATA_FILL_LAYER_ID, SECONDARY_STAT_LAYER_ID, SECONDARY_STAT_HOVER_LAYER_ID, BOUNDARY_LINE_LAYER_ID, BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, BOUNDARY_PINNED_FILL_LAYER_ID, BOUNDARY_PINNED_LINE_LAYER_ID, BOUNDARY_HOVER_LINE_LAYER_ID, BOUNDARY_HOVER_FILL_LAYER_ID } = ids;
-  const visibility = boundaryMode === "zips" ? "visible" : "none";
-  const setVis = (layerId: string) => { if (map.getLayer(layerId)) map.setLayoutProperty(layerId, "visibility", visibility); };
-  setVis(BOUNDARY_FILL_LAYER_ID);
-  setVis(BOUNDARY_STATDATA_FILL_LAYER_ID);
-  setVis(SECONDARY_STAT_LAYER_ID);
-  setVis(SECONDARY_STAT_HOVER_LAYER_ID);
-  setVis(BOUNDARY_LINE_LAYER_ID);
-  setVis(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID);
-  setVis(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID);
-  setVis(BOUNDARY_PINNED_FILL_LAYER_ID);
-  setVis(BOUNDARY_PINNED_LINE_LAYER_ID);
-  setVis(BOUNDARY_HOVER_LINE_LAYER_ID);
-  setVis(BOUNDARY_HOVER_FILL_LAYER_ID);
+  const {
+    BOUNDARY_FILL_LAYER_ID,
+    BOUNDARY_STATDATA_FILL_LAYER_ID,
+    SECONDARY_STAT_LAYER_ID,
+    SECONDARY_STAT_HOVER_LAYER_ID,
+    BOUNDARY_LINE_LAYER_ID,
+    BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+    BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+    BOUNDARY_PINNED_FILL_LAYER_ID,
+    BOUNDARY_PINNED_LINE_LAYER_ID,
+    BOUNDARY_HOVER_LINE_LAYER_ID,
+    BOUNDARY_HOVER_FILL_LAYER_ID,
+    COUNTY_BOUNDARY_FILL_LAYER_ID,
+    COUNTY_BOUNDARY_LINE_LAYER_ID,
+    COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+    COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
+  } = ids;
+  const zipVisibility = boundaryMode === "zips" ? "visible" : "none";
+  const countyVisibility = boundaryMode === "counties" ? "visible" : "none";
+  const setVis = (layerId: string, visibility: "visible" | "none") => {
+    if (map.getLayer(layerId)) map.setLayoutProperty(layerId, "visibility", visibility);
+  };
+  setVis(BOUNDARY_FILL_LAYER_ID, zipVisibility);
+  setVis(BOUNDARY_STATDATA_FILL_LAYER_ID, zipVisibility);
+  setVis(SECONDARY_STAT_LAYER_ID, zipVisibility);
+  setVis(SECONDARY_STAT_HOVER_LAYER_ID, zipVisibility);
+  setVis(BOUNDARY_LINE_LAYER_ID, zipVisibility);
+  setVis(BOUNDARY_HIGHLIGHT_FILL_LAYER_ID, zipVisibility);
+  setVis(BOUNDARY_HIGHLIGHT_LINE_LAYER_ID, zipVisibility);
+  setVis(BOUNDARY_PINNED_FILL_LAYER_ID, zipVisibility);
+  setVis(BOUNDARY_PINNED_LINE_LAYER_ID, zipVisibility);
+  setVis(BOUNDARY_HOVER_LINE_LAYER_ID, zipVisibility);
+  setVis(BOUNDARY_HOVER_FILL_LAYER_ID, zipVisibility);
+  setVis(COUNTY_BOUNDARY_FILL_LAYER_ID, countyVisibility);
+  setVis(COUNTY_BOUNDARY_LINE_LAYER_ID, countyVisibility);
+  setVis(COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, countyVisibility);
+  setVis(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID, countyVisibility);
 };
 
 export const updateZipSelectionHighlight = (
@@ -348,4 +475,13 @@ export const updateZipHoverOutline = (
   }
 };
 
-
+export const updateCountyHoverOutline = (
+  map: maplibregl.Map,
+  ids: BoundaryLayerIds,
+  countyId: string | null,
+) => {
+  const { COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID } = ids;
+  const filter = countyId ? (["==", ["get", "county"], countyId] as any) : (["==", ["get", "county"], "__none__"] as any);
+  if (map.getLayer(COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID)) map.setFilter(COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, filter);
+  if (map.getLayer(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID)) map.setFilter(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID, filter);
+};

@@ -16,6 +16,13 @@ const QUERY = {
   },
 };
 
+const getParentArea = (row: any): string | undefined => {
+  if (row && typeof row.parentArea === "string" && row.parentArea.length > 0) {
+    return row.parentArea;
+  }
+  return undefined;
+};
+
 class StatSeriesStore {
   private listeners = new Set<Listener>();
   private byStatId: Map<string, SeriesEntry[]> = new Map();
@@ -41,11 +48,12 @@ class StatSeriesStore {
             row?.id &&
               typeof (row as any)?.statId === "string" &&
               (row as any)?.name === "root" &&
-              (row as any)?.area === "Tulsa" &&
               (row as any)?.boundaryType === "ZIP" &&
               typeof (row as any)?.date === "string" &&
               typeof (row as any)?.type === "string" &&
-              typeof (row as any)?.data === "object",
+              typeof (row as any)?.data === "object" &&
+              typeof getParentArea(row) === "string" &&
+              getParentArea(row) === "Tulsa",
           ),
         );
 
@@ -89,4 +97,3 @@ class StatSeriesStore {
 }
 
 export const statSeriesStore = new StatSeriesStore();
-

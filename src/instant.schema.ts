@@ -28,7 +28,7 @@ const _schema = i.schema({
       statId: i.string().indexed(),
       name: i.string().indexed(), // e.g., "root" or sub-stat name
       statTitle: i.string().optional(), // Human-readable title of the associated stat
-      area: i.string().indexed(), // e.g., Tulsa
+      parentArea: i.string().indexed(), // e.g., Tulsa County bucket
       boundaryType: i.string().indexed(), // e.g., ZIP
       date: i.string().indexed(), // e.g., year like "2025"
       type: i.string(), // e.g., count | percent | rate | years | currency

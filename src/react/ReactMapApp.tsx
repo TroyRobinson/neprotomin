@@ -56,7 +56,10 @@ export const ReactMapApp = () => {
             const sel = entry.selection as { zips?: string[]; pinned?: string[]; boundaryMode?: string | null };
             if (Array.isArray(sel.zips)) setSelectedZips(sel.zips);
             if (Array.isArray(sel.pinned)) setPinnedZips(sel.pinned);
-            if (sel.boundaryMode === "zips" || sel.boundaryMode === "neighborhoods") setBoundaryMode(sel.boundaryMode as BoundaryMode);
+            if (sel.boundaryMode === "neighborhoods") setBoundaryMode("zips");
+            else if (sel.boundaryMode === "zips" || sel.boundaryMode === "counties" || sel.boundaryMode === "none") {
+              setBoundaryMode(sel.boundaryMode as BoundaryMode);
+            }
             return;
           }
         } catch {}
@@ -68,7 +71,10 @@ export const ReactMapApp = () => {
           const sel = JSON.parse(raw);
           if (Array.isArray(sel.zips)) setSelectedZips(sel.zips);
           if (Array.isArray(sel.pinned)) setPinnedZips(sel.pinned);
-          if (sel.boundaryMode === "zips" || sel.boundaryMode === "neighborhoods") setBoundaryMode(sel.boundaryMode);
+          if (sel.boundaryMode === "neighborhoods") setBoundaryMode("zips");
+          else if (sel.boundaryMode === "zips" || sel.boundaryMode === "counties" || sel.boundaryMode === "none") {
+            setBoundaryMode(sel.boundaryMode as BoundaryMode);
+          }
         }
       } catch {}
     };
@@ -471,6 +477,7 @@ export const ReactMapApp = () => {
                   setOrgsVisibleIds(ids);
                   setOrgsAllSourceIds(allSourceIds);
                 }}
+                onBoundaryModeChange={setBoundaryMode}
               />
             </div>
           </main>

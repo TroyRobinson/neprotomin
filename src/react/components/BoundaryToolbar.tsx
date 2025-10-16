@@ -58,7 +58,7 @@ export const BoundaryToolbar = ({
 
   const pinnedSet = new Set(pinnedZips);
   const hasSelections = selectedZips.length > 0;
-  const areaLabel = boundaryMode === "zips" ? "ZIP" : "area";
+  const areaLabel = boundaryMode === "zips" ? "ZIP" : boundaryMode === "counties" ? "County" : "area";
   const inLineMode = selectedZips.length > 0 && selectedZips.length < 4;
 
   useEffect(() => {
@@ -334,6 +334,7 @@ export const BoundaryToolbar = ({
             value={boundaryMode}
             options={[
               { value: "zips", label: "ZIPs" },
+              { value: "counties", label: "Counties" },
               { value: "none", label: "None" }
             ]}
             onChange={(value) => onBoundaryModeChange?.(value as BoundaryMode)}

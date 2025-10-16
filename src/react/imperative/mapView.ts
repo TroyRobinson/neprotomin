@@ -16,7 +16,14 @@ import { createZipLabels, type ZipLabelsController } from "./components/zipLabel
 import { createChoroplethLegend, type ChoroplethLegendController } from "./components/choroplethLegend";
 // choropleth helpers are used only inside overlays/stats now
 import { updateChoroplethLegend as extUpdateLegend, updateSecondaryStatOverlay as extUpdateSecondaryOverlay, updateStatDataChoropleth as extUpdatePrimaryChoropleth } from "./overlays/stats";
-import { ensureBoundaryLayers, updateBoundaryPaint as extUpdateBoundaryPaint, updateBoundaryVisibility as extUpdateBoundaryVisibility, updateZipSelectionHighlight as extUpdateZipSelectionHighlight, updateZipHoverOutline as extUpdateZipHoverOutline } from "./layers/boundaries";
+import {
+  ensureBoundaryLayers,
+  updateBoundaryPaint as extUpdateBoundaryPaint,
+  updateBoundaryVisibility as extUpdateBoundaryVisibility,
+  updateZipSelectionHighlight as extUpdateZipSelectionHighlight,
+  updateZipHoverOutline as extUpdateZipHoverOutline,
+  updateCountyHoverOutline as extUpdateCountyHoverOutline,
+} from "./layers/boundaries";
 import { ensureOrganizationLayers } from "./layers/organizations";
 import { setClusterHighlight as extSetClusterHighlight, highlightClusterContainingOrg as extHighlightClusterContainingOrg } from "./organizationsHighlight";
 import { wireVisibleIds } from "./visibilityTracker";
@@ -28,6 +35,7 @@ interface MapViewOptions {
   onZipHoverChange?: (zip: string | null) => void;
   onStatSelectionChange?: (statId: string | null) => void;
   onCategorySelectionChange?: (categoryId: string | null) => void;
+  onBoundaryModeChange?: (mode: BoundaryMode) => void;
 }
 
 export interface MapViewController {
@@ -78,6 +86,11 @@ import {
   ZIP_CENTROIDS_SOURCE_ID,
   SECONDARY_STAT_LAYER_ID,
   SECONDARY_STAT_HOVER_LAYER_ID,
+  COUNTY_BOUNDARY_SOURCE_ID,
+  COUNTY_BOUNDARY_FILL_LAYER_ID,
+  COUNTY_BOUNDARY_LINE_LAYER_ID,
+  COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+  COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
 } from "./constants/map";
 
 // colors and class index provided by lib/choropleth
@@ -89,6 +102,9 @@ type FC = GeoJSON.FeatureCollection<
 
 const emptyFC = (): FC => ({ type: "FeatureCollection", features: [] });
 
+const COUNTY_MODE_ENABLE_ZOOM = 9;
+const COUNTY_MODE_DISABLE_ZOOM = 9.6;
+
 export const createMapView = ({
   onHover,
   onVisibleIdsChange,
@@ -96,6 +112,7 @@ export const createMapView = ({
   onZipHoverChange,
   onStatSelectionChange,
   onCategorySelectionChange,
+  onBoundaryModeChange,
 }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
   container.className = "relative flex flex-1";
@@ -141,6 +158,7 @@ export const createMapView = ({
   let transientZips = new Set<string>();
   let hoveredZipFromToolbar: string | null = null;
   let hoveredZipFromMap: string | null = null;
+  let hoveredCountyFromMap: string | null = null;
   let selectedStatId: string | null = null;
   let secondaryStatId: string | null = null;
 
@@ -201,6 +219,11 @@ export const createMapView = ({
     ZIP_CENTROIDS_SOURCE_ID,
     SECONDARY_STAT_LAYER_ID,
     SECONDARY_STAT_HOVER_LAYER_ID,
+    COUNTY_BOUNDARY_SOURCE_ID,
+    COUNTY_BOUNDARY_FILL_LAYER_ID,
+    COUNTY_BOUNDARY_LINE_LAYER_ID,
+    COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+    COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
   }, currentTheme);
 
   const updateBoundaryVisibility = () => extUpdateBoundaryVisibility(map, {
@@ -217,6 +240,11 @@ export const createMapView = ({
     ZIP_CENTROIDS_SOURCE_ID,
     SECONDARY_STAT_LAYER_ID,
     SECONDARY_STAT_HOVER_LAYER_ID,
+    COUNTY_BOUNDARY_SOURCE_ID,
+    COUNTY_BOUNDARY_FILL_LAYER_ID,
+    COUNTY_BOUNDARY_LINE_LAYER_ID,
+    COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+    COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
   }, boundaryMode);
 
   const getUnionZips = (): string[] => {
@@ -238,6 +266,11 @@ export const createMapView = ({
     ZIP_CENTROIDS_SOURCE_ID,
     SECONDARY_STAT_LAYER_ID,
     SECONDARY_STAT_HOVER_LAYER_ID,
+    COUNTY_BOUNDARY_SOURCE_ID,
+    COUNTY_BOUNDARY_FILL_LAYER_ID,
+    COUNTY_BOUNDARY_LINE_LAYER_ID,
+    COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+    COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
   }, currentTheme, selectedStatId, pinnedZips, transientZips);
 
   const updateZipHoverOutline = () => {
@@ -256,10 +289,55 @@ export const createMapView = ({
       ZIP_CENTROIDS_SOURCE_ID,
       SECONDARY_STAT_LAYER_ID,
       SECONDARY_STAT_HOVER_LAYER_ID,
+      COUNTY_BOUNDARY_SOURCE_ID,
+      COUNTY_BOUNDARY_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_LINE_LAYER_ID,
+      COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
     }, currentTheme, selectedStatId, pinnedZips, transientZips, hovered || null);
     zipLabels?.setHoveredZip(hovered || null);
     updateSecondaryStatOverlay();
   };
+
+  const updateCountyHoverOutline = () => {
+    extUpdateCountyHoverOutline(map, {
+      BOUNDARY_SOURCE_ID,
+      BOUNDARY_FILL_LAYER_ID,
+      BOUNDARY_LINE_LAYER_ID,
+      BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+      BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+      BOUNDARY_PINNED_FILL_LAYER_ID,
+      BOUNDARY_PINNED_LINE_LAYER_ID,
+      BOUNDARY_HOVER_LINE_LAYER_ID,
+      BOUNDARY_HOVER_FILL_LAYER_ID,
+      BOUNDARY_STATDATA_FILL_LAYER_ID,
+      ZIP_CENTROIDS_SOURCE_ID,
+      SECONDARY_STAT_LAYER_ID,
+      SECONDARY_STAT_HOVER_LAYER_ID,
+      COUNTY_BOUNDARY_SOURCE_ID,
+      COUNTY_BOUNDARY_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_LINE_LAYER_ID,
+      COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
+    }, hoveredCountyFromMap);
+  };
+
+  const evaluateBoundaryModeForZoom = () => {
+    if (boundaryMode === "none") return;
+    const zoom = map.getZoom();
+    if (boundaryMode === "zips" && zoom <= COUNTY_MODE_ENABLE_ZOOM) {
+      setBoundaryMode("counties");
+    } else if (boundaryMode === "counties" && zoom >= COUNTY_MODE_DISABLE_ZOOM) {
+      setBoundaryMode("zips");
+    }
+  };
+
+  map.on("zoomend", evaluateBoundaryModeForZoom);
+  map.on("moveend", evaluateBoundaryModeForZoom);
+  destroyFns.push(() => {
+    map.off("zoomend", evaluateBoundaryModeForZoom);
+    map.off("moveend", evaluateBoundaryModeForZoom);
+  });
 
   const notifyZipSelectionChange = () => {
     const union = getUnionZips();
@@ -335,17 +413,22 @@ export const createMapView = ({
     ensureBoundaryLayers(map, {
       BOUNDARY_SOURCE_ID,
       BOUNDARY_FILL_LAYER_ID,
-        BOUNDARY_LINE_LAYER_ID,
+      BOUNDARY_LINE_LAYER_ID,
       BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
       BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
       BOUNDARY_PINNED_FILL_LAYER_ID,
       BOUNDARY_PINNED_LINE_LAYER_ID,
-        BOUNDARY_HOVER_LINE_LAYER_ID,
+      BOUNDARY_HOVER_LINE_LAYER_ID,
       BOUNDARY_HOVER_FILL_LAYER_ID,
       BOUNDARY_STATDATA_FILL_LAYER_ID,
       ZIP_CENTROIDS_SOURCE_ID,
       SECONDARY_STAT_LAYER_ID,
       SECONDARY_STAT_HOVER_LAYER_ID,
+      COUNTY_BOUNDARY_SOURCE_ID,
+      COUNTY_BOUNDARY_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_LINE_LAYER_ID,
+      COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
     }, boundaryMode, currentTheme);
 
     ensureOrganizationLayers(map, {
@@ -361,6 +444,7 @@ export const createMapView = ({
     updateBoundaryPaint();
     updateBoundaryVisibility();
     updateZipSelectionHighlight();
+    updateCountyHoverOutline();
     updateStatDataChoropleth();
     updateSecondaryStatOverlay();
     updateOrganizationPinsVisibility();
@@ -376,6 +460,7 @@ export const createMapView = ({
     map.getCanvas().style.outline = "none";
 
     ensureSourcesAndLayers();
+    evaluateBoundaryModeForZoom();
 
     zipFloatingTitle = createZipFloatingTitle({ map });
     
@@ -508,8 +593,32 @@ export const createMapView = ({
       map.on("mouseenter", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseEnter);
       map.on("mouseleave", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseLeave);
       map.on("mouseleave", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseLeave);
-    map.on("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
-    map.on("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
+      map.on("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
+      map.on("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
+
+      const onCountyMouseEnter = () => {
+        if (boundaryMode !== "counties") return;
+        map.getCanvas().style.cursor = "pointer";
+      };
+      const onCountyMouseLeave = () => {
+        map.getCanvas().style.cursor = "pointer";
+        hoveredCountyFromMap = null;
+        updateCountyHoverOutline();
+      };
+      const onCountyMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
+        if (boundaryMode !== "counties") return;
+        const features = map.queryRenderedFeatures(e.point, { layers: [COUNTY_BOUNDARY_FILL_LAYER_ID] });
+        const county = features[0]?.properties?.county as string | undefined;
+        if (!county || county === hoveredCountyFromMap) return;
+        hoveredCountyFromMap = county;
+        updateCountyHoverOutline();
+      };
+      map.on("mouseenter", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseEnter);
+      map.on("mouseenter", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseEnter);
+      map.on("mouseleave", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseLeave);
+      map.on("mouseleave", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseLeave);
+      map.on("mousemove", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseMove);
+      map.on("mousemove", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseMove);
       return () => {
         map.off("click", handleZipClick);
         map.off("dblclick", handleZipDoubleClick);
@@ -519,6 +628,12 @@ export const createMapView = ({
         map.off("mouseleave", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseLeave);
         map.off("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
         map.off("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
+        map.off("mouseenter", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseEnter);
+        map.off("mouseenter", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseEnter);
+        map.off("mouseleave", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseLeave);
+        map.off("mouseleave", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseLeave);
+        map.off("mousemove", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseMove);
+        map.off("mousemove", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseMove);
       };
     })();
 
@@ -585,17 +700,33 @@ export const createMapView = ({
   };
 
   const setBoundaryMode = (mode: BoundaryMode) => {
+    if (mode === boundaryMode) return;
+    const previousMode = boundaryMode;
     boundaryMode = mode;
     if (mode !== "zips") {
+      hoveredZipFromToolbar = null;
+      hoveredZipFromMap = null;
       transientZips = new Set();
       pinnedZips = new Set();
       applyZipSelection({ shouldZoom: false, notify: true });
+      zipFloatingTitle?.hide();
+      zipLabels?.setHoveredZip(null);
+      zipLabels?.setSelectedZips([], []);
+      onZipHoverChange?.(null);
+    }
+    if (mode !== "counties") {
+      hoveredCountyFromMap = null;
+      updateCountyHoverOutline();
+    }
+    if (mode === "counties" && previousMode !== "counties") {
+      zipFloatingTitle?.hide();
     }
     ensureSourcesAndLayers();
     updateBoundaryVisibility();
     updateStatDataChoropleth();
     updateChoroplethLegend();
     updateSecondaryStatOverlay();
+    onBoundaryModeChange?.(boundaryMode);
   };
 
   const clearClusterHighlight = () => setClusterHighlight(null);
@@ -833,4 +964,3 @@ export const createMapView = ({
     },
   };
 };
-

@@ -65,7 +65,7 @@ export const useDemographics = (selectedZips: string[]) => {
       (r) =>
         r?.statId === populationStatId &&
         r?.name === "root" &&
-        r?.area === "Tulsa" &&
+        r?.parentArea === "Tulsa" &&
         r?.boundaryType === "ZIP" &&
         r?.date === "2025"
     );
@@ -80,7 +80,7 @@ export const useDemographics = (selectedZips: string[]) => {
       (r) =>
         r?.statId === avgAgeStatId &&
         r?.name === "root" &&
-        r?.area === "Tulsa" &&
+        r?.parentArea === "Tulsa" &&
         r?.boundaryType === "ZIP" &&
         r?.date === "2025"
     );
@@ -94,7 +94,7 @@ export const useDemographics = (selectedZips: string[]) => {
       (r) =>
         r?.statId === marriedPercentStatId &&
         r?.name === "root" &&
-        r?.area === "Tulsa" &&
+        r?.parentArea === "Tulsa" &&
         r?.boundaryType === "ZIP" &&
         r?.date === "2025"
     );
@@ -113,7 +113,7 @@ export const useDemographics = (selectedZips: string[]) => {
     const rows = data.statData.filter(
       (row) =>
         row?.statId === populationStatId &&
-        row?.area === "Tulsa" &&
+        row?.parentArea === "Tulsa" &&
         row?.boundaryType === "ZIP" &&
         row?.date === "2025"
     );

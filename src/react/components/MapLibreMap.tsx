@@ -23,6 +23,7 @@ interface MapLibreMapProps {
   onZipHoverChange?: (zip: string | null) => void;
   onStatSelectionChange?: (statId: string | null) => void;
   onCategorySelectionChange?: (categoryId: string | null) => void;
+  onBoundaryModeChange?: (mode: BoundaryMode) => void;
 }
 
 /**
@@ -50,10 +51,12 @@ export const MapLibreMap = ({
   onZipHoverChange,
   onStatSelectionChange,
   onCategorySelectionChange,
+  onBoundaryModeChange,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
   const isInternalUpdateRef = useRef(false);
+  const appliedBoundaryModeRef = useRef<BoundaryMode | null>(null);
 
   // Use refs for callbacks so we can update them in the wrapper
   const onZipSelectionChangeRef = useRef(onZipSelectionChange);
@@ -62,6 +65,7 @@ export const MapLibreMap = ({
   const onZipHoverChangeRef = useRef(onZipHoverChange);
   const onStatSelectionChangeRef = useRef(onStatSelectionChange);
   const onCategorySelectionChangeRef = useRef(onCategorySelectionChange);
+  const onBoundaryModeChangeRef = useRef(onBoundaryModeChange);
 
   useEffect(() => { onZipSelectionChangeRef.current = onZipSelectionChange; }, [onZipSelectionChange]);
   useEffect(() => { onHoverRef.current = onHover; }, [onHover]);
@@ -69,6 +73,7 @@ export const MapLibreMap = ({
   useEffect(() => { onZipHoverChangeRef.current = onZipHoverChange; }, [onZipHoverChange]);
   useEffect(() => { onStatSelectionChangeRef.current = onStatSelectionChange; }, [onStatSelectionChange]);
   useEffect(() => { onCategorySelectionChangeRef.current = onCategorySelectionChange; }, [onCategorySelectionChange]);
+  useEffect(() => { onBoundaryModeChangeRef.current = onBoundaryModeChange; }, [onBoundaryModeChange]);
 
   // Initialize map once on mount
   useEffect(() => {
@@ -89,6 +94,10 @@ export const MapLibreMap = ({
       onZipHoverChange: (zip) => onZipHoverChangeRef.current?.(zip),
       onStatSelectionChange: (id) => onStatSelectionChangeRef.current?.(id),
       onCategorySelectionChange: (id) => onCategorySelectionChangeRef.current?.(id),
+      onBoundaryModeChange: (mode) => {
+        appliedBoundaryModeRef.current = mode;
+        onBoundaryModeChangeRef.current?.(mode);
+      },
     });
 
     containerRef.current.appendChild(mapController.element);
@@ -132,7 +141,10 @@ export const MapLibreMap = ({
   // Update boundary mode
   useEffect(() => {
     if (mapControllerRef.current) {
-      mapControllerRef.current.setBoundaryMode(boundaryMode);
+      if (appliedBoundaryModeRef.current !== boundaryMode) {
+        appliedBoundaryModeRef.current = boundaryMode;
+        mapControllerRef.current.setBoundaryMode(boundaryMode);
+      }
     }
   }, [boundaryMode]);
 

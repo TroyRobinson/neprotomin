@@ -16,8 +16,13 @@ export const BOUNDARY_HOVER_LINE_LAYER_ID = "tulsa-zip-boundaries-hover-line";
 export const BOUNDARY_HOVER_FILL_LAYER_ID = "tulsa-zip-boundaries-hover-fill";
 export const BOUNDARY_STATDATA_FILL_LAYER_ID = "tulsa-zip-statdata-fill";
 
+export const COUNTY_BOUNDARY_SOURCE_ID = "oklahoma-county-boundaries";
+export const COUNTY_BOUNDARY_FILL_LAYER_ID = "oklahoma-county-boundaries-fill";
+export const COUNTY_BOUNDARY_LINE_LAYER_ID = "oklahoma-county-boundaries-outline";
+export const COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID = "oklahoma-county-boundaries-hover-fill";
+export const COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID = "oklahoma-county-boundaries-hover-line";
+
 export const ZIP_CENTROIDS_SOURCE_ID = "tulsa-zip-centroids";
 export const SECONDARY_STAT_LAYER_ID = "tulsa-zip-secondary-stat-overlay";
 export const SECONDARY_STAT_HOVER_LAYER_ID = "tulsa-zip-secondary-stat-overlay-hover";
-
 

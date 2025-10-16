@@ -59,7 +59,7 @@ export const useStats = () => {
         row?.id &&
         typeof row.statId === "string" &&
         row.name === "root" &&
-        row.area === "Tulsa" &&
+        row.parentArea === "Tulsa" &&
         row.boundaryType === "ZIP" &&
         typeof row.date === "string" &&
         typeof row.type === "string" &&

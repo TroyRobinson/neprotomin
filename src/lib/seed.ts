@@ -198,6 +198,28 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
 
   seedStatDataPromise = (async () => {
     try {
+      const backfillLegacyParentArea = async () => {
+        try {
+          const { data: legacyStatDataResp } = await db.queryOnce({
+            statData: { $: { order: { name: "asc" as const } } },
+          });
+          const legacyRows = (legacyStatDataResp?.statData ?? []) as any[];
+          const fixups: Array<{ id: string; parentArea: string }> = [];
+          for (const row of legacyRows) {
+            if (row?.id && !row?.parentArea && typeof row?.area === "string" && row.area.length > 0) {
+              fixups.push({ id: row.id as string, parentArea: row.area });
+            }
+          }
+          if (fixups.length > 0) {
+            await db.transact(
+              fixups.map((fix) => db.tx.statData[fix.id].update({ parentArea: fix.parentArea })),
+            );
+          }
+        } catch (error) {
+          console.warn("Failed to backfill parentArea on statData", error);
+        }
+      };
+
       // Ensure stats exist before seeding statData
       await ensureStatsSeeded();
 
@@ -207,6 +229,7 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
       });
       const hasRealData = (checkStats.stats ?? []).some((s: any) => s?.neId);
       if (hasRealData) {
+        await backfillLegacyParentArea();
         console.log('[seed] Real NE data detected; skipping synthetic statData seed');
         return;
       }
@@ -223,14 +246,20 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
       });
 
       const existingByComposite = new Map<string, any>();
+      const legacyParentAreaFixups: Array<{ id: string; parentArea: string }> = [];
       for (const row of statDataResp?.statData ?? []) {
         const sid = (row as any)?.statId as string | undefined;
         const nm = (row as any)?.name as string | undefined;
-        const ar = (row as any)?.area as string | undefined;
+        const rawParent = (row as any)?.parentArea as string | undefined;
+        const legacyArea = (row as any)?.area as string | undefined;
+        const parentArea = rawParent || legacyArea;
         const bt = (row as any)?.boundaryType as string | undefined;
         const dt = (row as any)?.date as string | undefined;
-        if (sid && nm && ar && bt && dt) {
-          existingByComposite.set(`${sid}::${nm}::${ar}::${bt}::${dt}`.toLowerCase(), row);
+        if (sid && nm && parentArea && bt && dt) {
+          existingByComposite.set(`${sid}::${nm}::${parentArea}::${bt}::${dt}`.toLowerCase(), row);
+          if (!rawParent && legacyArea && row?.id) {
+            legacyParentAreaFixups.push({ id: row.id as string, parentArea: legacyArea });
+          }
         }
       }
 
@@ -291,6 +320,11 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
       };
 
       const txs: any[] = [];
+      if (legacyParentAreaFixups.length > 0) {
+        for (const fix of legacyParentAreaFixups) {
+          txs.push(db.tx.statData[fix.id].update({ parentArea: fix.parentArea }));
+        }
+      }
       // Seed multiple years so we can render simple time series in UI
       const YEARS = ["2023", "2024", "2025"] as const;
       for (const s of stats) {
@@ -299,7 +333,7 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
         if (!sid || !name) continue;
 
         const entryName = "root"; // per spec for root stat data
-        const area = "Tulsa";
+        const parentArea = "Tulsa";
         const boundaryType = "ZIP";
         const type = typeForStatName(name);
 
@@ -309,20 +343,21 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
             dataObj[zip] = valueFor(type, name, zip, date);
           }
 
-          const comp = `${sid}::${entryName}::${area}::${boundaryType}::${date}`.toLowerCase();
+          const comp = `${sid}::${entryName}::${parentArea}::${boundaryType}::${date}`.toLowerCase();
           const existing = existingByComposite.get(comp);
 
           if (existing && existing.id) {
             // Update if any identifying fields or data changed
             const needsUpdate =
               (existing as any).type !== type ||
-              JSON.stringify((existing as any).data ?? {}) !== JSON.stringify(dataObj);
+              JSON.stringify((existing as any).data ?? {}) !== JSON.stringify(dataObj) ||
+              (existing as any).parentArea !== parentArea;
             if (needsUpdate) {
               txs.push(
                 db.tx.statData[existing.id].update({
                   statId: sid,
                   name: entryName,
-                  area,
+                  parentArea,
                   boundaryType,
                   date,
                   type,
@@ -335,7 +370,7 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
               db.tx.statData[id()].update({
                 statId: sid,
                 name: entryName,
-                area,
+                parentArea,
                 boundaryType,
                 date,
                 type,
@@ -352,7 +387,7 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
       if (populationStat && (populationStat as any).id) {
         const popStatId = (populationStat as any).id as string;
         const date = "2025";
-        const area = "Tulsa";
+        const parentArea = "Tulsa";
         const boundaryType = "ZIP";
 
         // Helper to produce integer percent buckets that sum to 100
@@ -420,18 +455,19 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
             }
 
             const entryName = `${group}:${seg.key}`;
-            const comp = `${popStatId}::${entryName}::${area}::${boundaryType}::${date}`.toLowerCase();
+            const comp = `${popStatId}::${entryName}::${parentArea}::${boundaryType}::${date}`.toLowerCase();
             const existing = existingByComposite.get(comp);
             if (existing && existing.id) {
               const needsUpdate =
                 (existing as any).type !== "percent" ||
-                JSON.stringify((existing as any).data ?? {}) !== JSON.stringify(segData);
+                JSON.stringify((existing as any).data ?? {}) !== JSON.stringify(segData) ||
+                (existing as any).parentArea !== parentArea;
               if (needsUpdate) {
                 txs.push(
                   db.tx.statData[existing.id].update({
                     statId: popStatId,
                     name: entryName,
-                    area,
+                    parentArea,
                     boundaryType,
                     date,
                     type: "percent",
@@ -444,7 +480,7 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
                 db.tx.statData[id()].update({
                   statId: popStatId,
                   name: entryName,
-                  area,
+                  parentArea,
                   boundaryType,
                   date,
                   type: "percent",

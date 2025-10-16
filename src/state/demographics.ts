@@ -32,6 +32,13 @@ const SEGMENT_ORDER: Record<BreakdownGroupKey, string[]> = {
 // Use brand color shades for segments; order them light -> dark
 const BRAND_SHADE_TOKENS = ["brand-200", "brand-300", "brand-400", "brand-500", "brand-700"];
 
+const getParentArea = (row: any): string | undefined => {
+  if (row && typeof row.parentArea === "string" && row.parentArea.length > 0) {
+    return row.parentArea;
+  }
+  return undefined;
+};
+
 class DemographicsStore {
   private listeners = new Set<Listener>();
   private byGroup: Map<BreakdownGroupKey, DemographicBreakdown> = new Map();
@@ -97,7 +104,7 @@ class DemographicsStore {
       const rows = ((data?.statData ?? []) as any[]).filter(
         (row) =>
           (row as any)?.statId === statId &&
-          (row as any)?.area === "Tulsa" &&
+          getParentArea(row) === "Tulsa" &&
           (row as any)?.boundaryType === "ZIP" &&
           (row as any)?.date === "2025",
       );
@@ -133,5 +140,3 @@ class DemographicsStore {
 }
 
 export const demographicsStore = new DemographicsStore();
-
-
