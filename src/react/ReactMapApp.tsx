@@ -12,17 +12,56 @@ import { useMemo } from "react";
 import type { BoundaryMode } from "../types/boundaries";
 import { AuthModal } from "./components/AuthModal";
 import { db } from "../lib/reactDb";
+import type { AreaId, AreaKind } from "../types/areas";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
 
+interface AreaSelectionState {
+  selected: string[];
+  pinned: string[];
+  transient: string[];
+}
+
+type AreaSelectionMap = Record<AreaKind, AreaSelectionState>;
+
+const createEmptySelection = (): AreaSelectionState => ({
+  selected: [],
+  pinned: [],
+  transient: [],
+});
+
+const createInitialAreaSelections = (): AreaSelectionMap => ({
+  ZIP: createEmptySelection(),
+  COUNTY: createEmptySelection(),
+  TRACT: createEmptySelection(),
+});
+
+const dedupeIds = (ids: string[]): string[] => {
+  if (!ids || ids.length === 0) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const id of ids) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      result.push(id);
+    }
+  }
+  return result;
+};
+
+const arraysEqual = (a: string[], b: string[]): boolean => {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+};
+
 export const ReactMapApp = () => {
   const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>("zips");
-  const [selectedZips, setSelectedZips] = useState<string[]>([]);
-  const [pinnedZips, setPinnedZips] = useState<string[]>([]);
-  const [hoveredZip, setHoveredZip] = useState<string | null>(null);
-  const [selectedCounties, setSelectedCounties] = useState<string[]>([]);
-  const [pinnedCounties, setPinnedCounties] = useState<string[]>([]);
-  const [hoveredCounty, setHoveredCounty] = useState<string | null>(null);
+  const [areaSelections, setAreaSelections] = useState<AreaSelectionMap>(createInitialAreaSelections);
+  const [hoveredArea, setHoveredArea] = useState<AreaId | null>(null);
   const [activeOrganizationId, setActiveOrganizationId] = useState<string | null>(null);
   const [highlightedOrganizationIds, setHighlightedOrganizationIds] = useState<string[] | null>(null);
   const [selectedStatId, setSelectedStatId] = useState<string | null>(null);
@@ -30,6 +69,52 @@ export const ReactMapApp = () => {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [activeScreen, setActiveScreen] = useState<"map" | "report" | "data">("map");
   const [authOpen, setAuthOpen] = useState(false);
+
+  const zipSelection = areaSelections.ZIP;
+  const countySelection = areaSelections.COUNTY;
+  const selectedZips = zipSelection.selected;
+  const pinnedZips = zipSelection.pinned;
+  const selectedCounties = countySelection.selected;
+  const pinnedCounties = countySelection.pinned;
+  const hoveredZip = hoveredArea?.kind === "ZIP" ? hoveredArea.id : null;
+  const hoveredCounty = hoveredArea?.kind === "COUNTY" ? hoveredArea.id : null;
+
+  const applyAreaSelection = (kind: AreaKind, selection: AreaSelectionState) => {
+    const normalized: AreaSelectionState = {
+      selected: dedupeIds(selection.selected),
+      pinned: dedupeIds(selection.pinned),
+      transient: dedupeIds(selection.transient),
+    };
+    setAreaSelections((prev) => {
+      const current = prev[kind];
+      if (
+        arraysEqual(current.selected, normalized.selected) &&
+        arraysEqual(current.pinned, normalized.pinned) &&
+        arraysEqual(current.transient, normalized.transient)
+      ) {
+        return prev;
+      }
+      return { ...prev, [kind]: normalized };
+    });
+  };
+
+  const getAreaSelection = (kind: AreaKind): AreaSelectionState => areaSelections[kind];
+  const setHoveredAreaState = (area: AreaId | null) => {
+    setHoveredArea((prev) => {
+      if (prev?.kind === area?.kind && prev?.id === area?.id) {
+        return prev;
+      }
+      return area;
+    });
+  };
+
+  const handleZipHoverChange = (zip: string | null) => {
+    setHoveredAreaState(zip ? { kind: "ZIP", id: zip } : null);
+  };
+
+  const handleCountyHoverChange = (county: string | null) => {
+    setHoveredAreaState(county ? { kind: "COUNTY", id: county } : null);
+  };
 
   const { isLoading: isAuthLoading, user } = db.useAuth();
   useEffect(() => {
@@ -62,11 +147,21 @@ export const ReactMapApp = () => {
               counties?: { selected?: string[]; pinned?: string[] };
               boundaryMode?: string | null;
             };
-            if (Array.isArray(sel.zips)) setSelectedZips(sel.zips);
-            if (Array.isArray(sel.pinned)) setPinnedZips(sel.pinned);
-            if (sel.counties) {
-              if (Array.isArray(sel.counties.selected)) setSelectedCounties(sel.counties.selected);
-              if (Array.isArray(sel.counties.pinned)) setPinnedCounties(sel.counties.pinned);
+            if (Array.isArray(sel.zips) || Array.isArray(sel.pinned)) {
+              const currentZip = getAreaSelection("ZIP");
+              applyAreaSelection("ZIP", {
+                selected: Array.isArray(sel.zips) ? sel.zips : currentZip.selected,
+                pinned: Array.isArray(sel.pinned) ? sel.pinned : currentZip.pinned,
+                transient: [],
+              });
+            }
+            if (sel.counties && (Array.isArray(sel.counties.selected) || Array.isArray(sel.counties.pinned))) {
+              const currentCounty = getAreaSelection("COUNTY");
+              applyAreaSelection("COUNTY", {
+                selected: Array.isArray(sel.counties.selected) ? sel.counties.selected : currentCounty.selected,
+                pinned: Array.isArray(sel.counties.pinned) ? sel.counties.pinned : currentCounty.pinned,
+                transient: [],
+              });
             }
             if (sel.boundaryMode === "neighborhoods") setBoundaryMode("zips");
             else if (sel.boundaryMode === "zips" || sel.boundaryMode === "counties" || sel.boundaryMode === "none") {
@@ -79,21 +174,30 @@ export const ReactMapApp = () => {
       // Fallback to localStorage
       try {
         const raw = localStorage.getItem("uiState.selection");
-        if (raw) {
+      if (raw) {
           const sel = JSON.parse(raw);
-          if (Array.isArray(sel.zips)) setSelectedZips(sel.zips);
-          if (Array.isArray(sel.pinned)) setPinnedZips(sel.pinned);
-          if (sel.counties) {
-            if (Array.isArray(sel.counties.selected)) setSelectedCounties(sel.counties.selected);
-            if (Array.isArray(sel.counties.pinned)) setPinnedCounties(sel.counties.pinned);
+          if (Array.isArray(sel.zips) || Array.isArray(sel.pinned)) {
+            const currentZip = getAreaSelection("ZIP");
+            applyAreaSelection("ZIP", {
+              selected: Array.isArray(sel.zips) ? sel.zips : currentZip.selected,
+              pinned: Array.isArray(sel.pinned) ? sel.pinned : currentZip.pinned,
+              transient: [],
+            });
+          }
+          if (sel.counties && (Array.isArray(sel.counties.selected) || Array.isArray(sel.counties.pinned))) {
+            const currentCounty = getAreaSelection("COUNTY");
+            applyAreaSelection("COUNTY", {
+              selected: Array.isArray(sel.counties.selected) ? sel.counties.selected : currentCounty.selected,
+              pinned: Array.isArray(sel.counties.pinned) ? sel.counties.pinned : currentCounty.pinned,
+              transient: [],
+            });
           }
           if (sel.boundaryMode === "neighborhoods") setBoundaryMode("zips");
           else if (sel.boundaryMode === "zips" || sel.boundaryMode === "counties" || sel.boundaryMode === "none") {
             setBoundaryMode(sel.boundaryMode as BoundaryMode);
           }
         } else {
-          setSelectedCounties([]);
-          setPinnedCounties([]);
+          applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
         }
       } catch {}
     };
@@ -162,10 +266,8 @@ export const ReactMapApp = () => {
 
   const handleBrandClick = () => {
     console.log("Brand clicked - would reset map view");
-    setSelectedZips([]);
-    setPinnedZips([]);
-    setSelectedCounties([]);
-    setPinnedCounties([]);
+    applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
+    applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
     setActiveScreen("map");
   };
 
@@ -178,50 +280,61 @@ export const ReactMapApp = () => {
     setActiveOrganizationId(idOrIds);
   };
 
-  const handleToggleZipPin = (zip: string, pinned: boolean) => {
-    if (pinned) {
-      setPinnedZips((prev) => [...prev, zip]);
-      if (!selectedZips.includes(zip)) {
-        setSelectedZips((prev) => [...prev, zip]);
-      }
+  const handlePinAreas = (kind: AreaKind, ids: string[], shouldPin: boolean) => {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    const current = getAreaSelection(kind);
+    const nextSelected = new Set(current.selected);
+    const nextPinned = new Set(current.pinned);
+    if (shouldPin) {
+      ids.forEach((id) => {
+        nextSelected.add(id);
+        nextPinned.add(id);
+      });
     } else {
-      setPinnedZips((prev) => prev.filter((z) => z !== zip));
+      ids.forEach((id) => {
+        nextPinned.delete(id);
+      });
     }
-  };
-
-  const handleAddZips = (zips: string[]) => {
-    setSelectedZips((prev) => {
-      const newSet = new Set([...prev, ...zips]);
-      return Array.from(newSet);
+    applyAreaSelection(kind, {
+      selected: Array.from(nextSelected),
+      pinned: Array.from(nextPinned),
+      transient: current.transient.filter((id) => nextSelected.has(id)),
     });
   };
 
-  const handleClearSelection = () => {
-    setSelectedZips([]);
-    setPinnedZips([]);
-  };
-
-  const handleToggleCountyPin = (county: string, pinned: boolean) => {
-    if (pinned) {
-      setPinnedCounties((prev) => [...prev, county]);
-      if (!selectedCounties.includes(county)) {
-        setSelectedCounties((prev) => [...prev, county]);
-      }
-    } else {
-      setPinnedCounties((prev) => prev.filter((c) => c !== county));
-    }
-  };
-
-  const handleAddCounties = (counties: string[]) => {
-    setSelectedCounties((prev) => {
-      const next = new Set([...prev, ...counties]);
-      return Array.from(next);
+  const handleAddAreas = (kind: AreaKind, ids: string[]) => {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    const current = getAreaSelection(kind);
+    const nextSelected = dedupeIds([...current.selected, ...ids]);
+    applyAreaSelection(kind, {
+      selected: nextSelected,
+      pinned: current.pinned,
+      transient: current.transient.filter((id) => nextSelected.includes(id)),
     });
   };
 
-  const handleClearCountySelection = () => {
-    setSelectedCounties([]);
-    setPinnedCounties([]);
+  const handleClearAreaSelection = (kind: AreaKind) => {
+    applyAreaSelection(kind, { selected: [], pinned: [], transient: [] });
+  };
+
+  const handleUpdateAreaSelection = (kind: AreaKind, selection: { selected: string[]; pinned: string[] }) => {
+    applyAreaSelection(kind, {
+      selected: dedupeIds(selection.selected),
+      pinned: dedupeIds(selection.pinned),
+      transient: [],
+    });
+  };
+
+  const handleAreaSelectionChange = (change: { kind: AreaKind; selected: string[]; pinned: string[]; transient: string[] }) => {
+    applyAreaSelection(change.kind, {
+      selected: change.selected,
+      pinned: change.pinned,
+      transient: change.transient,
+    });
+  };
+
+  const handleAreaHoverChange = (area: AreaId | null) => {
+    setHoveredAreaState(area);
   };
 
   const handleExport = () => {
@@ -422,24 +535,20 @@ export const ReactMapApp = () => {
       <TopBar onBrandClick={handleBrandClick} onNavigate={setActiveScreen} active={activeScreen} onOpenAuth={() => setAuthOpen(true)} />
       {/* Map section (always mounted) */}
           <BoundaryToolbar
-            selectedZips={selectedZips}
-            pinnedZips={pinnedZips}
             boundaryMode={boundaryMode}
-            hoveredZip={hoveredZip}
-            selectedCounties={selectedCounties}
-            pinnedCounties={pinnedCounties}
-            hoveredCounty={hoveredCounty}
+            selections={{
+              ZIP: { kind: "ZIP", selected: selectedZips, pinned: pinnedZips },
+              COUNTY: { kind: "COUNTY", selected: selectedCounties, pinned: pinnedCounties },
+            }}
+            hoveredArea={hoveredArea}
             stickyTopClass="top-16"
             onBoundaryModeChange={setBoundaryMode}
-            onToggleZipPin={handleToggleZipPin}
-            onAddZips={handleAddZips}
-            onClearSelection={handleClearSelection}
+            onPinAreas={handlePinAreas}
+            onHoverArea={setHoveredAreaState}
+            onClearSelection={handleClearAreaSelection}
             onExport={handleExport}
-            onHoverZip={setHoveredZip}
-            onToggleCountyPin={handleToggleCountyPin}
-            onHoverCounty={setHoveredCounty}
-            onClearCountySelection={handleClearCountySelection}
-            onAddCounties={handleAddCounties}
+            onAddAreas={handleAddAreas}
+            onUpdateSelection={handleUpdateAreaSelection}
           />
           <main className="flex flex-1 overflow-hidden">
             {/* Sidebar */}
@@ -497,7 +606,7 @@ export const ReactMapApp = () => {
               secondaryStatId={secondaryStatId}
               categoryFilter={categoryFilter}
               onHover={handleHover}
-              onHoverZip={setHoveredZip}
+              onHoverZip={handleZipHoverChange}
               onZoomOutAll={handleZoomOutAll}
               onStatSelect={handleStatSelect}
               onOrgPinsVisibleChange={setOrgPinsVisible}
@@ -522,20 +631,8 @@ export const ReactMapApp = () => {
               selectedStatId={selectedStatId}
               secondaryStatId={secondaryStatId}
               categoryFilter={categoryFilter}
-              onZipSelectionChange={(zips, meta) => {
-                  setSelectedZips(zips);
-                  if (meta) {
-                    setPinnedZips(meta.pinned);
-                  }
-                }}
-              onZipHoverChange={setHoveredZip}
-              onCountySelectionChange={(counties, meta) => {
-                  setSelectedCounties(counties);
-                  if (meta) {
-                    setPinnedCounties(meta.pinned);
-                  }
-                }}
-              onCountyHoverChange={setHoveredCounty}
+              onAreaSelectionChange={handleAreaSelectionChange}
+              onAreaHoverChange={handleAreaHoverChange}
               onStatSelectionChange={setSelectedStatId}
               onCategorySelectionChange={setCategoryFilter}
               onVisibleIdsChange={(ids, _totalInSource, allSourceIds) => {
@@ -556,24 +653,20 @@ export const ReactMapApp = () => {
           {/* Toolbar in report overlay */}
           <div className="absolute left-0 right-0 top-0 z-10">
             <BoundaryToolbar
-              selectedZips={selectedZips}
-              pinnedZips={pinnedZips}
               boundaryMode={boundaryMode}
-              hoveredZip={hoveredZip}
-              selectedCounties={selectedCounties}
-              pinnedCounties={pinnedCounties}
-              hoveredCounty={hoveredCounty}
+              selections={{
+                ZIP: { kind: "ZIP", selected: selectedZips, pinned: pinnedZips },
+                COUNTY: { kind: "COUNTY", selected: selectedCounties, pinned: pinnedCounties },
+              }}
+              hoveredArea={hoveredArea}
               stickyTopClass="top-0"
               onBoundaryModeChange={setBoundaryMode}
-              onToggleZipPin={handleToggleZipPin}
-              onAddZips={handleAddZips}
-              onClearSelection={handleClearSelection}
+              onPinAreas={handlePinAreas}
+              onHoverArea={setHoveredAreaState}
+              onClearSelection={handleClearAreaSelection}
               onExport={handleExport}
-              onHoverZip={setHoveredZip}
-              onToggleCountyPin={handleToggleCountyPin}
-              onHoverCounty={setHoveredCounty}
-              onClearCountySelection={handleClearCountySelection}
-              onAddCounties={handleAddCounties}
+              onAddAreas={handleAddAreas}
+              onUpdateSelection={handleUpdateAreaSelection}
             />
           </div>
           {activeScreen === "report" && (

@@ -1,8 +1,6 @@
 import maplibregl from "maplibre-gl";
 
 // tulsaZipBoundaries no longer needed here (used in boundary layer module)
-import { getZipBounds } from "../../lib/zipBoundaries";
-import { getCountyBounds } from "../../lib/countyBoundaries";
 import { computeToggle, computeAddTransient, computeClearTransient } from "./state/zipSelection";
 import type { BoundsArray } from "../../lib/zipBoundaries";
 import type { BoundaryMode } from "../../types/boundaries";
@@ -16,6 +14,7 @@ import { createZipFloatingTitle, type ZipFloatingTitleController } from "./compo
 import { createZipLabels, type ZipLabelsController } from "./components/zipLabels";
 import { createChoroplethLegend, type ChoroplethLegendController } from "./components/choroplethLegend";
 import { getCountyCentroidsMap, getCountyName } from "../../lib/countyCentroids";
+import type { AreaId, AreaKind } from "../../types/areas";
 // choropleth helpers are used only inside overlays/stats now
 import { updateChoroplethLegend as extUpdateLegend, updateSecondaryStatOverlay as extUpdateSecondaryOverlay, updateStatDataChoropleth as extUpdatePrimaryChoropleth } from "./overlays/stats";
 import {
@@ -30,6 +29,14 @@ import {
 import { ensureOrganizationLayers } from "./layers/organizations";
 import { setClusterHighlight as extSetClusterHighlight, highlightClusterContainingOrg as extHighlightClusterContainingOrg } from "./organizationsHighlight";
 import { wireVisibleIds } from "./visibilityTracker";
+import { getAreaRegistryEntry, type AreaLayerIds } from "./areas/registry";
+
+interface AreaSelectionChange {
+  kind: AreaKind;
+  selected: string[];
+  pinned: string[];
+  transient: string[];
+}
 
 interface MapViewOptions {
   onHover: (idOrIds: string | string[] | null) => void;
@@ -38,6 +45,8 @@ interface MapViewOptions {
   onZipHoverChange?: (zip: string | null) => void;
   onCountySelectionChange?: (selectedCounties: string[], meta?: { pinned: string[]; transient: string[] }) => void;
   onCountyHoverChange?: (county: string | null) => void;
+  onAreaSelectionChange?: (change: AreaSelectionChange) => void;
+  onAreaHoverChange?: (area: AreaId | null) => void;
   onStatSelectionChange?: (statId: string | null) => void;
   onCategorySelectionChange?: (categoryId: string | null) => void;
   onBoundaryModeChange?: (mode: BoundaryMode) => void;
@@ -123,6 +132,33 @@ const emptyFC = (): FC => ({ type: "FeatureCollection", features: [] });
 const COUNTY_MODE_ENABLE_ZOOM = 9;
 const COUNTY_MODE_DISABLE_ZOOM = 9.6;
 
+const zipAreaEntry = getAreaRegistryEntry("ZIP");
+const countyAreaEntry = getAreaRegistryEntry("COUNTY");
+
+const buildLayerOrder = (layers: AreaLayerIds): string[] => {
+  const order: string[] = [];
+  const push = (id?: string | null) => {
+    if (id && id.length > 0) order.push(id);
+  };
+  push(layers.hoverFillLayerId);
+  push(layers.hoverLineLayerId);
+  push(layers.pinnedFillLayerId);
+  push(layers.pinnedLineLayerId);
+  push(layers.highlightFillLayerId);
+  push(layers.highlightLineLayerId);
+  push(layers.statDataFillLayerId);
+  push(layers.baseFillLayerId);
+  push(layers.baseLineLayerId);
+  return order;
+};
+
+const zipLayerOrder = buildLayerOrder(zipAreaEntry.layers);
+const countyLayerOrder = buildLayerOrder(countyAreaEntry.layers);
+const zipFeatureProperty = zipAreaEntry.featureIdProperty;
+const countyFeatureProperty = countyAreaEntry.featureIdProperty;
+const getZipAreaBounds = zipAreaEntry.getBounds;
+const getCountyAreaBounds = countyAreaEntry.getBounds;
+
 export const createMapView = ({
   onHover,
   onVisibleIdsChange,
@@ -130,6 +166,8 @@ export const createMapView = ({
   onZipHoverChange,
   onCountySelectionChange,
   onCountyHoverChange,
+  onAreaSelectionChange,
+  onAreaHoverChange,
   onStatSelectionChange,
   onCategorySelectionChange,
   onBoundaryModeChange,
@@ -413,6 +451,14 @@ export const createMapView = ({
       pinned: Array.from(pinnedCounties),
       transient: Array.from(transientCounties),
     });
+    if (onAreaSelectionChange) {
+      onAreaSelectionChange({
+        kind: "COUNTY",
+        selected: union,
+        pinned: Array.from(pinnedCounties),
+        transient: Array.from(transientCounties),
+      });
+    }
   };
 
   const zoomToSelectedCounties = () => {
@@ -420,7 +466,7 @@ export const createMapView = ({
     if (union.length === 0) return;
     let combinedBounds: BoundsArray | null = null;
     for (const county of union) {
-      const bounds = getCountyBounds(county);
+      const bounds = getCountyAreaBounds(county);
       if (!bounds) continue;
       if (!combinedBounds) combinedBounds = bounds;
       else {
@@ -503,6 +549,14 @@ export const createMapView = ({
       transient: Array.from(transientZips),
     });
     zipLabels?.setSelectedZips(union, Array.from(pinnedZips));
+    if (onAreaSelectionChange) {
+      onAreaSelectionChange({
+        kind: "ZIP",
+        selected: union,
+        pinned: Array.from(pinnedZips),
+        transient: Array.from(transientZips),
+      });
+    }
   };
 
   const zoomToSelectedZips = () => {
@@ -512,7 +566,7 @@ export const createMapView = ({
     let combinedBounds: BoundsArray | null = null;
 
     for (const zip of union) {
-      const bounds = getZipBounds(zip);
+      const bounds = getZipAreaBounds(zip);
       if (!bounds) continue;
       if (!combinedBounds) {
         combinedBounds = bounds;
@@ -707,36 +761,14 @@ export const createMapView = ({
       };
     })();
 
-    const boundaryLayerOrder = [
-          BOUNDARY_HOVER_FILL_LAYER_ID,
-          BOUNDARY_HOVER_LINE_LAYER_ID,
-          BOUNDARY_PINNED_FILL_LAYER_ID,
-          BOUNDARY_PINNED_LINE_LAYER_ID,
-          BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
-          BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
-          BOUNDARY_STATDATA_FILL_LAYER_ID,
-          BOUNDARY_FILL_LAYER_ID,
-          BOUNDARY_LINE_LAYER_ID,
-    ];
-    const countyLayerOrder = [
-          COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
-          COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
-          COUNTY_BOUNDARY_PINNED_FILL_LAYER_ID,
-          COUNTY_BOUNDARY_PINNED_LINE_LAYER_ID,
-          COUNTY_BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
-          COUNTY_BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
-          COUNTY_STATDATA_FILL_LAYER_ID,
-          COUNTY_BOUNDARY_FILL_LAYER_ID,
-          COUNTY_BOUNDARY_LINE_LAYER_ID,
-    ];
     const unwireBoundaries = (() => {
       const handleBoundaryClick = (e: maplibregl.MapLayerMouseEvent) => {
         if (boundaryMode === "zips") {
           const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
           if (orgFeatures.length > 0) return;
-          const features = map.queryRenderedFeatures(e.point, { layers: boundaryLayerOrder });
+          const features = map.queryRenderedFeatures(e.point, { layers: zipLayerOrder });
           const feature = features[0];
-          const zip = feature?.properties?.zip as string | undefined;
+          const zip = feature?.properties?.[zipFeatureProperty] as string | undefined;
           if (!zip) return;
           const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
           toggleZipSelection(zip, additive, false);
@@ -745,7 +777,7 @@ export const createMapView = ({
           if (orgFeatures.length > 0) return;
           const features = map.queryRenderedFeatures(e.point, { layers: countyLayerOrder });
           const feature = features[0];
-          const county = feature?.properties?.county as string | undefined;
+          const county = feature?.properties?.[countyFeatureProperty] as string | undefined;
           if (!county) return;
           const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
           toggleCountySelection(county, additive, false);
@@ -756,9 +788,9 @@ export const createMapView = ({
           e.preventDefault();
           const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
           if (orgFeatures.length > 0) return;
-          const features = map.queryRenderedFeatures(e.point, { layers: boundaryLayerOrder });
+          const features = map.queryRenderedFeatures(e.point, { layers: zipLayerOrder });
           const feature = features[0];
-          const zip = feature?.properties?.zip as string | undefined;
+          const zip = feature?.properties?.[zipFeatureProperty] as string | undefined;
           if (!zip) return;
           const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
           toggleZipSelection(zip, additive, true);
@@ -768,7 +800,7 @@ export const createMapView = ({
           if (orgFeatures.length > 0) return;
           const features = map.queryRenderedFeatures(e.point, { layers: countyLayerOrder });
           const feature = features[0];
-          const county = feature?.properties?.county as string | undefined;
+          const county = feature?.properties?.[countyFeatureProperty] as string | undefined;
           if (!county) return;
           const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
           toggleCountySelection(county, additive, true);
@@ -781,16 +813,18 @@ export const createMapView = ({
           hoveredZipFromMap = null;
           updateZipHoverOutline();
           onZipHoverChange?.(null);
+          onAreaHoverChange?.(null);
         }
       };
       const onZipMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
         if (boundaryMode !== "zips") return;
-        const features = map.queryRenderedFeatures(e.point, { layers: boundaryLayerOrder });
-        const zip = features[0]?.properties?.zip as string | undefined;
+        const features = map.queryRenderedFeatures(e.point, { layers: zipLayerOrder });
+        const zip = features[0]?.properties?.[zipFeatureProperty] as string | undefined;
         if (!zip || zip === hoveredZipFromMap) return;
         hoveredZipFromMap = zip;
         updateZipHoverOutline();
         onZipHoverChange?.(zip);
+        onAreaHoverChange?.({ kind: "ZIP", id: zip });
       };
       map.on("click", handleBoundaryClick);
       map.on("dblclick", handleBoundaryDoubleClick);
@@ -807,15 +841,17 @@ export const createMapView = ({
         hoveredCountyFromMap = null;
         updateCountyHoverOutline();
         onCountyHoverChange?.(null);
+        onAreaHoverChange?.(null);
       };
       const onCountyMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
         if (boundaryMode !== "counties") return;
         const features = map.queryRenderedFeatures(e.point, { layers: countyLayerOrder });
-        const county = features[0]?.properties?.county as string | undefined;
+        const county = features[0]?.properties?.[countyFeatureProperty] as string | undefined;
         if (!county || county === hoveredCountyFromMap) return;
         hoveredCountyFromMap = county;
         updateCountyHoverOutline();
         onCountyHoverChange?.(county);
+        onAreaHoverChange?.({ kind: "COUNTY", id: county });
       };
       map.on("mouseenter", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseEnter);
       map.on("mouseenter", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseEnter);
@@ -927,6 +963,7 @@ export const createMapView = ({
       zipLabels?.setHoveredZip(null);
       zipLabels?.setSelectedZips([], []);
       onZipHoverChange?.(null);
+      onAreaHoverChange?.(null);
     }
     if (mode !== "counties") {
       hoveredCountyFromMap = null;
@@ -1140,6 +1177,8 @@ export const createMapView = ({
       updateZipHoverOutline();
       const finalHovered = zip || hoveredZipFromMap;
       zipLabels?.setHoveredZip(finalHovered);
+      onZipHoverChange?.(finalHovered || null);
+      onAreaHoverChange?.(finalHovered ? { kind: "ZIP", id: finalHovered } : null);
     },
     setPinnedCounties: (counties: string[]) => {
       const next = new Set(counties);
@@ -1157,6 +1196,7 @@ export const createMapView = ({
       updateCountyHoverOutline();
       const finalHovered = county || hoveredCountyFromMap;
       onCountyHoverChange?.(finalHovered || null);
+      onAreaHoverChange?.(finalHovered ? { kind: "COUNTY", id: finalHovered } : null);
     },
     clearTransientSelection: () => {
       transientZips = computeClearTransient();

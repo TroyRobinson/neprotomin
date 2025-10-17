@@ -1,7 +1,15 @@
 import { useEffect, useRef } from "react";
 import type { BoundaryMode } from "../../types/boundaries";
 import type { Organization } from "../../types/organization";
+import type { AreaId, AreaKind } from "../../types/areas";
 import { createMapView, type MapViewController } from "../imperative/mapView";
+
+interface AreaSelectionChange {
+  kind: AreaKind;
+  selected: string[];
+  pinned: string[];
+  transient: string[];
+}
 
 interface MapLibreMapProps {
   organizations?: Organization[];
@@ -26,6 +34,8 @@ interface MapLibreMapProps {
   onZipHoverChange?: (zip: string | null) => void;
   onCountySelectionChange?: (selectedCounties: string[], meta?: { pinned: string[]; transient: string[] }) => void;
   onCountyHoverChange?: (county: string | null) => void;
+  onAreaSelectionChange?: (change: AreaSelectionChange) => void;
+  onAreaHoverChange?: (area: AreaId | null) => void;
   onStatSelectionChange?: (statId: string | null) => void;
   onCategorySelectionChange?: (categoryId: string | null) => void;
   onBoundaryModeChange?: (mode: BoundaryMode) => void;
@@ -59,6 +69,8 @@ export const MapLibreMap = ({
   onZipHoverChange,
   onCountySelectionChange,
   onCountyHoverChange,
+  onAreaSelectionChange,
+  onAreaHoverChange,
   onStatSelectionChange,
   onCategorySelectionChange,
   onBoundaryModeChange,
@@ -75,6 +87,8 @@ export const MapLibreMap = ({
   const onZipHoverChangeRef = useRef(onZipHoverChange);
   const onCountySelectionChangeRef = useRef(onCountySelectionChange);
   const onCountyHoverChangeRef = useRef(onCountyHoverChange);
+  const onAreaSelectionChangeRef = useRef(onAreaSelectionChange);
+  const onAreaHoverChangeRef = useRef(onAreaHoverChange);
   const onStatSelectionChangeRef = useRef(onStatSelectionChange);
   const onCategorySelectionChangeRef = useRef(onCategorySelectionChange);
   const onBoundaryModeChangeRef = useRef(onBoundaryModeChange);
@@ -85,6 +99,8 @@ export const MapLibreMap = ({
   useEffect(() => { onZipHoverChangeRef.current = onZipHoverChange; }, [onZipHoverChange]);
   useEffect(() => { onCountySelectionChangeRef.current = onCountySelectionChange; }, [onCountySelectionChange]);
   useEffect(() => { onCountyHoverChangeRef.current = onCountyHoverChange; }, [onCountyHoverChange]);
+  useEffect(() => { onAreaSelectionChangeRef.current = onAreaSelectionChange; }, [onAreaSelectionChange]);
+  useEffect(() => { onAreaHoverChangeRef.current = onAreaHoverChange; }, [onAreaHoverChange]);
   useEffect(() => { onStatSelectionChangeRef.current = onStatSelectionChange; }, [onStatSelectionChange]);
   useEffect(() => { onCategorySelectionChangeRef.current = onCategorySelectionChange; }, [onCategorySelectionChange]);
   useEffect(() => { onBoundaryModeChangeRef.current = onBoundaryModeChange; }, [onBoundaryModeChange]);
@@ -114,6 +130,14 @@ export const MapLibreMap = ({
         }, 0);
       },
       onCountyHoverChange: (county) => onCountyHoverChangeRef.current?.(county),
+      onAreaSelectionChange: (change) => {
+        isInternalUpdateRef.current = true;
+        onAreaSelectionChangeRef.current?.(change);
+        setTimeout(() => {
+          isInternalUpdateRef.current = false;
+        }, 0);
+      },
+      onAreaHoverChange: (area) => onAreaHoverChangeRef.current?.(area),
       onStatSelectionChange: (id) => onStatSelectionChangeRef.current?.(id),
       onCategorySelectionChange: (id) => onCategorySelectionChangeRef.current?.(id),
       onBoundaryModeChange: (mode) => {

@@ -15,13 +15,13 @@ Summary of the work completed in this session to bring county boundaries and sta
 - Generalized map labels:
   - Reused the existing ZIP label controller with minimal hooks to render county labels (bbox centroids + county name). Visibility toggles on mode change.
 - Persistence/UI state updated to store county selection + pins (in addition to existing ZIPs).
+- Introduced shared `AreaKind` / `AreaId` primitives plus an area registry so map layers, bounds, and labels resolve via a single lookup. React now listens to map-driven area selection/hover events, keeping ZIP and county UI state in sync through one controller.
+- Boundary toolbar now consumes the unified area state, so bulk actions (pin-all/unpin-all, chip removal) manipulate the shared controller and stay in sync with MapLibre interactions.
 
 ### What Still Differs Visually
 
 - County base (non-selected) fill/line palette is intentionally lighter than ZIPs to avoid “map read noise” at statewide zoom. Selection/pin styling now matches ZIPs exactly; if elements still look off, it’s likely the underlying county basemap contrast. A single palette source is now used so fine-tuning takes effect for both.
-
 ### Gotchas and Notes
-
 - MapLibre style reloads: `setStyle()` wipes custom layers/sources. We re-add all sources/layers on `styledata/idle` and then re-apply paints/filters. Keep any future area types registered in the same hook.
 - Feature keys must match data keys:
   - ZIPs → `feature.properties.zip` (string)
@@ -60,4 +60,3 @@ Summary of the work completed in this session to bring county boundaries and sta
 - UI: toolbar and map wrapper: `src/react/components/BoundaryToolbar.tsx`, `src/react/components/MapLibreMap.tsx`, `src/react/ReactMapApp.tsx`
 
 — End of notes —
-
