@@ -64,7 +64,7 @@ const registry: AreaRegistry = {
     kind: "ZIP",
     featureIdProperty: "zip",
     centroidSourceId: ZIP_CENTROIDS_SOURCE_ID,
-    getBounds: (id) => getZipBounds(id),
+    getBounds: (id) => getZipBounds(id) ?? null,
     getName: (id) => id,
     getLabel: (id) => id,
     getCentroidsMap: () => getZipCentroidsMap(),
@@ -85,7 +85,7 @@ const registry: AreaRegistry = {
   COUNTY: {
     kind: "COUNTY",
     featureIdProperty: "county",
-    getBounds: (id) => getCountyBounds(id),
+    getBounds: (id) => getCountyBounds(id) ?? null,
     getName: (id) => getCountyName(id) ?? null,
     getLabel: (id) => getCountyName(id) ?? id,
     getCentroidsMap: () => getCountyCentroidsMap(),

@@ -22,6 +22,12 @@ interface AreaSelectionState {
   transient: string[];
 }
 
+interface AreaSelectionSnapshot {
+  kind: AreaKind;
+  selected: string[];
+  pinned: string[];
+}
+
 type AreaSelectionMap = Record<AreaKind, AreaSelectionState>;
 
 const createEmptySelection = (): AreaSelectionState => ({
@@ -72,12 +78,21 @@ export const ReactMapApp = () => {
 
   const zipSelection = areaSelections.ZIP;
   const countySelection = areaSelections.COUNTY;
+  const tractSelection = areaSelections.TRACT;
   const selectedZips = zipSelection.selected;
   const pinnedZips = zipSelection.pinned;
   const selectedCounties = countySelection.selected;
   const pinnedCounties = countySelection.pinned;
   const hoveredZip = hoveredArea?.kind === "ZIP" ? hoveredArea.id : null;
   const hoveredCounty = hoveredArea?.kind === "COUNTY" ? hoveredArea.id : null;
+  const toolbarSelections: Record<AreaKind, AreaSelectionSnapshot | undefined> = {
+    ZIP: { kind: "ZIP", selected: selectedZips, pinned: pinnedZips },
+    COUNTY: { kind: "COUNTY", selected: selectedCounties, pinned: pinnedCounties },
+    TRACT:
+      tractSelection.selected.length > 0 || tractSelection.pinned.length > 0
+        ? { kind: "TRACT", selected: tractSelection.selected, pinned: tractSelection.pinned }
+        : undefined,
+  };
 
   const applyAreaSelection = (kind: AreaKind, selection: AreaSelectionState) => {
     const normalized: AreaSelectionState = {
@@ -110,10 +125,6 @@ export const ReactMapApp = () => {
 
   const handleZipHoverChange = (zip: string | null) => {
     setHoveredAreaState(zip ? { kind: "ZIP", id: zip } : null);
-  };
-
-  const handleCountyHoverChange = (county: string | null) => {
-    setHoveredAreaState(county ? { kind: "COUNTY", id: county } : null);
   };
 
   const { isLoading: isAuthLoading, user } = db.useAuth();
@@ -536,10 +547,7 @@ export const ReactMapApp = () => {
       {/* Map section (always mounted) */}
           <BoundaryToolbar
             boundaryMode={boundaryMode}
-            selections={{
-              ZIP: { kind: "ZIP", selected: selectedZips, pinned: pinnedZips },
-              COUNTY: { kind: "COUNTY", selected: selectedCounties, pinned: pinnedCounties },
-            }}
+            selections={toolbarSelections}
             hoveredArea={hoveredArea}
             stickyTopClass="top-16"
             onBoundaryModeChange={setBoundaryMode}
@@ -654,10 +662,7 @@ export const ReactMapApp = () => {
           <div className="absolute left-0 right-0 top-0 z-10">
             <BoundaryToolbar
               boundaryMode={boundaryMode}
-              selections={{
-                ZIP: { kind: "ZIP", selected: selectedZips, pinned: pinnedZips },
-                COUNTY: { kind: "COUNTY", selected: selectedCounties, pinned: pinnedCounties },
-              }}
+              selections={toolbarSelections}
               hoveredArea={hoveredArea}
               stickyTopClass="top-0"
               onBoundaryModeChange={setBoundaryMode}
