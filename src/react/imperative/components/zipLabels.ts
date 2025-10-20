@@ -3,16 +3,10 @@ import { formatStatValueCompact } from "../../../lib/format";
 import { getZipCentroidsMap } from "../../../lib/zipCentroids";
 import { CHOROPLETH_COLORS, TEAL_COLORS, getClassIndex } from "../../../lib/choropleth";
 
-type HoverAccessoryDescriptor = {
-  element: HTMLElement;
-  replaceBase?: boolean;
-};
-
 interface ZipLabelsOptions {
   map: maplibregl.Map;
   getCentroidsMap?: () => Map<string, [number, number]>;
   labelForId?: (id: string) => string;
-  renderHoverAccessory?: (params: { id: string; theme: "light" | "dark" }) => HoverAccessoryDescriptor | null;
 }
 
 export interface ZipLabelsController {
@@ -31,12 +25,7 @@ const formatStatValue = (value: number, type: string = "count"): string => {
   return formatStatValueCompact(value, type);
 };
 
-export const createZipLabels = ({
-  map,
-  getCentroidsMap,
-  labelForId,
-  renderHoverAccessory,
-}: ZipLabelsOptions): ZipLabelsController => {
+export const createZipLabels = ({ map, getCentroidsMap, labelForId }: ZipLabelsOptions): ZipLabelsController => {
   const centroids = getCentroidsMap ? getCentroidsMap() : defaultCentroids;
   const idToLabel = labelForId || ((id: string) => id);
   const labelElements = new Map<string, HTMLElement>();
@@ -60,107 +49,89 @@ export const createZipLabels = ({
     const [lng, lat] = centroid;
     const element = document.createElement("div");
     element.className = "absolute z-0 flex flex-col items-center";
-    element.style.pointerEvents = "none";
-    element.style.cursor = "";
     const baseTransform = "translate(-50%, -50%)";
 
-    const accessoryDescriptor =
-      isHovered && typeof renderHoverAccessory === "function"
-        ? renderHoverAccessory({ id: zip, theme: currentTheme })
-        : null;
-    const shouldRenderBasePill = !accessoryDescriptor?.replaceBase;
+    const pillLabel = document.createElement("div");
+    const hasStatOverlay = Boolean(currentStatId);
+    const baseHeight = hasStatOverlay ? "h-6" : "h-5";
+    const selectedHeight = hasStatOverlay && (isSelected || isPinned) ? "h-7" : baseHeight;
 
-    let secondaryPill: HTMLDivElement | null = null;
-    if (shouldRenderBasePill) {
-      const pillLabel = document.createElement("div");
-      const hasStatOverlay = Boolean(currentStatId);
-      const baseHeight = hasStatOverlay ? "h-6" : "h-5";
-      const selectedHeight = hasStatOverlay && (isSelected || isPinned) ? "h-7" : baseHeight;
-
-      let pillClassName, backgroundColor, textColor;
-      if (hasStatOverlay && currentStatData && zip in currentStatData) {
-        const allValues = Object.values(currentStatData || {});
-        const numericValues = allValues.filter(v => typeof v === 'number' && Number.isFinite(v)) as number[];
-        const min = numericValues.length > 0 ? Math.min(...numericValues) : 0;
-        const max = numericValues.length > 0 ? Math.max(...numericValues) : 1;
-        const classes = CHOROPLETH_COLORS.length;
-        const statValue = currentStatData[zip];
-        const colorIndex = getClassIndex(statValue, min, max, classes);
-        backgroundColor = CHOROPLETH_COLORS[colorIndex];
-        const isLightColor = colorIndex <= 2;
-        textColor = isLightColor ? '#000000' : 'white';
-        const borderClass = isLightColor ? 'border border-slate-300/70' : '';
-        pillClassName = `
-          ${selectedHeight} px-2 rounded-full font-medium text-xs flex items-center justify-center
-          shadow-lg backdrop-blur-sm ${borderClass}
-        `;
-      } else {
-        const regularTextColor = currentTheme === "dark" ? "text-slate-200" : "text-slate-700";
-        const regularBgColor = currentTheme === "dark" ? "bg-slate-800/70" : "bg-white/70";
-        const regularBorderColor = currentTheme === "dark" ? "border-slate-600" : "border-slate-300";
-        pillClassName = `
-          ${selectedHeight} px-2 rounded-full border ${regularBorderColor} ${regularBgColor} ${regularTextColor}
-          font-medium text-xs flex items-center justify-center shadow-md
-        `;
-        backgroundColor = null;
-        textColor = null;
-      }
-      pillLabel.className = pillClassName;
-      if (backgroundColor) pillLabel.style.backgroundColor = backgroundColor as any;
-      if (textColor) pillLabel.style.color = textColor as any;
-
-      if (hasStatOverlay && currentStatData && zip in currentStatData) {
+    let pillClassName, backgroundColor, textColor;
+    if (hasStatOverlay && currentStatData && zip in currentStatData) {
+      const allValues = Object.values(currentStatData || {});
+      const numericValues = allValues.filter(v => typeof v === 'number' && Number.isFinite(v)) as number[];
+      const min = numericValues.length > 0 ? Math.min(...numericValues) : 0;
+      const max = numericValues.length > 0 ? Math.max(...numericValues) : 1;
+      const classes = CHOROPLETH_COLORS.length;
       const statValue = currentStatData[zip];
+      const colorIndex = getClassIndex(statValue, min, max, classes);
+      backgroundColor = CHOROPLETH_COLORS[colorIndex];
+      const isLightColor = colorIndex <= 2;
+      textColor = isLightColor ? '#000000' : 'white';
+      const borderClass = isLightColor ? 'border border-slate-300/70' : '';
+      pillClassName = `
+        ${selectedHeight} px-2 rounded-full font-medium text-xs flex items-center justify-center
+        shadow-lg backdrop-blur-sm ${borderClass}
+      `;
+    } else {
+      const regularTextColor = currentTheme === "dark" ? "text-slate-200" : "text-slate-700";
+      const regularBgColor = currentTheme === "dark" ? "bg-slate-800/70" : "bg-white/70";
+      const regularBorderColor = currentTheme === "dark" ? "border-slate-600" : "border-slate-300";
+      pillClassName = `
+        ${selectedHeight} px-2 rounded-full border ${regularBorderColor} ${regularBgColor} ${regularTextColor}
+        font-medium text-xs flex items-center justify-center shadow-md
+      `;
+      backgroundColor = null;
+      textColor = null;
+    }
+    pillLabel.className = pillClassName;
+    if (backgroundColor) pillLabel.style.backgroundColor = backgroundColor as any;
+    if (textColor) pillLabel.style.color = textColor as any;
+
+    if (hasStatOverlay && currentStatData && zip in currentStatData) {
+      const statValue = currentStatData[zip];
+      pillLabel.textContent = formatStatValue(statValue, currentStatType);
       const isSelectedOrPinned = isSelected || isPinned;
       if (isSelectedOrPinned) {
-        pillLabel.textContent = zip;
-      element.style.pointerEvents = "auto";
-      element.style.cursor = "pointer";
-      pillLabel.addEventListener('mouseenter', () => {
-      pillLabel.textContent = formatStatValue(statValue, currentStatType);
-      });
-      pillLabel.addEventListener('mouseleave', () => {
-      pillLabel.textContent = zip;
-      });
-      } else {
+        element.className = "absolute z-0 flex flex-col items-center pointer-events-auto cursor-pointer";
+        pillLabel.addEventListener('mouseenter', () => {
+          pillLabel.textContent = zip;
+        });
+        pillLabel.addEventListener('mouseleave', () => {
           pillLabel.textContent = formatStatValue(statValue, currentStatType);
-        }
+        });
       } else {
-        pillLabel.textContent = idToLabel(zip);
+        element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
       }
+    } else {
+      pillLabel.textContent = idToLabel(zip);
+      element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
+    }
 
-      const hasSecondaryData = Boolean(currentSecondaryStatId && currentSecondaryData && (zip in currentSecondaryData));
-      const shouldShowSecondary = hasSecondaryData && (isHovered || isSelected || isPinned);
-      if (shouldShowSecondary) {
-        const secondaryVal = currentSecondaryData![zip];
+    const hasSecondaryData = Boolean(currentSecondaryStatId && currentSecondaryData && (zip in currentSecondaryData));
+    const shouldShowSecondary = hasSecondaryData && (isHovered || isSelected || isPinned);
+    let secondaryPill: HTMLDivElement | null = null;
+    if (shouldShowSecondary) {
+      const secondaryVal = currentSecondaryData![zip];
         secondaryPill = document.createElement("div");
         const allValues = Object.values(currentSecondaryData || {});
         const numericValues = allValues.filter(v => typeof v === 'number' && Number.isFinite(v)) as number[];
         const min = numericValues.length > 0 ? Math.min(...numericValues) : 0;
-        const max = numericValues.length > 0 ? Math.max(...numericValues) : 1;
+      const max = numericValues.length > 0 ? Math.max(...numericValues) : 1;
         const classes = TEAL_COLORS.length;
         const colorIndex = getClassIndex(secondaryVal, min, max, classes);
-        const secondaryBackground = TEAL_COLORS[colorIndex];
+        const backgroundColor = TEAL_COLORS[colorIndex];
         const isLightColor = colorIndex <= 2;
-        const secondaryTextColor = isLightColor ? '#64748b' : 'white';
+        const textColor = isLightColor ? '#64748b' : 'white';
         secondaryPill.className = `h-5 px-2 rounded-full font-medium text-xs flex items-center justify-center shadow-md`;
-        secondaryPill.style.backgroundColor = secondaryBackground;
-        secondaryPill.style.color = secondaryTextColor as any;
+        secondaryPill.style.backgroundColor = backgroundColor;
+        secondaryPill.style.color = textColor as any;
         secondaryPill.style.marginBottom = "-4px";
         secondaryPill.style.zIndex = "0";
         secondaryPill.textContent = formatStatValue(secondaryVal, currentSecondaryStatType);
         element.appendChild(secondaryPill);
-      }
-      element.appendChild(pillLabel);
     }
-
-    if (accessoryDescriptor?.element) {
-      accessoryDescriptor.element.classList.add("mt-1");
-      accessoryDescriptor.element.style.pointerEvents = "auto";
-      element.appendChild(accessoryDescriptor.element);
-      element.style.pointerEvents = "auto";
-      element.style.cursor = "pointer";
-    }
+    element.appendChild(pillLabel);
 
     const point = map.project([lng, lat]);
     element.style.left = `${point.x}px`;

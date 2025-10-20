@@ -18,7 +18,6 @@ Agent playbook (concise)
   - Avoid CSS transforms on marker containers; let the renderer position features. If needed, use layer paint props instead of DOM styling.
   - MapLibre `setStyle()` clears custom sources/layers. On theme/basemap swap, listen for `styledata`/`idle` and re-add sources/layers, then repopulate data and filters.
   - Lingering cluster numbers: Set `fadeDuration: 0` in Map constructor to disable symbol cross-fade. Paint transitions don't control this - it's MapLibre's built-in symbol placement fade.
-  - When layering DOM pills/buttons on top of MapLibre features, defer hover clear logic (e.g., with `requestAnimationFrame`) so the DOM element can claim hover before map `mouseleave` handlers fire; otherwise pills flicker.
 
 - Map config
   - Use a light street basemap (Carto Positron GL) and center on Tulsa. Disable rotation for predictable UX. See `src/ui/mapView.ts:17` and `src/ui/mapView.ts:111`.
