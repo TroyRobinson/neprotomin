@@ -131,6 +131,7 @@ const emptyFC = (): FC => ({ type: "FeatureCollection", features: [] });
 
 const COUNTY_MODE_ENABLE_ZOOM = 9;
 const COUNTY_MODE_DISABLE_ZOOM = 9.6;
+const COUNTY_ZIP_VIEW_MAX_ZOOM = 10.2;
 
 const zipAreaEntry = getAreaRegistryEntry("ZIP");
 const countyAreaEntry = getAreaRegistryEntry("COUNTY");
@@ -222,6 +223,7 @@ export const createMapView = ({
   let transientCounties = new Set<string>();
   let hoveredCountyFromToolbar: string | null = null;
   let hoveredCountyFromMap: string | null = null;
+  let isCountyZoomPillHovered = false;
   let selectedStatId: string | null = null;
   let secondaryStatId: string | null = null;
 
@@ -577,8 +579,9 @@ export const createMapView = ({
       COUNTY_BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
       COUNTY_BOUNDARY_PINNED_FILL_LAYER_ID,
       COUNTY_BOUNDARY_PINNED_LINE_LAYER_ID,
-    COUNTY_STATDATA_FILL_LAYER_ID,
-  }, currentTheme, selectedStatId, pinnedCounties, transientCounties, hovered);
+      COUNTY_STATDATA_FILL_LAYER_ID,
+    }, currentTheme, selectedStatId, pinnedCounties, transientCounties, hovered);
+    countyLabels?.setHoveredZip(hovered || null);
   };
 
   const zipSelection = createSelectionHandlers({
@@ -605,6 +608,21 @@ export const createMapView = ({
     maxZoom: 14,
   });
 
+  const zoomIntoCounty = (countyId: string) => {
+    const bounds = getCountyAreaBounds(countyId);
+    if (!bounds) return;
+    const centerLng = (bounds[0][0] + bounds[1][0]) / 2;
+    const centerLat = (bounds[0][1] + bounds[1][1]) / 2;
+    map.easeTo({ center: [centerLng, centerLat], zoom: COUNTY_ZIP_VIEW_MAX_ZOOM, duration: 400 });
+    const ensureZipMode = () => {
+      if (map.getZoom() >= COUNTY_MODE_DISABLE_ZOOM) {
+        setBoundaryMode("zips");
+      }
+    };
+    map.once("zoomend", ensureZipMode);
+    map.once("moveend", ensureZipMode);
+  };
+
   const countySelection = createSelectionHandlers({
     getPinned: () => pinnedCounties,
     setPinned: (next) => { pinnedCounties = next; },
@@ -627,6 +645,13 @@ export const createMapView = ({
     getBounds: getCountyAreaBounds,
     maxZoom: 8.5,
   });
+
+  const clearCountyHover = () => {
+    hoveredCountyFromMap = null;
+    countySelection.updateHover();
+    onCountyHoverChange?.(null);
+    onAreaHoverChange?.(null);
+  };
 
   const evaluateBoundaryModeForZoom = () => {
     if (boundaryMode === "none") return;
@@ -711,7 +736,54 @@ export const createMapView = ({
     zipFloatingTitle = createZipFloatingTitle({ map });
     
     zipLabels = createZipLabels({ map });
-    countyLabels = createZipLabels({ map, getCentroidsMap: getCountyCentroidsMap, labelForId: getCountyName });
+    countyLabels = createZipLabels({
+      map,
+      getCentroidsMap: getCountyCentroidsMap,
+      labelForId: getCountyName,
+      renderHoverAccessory: ({ id, theme }) => {
+        if (transientCounties.size > 0) return null;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "Zoom In";
+        button.setAttribute("data-county-id", id);
+        button.setAttribute("aria-label", `Zoom into ${getCountyName(id) ?? "county"}`);
+        button.classList.add("county-zoom-pill");
+        const baseClasses = [
+          "inline-flex",
+          "items-center",
+          "justify-center",
+          "rounded-full",
+          "px-3",
+          "h-6",
+          "text-xs",
+          "font-medium",
+          "shadow-md",
+          "transition-colors",
+        ];
+        const themeClasses =
+          theme === "dark"
+            ? ["bg-slate-200/90", "text-slate-900", "hover:bg-slate-100"]
+            : ["bg-white", "text-slate-700", "border", "border-slate-300", "hover:bg-slate-50"];
+        button.className = [...baseClasses, ...themeClasses].join(" ");
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          event.preventDefault();
+          zoomIntoCounty(id);
+        });
+        button.addEventListener("mouseenter", () => {
+          isCountyZoomPillHovered = true;
+        });
+        button.addEventListener("mouseleave", () => {
+          isCountyZoomPillHovered = false;
+          requestAnimationFrame(() => {
+            if (!isCountyZoomPillHovered && !hoveredCountyFromToolbar) {
+              clearCountyHover();
+            }
+          });
+        });
+        return { element: button, replaceBase: true };
+      },
+    });
     zipLabels.setTheme(currentTheme);
     countyLabels.setTheme(currentTheme);
 
@@ -864,21 +936,25 @@ export const createMapView = ({
       const onCountyMouseEnter = () => { if (boundaryMode === "counties") map.getCanvas().style.cursor = "pointer"; };
       const onCountyMouseLeave = () => {
         map.getCanvas().style.cursor = "pointer";
-        hoveredCountyFromMap = null;
-        countySelection.updateHover();
-        onCountyHoverChange?.(null);
-        onAreaHoverChange?.(null);
+        requestAnimationFrame(() => {
+          if (isCountyZoomPillHovered || hoveredCountyFromToolbar) return;
+          hoveredCountyFromMap = null;
+          countySelection.updateHover();
+          onCountyHoverChange?.(null);
+          onAreaHoverChange?.(null);
+        });
       };
       const onCountyMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
         if (boundaryMode !== "counties") return;
-        const features = map.queryRenderedFeatures(e.point, { layers: countyLayerOrder });
-        const county = features[0]?.properties?.[countyFeatureProperty] as string | undefined;
-        if (!county || county === hoveredCountyFromMap) return;
-        hoveredCountyFromMap = county;
-        countySelection.updateHover();
-        onCountyHoverChange?.(county);
-        onAreaHoverChange?.({ kind: "COUNTY", id: county });
-      };
+      const features = map.queryRenderedFeatures(e.point, { layers: countyLayerOrder });
+      const county = features[0]?.properties?.[countyFeatureProperty] as string | undefined;
+      if (!county || county === hoveredCountyFromMap) return;
+      isCountyZoomPillHovered = false;
+      hoveredCountyFromMap = county;
+      countySelection.updateHover();
+      onCountyHoverChange?.(county);
+      onAreaHoverChange?.({ kind: "COUNTY", id: county });
+    };
       map.on("mouseenter", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseEnter);
       map.on("mouseenter", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseEnter);
       map.on("mouseenter", COUNTY_STATDATA_FILL_LAYER_ID, onCountyMouseEnter);
