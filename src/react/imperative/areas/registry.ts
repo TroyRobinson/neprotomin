@@ -148,12 +148,10 @@ const registry: AreaRegistry = {
       hoverLineLayerId: COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
     },
     getBasePaint: (theme) => {
-      const palette = theme === "dark"
-        ? { fillColor: "#1f2937", fillOpacity: 0.28, lineColor: "#94a3b8", lineOpacity: 0.65 }
-        : { fillColor: "#e2e8f0", fillOpacity: 0.18, lineColor: "#475569", lineOpacity: 0.6 };
+      const palette = getBoundaryPalette(theme);
       return {
         fill: { color: palette.fillColor, opacity: palette.fillOpacity },
-        line: { color: palette.lineColor, opacity: palette.lineOpacity, width: 0.9 },
+        line: { color: palette.lineColor, opacity: palette.lineOpacity, width: 0.6 },
       };
     },
     getHoverPaint: (theme) =>

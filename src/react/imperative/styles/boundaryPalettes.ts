@@ -9,8 +9,8 @@ export interface BoundaryPalette {
 
 export const getBoundaryPalette = (theme: ThemeName): BoundaryPalette =>
   theme === "dark"
-    ? { fillColor: "#94a3b8", fillOpacity: 0.08, lineColor: "#f1f5f9", lineOpacity: 0.45 }
-    : { fillColor: "#1f2937", fillOpacity: 0.04, lineColor: "#94a3b8", lineOpacity: 0.35 };
+    ? { fillColor: "#94a3b8", fillOpacity: 0.08, lineColor: "#f1f5f9", lineOpacity: 0.52 }
+    : { fillColor: "#1f2937", fillOpacity: 0.04, lineColor: "#94a3b8", lineOpacity: 0.82 };
 
 export const getHoverColors = (
   theme: ThemeName,
