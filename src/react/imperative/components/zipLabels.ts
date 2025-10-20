@@ -110,18 +110,20 @@ export const createZipLabels = ({
       if (textColor) pillLabel.style.color = textColor as any;
 
       if (hasStatOverlay && currentStatData && zip in currentStatData) {
-        const statValue = currentStatData[zip];
-        pillLabel.textContent = formatStatValue(statValue, currentStatType);
-        const isSelectedOrPinned = isSelected || isPinned;
-        if (isSelectedOrPinned) {
-          element.style.pointerEvents = "auto";
-          element.style.cursor = "pointer";
-          pillLabel.addEventListener('mouseenter', () => {
-            pillLabel.textContent = zip;
-          });
-          pillLabel.addEventListener('mouseleave', () => {
-            pillLabel.textContent = formatStatValue(statValue, currentStatType);
-          });
+      const statValue = currentStatData[zip];
+      const isSelectedOrPinned = isSelected || isPinned;
+      if (isSelectedOrPinned) {
+        pillLabel.textContent = zip;
+      element.style.pointerEvents = "auto";
+      element.style.cursor = "pointer";
+      pillLabel.addEventListener('mouseenter', () => {
+      pillLabel.textContent = formatStatValue(statValue, currentStatType);
+      });
+      pillLabel.addEventListener('mouseleave', () => {
+      pillLabel.textContent = zip;
+      });
+      } else {
+          pillLabel.textContent = formatStatValue(statValue, currentStatType);
         }
       } else {
         pillLabel.textContent = idToLabel(zip);
