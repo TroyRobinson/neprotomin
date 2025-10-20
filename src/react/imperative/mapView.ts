@@ -266,6 +266,152 @@ export const createMapView = ({
   choroplethLegend = createChoroplethLegend();
   container.appendChild(choroplethLegend.element);
 
+  type SelectionApplyOptions = { shouldZoom?: boolean; notify?: boolean };
+
+  interface SelectionHandlers {
+    getUnion: () => string[];
+    apply: (options?: SelectionApplyOptions) => void;
+    refresh: () => void;
+    updateHover: () => void;
+    setPinnedIds: (ids: string[], options?: SelectionApplyOptions) => void;
+    toggle: (id: string, additive: boolean, shouldZoom?: boolean) => void;
+    clearTransient: (options: SelectionApplyOptions) => void;
+    addTransient: (ids: string[], options?: SelectionApplyOptions) => void;
+  }
+
+  const createSelectionHandlers = (config: {
+    getPinned: () => Set<string>;
+    setPinned: (next: Set<string>) => void;
+    getTransient: () => Set<string>;
+    setTransient: (next: Set<string>) => void;
+    updateHighlight: () => void;
+    updateHover: () => void;
+    onAfterApply?: (union: string[]) => void;
+    onNotify?: (payload: { union: string[]; pinned: string[]; transient: string[] }) => void;
+    getBounds: (id: string) => BoundsArray | null;
+    maxZoom: number;
+  }): SelectionHandlers => {
+    const getUnion = (): string[] => {
+      const all = new Set<string>([...config.getPinned(), ...config.getTransient()]);
+      return Array.from(all);
+    };
+
+    const zoomToSelection = (union: string[]) => {
+      if (union.length === 0) return;
+      let combined: BoundsArray | null = null;
+      for (const id of union) {
+        const bounds = config.getBounds(id);
+        if (!bounds) continue;
+        if (!combined) {
+          combined = bounds;
+        } else {
+          combined = [
+            [
+              Math.min(combined[0][0], bounds[0][0]),
+              Math.min(combined[0][1], bounds[0][1]),
+            ],
+            [
+              Math.max(combined[1][0], bounds[1][0]),
+              Math.max(combined[1][1], bounds[1][1]),
+            ],
+          ];
+        }
+      }
+      if (!combined) return;
+      map.fitBounds(combined, { padding: 48, duration: 400, maxZoom: config.maxZoom });
+    };
+
+    const apply = (options: SelectionApplyOptions = {}) => {
+      const { shouldZoom = false, notify = false } = options;
+      config.updateHighlight();
+      config.updateHover();
+      const union = getUnion();
+      config.onAfterApply?.(union);
+      if (shouldZoom && union.length > 0) {
+        zoomToSelection(union);
+      }
+      if (notify) {
+        const pinnedArray = Array.from(config.getPinned());
+        const transientArray = Array.from(config.getTransient());
+        config.onNotify?.({ union, pinned: pinnedArray, transient: transientArray });
+      }
+    };
+
+    const refresh = () => apply();
+
+    const updateHover = () => {
+      config.updateHover();
+    };
+
+    const setPinnedIds = (ids: string[], options?: SelectionApplyOptions) => {
+      const next = new Set(ids);
+      const current = config.getPinned();
+      let changed = next.size !== current.size;
+      if (!changed) {
+        for (const id of next) {
+          if (!current.has(id)) {
+            changed = true;
+            break;
+          }
+        }
+      }
+      if (!changed) {
+        for (const id of current) {
+          if (!next.has(id)) {
+            changed = true;
+            break;
+          }
+        }
+      }
+      if (!changed) return;
+      config.setPinned(next);
+      apply(options);
+    };
+
+    const clearTransient = (options: SelectionApplyOptions) => {
+      const { notify = false } = options;
+      const current = config.getTransient();
+      if (current.size === 0) {
+        if (notify) {
+          const union = getUnion();
+          const pinnedArray = Array.from(config.getPinned());
+          config.onNotify?.({ union, pinned: pinnedArray, transient: Array.from(current) });
+        }
+        return;
+      }
+      config.setTransient(computeClearTransient());
+      apply({ shouldZoom: false, notify });
+    };
+
+    const addTransient = (ids: string[], options: SelectionApplyOptions = { notify: true }) => {
+      if (!Array.isArray(ids) || ids.length === 0) return;
+      const next = computeAddTransient(ids, config.getTransient());
+      config.setTransient(next);
+      apply({ shouldZoom: false, notify: options.notify ?? true });
+    };
+
+    const toggle = (id: string, additive: boolean, shouldZoom?: boolean) => {
+      const pinned = config.getPinned();
+      const transient = config.getTransient();
+      const wasSelected = pinned.has(id) || transient.has(id);
+      const next = computeToggle(id, additive, pinned, transient);
+      config.setPinned(next.pinned);
+      config.setTransient(next.transient);
+      apply({ shouldZoom: Boolean(shouldZoom && !wasSelected), notify: true });
+    };
+
+    return {
+      getUnion,
+      apply,
+      refresh,
+      updateHover,
+      setPinnedIds,
+      toggle,
+      clearTransient,
+      addTransient,
+    };
+  };
+
   let activeId: string | null = null;
   let lastVisibleIdsKey: string | null = null;
 
@@ -322,11 +468,6 @@ export const createMapView = ({
     COUNTY_BOUNDARY_PINNED_LINE_LAYER_ID,
     COUNTY_STATDATA_FILL_LAYER_ID,
   }, boundaryMode);
-
-  const getUnionZips = (): string[] => {
-    const u = new Set<string>([...pinnedZips, ...transientZips]);
-    return Array.from(u);
-  };
 
   const updateZipSelectionHighlight = () => extUpdateZipSelectionHighlight(map, {
     BOUNDARY_SOURCE_ID,
@@ -436,94 +577,56 @@ export const createMapView = ({
       COUNTY_BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
       COUNTY_BOUNDARY_PINNED_FILL_LAYER_ID,
       COUNTY_BOUNDARY_PINNED_LINE_LAYER_ID,
-      COUNTY_STATDATA_FILL_LAYER_ID,
-    }, currentTheme, selectedStatId, pinnedCounties, transientCounties, hovered);
+    COUNTY_STATDATA_FILL_LAYER_ID,
+  }, currentTheme, selectedStatId, pinnedCounties, transientCounties, hovered);
   };
 
-  const getUnionCounties = (): string[] => {
-    const combined = new Set<string>([...pinnedCounties, ...transientCounties]);
-    return Array.from(combined);
-  };
+  const zipSelection = createSelectionHandlers({
+    getPinned: () => pinnedZips,
+    setPinned: (next) => { pinnedZips = next; },
+    getTransient: () => transientZips,
+    setTransient: (next) => { transientZips = next; },
+    updateHighlight: updateZipSelectionHighlight,
+    updateHover: updateZipHoverOutline,
+    onAfterApply: (union) => {
+      updateSecondaryStatOverlay();
+      zipLabels?.setSelectedZips(union, Array.from(pinnedZips));
+    },
+    onNotify: ({ union, pinned, transient }) => {
+      onZipSelectionChange?.(union, { pinned, transient });
+      onAreaSelectionChange?.({
+        kind: "ZIP",
+        selected: union,
+        pinned,
+        transient,
+      });
+    },
+    getBounds: getZipAreaBounds,
+    maxZoom: 14,
+  });
 
-  const notifyCountySelectionChange = () => {
-    const union = getUnionCounties();
-    onCountySelectionChange?.(union, {
-      pinned: Array.from(pinnedCounties),
-      transient: Array.from(transientCounties),
-    });
-    if (onAreaSelectionChange) {
-      onAreaSelectionChange({
+  const countySelection = createSelectionHandlers({
+    getPinned: () => pinnedCounties,
+    setPinned: (next) => { pinnedCounties = next; },
+    getTransient: () => transientCounties,
+    setTransient: (next) => { transientCounties = next; },
+    updateHighlight: updateCountySelectionHighlight,
+    updateHover: updateCountyHoverOutline,
+    onAfterApply: (union) => {
+      countyLabels?.setSelectedZips?.(union, Array.from(pinnedCounties));
+    },
+    onNotify: ({ union, pinned, transient }) => {
+      onCountySelectionChange?.(union, { pinned, transient });
+      onAreaSelectionChange?.({
         kind: "COUNTY",
         selected: union,
-        pinned: Array.from(pinnedCounties),
-        transient: Array.from(transientCounties),
+        pinned,
+        transient,
       });
-    }
-  };
-
-  const zoomToSelectedCounties = () => {
-    const union = getUnionCounties();
-    if (union.length === 0) return;
-    let combinedBounds: BoundsArray | null = null;
-    for (const county of union) {
-      const bounds = getCountyAreaBounds(county);
-      if (!bounds) continue;
-      if (!combinedBounds) combinedBounds = bounds;
-      else {
-        combinedBounds = [
-          [
-            Math.min(combinedBounds[0][0], bounds[0][0]),
-            Math.min(combinedBounds[0][1], bounds[0][1]),
-          ],
-          [
-            Math.max(combinedBounds[1][0], bounds[1][0]),
-            Math.max(combinedBounds[1][1], bounds[1][1]),
-          ],
-        ];
-      }
-    }
-    if (!combinedBounds) return;
-    map.fitBounds(combinedBounds, { padding: 48, duration: 400, maxZoom: 8.5 });
-  };
-
-  const applyCountySelection = ({ shouldZoom, notify }: { shouldZoom: boolean; notify: boolean }) => {
-    updateCountySelectionHighlight();
-    updateCountyHoverOutline();
-    if (shouldZoom) zoomToSelectedCounties();
-    if (notify) notifyCountySelectionChange();
-  };
-
-  const clearCountySelection = ({ notify }: { notify: boolean }) => {
-    if (transientCounties.size === 0) {
-      if (notify) notifyCountySelectionChange();
-      return;
-    }
-    transientCounties = new Set();
-    applyCountySelection({ shouldZoom: false, notify });
-  };
-
-  const toggleCountySelection = (county: string, additive: boolean, shouldZoom: boolean = false) => {
-    const wasSelected = pinnedCounties.has(county) || transientCounties.has(county);
-    const next = computeToggle(county, additive, pinnedCounties, transientCounties);
-    pinnedCounties = next.pinned;
-    transientCounties = next.transient;
-    applyCountySelection({ shouldZoom: shouldZoom && !wasSelected, notify: true });
-  };
-
-  const clearCountyTransientState = ({ notify }: { notify: boolean }) => {
-    if (transientCounties.size === 0) {
-      if (notify) notifyCountySelectionChange();
-      return;
-    }
-    transientCounties = computeClearTransient();
-    applyCountySelection({ shouldZoom: false, notify });
-  };
-
-  const addTransientCountiesState = (counties: string[]) => {
-    if (!Array.isArray(counties) || counties.length === 0) return;
-    transientCounties = computeAddTransient(counties, transientCounties);
-    applyCountySelection({ shouldZoom: false, notify: true });
-  };
+    },
+    getBounds: getCountyAreaBounds,
+    maxZoom: 8.5,
+  });
 
   const evaluateBoundaryModeForZoom = () => {
     if (boundaryMode === "none") return;
@@ -541,82 +644,6 @@ export const createMapView = ({
     map.off("zoomend", evaluateBoundaryModeForZoom);
     map.off("moveend", evaluateBoundaryModeForZoom);
   });
-
-  const notifyZipSelectionChange = () => {
-    const union = getUnionZips();
-    onZipSelectionChange?.(union, {
-      pinned: Array.from(pinnedZips),
-      transient: Array.from(transientZips),
-    });
-    zipLabels?.setSelectedZips(union, Array.from(pinnedZips));
-    if (onAreaSelectionChange) {
-      onAreaSelectionChange({
-        kind: "ZIP",
-        selected: union,
-        pinned: Array.from(pinnedZips),
-        transient: Array.from(transientZips),
-      });
-    }
-  };
-
-  const zoomToSelectedZips = () => {
-    const union = getUnionZips();
-    if (union.length === 0) return;
-
-    let combinedBounds: BoundsArray | null = null;
-
-    for (const zip of union) {
-      const bounds = getZipAreaBounds(zip);
-      if (!bounds) continue;
-      if (!combinedBounds) {
-        combinedBounds = bounds;
-      } else {
-        combinedBounds = [
-          [
-            Math.min(combinedBounds[0][0], bounds[0][0]),
-            Math.min(combinedBounds[0][1], bounds[0][1]),
-          ],
-          [
-            Math.max(combinedBounds[1][0], bounds[1][0]),
-            Math.max(combinedBounds[1][1], bounds[1][1]),
-          ],
-        ];
-      }
-    }
-
-    if (!combinedBounds) return;
-
-    map.fitBounds(combinedBounds, { padding: 48, duration: 400, maxZoom: 14 });
-  };
-
-  const applyZipSelection = ({ shouldZoom, notify }: { shouldZoom: boolean; notify: boolean }) => {
-    updateZipSelectionHighlight();
-    updateZipHoverOutline();
-    updateSecondaryStatOverlay();
-    if (shouldZoom) {
-      zoomToSelectedZips();
-    }
-    if (notify) {
-      notifyZipSelectionChange();
-    }
-  };
-
-  const clearZipSelection = ({ notify }: { notify: boolean }) => {
-    if (transientZips.size === 0) {
-      if (notify) notifyZipSelectionChange();
-      return;
-    }
-    transientZips = new Set();
-    applyZipSelection({ shouldZoom: false, notify });
-  };
-
-  const toggleZipSelection = (zip: string, additive: boolean, shouldZoom: boolean = false) => {
-    const wasSelected = pinnedZips.has(zip) || transientZips.has(zip);
-    const next = computeToggle(zip, additive, pinnedZips, transientZips);
-    pinnedZips = next.pinned;
-    transientZips = next.transient;
-    applyZipSelection({ shouldZoom: shouldZoom && !wasSelected, notify: true });
-  };
 
   const ensureSourcesAndLayers = () => {
     if (!map.isStyleLoaded()) return;
@@ -659,9 +686,8 @@ export const createMapView = ({
     updateHighlight();
     updateBoundaryPaint();
     updateBoundaryVisibility();
-    updateZipSelectionHighlight();
-    updateCountySelectionHighlight();
-    updateCountyHoverOutline();
+    zipSelection.refresh();
+    countySelection.refresh();
     updateStatDataChoropleth();
     updateSecondaryStatOverlay();
     updateOrganizationPinsVisibility();
@@ -771,7 +797,7 @@ export const createMapView = ({
           const zip = feature?.properties?.[zipFeatureProperty] as string | undefined;
           if (!zip) return;
           const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
-          toggleZipSelection(zip, additive, false);
+          zipSelection.toggle(zip, additive, false);
         } else if (boundaryMode === "counties") {
           const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
           if (orgFeatures.length > 0) return;
@@ -780,7 +806,7 @@ export const createMapView = ({
           const county = feature?.properties?.[countyFeatureProperty] as string | undefined;
           if (!county) return;
           const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
-          toggleCountySelection(county, additive, false);
+          countySelection.toggle(county, additive, false);
         }
       };
       const handleBoundaryDoubleClick = (e: maplibregl.MapLayerMouseEvent) => {
@@ -793,7 +819,7 @@ export const createMapView = ({
           const zip = feature?.properties?.[zipFeatureProperty] as string | undefined;
           if (!zip) return;
           const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
-          toggleZipSelection(zip, additive, true);
+          zipSelection.toggle(zip, additive, true);
         } else if (boundaryMode === "counties") {
           e.preventDefault();
           const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
@@ -803,7 +829,7 @@ export const createMapView = ({
           const county = feature?.properties?.[countyFeatureProperty] as string | undefined;
           if (!county) return;
           const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
-          toggleCountySelection(county, additive, true);
+          countySelection.toggle(county, additive, true);
         }
       };
       const onBoundaryMouseEnter = () => { if (boundaryMode === "zips") map.getCanvas().style.cursor = "pointer"; };
@@ -811,7 +837,7 @@ export const createMapView = ({
         map.getCanvas().style.cursor = "pointer";
         if (boundaryMode === "zips") {
           hoveredZipFromMap = null;
-          updateZipHoverOutline();
+          zipSelection.updateHover();
           onZipHoverChange?.(null);
           onAreaHoverChange?.(null);
         }
@@ -822,7 +848,7 @@ export const createMapView = ({
         const zip = features[0]?.properties?.[zipFeatureProperty] as string | undefined;
         if (!zip || zip === hoveredZipFromMap) return;
         hoveredZipFromMap = zip;
-        updateZipHoverOutline();
+        zipSelection.updateHover();
         onZipHoverChange?.(zip);
         onAreaHoverChange?.({ kind: "ZIP", id: zip });
       };
@@ -839,7 +865,7 @@ export const createMapView = ({
       const onCountyMouseLeave = () => {
         map.getCanvas().style.cursor = "pointer";
         hoveredCountyFromMap = null;
-        updateCountyHoverOutline();
+        countySelection.updateHover();
         onCountyHoverChange?.(null);
         onAreaHoverChange?.(null);
       };
@@ -849,7 +875,7 @@ export const createMapView = ({
         const county = features[0]?.properties?.[countyFeatureProperty] as string | undefined;
         if (!county || county === hoveredCountyFromMap) return;
         hoveredCountyFromMap = county;
-        updateCountyHoverOutline();
+        countySelection.updateHover();
         onCountyHoverChange?.(county);
         onAreaHoverChange?.({ kind: "COUNTY", id: county });
       };
@@ -957,8 +983,7 @@ export const createMapView = ({
     if (mode !== "zips") {
       hoveredZipFromToolbar = null;
       hoveredZipFromMap = null;
-      transientZips = computeClearTransient();
-      applyZipSelection({ shouldZoom: false, notify: true });
+      zipSelection.clearTransient({ shouldZoom: false, notify: true });
       zipFloatingTitle?.hide();
       zipLabels?.setHoveredZip(null);
       zipLabels?.setSelectedZips([], []);
@@ -968,16 +993,9 @@ export const createMapView = ({
     if (mode !== "counties") {
       hoveredCountyFromMap = null;
       hoveredCountyFromToolbar = null;
-      transientCounties = computeClearTransient();
-      applyCountySelection({ shouldZoom: false, notify: true });
+      countySelection.clearTransient({ shouldZoom: false, notify: true });
       countyLabels?.setHoveredZip(null);
       countyLabels?.setSelectedZips([], []);
-    }
-    if (mode !== "counties") {
-      hoveredCountyFromMap = null;
-      hoveredCountyFromToolbar = null;
-      transientCounties = computeClearTransient();
-      applyCountySelection({ shouldZoom: false, notify: true });
     }
     if (mode === "counties" && previousMode !== "counties") {
       zipFloatingTitle?.hide();
@@ -1120,8 +1138,8 @@ export const createMapView = ({
 
   const handleKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
-      clearZipSelection({ notify: true });
-      clearCountySelection({ notify: true });
+      zipSelection.clearTransient({ shouldZoom: false, notify: true });
+      countySelection.clearTransient({ shouldZoom: false, notify: true });
     }
   };
   window.addEventListener("keydown", handleKeyDown);
@@ -1162,56 +1180,37 @@ export const createMapView = ({
     },
     setBoundaryMode,
     setPinnedZips: (zips: string[]) => {
-      const next = new Set(zips);
-      let changed = false;
-      if (next.size !== pinnedZips.size) changed = true;
-      else {
-        for (const z of next) if (!pinnedZips.has(z)) { changed = true; break; }
-      }
-      if (!changed) return;
-      pinnedZips = next;
-      applyZipSelection({ shouldZoom: false, notify: true });
+      zipSelection.setPinnedIds(zips, { shouldZoom: false, notify: true });
     },
     setHoveredZip: (zip: string | null) => {
       hoveredZipFromToolbar = zip;
-      updateZipHoverOutline();
+      zipSelection.updateHover();
       const finalHovered = zip || hoveredZipFromMap;
       zipLabels?.setHoveredZip(finalHovered);
       onZipHoverChange?.(finalHovered || null);
       onAreaHoverChange?.(finalHovered ? { kind: "ZIP", id: finalHovered } : null);
     },
     setPinnedCounties: (counties: string[]) => {
-      const next = new Set(counties);
-      let changed = false;
-      if (next.size !== pinnedCounties.size) changed = true;
-      else {
-        for (const id of next) if (!pinnedCounties.has(id)) { changed = true; break; }
-      }
-      if (!changed) return;
-      pinnedCounties = next;
-      applyCountySelection({ shouldZoom: false, notify: true });
+      countySelection.setPinnedIds(counties, { shouldZoom: false, notify: true });
     },
     setHoveredCounty: (county: string | null) => {
       hoveredCountyFromToolbar = county;
-      updateCountyHoverOutline();
+      countySelection.updateHover();
       const finalHovered = county || hoveredCountyFromMap;
       onCountyHoverChange?.(finalHovered || null);
       onAreaHoverChange?.(finalHovered ? { kind: "COUNTY", id: finalHovered } : null);
     },
     clearTransientSelection: () => {
-      transientZips = computeClearTransient();
-      applyZipSelection({ shouldZoom: false, notify: true });
+      zipSelection.clearTransient({ shouldZoom: false, notify: true });
     },
     addTransientZips: (zips: string[]) => {
-      if (!Array.isArray(zips) || zips.length === 0) return;
-      transientZips = computeAddTransient(zips, transientZips);
-      applyZipSelection({ shouldZoom: false, notify: true });
+      zipSelection.addTransient(zips, { notify: true });
     },
     clearCountyTransientSelection: () => {
-      clearCountyTransientState({ notify: true });
+      countySelection.clearTransient({ shouldZoom: false, notify: true });
     },
     addTransientCounties: (counties: string[]) => {
-      addTransientCountiesState(counties);
+      countySelection.addTransient(counties, { notify: true });
     },
     fitAllOrganizations,
     setOrganizationPinsVisible: (visible: boolean) => {

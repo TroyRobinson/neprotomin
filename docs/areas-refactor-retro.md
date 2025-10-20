@@ -50,8 +50,8 @@
   - [x] Remove no‑longer‑used ZIP/COUNTY props/callbacks from `BoundaryToolbar` and `ReactMapApp` (migration is complete).
   - [x] Prune dead imports and ZIP/COUNTY conditionals that the registry supersedes.
 - High‑impact
-  - Promote base paint (non‑selected fills/lines) into the registry so each kind can be themed consistently in one place.
-  - Extract shared “area selection state” helpers inside `mapView.ts` to remove duplication.
+  - [x] Promote base paint (non‑selected fills/lines) into the registry so each kind can be themed consistently in one place.
+  - [x] Extract shared “area selection state” helpers inside `mapView.ts` to remove duplication.
 - Maybe worthwhile
   - Parameterize auto boundary‑mode thresholds (zoom levels) per kind in the registry.
   - Collapse label logic into a single factory taking centroids + label strategy from the registry.

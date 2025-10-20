@@ -27,6 +27,7 @@ import {
   COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
   COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
 } from "../constants/map";
+import { getBoundaryPalette, type ThemeName } from "../styles/boundaryPalettes";
 
 export interface AreaLayerIds {
   sourceId: string;
@@ -41,6 +42,16 @@ export interface AreaLayerIds {
   hoverLineLayerId: string;
 }
 
+export interface AreaFillStyle {
+  fill: { color: string; opacity: number };
+}
+
+export interface AreaLineStyle {
+  line: { color: string; opacity: number; width: number };
+}
+
+export interface AreaPaintStyle extends AreaFillStyle, AreaLineStyle {}
+
 export interface AreaRegistryEntry {
   kind: AreaKind;
   featureIdProperty: string;
@@ -50,6 +61,11 @@ export interface AreaRegistryEntry {
   getLabel: (id: string) => string;
   getCentroidsMap?: () => Map<string, [number, number]>;
   layers: AreaLayerIds;
+  getBasePaint: (theme: ThemeName) => AreaPaintStyle;
+  getHoverPaint: (theme: ThemeName) => AreaPaintStyle;
+  getHighlightPaint: (theme: ThemeName) => AreaPaintStyle;
+  getPinnedPaint: (theme: ThemeName) => AreaPaintStyle;
+  getSelectionOverlayLine: (theme: ThemeName) => AreaLineStyle["line"];
   isEnabled: boolean;
 }
 
@@ -80,6 +96,36 @@ const registry: AreaRegistry = {
       hoverFillLayerId: BOUNDARY_HOVER_FILL_LAYER_ID,
       hoverLineLayerId: BOUNDARY_HOVER_LINE_LAYER_ID,
     },
+    getBasePaint: (theme) => {
+      const palette = getBoundaryPalette(theme);
+      return {
+        fill: { color: palette.fillColor, opacity: palette.fillOpacity },
+        line: { color: palette.lineColor, opacity: palette.lineOpacity, width: 0.6 },
+      };
+    },
+    getHoverPaint: (theme) =>
+      theme === "dark"
+        ? {
+            fill: { color: "#94a3b8", opacity: 0.18 },
+            line: { color: "#cbd5e1", opacity: 0.9, width: 0.9 },
+          }
+        : {
+            fill: { color: "#1f2937", opacity: 0.12 },
+            line: { color: "#475569", opacity: 0.9, width: 0.9 },
+          },
+    getHighlightPaint: (theme) => ({
+      fill: { color: "#3755f0", opacity: theme === "dark" ? 0.26 : 0.2 },
+      line: { color: "#6d8afc", opacity: 0.9, width: 1 },
+    }),
+    getPinnedPaint: (theme) => ({
+      fill: { color: "#3755f0", opacity: theme === "dark" ? 0.26 : 0.2 },
+      line: { color: "#6d8afc", opacity: 0.9, width: 1 },
+    }),
+    getSelectionOverlayLine: (theme) => ({
+      color: theme === "dark" ? "#e6e6e6" : "#46576f",
+      opacity: 0.9,
+      width: 1.5,
+    }),
     isEnabled: true,
   },
   COUNTY: {
@@ -101,6 +147,38 @@ const registry: AreaRegistry = {
       hoverFillLayerId: COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
       hoverLineLayerId: COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
     },
+    getBasePaint: (theme) => {
+      const palette = theme === "dark"
+        ? { fillColor: "#1f2937", fillOpacity: 0.28, lineColor: "#94a3b8", lineOpacity: 0.65 }
+        : { fillColor: "#e2e8f0", fillOpacity: 0.18, lineColor: "#475569", lineOpacity: 0.6 };
+      return {
+        fill: { color: palette.fillColor, opacity: palette.fillOpacity },
+        line: { color: palette.lineColor, opacity: palette.lineOpacity, width: 0.9 },
+      };
+    },
+    getHoverPaint: (theme) =>
+      theme === "dark"
+        ? {
+            fill: { color: "#94a3b8", opacity: 0.18 },
+            line: { color: "#cbd5e1", opacity: 0.9, width: 1.1 },
+          }
+        : {
+            fill: { color: "#1f2937", opacity: 0.12 },
+            line: { color: "#475569", opacity: 0.9, width: 1.1 },
+          },
+    getHighlightPaint: (theme) => ({
+      fill: { color: "#3755f0", opacity: theme === "dark" ? 0.26 : 0.2 },
+      line: { color: "#6d8afc", opacity: 0.9, width: 1 },
+    }),
+    getPinnedPaint: (theme) => ({
+      fill: { color: "#3755f0", opacity: theme === "dark" ? 0.26 : 0.2 },
+      line: { color: "#6d8afc", opacity: 0.9, width: 1 },
+    }),
+    getSelectionOverlayLine: (theme) => ({
+      color: theme === "dark" ? "#e6e6e6" : "#46576f",
+      opacity: 0.9,
+      width: 1.5,
+    }),
     isEnabled: true,
   },
   TRACT: {
@@ -121,6 +199,27 @@ const registry: AreaRegistry = {
       hoverFillLayerId: "",
       hoverLineLayerId: "",
     },
+    getBasePaint: () => ({
+      fill: { color: "#ffffff", opacity: 0 },
+      line: { color: "#000000", opacity: 0, width: 0 },
+    }),
+    getHoverPaint: () => ({
+      fill: { color: "#ffffff", opacity: 0 },
+      line: { color: "#000000", opacity: 0, width: 0 },
+    }),
+    getHighlightPaint: () => ({
+      fill: { color: "#ffffff", opacity: 0 },
+      line: { color: "#000000", opacity: 0, width: 0 },
+    }),
+    getPinnedPaint: () => ({
+      fill: { color: "#ffffff", opacity: 0 },
+      line: { color: "#000000", opacity: 0, width: 0 },
+    }),
+    getSelectionOverlayLine: () => ({
+      color: "#000000",
+      opacity: 0,
+      width: 0,
+    }),
     isEnabled: false,
   },
 };

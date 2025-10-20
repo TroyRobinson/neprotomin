@@ -291,43 +291,6 @@ export const ReactMapApp = () => {
     setActiveOrganizationId(idOrIds);
   };
 
-  const handlePinAreas = (kind: AreaKind, ids: string[], shouldPin: boolean) => {
-    if (!Array.isArray(ids) || ids.length === 0) return;
-    const current = getAreaSelection(kind);
-    const nextSelected = new Set(current.selected);
-    const nextPinned = new Set(current.pinned);
-    if (shouldPin) {
-      ids.forEach((id) => {
-        nextSelected.add(id);
-        nextPinned.add(id);
-      });
-    } else {
-      ids.forEach((id) => {
-        nextPinned.delete(id);
-      });
-    }
-    applyAreaSelection(kind, {
-      selected: Array.from(nextSelected),
-      pinned: Array.from(nextPinned),
-      transient: current.transient.filter((id) => nextSelected.has(id)),
-    });
-  };
-
-  const handleAddAreas = (kind: AreaKind, ids: string[]) => {
-    if (!Array.isArray(ids) || ids.length === 0) return;
-    const current = getAreaSelection(kind);
-    const nextSelected = dedupeIds([...current.selected, ...ids]);
-    applyAreaSelection(kind, {
-      selected: nextSelected,
-      pinned: current.pinned,
-      transient: current.transient.filter((id) => nextSelected.includes(id)),
-    });
-  };
-
-  const handleClearAreaSelection = (kind: AreaKind) => {
-    applyAreaSelection(kind, { selected: [], pinned: [], transient: [] });
-  };
-
   const handleUpdateAreaSelection = (kind: AreaKind, selection: { selected: string[]; pinned: string[] }) => {
     applyAreaSelection(kind, {
       selected: dedupeIds(selection.selected),
@@ -551,11 +514,8 @@ export const ReactMapApp = () => {
             hoveredArea={hoveredArea}
             stickyTopClass="top-16"
             onBoundaryModeChange={setBoundaryMode}
-            onPinAreas={handlePinAreas}
             onHoverArea={setHoveredAreaState}
-            onClearSelection={handleClearAreaSelection}
             onExport={handleExport}
-            onAddAreas={handleAddAreas}
             onUpdateSelection={handleUpdateAreaSelection}
           />
           <main className="flex flex-1 overflow-hidden">
@@ -666,11 +626,8 @@ export const ReactMapApp = () => {
               hoveredArea={hoveredArea}
               stickyTopClass="top-0"
               onBoundaryModeChange={setBoundaryMode}
-              onPinAreas={handlePinAreas}
               onHoverArea={setHoveredAreaState}
-              onClearSelection={handleClearAreaSelection}
               onExport={handleExport}
-              onAddAreas={handleAddAreas}
               onUpdateSelection={handleUpdateAreaSelection}
             />
           </div>

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import type { BoundaryMode } from "../../types/boundaries";
 import type { AreaId, AreaKind } from "../../types/areas";
-import { getCountyName } from "../../lib/countyBoundaries";
 import { themeController } from "../imperative/theme";
+import { getAreaRegistryEntry } from "../imperative/areas/registry";
 import { CustomSelect } from "./CustomSelect";
 
 interface AreaSelectionSnapshot {
@@ -18,15 +18,26 @@ interface BoundaryToolbarProps {
   // Controls the sticky top offset class (e.g., "top-16" for below topbar, "top-0" inside overlays)
   stickyTopClass?: string;
   onBoundaryModeChange?: (mode: BoundaryMode) => void;
-  onPinAreas?: (kind: AreaKind, ids: string[], pinned: boolean) => void;
   onHoverArea?: (area: AreaId | null) => void;
-  onClearSelection?: (kind: AreaKind) => void;
   onExport?: () => void;
-  onAddAreas?: (kind: AreaKind, ids: string[]) => void;
-  onUpdateSelection?: (kind: AreaKind, selection: { selected: string[]; pinned: string[] }) => void;
+  onUpdateSelection: (kind: AreaKind, selection: { selected: string[]; pinned: string[] }) => void;
 }
 
 const LINE_COLORS = ["#375bff", "#8f20f8", "#a76d44", "#b4a360"];
+const areaEntryByKind = {
+  ZIP: getAreaRegistryEntry("ZIP"),
+  COUNTY: getAreaRegistryEntry("COUNTY"),
+} as const;
+const areaDisplayByKind: Record<AreaKind, { singular: string; plural: string }> = {
+  ZIP: { singular: "ZIP", plural: "ZIPs" },
+  COUNTY: { singular: "County", plural: "Counties" },
+  TRACT: { singular: "Tract", plural: "Tracts" },
+};
+const boundaryModeToAreaKind: Record<BoundaryMode, AreaKind | null> = {
+  zips: "ZIP",
+  counties: "COUNTY",
+  none: null,
+};
 
 function shade(hex: string, amount: number): string {
   const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
@@ -50,11 +61,8 @@ export const BoundaryToolbar = ({
   hoveredArea = null,
   stickyTopClass = "top-16",
   onBoundaryModeChange,
-  onPinAreas,
   onHoverArea,
-  onClearSelection,
   onExport,
-  onAddAreas,
   onUpdateSelection,
 }: BoundaryToolbarProps) => {
   const [inputOpen, setInputOpen] = useState(false);
@@ -78,8 +86,10 @@ export const BoundaryToolbar = ({
   const hasZipSelections = selectedZips.length > 0;
   const hasCountySelections = selectedCounties.length > 0;
   const hasSelections = hasZipSelections || hasCountySelections;
-  const areaLabel = boundaryMode === "zips" ? "ZIP" : boundaryMode === "counties" ? "County" : "area";
-  const areaPluralLabel = areaLabel === "County" ? "Counties" : `${areaLabel}s`;
+  const activeAreaKind = boundaryModeToAreaKind[boundaryMode] ?? null;
+  const areaDisplay = activeAreaKind ? areaDisplayByKind[activeAreaKind] : null;
+  const areaLabel = areaDisplay?.singular ?? "area";
+  const areaPluralLabel = areaDisplay?.plural ?? "areas";
   const inLineMode = selectedZips.length > 0 && selectedZips.length < 4;
 
   useEffect(() => {
@@ -131,8 +141,16 @@ export const BoundaryToolbar = ({
   const submitZips = () => {
     const zips = parseZips(inputValue);
     if (zips.length > 0) {
-      if (onAddAreas) onAddAreas("ZIP", zips);
-      else onPinAreas?.("ZIP", zips, true);
+      const merged = [...selectedZips];
+      const seen = new Set(merged);
+      for (const zip of zips) {
+        if (!seen.has(zip)) {
+          merged.push(zip);
+          seen.add(zip);
+        }
+      }
+      const nextPinned = pinnedZips.filter((zip) => seen.has(zip));
+      onUpdateSelection("ZIP", { selected: merged, pinned: nextPinned });
     }
     setInputOpen(false);
     setInputValue("");
@@ -149,64 +167,41 @@ export const BoundaryToolbar = ({
     }
   };
 
-  const removeZip = (zip: string) => {
-    const remainingSelected = selectedZips.filter((z) => z !== zip);
-    const remainingPinned = pinnedZips.filter((z) => z !== zip);
-    if (onUpdateSelection) {
-      onUpdateSelection("ZIP", { selected: remainingSelected, pinned: remainingPinned });
-    } else {
-      if (pinnedZipSet.has(zip)) onPinAreas?.("ZIP", [zip], false);
-      onClearSelection?.("ZIP");
-      if (remainingSelected.length > 0) {
-        onAddAreas?.("ZIP", remainingSelected);
-        if (remainingPinned.length > 0) onPinAreas?.("ZIP", remainingPinned, true);
-      }
+  // Remove a chip id while keeping selected/pinned arrays aligned.
+  const updateSelectionWithout = (
+    kind: AreaKind,
+    id: string,
+    selected: string[],
+    pinned: string[],
+  ) => {
+    const remainingSelected = selected.filter((value) => value !== id);
+    const remainingPinned = pinned.filter((value) => value !== id);
+    onUpdateSelection(kind, { selected: remainingSelected, pinned: remainingPinned });
+  };
+
+  const handleAreaChipHover = (kind: AreaKind, id: string | null) => {
+    if (id) {
+      onHoverArea?.({ kind, id });
+    } else if (hoveredArea?.kind === kind && hoveredArea.id) {
+      onHoverArea?.(null);
     }
   };
 
-  const handleChipHover = (zip: string | null) => {
-    if (zip) onHoverArea?.({ kind: "ZIP", id: zip });
-    else if (hoveredZip) onHoverArea?.(null);
+  // Pin or unpin every id for a given kind in one shot.
+  const togglePinAll = (kind: AreaKind, selected: string[], isAllPinned: boolean) => {
+    if (selected.length === 0) return;
+    const nextPinned = isAllPinned ? [] : [...selected];
+    onUpdateSelection(kind, { selected: [...selected], pinned: nextPinned });
   };
 
   const pinnedCount = selectedZips.filter((z) => pinnedZipSet.has(z)).length;
   const allZipsPinned = selectedZips.length > 0 && pinnedCount === selectedZips.length;
   const showZipPinToggle = selectedZips.length >= 2;
 
-  const removeCounty = (county: string) => {
-    const remainingSelected = selectedCounties.filter((c) => c !== county);
-    const remainingPinned = pinnedCounties.filter((c) => c !== county);
-    if (onUpdateSelection) {
-      onUpdateSelection("COUNTY", { selected: remainingSelected, pinned: remainingPinned });
-    } else {
-      if (pinnedCountySet.has(county)) onPinAreas?.("COUNTY", [county], false);
-      onClearSelection?.("COUNTY");
-      if (remainingSelected.length > 0) {
-        onAddAreas?.("COUNTY", remainingSelected);
-        if (remainingPinned.length > 0) onPinAreas?.("COUNTY", remainingPinned, true);
-      }
-    }
-  };
-
-  const handleCountyChipHover = (county: string | null) => {
-    if (county) onHoverArea?.({ kind: "COUNTY", id: county });
-    else if (hoveredCounty) onHoverArea?.(null);
-  };
 
   const countyPinnedCount = selectedCounties.filter((c) => pinnedCountySet.has(c)).length;
   const allCountiesPinned = selectedCounties.length > 0 && countyPinnedCount === selectedCounties.length;
   const showCountyPinToggle = selectedCounties.length >= 2;
-
-  const handleCountyPinAllClick = () => {
-    if (selectedCounties.length === 0) return;
-    const allPinned = selectedCounties.every((id) => pinnedCountySet.has(id));
-    onPinAreas?.("COUNTY", selectedCounties, !allPinned);
-  };
-
-  const handlePinAllClick = () => {
-    if (selectedZips.length === 0) return;
-    onPinAreas?.("ZIP", selectedZips, !allZipsPinned);
-  };
 
   // Build color mapping by selection order
   const colorByZip = new Map<string, string>();
@@ -263,9 +258,9 @@ export const BoundaryToolbar = ({
                 type="button"
                 className={chipClasses}
                 style={chipStyle}
-                onMouseEnter={() => handleChipHover(zip)}
-                onMouseLeave={() => handleChipHover(null)}
-                onClick={() => removeZip(zip)}
+                onMouseEnter={() => handleAreaChipHover("ZIP", zip)}
+                onMouseLeave={() => handleAreaChipHover("ZIP", null)}
+                onClick={() => updateSelectionWithout("ZIP", zip, selectedZips, pinnedZips)}
               >
                 <span>{zip}</span>
                 <span className="ml-0.5 hidden text-brand-600 group-hover:inline">×</span>
@@ -286,16 +281,16 @@ export const BoundaryToolbar = ({
               chipClasses += " ring-1 ring-brand-300";
             }
 
-            const label = getCountyName(county) ?? county;
+            const label = areaEntryByKind.COUNTY.getLabel(county);
 
             return (
               <button
                 key={`county-${county}`}
                 type="button"
                 className={chipClasses}
-                onMouseEnter={() => handleCountyChipHover(county)}
-                onMouseLeave={() => handleCountyChipHover(null)}
-                onClick={() => removeCounty(county)}
+                onMouseEnter={() => handleAreaChipHover("COUNTY", county)}
+                onMouseLeave={() => handleAreaChipHover("COUNTY", null)}
+                onClick={() => updateSelectionWithout("COUNTY", county, selectedCounties, pinnedCounties)}
               >
                 <span>{label}</span>
                 <span className="ml-0.5 hidden text-brand-600 group-hover:inline">×</span>
@@ -355,7 +350,7 @@ export const BoundaryToolbar = ({
           {showZipPinToggle && (
             <button
               type="button"
-              onClick={handlePinAllClick}
+              onClick={() => togglePinAll("ZIP", selectedZips, allZipsPinned)}
               className="ml-2 cursor-pointer whitespace-nowrap text-xs font-medium text-brand-400 hover:text-brand-600/90"
             >
               {allZipsPinned ? "clear pins" : "pin all"}
@@ -365,7 +360,7 @@ export const BoundaryToolbar = ({
           {showCountyPinToggle && (
             <button
               type="button"
-              onClick={handleCountyPinAllClick}
+              onClick={() => togglePinAll("COUNTY", selectedCounties, allCountiesPinned)}
               className="ml-2 cursor-pointer whitespace-nowrap text-xs font-medium text-brand-400 hover:text-brand-600/90"
             >
               {allCountiesPinned ? "clear county pins" : "pin all counties"}
@@ -377,8 +372,13 @@ export const BoundaryToolbar = ({
             <button
               type="button"
               onClick={() => {
-                onClearSelection?.("ZIP");
-                onClearSelection?.("COUNTY");
+                (["ZIP", "COUNTY"] as const).forEach((kind) => {
+                  const selected = kind === "ZIP" ? selectedZips : selectedCounties;
+                  const pinned = kind === "ZIP" ? pinnedZips : pinnedCounties;
+                  if (selected.length > 0 || pinned.length > 0) {
+                    onUpdateSelection(kind, { selected: [], pinned: [] });
+                  }
+                });
               }}
               className="ml-3 inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
             >
