@@ -90,17 +90,19 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId }: ZipLabelsO
 
     if (hasStatOverlay && currentStatData && zip in currentStatData) {
       const statValue = currentStatData[zip];
-      pillLabel.textContent = formatStatValue(statValue, currentStatType);
       const isSelectedOrPinned = isSelected || isPinned;
       if (isSelectedOrPinned) {
-        element.className = "absolute z-0 flex flex-col items-center pointer-events-auto cursor-pointer";
-        pillLabel.addEventListener('mouseenter', () => {
-          pillLabel.textContent = zip;
-        });
-        pillLabel.addEventListener('mouseleave', () => {
-          pillLabel.textContent = formatStatValue(statValue, currentStatType);
+        pillLabel.textContent = zip;
+      element.style.pointerEvents = "auto";
+      element.style.cursor = "pointer";
+      pillLabel.addEventListener('mouseenter', () => {
+        pillLabel.textContent = formatStatValue(statValue, currentStatType);
+      });
+      pillLabel.addEventListener('mouseleave', () => {
+        pillLabel.textContent = zip;
         });
       } else {
+        pillLabel.textContent = formatStatValue(statValue, currentStatType);
         element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
       }
     } else {
