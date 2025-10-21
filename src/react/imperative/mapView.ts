@@ -131,6 +131,10 @@ const emptyFC = (): FC => ({ type: "FeatureCollection", features: [] });
 
 const COUNTY_MODE_ENABLE_ZOOM = 9;
 const COUNTY_MODE_DISABLE_ZOOM = 9.6;
+const COUNTY_SELECTION_MAX_ZOOM = 8.5;
+const COUNTY_ZIP_VIEW_MAX_ZOOM = 10.2;
+const COUNTY_CLICK_ZOOM_DELAY_MS = 220;
+const COUNTY_LONG_PRESS_MS = 350;
 
 const zipAreaEntry = getAreaRegistryEntry("ZIP");
 const countyAreaEntry = getAreaRegistryEntry("COUNTY");
@@ -222,6 +226,11 @@ export const createMapView = ({
   let transientCounties = new Set<string>();
   let hoveredCountyFromToolbar: string | null = null;
   let hoveredCountyFromMap: string | null = null;
+  // Track pointer press state so quick taps zoom and sustained presses select.
+  let countyPressCandidate: string | null = null;
+  let countyLongPressTimer: ReturnType<typeof setTimeout> | null = null;
+  let countyLongPressTriggered = false;
+  let countyPendingZoomTimer: ReturnType<typeof setTimeout> | null = null;
   let selectedStatId: string | null = null;
   let secondaryStatId: string | null = null;
 
@@ -256,6 +265,40 @@ export const createMapView = ({
   setTimeout(() => {
     try { map.resize(); } catch {}
   }, 100);
+
+  const stopCountyPressTimer = () => {
+    if (countyLongPressTimer !== null) {
+      clearTimeout(countyLongPressTimer);
+      countyLongPressTimer = null;
+    }
+  };
+
+  const cancelCountyPendingZoom = () => {
+    if (countyPendingZoomTimer !== null) {
+      clearTimeout(countyPendingZoomTimer);
+      countyPendingZoomTimer = null;
+    }
+  };
+
+  const resetCountyPressState = ({ cancelZoom = true }: { cancelZoom?: boolean } = {}) => {
+    stopCountyPressTimer();
+    if (cancelZoom) cancelCountyPendingZoom();
+    countyPressCandidate = null;
+    countyLongPressTriggered = false;
+  };
+
+  const beginCountyPressTracking = (countyId: string) => {
+    stopCountyPressTimer();
+    cancelCountyPendingZoom();
+    countyPressCandidate = countyId;
+    countyLongPressTriggered = false;
+    countyLongPressTimer = setTimeout(() => {
+      countyLongPressTriggered = true;
+    }, COUNTY_LONG_PRESS_MS);
+  };
+
+  const wasCountyPressLong = (countyId: string | null): boolean =>
+    Boolean(countyId && countyPressCandidate === countyId && countyLongPressTriggered);
 
   let allOrganizations: Organization[] = [];
   let lastData: FC = emptyFC();
@@ -625,8 +668,23 @@ export const createMapView = ({
       });
     },
     getBounds: getCountyAreaBounds,
-    maxZoom: 8.5,
+    maxZoom: COUNTY_SELECTION_MAX_ZOOM,
   });
+
+  const zoomToCounty = (countyId: string) => {
+    const bounds = getCountyAreaBounds(countyId);
+    if (!bounds) return;
+    const centerLng = (bounds[0][0] + bounds[1][0]) / 2;
+    const centerLat = (bounds[0][1] + bounds[1][1]) / 2;
+    map.easeTo({ center: [centerLng, centerLat], zoom: COUNTY_ZIP_VIEW_MAX_ZOOM, duration: 400 });
+    const ensureZipMode = () => {
+      if (map.getZoom() >= COUNTY_MODE_DISABLE_ZOOM) {
+        setBoundaryMode("zips");
+      }
+    };
+    map.once("zoomend", ensureZipMode);
+    map.once("moveend", ensureZipMode);
+  };
 
   const evaluateBoundaryModeForZoom = () => {
     if (boundaryMode === "none") return;
@@ -791,23 +849,59 @@ export const createMapView = ({
       const handleBoundaryClick = (e: maplibregl.MapLayerMouseEvent) => {
         if (boundaryMode === "zips") {
           const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
-          if (orgFeatures.length > 0) return;
+          if (orgFeatures.length > 0) {
+            resetCountyPressState();
+            return;
+          }
           const features = map.queryRenderedFeatures(e.point, { layers: zipLayerOrder });
           const feature = features[0];
           const zip = feature?.properties?.[zipFeatureProperty] as string | undefined;
-          if (!zip) return;
+          if (!zip) {
+            resetCountyPressState();
+            return;
+          }
           const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
           zipSelection.toggle(zip, additive, false);
-        } else if (boundaryMode === "counties") {
+          resetCountyPressState();
+          return;
+        }
+
+        if (boundaryMode === "counties") {
           const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
-          if (orgFeatures.length > 0) return;
+          if (orgFeatures.length > 0) {
+            resetCountyPressState();
+            return;
+          }
           const features = map.queryRenderedFeatures(e.point, { layers: countyLayerOrder });
           const feature = features[0];
           const county = feature?.properties?.[countyFeatureProperty] as string | undefined;
-          if (!county) return;
-          const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
-          countySelection.toggle(county, additive, false);
+          if (!county) {
+            resetCountyPressState();
+            return;
+          }
+          const originalEvent = e.originalEvent as MouseEvent | PointerEvent | undefined;
+          const shiftKey = Boolean(originalEvent?.shiftKey);
+          const hasExistingSelection = countySelection.getUnion().length > 0;
+          const longPressTriggered = wasCountyPressLong(county);
+          const shouldSelect = shiftKey || longPressTriggered || hasExistingSelection;
+          if (shouldSelect) {
+            const additive = shiftKey || hasExistingSelection;
+            cancelCountyPendingZoom();
+            countySelection.toggle(county, additive, false);
+            resetCountyPressState();
+          } else {
+            cancelCountyPendingZoom();
+            countyPendingZoomTimer = setTimeout(() => {
+              if (boundaryMode !== "counties") return;
+              zoomToCounty(county);
+              countyPendingZoomTimer = null;
+            }, COUNTY_CLICK_ZOOM_DELAY_MS);
+            resetCountyPressState({ cancelZoom: false });
+          }
+          return;
         }
+
+        resetCountyPressState();
       };
       const handleBoundaryDoubleClick = (e: maplibregl.MapLayerMouseEvent) => {
         if (boundaryMode === "zips") {
@@ -822,6 +916,7 @@ export const createMapView = ({
           zipSelection.toggle(zip, additive, true);
         } else if (boundaryMode === "counties") {
           e.preventDefault();
+          cancelCountyPendingZoom();
           const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
           if (orgFeatures.length > 0) return;
           const features = map.queryRenderedFeatures(e.point, { layers: countyLayerOrder });
@@ -829,9 +924,53 @@ export const createMapView = ({
           const county = feature?.properties?.[countyFeatureProperty] as string | undefined;
           if (!county) return;
           const additive = Boolean((e.originalEvent as MouseEvent | PointerEvent | undefined)?.shiftKey);
-          countySelection.toggle(county, additive, true);
+          countySelection.toggle(county, additive, false);
+          resetCountyPressState();
         }
       };
+      const countyInteractionLayers = [
+        COUNTY_BOUNDARY_FILL_LAYER_ID,
+        COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+        COUNTY_BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+        COUNTY_BOUNDARY_PINNED_FILL_LAYER_ID,
+        COUNTY_STATDATA_FILL_LAYER_ID,
+      ];
+      const handleCountyPointerDown = (e: maplibregl.MapLayerMouseEvent) => {
+        if (boundaryMode !== "counties") {
+          resetCountyPressState();
+          return;
+        }
+        const features = map.queryRenderedFeatures(e.point, { layers: countyLayerOrder });
+        const feature = features[0];
+        const county = feature?.properties?.[countyFeatureProperty] as string | undefined;
+        if (!county) {
+          resetCountyPressState();
+          return;
+        }
+        beginCountyPressTracking(county);
+      };
+      const handleCountyPointerUp = (e: maplibregl.MapLayerMouseEvent) => {
+        stopCountyPressTimer();
+        if (!countyPressCandidate) return;
+        const features = map.queryRenderedFeatures(e.point, { layers: countyLayerOrder });
+        const feature = features[0];
+        const county = feature?.properties?.[countyFeatureProperty] as string | undefined;
+        if (!county || county !== countyPressCandidate) {
+          countyLongPressTriggered = false;
+        }
+      };
+      const handleMapMouseUp = () => {
+        stopCountyPressTimer();
+      };
+      const handleMapDragStart = () => {
+        resetCountyPressState();
+      };
+      countyInteractionLayers.forEach((layerId) => {
+        map.on("mousedown", layerId, handleCountyPointerDown);
+        map.on("mouseup", layerId, handleCountyPointerUp);
+      });
+      map.on("mouseup", handleMapMouseUp);
+      map.on("dragstart", handleMapDragStart);
       const onBoundaryMouseEnter = () => { if (boundaryMode === "zips") map.getCanvas().style.cursor = "pointer"; };
       const onBoundaryMouseLeave = () => {
         map.getCanvas().style.cursor = "pointer";
@@ -906,6 +1045,13 @@ export const createMapView = ({
         map.off("mousemove", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseMove);
         map.off("mousemove", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseMove);
         map.off("mousemove", COUNTY_STATDATA_FILL_LAYER_ID, onCountyMouseMove);
+        countyInteractionLayers.forEach((layerId) => {
+          map.off("mousedown", layerId, handleCountyPointerDown);
+          map.off("mouseup", layerId, handleCountyPointerUp);
+        });
+        map.off("mouseup", handleMapMouseUp);
+        map.off("dragstart", handleMapDragStart);
+        resetCountyPressState();
       };
     })();
 
