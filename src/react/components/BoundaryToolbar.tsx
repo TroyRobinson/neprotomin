@@ -188,20 +188,17 @@ export const BoundaryToolbar = ({
   };
 
   // Pin or unpin every id for a given kind in one shot.
-  const togglePinAll = (kind: AreaKind, selected: string[], isAllPinned: boolean) => {
+  const togglePinAll = (kind: AreaKind, selected: string[], shouldPinAll: boolean) => {
     if (selected.length === 0) return;
-    const nextPinned = isAllPinned ? [] : [...selected];
+    const nextPinned = shouldPinAll ? [...selected] : [];
     onUpdateSelection(kind, { selected: [...selected], pinned: nextPinned });
   };
 
   const pinnedCount = selectedZips.filter((z) => pinnedZipSet.has(z)).length;
-  const allZipsPinned = selectedZips.length > 0 && pinnedCount === selectedZips.length;
-  const showZipPinToggle = selectedZips.length >= 2;
-
-
   const countyPinnedCount = selectedCounties.filter((c) => pinnedCountySet.has(c)).length;
-  const allCountiesPinned = selectedCounties.length > 0 && countyPinnedCount === selectedCounties.length;
-  const showCountyPinToggle = selectedCounties.length >= 2;
+  const totalSelectedCount = selectedZips.length + selectedCounties.length;
+  const totalPinnedCount = pinnedCount + countyPinnedCount;
+  const allPinned = totalSelectedCount > 0 && totalPinnedCount === totalSelectedCount;
 
   // Build color mapping by selection order
   const colorByZip = new Map<string, string>();
@@ -299,7 +296,7 @@ export const BoundaryToolbar = ({
           })}
         </div>
 
-        {/* Add Button and Input */}
+          {/* Add Button and Input */}
         <div className={`flex items-center gap-1 ${!hasSelections && !inputOpen ? "-ml-2" : ""}`}>
           <button
             ref={addBtnRef}
@@ -346,28 +343,23 @@ export const BoundaryToolbar = ({
             </span>
           )}
 
-          {/* Pin All / Clear Pins Button */}
-          {showZipPinToggle && (
+          {totalSelectedCount >= 2 && (
             <button
               type="button"
-              onClick={() => togglePinAll("ZIP", selectedZips, allZipsPinned)}
+              onClick={() => {
+                const shouldPinAll = !allPinned;
+                (["ZIP", "COUNTY"] as const).forEach((kind) => {
+                  const selected = kind === "ZIP" ? selectedZips : selectedCounties;
+                  if (selected.length === 0) return;
+                  togglePinAll(kind, selected, shouldPinAll);
+                });
+              }}
               className="ml-2 cursor-pointer whitespace-nowrap text-xs font-medium text-brand-400 hover:text-brand-600/90"
             >
-              {allZipsPinned ? "clear pins" : "pin all"}
+              {allPinned ? "clear pins" : "pin all"}
             </button>
           )}
 
-          {showCountyPinToggle && (
-            <button
-              type="button"
-              onClick={() => togglePinAll("COUNTY", selectedCounties, allCountiesPinned)}
-              className="ml-2 cursor-pointer whitespace-nowrap text-xs font-medium text-brand-400 hover:text-brand-600/90"
-            >
-              {allCountiesPinned ? "clear county pins" : "pin all counties"}
-            </button>
-          )}
-
-          {/* Clear Selection Button */}
           {hasSelections && (
             <button
               type="button"
@@ -390,7 +382,7 @@ export const BoundaryToolbar = ({
               >
                 <path d="M4.28 3.22a.75.75 0 00-1.06 1.06L6.94 8l-3.72 3.72a.75.75 0 101.06 1.06L8 9.06l3.72 3.72a.75.75 0 101.06-1.06L9.06 8l3.72-3.72a.75.75 0 00-1.06-1.06L8 6.94 4.28 3.22z" />
               </svg>
-              <span>clear selection (esc)</span>
+              <span>clear all (esc)</span>
             </button>
           )}
         </div>

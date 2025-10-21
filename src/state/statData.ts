@@ -1,5 +1,7 @@
 import type { StatData } from "../types/statData";
 import { db } from "../lib/db";
+import type { AreaKind } from "../types/areas";
+import { DEFAULT_PARENT_AREA_BY_KIND } from "../types/areas";
 
 type BoundaryStatEntry = {
   id: string;
@@ -14,7 +16,7 @@ type BoundaryStatEntry = {
   max: number;
 };
 
-type BoundaryTypeKey = "ZIP" | "COUNTY";
+type BoundaryTypeKey = Extract<AreaKind, "ZIP" | "COUNTY">;
 
 type StatDataMapEntry = Partial<Record<BoundaryTypeKey, BoundaryStatEntry>>;
 
@@ -68,14 +70,16 @@ class StatDataStore {
           ),
         ) as StatData[];
 
-        const relevantBoundaryTypes: Record<string, string> = {
-          ZIP: "Tulsa",
-          COUNTY: "Oklahoma",
+        const relevantBoundaryTypes: Partial<Record<BoundaryTypeKey, string>> = {
+          ZIP: DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? undefined,
+          COUNTY: DEFAULT_PARENT_AREA_BY_KIND.COUNTY ?? undefined,
         };
 
         const grouped = new Map<string, StatData[]>();
         for (const row of filtered) {
-          const boundaryType = row.boundaryType as BoundaryTypeKey;
+          const rawType = row.boundaryType;
+          if (rawType !== "ZIP" && rawType !== "COUNTY") continue;
+          const boundaryType = rawType as BoundaryTypeKey;
           const parentArea = getParentArea(row);
           if (!parentArea) continue;
           const expectedArea = relevantBoundaryTypes[boundaryType];
@@ -89,9 +93,11 @@ class StatDataStore {
 
         const map = new Map<string, StatDataMapEntry>();
         for (const [, list] of grouped) {
-          list.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+          list.sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
           const latest = list[0];
-          const entries = Object.values(latest.data ?? {}) as number[];
+          const entries = Object.values(latest.data ?? {}).filter(
+            (value): value is number => typeof value === "number" && Number.isFinite(value),
+          );
           const min = entries.length ? Math.min(...entries) : 0;
           const max = entries.length ? Math.max(...entries) : 0;
           const boundaryType = latest.boundaryType as BoundaryTypeKey;
@@ -109,7 +115,7 @@ class StatDataStore {
             min,
             max,
           };
-          const statMapEntry = map.get(latest.statId) || {};
+          const statMapEntry = map.get(latest.statId) || ({} as StatDataMapEntry);
           statMapEntry[boundaryType] = statEntry;
           map.set(latest.statId, statMapEntry);
         }

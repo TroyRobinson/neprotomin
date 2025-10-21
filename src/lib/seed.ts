@@ -1,10 +1,15 @@
 import { id } from "@instantdb/core";
 
 import { organizationSeedData } from "../data/organizations";
-import { getAllZipCodes } from "./zipBoundaries";
-import { getAllCountyIds } from "./countyBoundaries";
+import { getAllZipCodes, getZipBounds } from "./zipBoundaries";
+import { getAllCountyIds, getCountyBounds } from "./countyBoundaries";
 import { db } from "./db";
 import { statsSeedData } from "../data/stats";
+import { getZipCentroidsMap } from "./zipCentroids";
+import { getCountyCentroidsMap, getCountyName } from "./countyCentroids";
+import type { AreaKind } from "../types/areas";
+import { DEFAULT_PARENT_AREA_BY_KIND } from "../types/areas";
+import { isSyntheticSeedEnabled } from "./env";
 
 let seedPromise: Promise<void> | null = null;
 
@@ -77,11 +82,142 @@ export const ensureOrganizationsSeeded = async (): Promise<void> => {
   return seedPromise;
 };
 
+type AreaSeed = {
+  kind: AreaKind;
+  code: string;
+  name: string;
+  parentCode: string | null;
+  centroid: [number, number] | null;
+  bounds: [[number, number], [number, number]] | null;
+};
+
+let seedAreasPromise: Promise<void> | null = null;
+
+/**
+ * Seed area metadata so ZIPs, counties, and future area kinds share one lookup table.
+ * This keeps downstream queries simple once we mix area types in the UI.
+ */
+export const ensureAreasSeeded = async (): Promise<void> => {
+  if (!isSyntheticSeedEnabled()) {
+    return;
+  }
+
+  if (seedAreasPromise) return seedAreasPromise;
+
+  seedAreasPromise = (async () => {
+    try {
+      const { data } = await db.queryOnce({
+        areas: {
+          $: { order: { name: "asc" } },
+        },
+      });
+
+      const existingByKey = new Map<string, any>();
+      for (const row of data.areas ?? []) {
+        const id = row?.id as string | undefined;
+        const code = typeof row?.code === "string" ? (row.code as string) : undefined;
+        const kind = typeof row?.kind === "string" ? (row.kind as string) : undefined;
+        if (!id || !code || !kind) continue;
+        existingByKey.set(`${kind}::${code}`.toLowerCase(), row);
+      }
+
+      const seeds: AreaSeed[] = [];
+      const zipCentroids = getZipCentroidsMap();
+      for (const zip of getAllZipCodes()) {
+        const centroid = zipCentroids.get(zip) ?? null;
+        const bounds = getZipBounds(zip) ?? null;
+        seeds.push({
+          kind: "ZIP",
+          code: zip,
+          name: zip,
+          parentCode: DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? null,
+          centroid,
+          bounds,
+        });
+      }
+
+      const countyCentroids = getCountyCentroidsMap();
+      for (const county of getAllCountyIds()) {
+        const centroid = countyCentroids.get(county) ?? null;
+        const bounds = getCountyBounds(county) ?? null;
+        const name = getCountyName(county) ?? county;
+        seeds.push({
+          kind: "COUNTY",
+          code: county,
+          name,
+          parentCode: DEFAULT_PARENT_AREA_BY_KIND.COUNTY ?? null,
+          centroid,
+          bounds,
+        });
+      }
+
+      const txs: any[] = [];
+      const now = Date.now();
+      const activeKeys = new Set<string>();
+
+      const serialize = (value: unknown) => JSON.stringify(value ?? null);
+
+      for (const seed of seeds) {
+        const key = `${seed.kind}::${seed.code}`.toLowerCase();
+        activeKeys.add(key);
+        const existing = existingByKey.get(key);
+        const payload = {
+          code: seed.code,
+          kind: seed.kind,
+          name: seed.name,
+          parentCode: seed.parentCode,
+          centroid: seed.centroid,
+          bounds: seed.bounds,
+          isActive: true,
+          updatedAt: now,
+        };
+        if (existing?.id) {
+          const needsUpdate =
+            existing.code !== payload.code ||
+            existing.kind !== payload.kind ||
+            existing.name !== payload.name ||
+            (existing.parentCode ?? null) !== (payload.parentCode ?? null) ||
+            serialize(existing.centroid) !== serialize(payload.centroid) ||
+            serialize(existing.bounds) !== serialize(payload.bounds) ||
+            existing.isActive !== true;
+
+          if (needsUpdate) {
+            txs.push(db.tx.areas[existing.id as string].update(payload));
+          }
+        } else {
+          txs.push(db.tx.areas[id()].update(payload));
+        }
+      }
+
+      for (const [key, row] of existingByKey.entries()) {
+        if (activeKeys.has(key)) continue;
+        const rowId = row?.id as string | undefined;
+        if (!rowId) continue;
+        if (row.isActive === false) continue;
+        txs.push(
+          db.tx.areas[rowId].update({
+            isActive: false,
+            updatedAt: now,
+          }),
+        );
+      }
+
+      if (txs.length > 0) {
+        await db.transact(txs);
+      }
+    } catch (error) {
+      console.warn("InstantDB area seed encountered an error (likely offline); skipping seed", error);
+    }
+  })();
+
+  return seedAreasPromise;
+};
+
 let seedStatsPromise: Promise<void> | null = null;
 
 export const ensureStatsSeeded = async (): Promise<void> => {
   // Skip synthetic seeding in production or if any real NE data exists
-  if (!import.meta.env.DEV && !import.meta.env.VITE_ENABLE_SYNTHETIC_SEED) {
+  if (!isSyntheticSeedEnabled()) {
     return;
   }
 
@@ -191,7 +327,7 @@ let seedStatDataPromise: Promise<void> | null = null;
 
 export const ensureStatDataSeeded = async (): Promise<void> => {
   // Skip synthetic seeding in production or if any real NE data exists
-  if (!import.meta.env.DEV && !import.meta.env.VITE_ENABLE_SYNTHETIC_SEED) {
+  if (!isSyntheticSeedEnabled()) {
     return;
   }
 
@@ -223,6 +359,7 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
 
       // Ensure stats exist before seeding statData
       await ensureStatsSeeded();
+      await ensureAreasSeeded();
 
       // Check for real data again (stats check would have returned early if found)
       const { data: checkStats } = await db.queryOnce({
@@ -337,7 +474,7 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
         if (!sid || !name) continue;
 
         const entryName = "root"; // per spec for root stat data
-        const parentArea = "Tulsa";
+        const parentArea = DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Tulsa";
         const boundaryType = "ZIP";
         const type = typeForStatName(name);
 
@@ -395,7 +532,7 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
           if (!sid || !name) continue;
 
           const entryName = "root";
-          const parentArea = "Oklahoma";
+          const parentArea = DEFAULT_PARENT_AREA_BY_KIND.COUNTY ?? "Oklahoma";
           const boundaryType = "COUNTY";
           const type = typeForStatName(name);
 
@@ -449,7 +586,7 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
       if (populationStat && (populationStat as any).id) {
         const popStatId = (populationStat as any).id as string;
         const date = "2025";
-        const parentArea = "Tulsa";
+        const parentArea = DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Tulsa";
         const boundaryType = "ZIP";
 
         // Helper to produce integer percent buckets that sum to 100
@@ -507,6 +644,12 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
           for (const zip of zips) {
             perZipBuckets[zip] = percentBuckets(`Population::${group}::${zip}::${date}`, segments.length);
           }
+          const perCountyBuckets: Record<string, number[]> = {};
+          if (counties.length > 0) {
+            for (const county of counties) {
+              perCountyBuckets[county] = percentBuckets(`Population::${group}::${county}::${date}::COUNTY`, segments.length);
+            }
+          }
 
           // Emit one statData row per segment (name = `${group}:${segmentKey}`)
           for (let si = 0; si < segments.length; si++) {
@@ -549,6 +692,49 @@ export const ensureStatDataSeeded = async (): Promise<void> => {
                   data: segData,
                 }),
               );
+            }
+
+            if (counties.length > 0) {
+              const countyEntryName = entryName;
+              const countyParentArea = DEFAULT_PARENT_AREA_BY_KIND.COUNTY ?? "Oklahoma";
+              const countyBoundaryType = "COUNTY";
+              const countyData: Record<string, number> = {};
+              for (const county of counties) {
+                countyData[county] = perCountyBuckets[county][si];
+              }
+              const countyComp = `${popStatId}::${countyEntryName}::${countyParentArea}::${countyBoundaryType}::${date}`.toLowerCase();
+              const countyExisting = existingByComposite.get(countyComp);
+              if (countyExisting && countyExisting.id) {
+                const countyNeedsUpdate =
+                  (countyExisting as any).type !== "percent" ||
+                  JSON.stringify((countyExisting as any).data ?? {}) !== JSON.stringify(countyData) ||
+                  (countyExisting as any).parentArea !== countyParentArea;
+                if (countyNeedsUpdate) {
+                  txs.push(
+                    db.tx.statData[countyExisting.id].update({
+                      statId: popStatId,
+                      name: countyEntryName,
+                      parentArea: countyParentArea,
+                      boundaryType: countyBoundaryType,
+                      date,
+                      type: "percent",
+                      data: countyData,
+                    }),
+                  );
+                }
+              } else {
+                txs.push(
+                  db.tx.statData[id()].update({
+                    statId: popStatId,
+                    name: countyEntryName,
+                    parentArea: countyParentArea,
+                    boundaryType: countyBoundaryType,
+                    date,
+                    type: "percent",
+                    data: countyData,
+                  }),
+                );
+              }
             }
           }
         }

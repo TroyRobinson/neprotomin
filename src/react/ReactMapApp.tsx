@@ -12,7 +12,8 @@ import { useMemo } from "react";
 import type { BoundaryMode } from "../types/boundaries";
 import { AuthModal } from "./components/AuthModal";
 import { db } from "../lib/reactDb";
-import type { AreaId, AreaKind } from "../types/areas";
+import type { AreaId, AreaKind, PersistedAreaSelection } from "../types/areas";
+import type { BreakdownGroup } from "./components/DemographicsBar";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
 
@@ -127,6 +128,44 @@ export const ReactMapApp = () => {
     setHoveredAreaState(zip ? { kind: "ZIP", id: zip } : null);
   };
 
+  const hydrateFromPersistedSelection = (sel: PersistedAreaSelection | null | undefined) => {
+    if (!sel || typeof sel !== "object") return;
+    const areaSelections = sel.areaSelections ?? {};
+    const pickAreaConfig = (kind: AreaKind) =>
+      areaSelections[kind] ??
+      areaSelections[kind.toLowerCase()] ??
+      areaSelections[kind.toUpperCase()];
+    const sanitizeList = (value: unknown, fallback: string[]): string[] => {
+      if (!Array.isArray(value)) return [...fallback];
+      return value.filter((item): item is string => typeof item === "string");
+    };
+
+    const currentZip = getAreaSelection("ZIP");
+    const zipConfig = pickAreaConfig("ZIP");
+    const nextSelectedZips = sanitizeList(zipConfig?.selected ?? sel.zips, currentZip.selected);
+    const nextPinnedZips = sanitizeList(zipConfig?.pinned ?? sel.pinned, currentZip.pinned);
+    applyAreaSelection("ZIP", {
+      selected: nextSelectedZips,
+      pinned: nextPinnedZips,
+      transient: [],
+    });
+
+    const currentCounty = getAreaSelection("COUNTY");
+    const countyConfig = pickAreaConfig("COUNTY");
+    const nextSelectedCounties = sanitizeList(countyConfig?.selected ?? sel.counties?.selected, currentCounty.selected);
+    const nextPinnedCounties = sanitizeList(countyConfig?.pinned ?? sel.counties?.pinned, currentCounty.pinned);
+    applyAreaSelection("COUNTY", {
+      selected: nextSelectedCounties,
+      pinned: nextPinnedCounties,
+      transient: [],
+    });
+
+    if (sel.boundaryMode === "neighborhoods") setBoundaryMode("zips");
+    else if (sel.boundaryMode === "zips" || sel.boundaryMode === "counties" || sel.boundaryMode === "none") {
+      setBoundaryMode(sel.boundaryMode as BoundaryMode);
+    }
+  };
+
   const { isLoading: isAuthLoading, user } = db.useAuth();
   useEffect(() => {
     if (isAuthLoading) return;
@@ -152,32 +191,7 @@ export const ReactMapApp = () => {
           });
           const entry = (data as any)?.uiState?.[0];
           if (entry?.selection) {
-            const sel = entry.selection as {
-              zips?: string[];
-              pinned?: string[];
-              counties?: { selected?: string[]; pinned?: string[] };
-              boundaryMode?: string | null;
-            };
-            if (Array.isArray(sel.zips) || Array.isArray(sel.pinned)) {
-              const currentZip = getAreaSelection("ZIP");
-              applyAreaSelection("ZIP", {
-                selected: Array.isArray(sel.zips) ? sel.zips : currentZip.selected,
-                pinned: Array.isArray(sel.pinned) ? sel.pinned : currentZip.pinned,
-                transient: [],
-              });
-            }
-            if (sel.counties && (Array.isArray(sel.counties.selected) || Array.isArray(sel.counties.pinned))) {
-              const currentCounty = getAreaSelection("COUNTY");
-              applyAreaSelection("COUNTY", {
-                selected: Array.isArray(sel.counties.selected) ? sel.counties.selected : currentCounty.selected,
-                pinned: Array.isArray(sel.counties.pinned) ? sel.counties.pinned : currentCounty.pinned,
-                transient: [],
-              });
-            }
-            if (sel.boundaryMode === "neighborhoods") setBoundaryMode("zips");
-            else if (sel.boundaryMode === "zips" || sel.boundaryMode === "counties" || sel.boundaryMode === "none") {
-              setBoundaryMode(sel.boundaryMode as BoundaryMode);
-            }
+            hydrateFromPersistedSelection(entry.selection as PersistedAreaSelection);
             return;
           }
         } catch {}
@@ -185,28 +199,9 @@ export const ReactMapApp = () => {
       // Fallback to localStorage
       try {
         const raw = localStorage.getItem("uiState.selection");
-      if (raw) {
-          const sel = JSON.parse(raw);
-          if (Array.isArray(sel.zips) || Array.isArray(sel.pinned)) {
-            const currentZip = getAreaSelection("ZIP");
-            applyAreaSelection("ZIP", {
-              selected: Array.isArray(sel.zips) ? sel.zips : currentZip.selected,
-              pinned: Array.isArray(sel.pinned) ? sel.pinned : currentZip.pinned,
-              transient: [],
-            });
-          }
-          if (sel.counties && (Array.isArray(sel.counties.selected) || Array.isArray(sel.counties.pinned))) {
-            const currentCounty = getAreaSelection("COUNTY");
-            applyAreaSelection("COUNTY", {
-              selected: Array.isArray(sel.counties.selected) ? sel.counties.selected : currentCounty.selected,
-              pinned: Array.isArray(sel.counties.pinned) ? sel.counties.pinned : currentCounty.pinned,
-              transient: [],
-            });
-          }
-          if (sel.boundaryMode === "neighborhoods") setBoundaryMode("zips");
-          else if (sel.boundaryMode === "zips" || sel.boundaryMode === "counties" || sel.boundaryMode === "none") {
-            setBoundaryMode(sel.boundaryMode as BoundaryMode);
-          }
+        if (raw) {
+          const sel = JSON.parse(raw) as PersistedAreaSelection;
+          hydrateFromPersistedSelection(sel);
         } else {
           applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
         }
@@ -220,11 +215,16 @@ export const ReactMapApp = () => {
   // Persisted UI state: save with debounce
   useEffect(() => {
     const owner = user?.id;
-    const selection = {
-      zips: selectedZips,
-      pinned: pinnedZips,
-      counties: { selected: selectedCounties, pinned: pinnedCounties },
+    const selection: PersistedAreaSelection = {
+      version: 2,
       boundaryMode,
+      areaSelections: {
+        ZIP: { selected: [...selectedZips], pinned: [...pinnedZips] },
+        COUNTY: { selected: [...selectedCounties], pinned: [...pinnedCounties] },
+      },
+      zips: [...selectedZips],
+      pinned: [...pinnedZips],
+      counties: { selected: [...selectedCounties], pinned: [...pinnedCounties] },
     };
     const updatedAt = Date.now();
     const timeout = setTimeout(() => {
@@ -244,8 +244,17 @@ export const ReactMapApp = () => {
   }, [user?.id, selectedZips, pinnedZips, selectedCounties, pinnedCounties, boundaryMode]);
 
   // Subscribe to demographics and stats stores
-  const { demographics, breakdowns } = useDemographics(selectedZips);
-  const { statsById, seriesByStatId } = useStats();
+  const { demographicsByKind } = useDemographics({
+    ZIP: selectedZips,
+    COUNTY: selectedCounties,
+  });
+  const zipSnapshot = demographicsByKind.get("ZIP");
+  const demographics = zipSnapshot?.stats ?? null;
+  const breakdowns = useMemo<Map<string, BreakdownGroup>>(
+    () => zipSnapshot?.breakdowns ?? new Map<string, BreakdownGroup>(),
+    [zipSnapshot],
+  );
+  const { statsById, seriesByStatId, statDataByBoundary } = useStats();
   const { organizations } = useOrganizations();
   // areasByKey removed; population/age/married now sourced from statData
   const orgZipById = useMemo(() => {
@@ -257,15 +266,22 @@ export const ReactMapApp = () => {
     return map;
   }, [organizations]);
 
-  const statDataByStatId = useMemo(() => {
-    const map = new Map<string, { type: string; data: Record<string, number> }>();
-    for (const [id, series] of (seriesByStatId || new Map())) {
-      const last = series[series.length - 1];
-      if (!last) continue;
-      map.set(id, { type: last.type, data: last.data });
-    }
-    return map;
-  }, [seriesByStatId]);
+  const statDataByStatId = useMemo(
+    () =>
+      new Map<
+        string,
+        Partial<Record<"ZIP" | "COUNTY", { type: string; data: Record<string, number>; min: number; max: number }>>
+      >(
+        Array.from(statDataByBoundary.entries()).map(([statId, entry]) => {
+          const payload: Partial<Record<"ZIP" | "COUNTY", { type: string; data: Record<string, number>; min: number; max: number }>> =
+            {};
+          if (entry.ZIP) payload.ZIP = entry.ZIP;
+          if (entry.COUNTY) payload.COUNTY = entry.COUNTY;
+          return [statId, payload];
+        }),
+      ),
+    [statDataByBoundary],
+  );
 
 
   const [orgPinsVisible, setOrgPinsVisible] = useState(false);
@@ -364,7 +380,9 @@ export const ReactMapApp = () => {
     const getEntryByName = (name: string): { data: Record<string, number> } | null => {
       for (const [statId, entry] of statDataByStatId) {
         const s = statsById.get(statId);
-        if (s?.name === name) return entry as any;
+        if (s?.name === name) {
+          return entry?.ZIP ?? entry?.COUNTY ?? null;
+        }
       }
       return null;
     };
@@ -388,7 +406,7 @@ export const ReactMapApp = () => {
       const row: (string | number)[] = base;
 
       for (const col of statColumns) {
-        const sd = statDataByStatId.get(col.id);
+        const sd = statDataByStatId.get(col.id)?.ZIP;
         const v = sd?.data?.[zip];
         if (typeof v === "number") {
           row.push(r1(v));
@@ -431,7 +449,7 @@ export const ReactMapApp = () => {
       if (typeof age === "number") cityWeightedAge += age * p;
       if (typeof married === "number") cityWeightedMarried += married * p;
       for (const col of statColumns) {
-        const sd = statDataByStatId.get(col.id);
+        const sd = statDataByStatId.get(col.id)?.ZIP;
         const v = sd?.data?.[zip];
         if (typeof v === "number") {
           cityStatSums.set(col.id, (cityStatSums.get(col.id) || 0) + v);
@@ -540,7 +558,7 @@ export const ReactMapApp = () => {
 
                 // If a stat is selected, sort organizations by the stat value of their ZIP (desc)
                 if (selectedStatId) {
-                  const entry = statDataByStatId.get(selectedStatId);
+                  const entry = statDataByStatId.get(selectedStatId)?.ZIP;
                   if (entry) {
                     const scoreFor = (org: Organization): number => {
                       const zip = orgZipById.get(org.id);
@@ -640,10 +658,10 @@ export const ReactMapApp = () => {
                 statsById={statsById}
                 statDataById={(() => {
                   const map = new Map<string, { type: string; data: Record<string, number> }>();
-                  for (const [id, series] of (seriesByStatId || new Map())) {
-                    const last = series[series.length - 1];
-                    if (!last) continue;
-                    map.set(id, { type: last.type, data: last.data });
+                  for (const [id, entry] of statDataByStatId.entries()) {
+                    const zipEntry = entry.ZIP ?? entry.COUNTY;
+                    if (!zipEntry) continue;
+                    map.set(id, { type: zipEntry.type, data: zipEntry.data });
                   }
                   return map;
                 })()}

@@ -16,6 +16,16 @@ const _schema = i.schema({
       longitude: i.number(),
       category: i.string().indexed(),
     }),
+    areas: i.entity({
+      code: i.string().unique().indexed(), // e.g., ZIP / county FIPS
+      kind: i.string().indexed(), // matches AreaKind
+      name: i.string().indexed(),
+      parentCode: i.string().indexed().optional(),
+      centroid: i.json<[number, number]>().optional(),
+      bounds: i.json<[[number, number], [number, number]]>().optional(),
+      isActive: i.boolean().optional(),
+      updatedAt: i.number().indexed().optional(),
+    }),
     stats: i.entity({
       name: i.string().indexed(),
       category: i.string().indexed(),
@@ -31,7 +41,7 @@ const _schema = i.schema({
       parentArea: i.string().indexed(), // e.g., Tulsa County bucket
       boundaryType: i.string().indexed(), // e.g., ZIP
       date: i.string().indexed(), // e.g., year like "2025"
-      type: i.string(), // e.g., count | percent | rate | years | currency
+      type: i.string().indexed(), // e.g., count | percent | rate | years | currency
       data: i.json<Record<string, number>>(), // map of area key (e.g., ZIP) -> value
       createdOn: i.number().indexed().optional(),
       lastUpdated: i.number().indexed().optional(),
@@ -39,7 +49,18 @@ const _schema = i.schema({
     // Persisted per-user/per-guest UI state
     uiState: i.entity({
       owner: i.string().indexed(), // auth.id (works for guests too)
-      selection: i.json<{ zips: string[]; pinned: string[]; boundaryMode: string | null }>(),
+      selection: i.json<{
+        version?: number;
+        boundaryMode?: string | null;
+        areaSelections?: Record<
+          string,
+          { selected?: string[]; pinned?: string[]; transient?: string[] }
+        >;
+        // Legacy fields we keep around so older clients can still parse the payload
+        zips?: string[];
+        pinned?: string[];
+        counties?: { selected?: string[]; pinned?: string[] };
+      }>(),
       updatedAt: i.number().indexed(),
     }),
   },
