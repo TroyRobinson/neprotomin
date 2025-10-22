@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { db } from "../../lib/reactDb";
-import type { DemographicStats, BreakdownGroup } from "../components/DemographicsBar";
+import type { BreakdownGroup } from "../components/DemographicsBar";
 import type { AreaKind } from "../../types/areas";
 import {
   DEFAULT_PARENT_AREA_BY_KIND,
@@ -74,9 +74,17 @@ type BreakdownSourceMap = Map<SupportedAreaKind, Map<BreakdownGroupKey, Breakdow
 
 type SelectedAreasByKind = Partial<Record<AreaKind, string[]>>;
 
+interface AggregatedStats {
+  selectedCount: number;
+  label?: string;
+  population?: number;
+  avgAge?: number;
+  marriedPercent?: number;
+}
+
 export interface DemographicKindSnapshot {
   kind: SupportedAreaKind;
-  stats: DemographicStats | null;
+  stats: AggregatedStats | null;
   breakdowns: Map<string, BreakdownGroup>;
   availableIds: string[];
   isMissing: boolean;
@@ -311,7 +319,7 @@ export const useDemographics = (selectedByKind: SelectedAreasByKind): Demographi
         }
       }
 
-      let stats: DemographicStats | null = null;
+      let stats: AggregatedStats | null = null;
       if (populationEntry && (totalPopulation > 0 || populationCount > 0)) {
         const label = buildAreaLabel(kind, resolvedSelection, targetIds, getAreaName);
         stats = {

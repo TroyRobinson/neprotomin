@@ -7,16 +7,16 @@ import { DEFAULT_PARENT_AREA_BY_KIND } from "../../types/areas";
 
 type SupportedAreaKind = Extract<AreaKind, "ZIP" | "COUNTY">;
 
-interface SeriesEntry {
+export interface SeriesEntry {
   date: string;
   type: string;
   data: Record<string, number>;
   parentArea: string | null;
 }
 
-type SeriesByKind = Map<SupportedAreaKind, SeriesEntry[]>;
+export type SeriesByKind = Map<SupportedAreaKind, SeriesEntry[]>;
 
-type StatBoundaryEntry = {
+export type StatBoundaryEntry = {
   type: string;
   data: Record<string, number>;
   min: number;

@@ -1,119 +1,158 @@
 import { useMemo, useState } from "react";
 import type { Stat } from "../../types/stat";
 import { formatStatValue } from "../../lib/format";
+import type { StatBoundaryEntry } from "../hooks/useStats";
 
-interface SeriesEntry {
-  date: string;
-  type: string;
-  data: Record<string, number>;
-}
+type SupportedAreaKind = "ZIP" | "COUNTY";
+type SelectedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
+
+type StatDataById = Map<string, Partial<Record<SupportedAreaKind, StatBoundaryEntry>>>;
 
 type StatSelectMeta = { shiftKey?: boolean; clear?: boolean };
 
-interface StatListProps {
-  statsById?: Map<string, Stat>;
-  seriesByStatId?: Map<string, SeriesEntry[]>;
-  selectedZips?: string[];
-  categoryFilter?: string | null;
-  secondaryStatId?: string | null;
-  selectedStatId?: string | null;
-  onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
-}
+type AreaEntry = { kind: SupportedAreaKind; code: string };
 
-interface StatRow {
+type StatRow = {
   id: string;
   name: string;
   value: number;
   score: number;
   type: string;
   cityAvg: number;
+  hasData: boolean;
+};
+
+interface StatListProps {
+  statsById?: Map<string, Stat>;
+  statDataById?: StatDataById;
+  selectedAreas?: SelectedAreasMap;
+  areaNameLookup?: (kind: SupportedAreaKind, code: string) => string;
+  categoryFilter?: string | null;
+  secondaryStatId?: string | null;
+  selectedStatId?: string | null;
+  onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
 }
 
-const computeCityAvg = (entry: SeriesEntry | undefined): number => {
+const SUPPORTED_KINDS: SupportedAreaKind[] = ["ZIP", "COUNTY"];
+
+const computeCityAverage = (entry: StatBoundaryEntry | undefined): number => {
   if (!entry) return 0;
-  const vals = Object.values(entry.data || {});
-  const nums = vals.filter((x) => typeof x === "number") as number[];
+  const values = Object.values(entry.data || {});
+  const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   if (nums.length === 0) return 0;
-  return nums.reduce((a, b) => a + b, 0) / nums.length;
+  return nums.reduce((sum, v) => sum + v, 0) / nums.length;
+};
+
+const buildAreaEntries = (selectedAreas?: SelectedAreasMap): AreaEntry[] => {
+  const entries: AreaEntry[] = [];
+  for (const kind of SUPPORTED_KINDS) {
+    const codes = selectedAreas?.[kind] ?? [];
+    for (const code of codes) {
+      if (typeof code === "string" && code.trim().length > 0) {
+        entries.push({ kind, code });
+      }
+    }
+  }
+  return entries;
 };
 
 export const StatList = ({
   statsById = new Map(),
-  seriesByStatId = new Map(),
-  selectedZips = [],
+  statDataById = new Map(),
+  selectedAreas,
+  areaNameLookup,
   categoryFilter = null,
   secondaryStatId = null,
   selectedStatId = null,
   onStatSelect,
 }: StatListProps) => {
-  // Compute stat rows
+  const areaEntries = useMemo(() => buildAreaEntries(selectedAreas), [selectedAreas]);
+
   const rows = useMemo<StatRow[]>(() => {
     const stats: Stat[] = Array.from(statsById.values()).filter((s) =>
-      categoryFilter ? s.category === categoryFilter : true
+      categoryFilter ? s.category === categoryFilter : true,
     );
 
     const result: StatRow[] = [];
 
     for (const s of stats) {
-      const series = seriesByStatId.get(s.id) || [];
-      const latest = series[series.length - 1];
-      if (!latest) continue;
+      const entryMap = statDataById.get(s.id);
+      if (!entryMap) continue;
 
-      const cityAvg = computeCityAvg(latest);
-      const values = Object.values(latest.data || {});
-      const min = values.length ? Math.min(...values) : 0;
-      const max = values.length ? Math.max(...values) : 0;
-      const range = Math.max(0, max - min);
-
-      let displayValue = cityAvg;
-      let score = 0;
-
-      if (selectedZips.length === 0) {
-        displayValue = cityAvg;
-      } else if (selectedZips.length === 1) {
-        const z = selectedZips[0];
-        const v = typeof latest.data[z] === "number" ? (latest.data[z] as number) : 0;
-        displayValue = v;
-        score = range > 0 ? (v - min) / range : 0;
-      } else {
-        const nums = selectedZips.map((z) =>
-          typeof latest.data[z] === "number" ? (latest.data[z] as number) : 0
-        );
-        const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
-        displayValue = avg;
-        const diff = Math.abs(avg - cityAvg);
-        score = range > 0 ? diff / range : 0;
+      const cityAvgByKind = new Map<SupportedAreaKind, number>();
+      for (const kind of SUPPORTED_KINDS) {
+        const entry = entryMap[kind];
+        if (entry) cityAvgByKind.set(kind, computeCityAverage(entry));
       }
+
+      const fallbackEntry = entryMap.ZIP ?? entryMap.COUNTY ?? Object.values(entryMap)[0];
+      if (!fallbackEntry) continue;
+
+      const fallbackCityAvg =
+        cityAvgByKind.get("ZIP") ??
+        cityAvgByKind.get("COUNTY") ??
+        computeCityAverage(fallbackEntry);
+
+      const valuesForSelection = areaEntries
+        .map((area) => {
+          const entry = entryMap[area.kind];
+          if (!entry) return null;
+          const raw = entry.data?.[area.code];
+          if (typeof raw !== "number" || !Number.isFinite(raw)) return null;
+          return { area, entry, value: raw };
+        })
+        .filter((v): v is { area: AreaEntry; entry: StatBoundaryEntry; value: number } => v !== null);
+
+      let displayValue = fallbackCityAvg;
+      if (areaEntries.length === 1 && valuesForSelection.length === 1) {
+        displayValue = valuesForSelection[0].value;
+      } else if (areaEntries.length > 1 && valuesForSelection.length > 0) {
+        displayValue =
+          valuesForSelection.reduce((sum, item) => sum + item.value, 0) /
+          valuesForSelection.length;
+      }
+
+      const normalizedDiffs = valuesForSelection.map(({ value, entry, area }) => {
+        const range = Math.max(entry.max - entry.min, 0);
+        const cityAvg = cityAvgByKind.get(area.kind) ?? fallbackCityAvg;
+        if (range <= 0) return 0;
+        return Math.abs(value - cityAvg) / range;
+      });
+      const score = normalizedDiffs.length
+        ? normalizedDiffs.reduce((sum, v) => sum + v, 0) / normalizedDiffs.length
+        : 0;
 
       result.push({
         id: s.id,
         name: s.name,
         value: displayValue,
         score,
-        type: latest.type,
-        cityAvg,
+        type: fallbackEntry.type,
+        cityAvg: fallbackCityAvg,
+        hasData: valuesForSelection.length > 0 || areaEntries.length === 0,
       });
     }
 
-    // Sort
-    if (selectedZips.length === 0) {
+    if (areaEntries.length === 0) {
       result.sort((a, b) => a.name.localeCompare(b.name));
     } else {
       result.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
     }
 
     return result;
-  }, [statsById, seriesByStatId, selectedZips, categoryFilter]);
+  }, [statsById, statDataById, areaEntries, categoryFilter]);
 
-  // Subtitle text
   const subtitle = useMemo(() => {
-    if (selectedZips.length === 1) {
-      return `Most significant stats for ${selectedZips[0]}`;
-    } else if (selectedZips.length > 1) {
-      return `Most significant stats for Selected Areas (${selectedZips.length})`;
+    if (areaEntries.length === 1) {
+      const area = areaEntries[0];
+      const label = areaNameLookup ? areaNameLookup(area.kind, area.code) : `${area.kind} ${area.code}`;
+      return `Most significant stats for ${label}`;
+    }
+    if (areaEntries.length > 1) {
+      return `Most significant stats for Selected Areas (${areaEntries.length})`;
     }
     return null;
-  }, [selectedZips]);
+  }, [areaEntries, areaNameLookup]);
 
   return (
     <div className="flex-1 overflow-y-auto px-4 pb-6">
@@ -122,18 +161,24 @@ export const StatList = ({
           {subtitle}
         </p>
       )}
-      <ul className="space-y-2">
-        {rows.map((row) => (
-          <StatListItem
-            key={row.id}
-            row={row}
-            isSelected={selectedStatId === row.id}
-            isSecondary={secondaryStatId === row.id}
-            showCityAvg={selectedZips.length > 0}
-            onStatSelect={onStatSelect}
-          />
-        ))}
-      </ul>
+      {rows.length === 0 ? (
+        <p className="px-1 pt-2 text-xs text-slate-500 dark:text-slate-400">
+          No statistics to display for the current selection.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {rows.map((row) => (
+            <StatListItem
+              key={row.id}
+              row={row}
+              isSelected={selectedStatId === row.id}
+              isSecondary={secondaryStatId === row.id}
+              showCityAvg={areaEntries.length > 0}
+              onStatSelect={onStatSelect}
+            />
+          ))}
+        </ul>
+      )}
     </div>
   );
 };
@@ -195,10 +240,11 @@ const StatListItem = ({
     onStatSelect?.(null, { clear: true });
   };
 
+  const valueLabel = row.hasData ? formatStatValue(row.value, row.type) : "—";
+
   return (
     <li
       className={className}
-      data-stat-id={row.id}
       onClick={handleClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => {
@@ -206,47 +252,56 @@ const StatListItem = ({
         setShowTooltip(false);
       }}
     >
-      <div className="min-w-0 flex flex-1 items-center pr-3 text-sm text-slate-600 dark:text-slate-300">
-        <span className="truncate whitespace-nowrap">{row.name}</span>
-        {isSecondary && (
-          <span className="ml-2 inline-block h-2 w-2 rounded-full bg-teal-500 dark:bg-teal-400 shrink-0" />
-        )}
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{row.name}</span>
+          {isSecondary && (
+            <span className="rounded-full bg-slate-200 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-700 dark:text-slate-200">
+              secondary
+            </span>
+          )}
+        </div>
+        <div className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
+          {row.hasData ? (
+            <>
+              {showCityAvg && (
+                <span
+                  className="mr-2 inline-flex items-center gap-1 text-[10px] uppercase tracking-wide"
+                  onMouseEnter={handleAvgHover}
+                  onMouseLeave={() => setShowTooltip(false)}
+                >
+                  City Avg
+                  <span className="font-semibold text-slate-500 dark:text-slate-300">
+                    {formatStatValue(row.cityAvg, row.type)}
+                  </span>
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="italic text-slate-400 dark:text-slate-500">No data for selection</span>
+          )}
+        </div>
       </div>
 
-      <div className="ml-2 shrink-0 text-right text-sm font-semibold text-slate-700 tabular-nums dark:text-slate-200 flex items-center">
-        {showCityAvg && (
-          <span
-            className="mr-2 text-xs font-medium text-slate-400 opacity-0 transition-opacity duration-150 group-hover:opacity-100 dark:text-slate-500"
-            onMouseEnter={handleAvgHover}
-            onMouseMove={handleAvgHover}
-            onMouseLeave={() => setShowTooltip(false)}
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{valueLabel}</span>
+        {(isSelected || isHovered) && (
+          <button
+            type="button"
+            className="rounded-full border border-slate-300 px-2 py-0.5 text-[10px] font-medium text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:border-slate-600 dark:text-slate-300 dark:hover:border-brand-500 dark:hover:text-brand-300"
+            onClick={handleClearClick}
           >
-            {formatStatValue(row.cityAvg, row.type)}
-          </span>
+            Clear
+          </button>
         )}
-        <span>{formatStatValue(row.value, row.type)}</span>
       </div>
 
-      {isSelected && isHovered && (
-        <button
-          type="button"
-          className="absolute right-1 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-brand-50/90 text-xs font-bold text-brand-500 shadow-sm transition hover:bg-brand-50 hover:text-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-brand-400/20 dark:text-brand-100 dark:hover:text-white"
-          onClick={handleClearClick}
-        >
-          <span aria-hidden="true">×</span>
-          <span className="sr-only">Clear selected stat</span>
-        </button>
-      )}
-
-      {showTooltip && (
+      {showTooltip && showCityAvg && (
         <div
-          className="pointer-events-none absolute z-10 rounded border border-black/10 bg-slate-800 px-1.5 py-0.5 text-[10px] text-white shadow-sm dark:border-white/20 dark:bg-slate-200 dark:text-slate-900"
-          style={{
-            left: `${tooltipPos.x + 8}px`,
-            top: `${tooltipPos.y - 18}px`,
-          }}
+          className="pointer-events-none absolute z-10 rounded border border-black/10 bg-slate-800 px-1.5 py-1 text-[10px] text-white shadow-sm dark:border-white/20 dark:bg-slate-200 dark:text-slate-900"
+          style={{ left: tooltipPos.x, top: tooltipPos.y - 32 }}
         >
-          city average
+          City average across all areas
         </div>
       )}
     </li>

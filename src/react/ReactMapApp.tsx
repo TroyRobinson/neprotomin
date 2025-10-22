@@ -6,6 +6,7 @@ import { Sidebar } from "./components/Sidebar";
 import { useDemographics } from "./hooks/useDemographics";
 import { useStats } from "./hooks/useStats";
 import { useOrganizations } from "./hooks/useOrganizations";
+import { useAreas } from "./hooks/useAreas";
 import type { Organization } from "../types/organization";
 import { findZipForLocation } from "../lib/zipBoundaries";
 import { useMemo } from "react";
@@ -13,7 +14,7 @@ import type { BoundaryMode } from "../types/boundaries";
 import { AuthModal } from "./components/AuthModal";
 import { db } from "../lib/reactDb";
 import type { AreaId, AreaKind, PersistedAreaSelection } from "../types/areas";
-import type { BreakdownGroup } from "./components/DemographicsBar";
+type SupportedAreaKind = "ZIP" | "COUNTY";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
 
@@ -122,10 +123,6 @@ export const ReactMapApp = () => {
       }
       return area;
     });
-  };
-
-  const handleZipHoverChange = (zip: string | null) => {
-    setHoveredAreaState(zip ? { kind: "ZIP", id: zip } : null);
   };
 
   const hydrateFromPersistedSelection = (sel: PersistedAreaSelection | null | undefined) => {
@@ -248,14 +245,30 @@ export const ReactMapApp = () => {
     ZIP: selectedZips,
     COUNTY: selectedCounties,
   });
-  const zipSnapshot = demographicsByKind.get("ZIP");
-  const demographics = zipSnapshot?.stats ?? null;
-  const breakdowns = useMemo<Map<string, BreakdownGroup>>(
-    () => zipSnapshot?.breakdowns ?? new Map<string, BreakdownGroup>(),
-    [zipSnapshot],
+  const demographicSnapshots = useMemo(
+    () => Array.from(demographicsByKind.values()),
+    [demographicsByKind],
   );
-  const { statsById, seriesByStatId, statDataByBoundary } = useStats();
+  const { statsById, seriesByStatId, seriesByStatIdByKind, statDataByBoundary } = useStats();
+  const { areasByKindAndCode } = useAreas();
   const { organizations } = useOrganizations();
+
+  const areaNameLookup = useMemo(
+    () =>
+      (kind: SupportedAreaKind, code: string) =>
+        areasByKindAndCode.get(kind)?.get(code)?.name ?? code,
+    [areasByKindAndCode],
+  );
+
+  const selectedAreasMap = useMemo(
+    () => ({ ZIP: selectedZips, COUNTY: selectedCounties }),
+    [selectedZips, selectedCounties],
+  );
+
+  const pinnedAreasMap = useMemo(
+    () => ({ ZIP: pinnedZips, COUNTY: pinnedCounties }),
+    [pinnedZips, pinnedCounties],
+  );
   // areasByKey removed; population/age/married now sourced from statData
   const orgZipById = useMemo(() => {
     const map = new Map<string, string | null>();
@@ -581,18 +594,19 @@ export const ReactMapApp = () => {
               })()}
               activeOrganizationId={activeOrganizationId}
               highlightedOrganizationIds={highlightedOrganizationIds ?? undefined}
-              demographics={demographics}
-              breakdowns={breakdowns}
               statsById={statsById}
-              seriesByStatId={seriesByStatId}
-              selectedZips={selectedZips}
-              pinnedZips={pinnedZips}
-              hoveredZip={hoveredZip}
+              seriesByStatIdByKind={seriesByStatIdByKind}
+              statDataById={statDataByStatId}
+              demographicSnapshots={demographicSnapshots}
+              selectedAreas={selectedAreasMap}
+              pinnedAreas={pinnedAreasMap}
+              areaNameLookup={areaNameLookup}
+              hoveredArea={hoveredArea}
               selectedStatId={selectedStatId}
               secondaryStatId={secondaryStatId}
               categoryFilter={categoryFilter}
               onHover={handleHover}
-              onHoverZip={handleZipHoverChange}
+              onHoverArea={handleAreaHoverChange}
               onZoomOutAll={handleZoomOutAll}
               onStatSelect={handleStatSelect}
               onOrgPinsVisibleChange={setOrgPinsVisible}

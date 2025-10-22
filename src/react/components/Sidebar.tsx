@@ -1,16 +1,17 @@
 import { useState } from "react";
-import { DemographicsBar, type DemographicStats, type BreakdownGroup } from "./DemographicsBar";
+import { DemographicsBar } from "./DemographicsBar";
 import { StatViz } from "./StatViz";
 import { StatList } from "./StatList";
 import type { Organization } from "../../types/organization";
 import type { Stat } from "../../types/stat";
 import { getCategoryLabel } from "../../types/categories";
+import type { DemographicKindSnapshot } from "../hooks/useDemographics";
+import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
+import type { AreaId } from "../../types/areas";
 
-interface SeriesEntry {
-  date: string;
-  type: string;
-  data: Record<string, number>;
-}
+type SupportedAreaKind = "ZIP" | "COUNTY";
+type SelectedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
+type PinnedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
 
 interface SidebarProps {
   // Organization data
@@ -21,29 +22,23 @@ interface SidebarProps {
   };
   activeOrganizationId?: string | null;
   highlightedOrganizationIds?: string[] | null;
-
-  // Demographics data
-  demographics?: DemographicStats | null;
-  breakdowns?: Map<string, BreakdownGroup>;
-
-  // Stat visualization data
+  demographicSnapshots?: DemographicKindSnapshot[];
   statsById?: Map<string, Stat>;
-  seriesByStatId?: Map<string, SeriesEntry[]>;
-  selectedZips?: string[];
+  seriesByStatIdByKind?: Map<string, SeriesByKind>;
+  statDataById?: Map<string, Partial<Record<SupportedAreaKind, StatBoundaryEntry>>>;
+  selectedAreas?: SelectedAreasMap;
+  pinnedAreas?: PinnedAreasMap;
+  areaNameLookup?: (kind: SupportedAreaKind, code: string) => string;
   selectedStatId?: string | null;
   secondaryStatId?: string | null;
   categoryFilter?: string | null;
-  hoveredZip?: string | null;
-  pinnedZips?: string[];
-
-  // Callbacks
+  hoveredArea?: AreaId | null;
   onHover?: (idOrIds: string | string[] | null) => void;
   onZoomOutAll?: () => void;
   onCategoryClick?: (categoryId: string) => void;
-  onHoverZip?: (zip: string | null) => void;
+  onHoverArea?: (area: AreaId | null) => void;
   onStatSelect?: (statId: string | null, meta?: { shiftKey?: boolean; clear?: boolean }) => void;
   onOrgPinsVisibleChange?: (visible: boolean) => void;
-  onVisibleIdsChange?: (ids: string[], totalInSource: number, allSourceIds: string[]) => void;
 }
 
 type TabType = "stats" | "orgs";
@@ -52,20 +47,21 @@ export const Sidebar = ({
   organizations = { inSelection: [], all: [], totalSourceCount: 0 },
   activeOrganizationId = null,
   highlightedOrganizationIds = null,
-  demographics = null,
-  breakdowns = new Map(),
+  demographicSnapshots = [],
   statsById = new Map(),
-  seriesByStatId = new Map(),
-  selectedZips = [],
+  seriesByStatIdByKind = new Map(),
+  statDataById = new Map(),
+  selectedAreas = {},
+  pinnedAreas = {},
+  areaNameLookup,
   selectedStatId = null,
   secondaryStatId = null,
   categoryFilter = null,
-  hoveredZip = null,
-  pinnedZips = [],
+  hoveredArea = null,
   onHover,
   onZoomOutAll,
   onCategoryClick,
-  onHoverZip,
+  onHoverArea,
   onStatSelect,
   onOrgPinsVisibleChange,
 }: SidebarProps) => {
@@ -75,9 +71,13 @@ export const Sidebar = ({
   const { inSelection = [], all = [], totalSourceCount = 0 } = organizations;
   const highlightedIds = new Set(highlightedOrganizationIds ?? []);
 
+  const selectedZips = selectedAreas?.ZIP ?? [];
+  const selectedCounties = selectedAreas?.COUNTY ?? [];
+  const totalSelectedCount = selectedZips.length + selectedCounties.length;
+
   const visibleCount = inSelection.length + all.length;
   const totalCount = typeof totalSourceCount === "number" ? totalSourceCount : visibleCount;
-  const countForTab = selectedZips.length > 0 ? inSelection.length : totalCount;
+  const countForTab = totalSelectedCount > 0 ? inSelection.length : totalCount;
   const missingCount = Math.max(totalCount - visibleCount, 0);
 
   const handleToggleKeepOrgs = (e: React.MouseEvent | React.KeyboardEvent) => {
@@ -104,17 +104,19 @@ export const Sidebar = ({
   return (
     <aside className="relative flex w-full max-w-sm flex-col border-r border-slate-200 bg-white/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60">
       {/* Demographics Bar */}
-      <DemographicsBar stats={demographics} breakdowns={breakdowns} />
+      <DemographicsBar snapshots={demographicSnapshots} />
 
       {/* Stat Visualization */}
       <StatViz
         statsById={statsById}
-        seriesByStatId={seriesByStatId}
-        selectedZips={selectedZips}
+        seriesByStatIdByKind={seriesByStatIdByKind}
+        statDataById={statDataById}
+        selectedAreas={selectedAreas}
+        pinnedAreas={pinnedAreas}
         selectedStatId={selectedStatId}
-        hoveredZip={hoveredZip}
-        pinnedZips={pinnedZips}
-        onHoverZip={onHoverZip}
+        hoveredArea={hoveredArea}
+        onHoverArea={onHoverArea}
+        areaNameLookup={areaNameLookup}
       />
 
       {/* Tabs Header */}
@@ -169,8 +171,9 @@ export const Sidebar = ({
         {activeTab === "stats" && (
           <StatList
             statsById={statsById}
-            seriesByStatId={seriesByStatId}
-            selectedZips={selectedZips}
+            statDataById={statDataById}
+            selectedAreas={selectedAreas}
+            areaNameLookup={areaNameLookup}
             categoryFilter={categoryFilter}
             secondaryStatId={secondaryStatId}
             selectedStatId={selectedStatId}
