@@ -17,9 +17,9 @@ _Last updated: 2025‑02‑20_
 | Phase | Focus | Highlights |
 | ----- | ----- | ---------- |
 | Phase 0 | Registry groundwork (pre‑existing) | `AreaKind`/`AreaId`, map registry, toolbar + selection plumbing |
-| Phase 1 (current work) | Schema + seed alignment | Added `areas` entity, populated centroids/bounds, updated seed scripts, normalised selection payloads |
+| Phase 1 | Schema + seed alignment | Added `areas` entity, populated centroids/bounds, updated seed scripts, normalised selection payloads |
 | Phase 2 | Shared data plumbing | `useAreas`, `useStats`, `useDemographics` return per‑kind snapshots; sidebar/toolbar now consume unified selections |
-| Phase 3 | Unified demographics & sidebar | Map emits camera defaults, `useDemographics` blends selection + viewport defaults, single sidebar card with graceful “no data” messaging |
+| Phase 3 | Unified demographics & sidebar | Map emits camera defaults, `useDemographics` blends selection + viewport defaults, single sidebar card with “no data” messaging |
 
 ---
 
@@ -84,41 +84,7 @@ Optional niceties once core work lands:
 - Seed scripts: `scripts/seed.ts` ensures `areas` table stays in sync locally.
 
 If you pick up from here:
-1. Start with the camera default hook (most other steps depend on it).
-2. Implement the demographic blending in `useDemographics`.
-3. Wire the sidebar to the new combined snapshot.
-4. Run `npm run build` and manually test zoom/selection edge cases.
+1. Mirror the secondary stat overlay for counties.
+2. Update report generation to operate on `AreaId[]`.
+3. Run `npm run build` and manually test zoom/selection edge cases.
 
-
-## Plan Background Details:
-Planning artifacts:
-
-"Unified Areas Plan
-
-Phase 1 – Schema & Seed Unification
-
-Audit instant.schema.ts to ensure counties share the same entity + area-type discriminators used by ZIPs/tracts; add any missing indexes (e.g., type, name).
-Extend src/lib/seed.ts to insert/update county records (use id() + name checks) and attach demographics/report metrics if available; clean up stale county placeholders.
-Introduce an areaType enum/constant consumed across UI logic so new types flow automatically.
-Tests after Phase 1: npm run seed (or seed script) against a clean DB; run schema checks or lint; verify counties appear in Instant dashboard.
-
-Phase 2 – Shared Area Data Layer
-
-Refactor area selectors/hooks (src/state/organizations.ts, src/react/hooks/useDemographics.ts, etc.) to return a single ordered list/map keyed by areaType instead of separate ZIP/county buckets.
-Update normalization utilities to merge metrics and demographics generically (guard against missing fields with defaults like null + isMissing flags).
-Add memoized helpers for chart/report datasets that filter purely on areaType rather than hard-coded namespaces.
-Tests after Phase 2: run unit tests for hooks if present; otherwise add temporary console assertions/logging when loading the app to ensure ZIPs + counties appear together.
-
-Phase 3 – UI Controls & Sidebar Updates
-
-Boundaries toolbar (src/ui/boundariesToolbar.ts) becomes type-agnostic: swap multiple actions for universal Pin all / Clear all, reusing shared area list and ensuring MapLibre layers receive merged GeoJSON sources.
-Sidebar charts (src/react/components/SidebarCharts.tsx or equivalent) consume the unified dataset; adjust legend/labels to include area type badges; ensure datasets skip missing metrics gracefully.
-Demographics panel shows either the county/ZIP data or a friendly “Data unavailable” fallback using the isMissing flags; ensure we don’t render stale ZIP values when county data is absent.
-Tests after Phase 3: in the running dev app, trigger toolbar buttons and confirm all areas toggle together; inspect charts/demographics for mixed area sets; verify counties without data show the fallback message.
-
-Phase 4 – Reports & Cross-Feature Polish
-
-Update reports generation modules (src/ui/reports/*.ts) to iterate over the unified area collection; ensure export formats and summaries note area type where relevant.
-Review other UI surfaces (map popovers, hover states, search filters) to confirm counties are treated identically and missing data paths show clear messaging/tooltips.
-Add minimal regression tests or storybook cases for mixed-area scenarios if the project supports them.
-Tests after Phase 4: generate sample reports locally; cross-check exported data includes counties with correct metrics or “missing” flags; walkthrough UI for counties missing demographics to confirm graceful messaging."
