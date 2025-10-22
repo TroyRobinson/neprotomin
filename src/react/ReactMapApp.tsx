@@ -242,7 +242,7 @@ export const ReactMapApp = () => {
     return () => clearTimeout(timeout);
   }, [user?.id, selectedZips, pinnedZips, selectedCounties, pinnedCounties, boundaryMode]);
 
-  const { areasByKindAndCode } = useAreas();
+  const { areasByKindAndCode, getAreaLabel } = useAreas();
 
   const countyRecords = useMemo(
     () => Array.from(areasByKindAndCode.get("COUNTY")?.values() ?? []),
@@ -310,10 +310,8 @@ export const ReactMapApp = () => {
   const { organizations } = useOrganizations();
 
   const areaNameLookup = useMemo(
-    () =>
-      (kind: SupportedAreaKind, code: string) =>
-        areasByKindAndCode.get(kind)?.get(code)?.name ?? code,
-    [areasByKindAndCode],
+    () => (kind: SupportedAreaKind, code: string) => getAreaLabel(kind, code) ?? code,
+    [getAreaLabel],
   );
 
   const selectedAreasMap = useMemo(

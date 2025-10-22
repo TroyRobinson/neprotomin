@@ -92,11 +92,28 @@ export const useAreas = () => {
     return map;
   }, [index.all]);
 
+  const getAreaRecord = useMemo(() => {
+    return (kind: AreaKind, code: string): AreaRecord | null => {
+      return index.byKindAndCode.get(kind)?.get(code) ?? null;
+    };
+  }, [index.byKindAndCode]);
+
+  const getAreaLabel = useMemo(() => {
+    return (kind: AreaKind, code: string, { fallbackToCode = true }: { fallbackToCode?: boolean } = {}): string | null => {
+      const record = getAreaRecord(kind, code);
+      if (!record) return fallbackToCode ? code : null;
+      if (record.name && record.name.trim().length > 0) return record.name;
+      return fallbackToCode ? code : null;
+    };
+  }, [getAreaRecord]);
+
   return {
     areas: index.all,
     areasByKind: index.byKind,
     areasByKindAndCode: index.byKindAndCode,
     areasByKey,
+    getAreaRecord,
+    getAreaLabel,
     isLoading,
     error,
   };

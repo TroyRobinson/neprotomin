@@ -44,7 +44,7 @@ _Last updated: 2025‑02‑20_
 
 ### A. Stats Integration Follow‑ups
 1. ✔️ Update organisation sorting (stat weighting) to use the blended snapshot when counties are in play.
-2. Expose helper to get an area label (from `useAreas`) so stat/demographic UIs don’t repeat lookup logic.
+2. ✔️ Expose helper to get an area label (from `useAreas`) so stat/demographic UIs don’t repeat lookup logic.
 
 ### B. Prep for Phase 4 (map/report parity)
 3. Mirror secondary stat overlay for counties (currently ZIP‑only).
@@ -67,7 +67,7 @@ _Last updated: 2025‑02‑20_
 - [x] Map exposes “default area” hint for demographics (zoom + camera derived).
 - [x] `useDemographics` returns both `combinedSnapshot` and `byKind`, with missing‑data flags.
 - [x] Sidebar uses unified demographics card; stat viz/list already consuming shared snapshots.
-- [ ] Organisation sort weighting reuses blended stat data.
+- [x] Organisation sort weighting reuses blended stat data.
 - [ ] Documentation (this file + existing retros) updated after each milestone.
 
 Optional niceties once core work lands:
