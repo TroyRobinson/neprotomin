@@ -39,6 +39,7 @@ interface MapLibreMapProps {
   onStatSelectionChange?: (statId: string | null) => void;
   onCategorySelectionChange?: (categoryId: string | null) => void;
   onBoundaryModeChange?: (mode: BoundaryMode) => void;
+  onCameraChange?: (state: { center: [number, number]; zoom: number }) => void;
 }
 
 /**
@@ -74,6 +75,7 @@ export const MapLibreMap = ({
   onStatSelectionChange,
   onCategorySelectionChange,
   onBoundaryModeChange,
+  onCameraChange,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
@@ -92,6 +94,7 @@ export const MapLibreMap = ({
   const onStatSelectionChangeRef = useRef(onStatSelectionChange);
   const onCategorySelectionChangeRef = useRef(onCategorySelectionChange);
   const onBoundaryModeChangeRef = useRef(onBoundaryModeChange);
+  const onCameraChangeRef = useRef(onCameraChange);
 
   useEffect(() => { onZipSelectionChangeRef.current = onZipSelectionChange; }, [onZipSelectionChange]);
   useEffect(() => { onHoverRef.current = onHover; }, [onHover]);
@@ -104,6 +107,7 @@ export const MapLibreMap = ({
   useEffect(() => { onStatSelectionChangeRef.current = onStatSelectionChange; }, [onStatSelectionChange]);
   useEffect(() => { onCategorySelectionChangeRef.current = onCategorySelectionChange; }, [onCategorySelectionChange]);
   useEffect(() => { onBoundaryModeChangeRef.current = onBoundaryModeChange; }, [onBoundaryModeChange]);
+  useEffect(() => { onCameraChangeRef.current = onCameraChange; }, [onCameraChange]);
 
   // Initialize map once on mount
   useEffect(() => {
@@ -148,9 +152,13 @@ export const MapLibreMap = ({
 
     containerRef.current.appendChild(mapController.element);
     mapControllerRef.current = mapController;
-    
+
+    const unsubscribeCamera = mapController.onCameraChange((lng, lat, zoom) => {
+      onCameraChangeRef.current?.({ center: [lng, lat], zoom });
+    });
 
     return () => {
+      unsubscribeCamera?.();
       mapController.destroy();
       mapControllerRef.current = null;
     };

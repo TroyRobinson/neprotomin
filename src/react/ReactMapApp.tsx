@@ -77,6 +77,7 @@ export const ReactMapApp = () => {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [activeScreen, setActiveScreen] = useState<"map" | "report" | "data">("map");
   const [authOpen, setAuthOpen] = useState(false);
+  const [cameraState, setCameraState] = useState<{ center: [number, number]; zoom: number } | null>(null);
 
   const zipSelection = areaSelections.ZIP;
   const countySelection = areaSelections.COUNTY;
@@ -240,17 +241,71 @@ export const ReactMapApp = () => {
     return () => clearTimeout(timeout);
   }, [user?.id, selectedZips, pinnedZips, selectedCounties, pinnedCounties, boundaryMode]);
 
-  // Subscribe to demographics and stats stores
-  const { demographicsByKind } = useDemographics({
-    ZIP: selectedZips,
-    COUNTY: selectedCounties,
-  });
-  const demographicSnapshots = useMemo(
-    () => Array.from(demographicsByKind.values()),
-    [demographicsByKind],
-  );
-  const { statsById, seriesByStatId, seriesByStatIdByKind, statDataByBoundary } = useStats();
   const { areasByKindAndCode } = useAreas();
+
+  const countyRecords = useMemo(
+    () => Array.from(areasByKindAndCode.get("COUNTY")?.values() ?? []),
+    [areasByKindAndCode],
+  );
+  const zipRecords = useMemo(
+    () => Array.from(areasByKindAndCode.get("ZIP")?.values() ?? []),
+    [areasByKindAndCode],
+  );
+
+  const defaultAreaContext = useMemo(() => {
+    if (!cameraState || countyRecords.length === 0) return null;
+    const { center, zoom } = cameraState;
+    const [lng, lat] = center;
+
+    const allCountyAreas = countyRecords.map((record) => ({
+      kind: "COUNTY" as SupportedAreaKind,
+      code: record.code,
+    }));
+
+    const stateContext = {
+      label: "All Oklahoma",
+      areas: allCountyAreas,
+    };
+
+    if (zoom < 8.5) return stateContext;
+
+    const containsPoint = (bounds: [[number, number], [number, number]] | null | undefined) => {
+      if (!bounds) return false;
+      const [[minLng, minLat], [maxLng, maxLat]] = bounds;
+      return lng >= minLng && lng <= maxLng && lat >= minLat && lat <= maxLat;
+    };
+
+    const countyRecord = countyRecords.find((record) => containsPoint(record.bounds));
+    if (!countyRecord) return stateContext;
+
+    const isTulsaCounty = countyRecord.name?.toLowerCase() === "tulsa";
+    if (isTulsaCounty && zoom >= 10 && zipRecords.length > 0) {
+      return {
+        label: "Tulsa",
+        areas: zipRecords.map((record) => ({ kind: "ZIP" as SupportedAreaKind, code: record.code })),
+      };
+    }
+
+    return {
+      label: countyRecord.name ?? countyRecord.code,
+      areas: [
+        {
+          kind: "COUNTY" as SupportedAreaKind,
+          code: countyRecord.code,
+        },
+      ],
+    };
+  }, [cameraState, countyRecords, zipRecords]);
+
+  const { combinedSnapshot } = useDemographics({
+    selectedByKind: {
+      ZIP: selectedZips,
+      COUNTY: selectedCounties,
+    },
+    defaultContext: defaultAreaContext,
+  });
+
+  const { statsById, seriesByStatId, seriesByStatIdByKind, statDataByBoundary } = useStats();
   const { organizations } = useOrganizations();
 
   const areaNameLookup = useMemo(
@@ -597,7 +652,7 @@ export const ReactMapApp = () => {
               statsById={statsById}
               seriesByStatIdByKind={seriesByStatIdByKind}
               statDataById={statDataByStatId}
-              demographicSnapshots={demographicSnapshots}
+              combinedDemographics={combinedSnapshot}
               selectedAreas={selectedAreasMap}
               pinnedAreas={pinnedAreasMap}
               areaNameLookup={areaNameLookup}
@@ -619,27 +674,28 @@ export const ReactMapApp = () => {
                 orgPinsVisible={orgPinsVisible}
                 zoomOutRequestNonce={zoomOutNonce}
                 clearMapCategoryNonce={clearMapCategoryNonce}
-              boundaryMode={boundaryMode}
-              selectedZips={selectedZips}
-              pinnedZips={pinnedZips}
-              hoveredZip={hoveredZip}
-              selectedCounties={selectedCounties}
-              pinnedCounties={pinnedCounties}
-              hoveredCounty={hoveredCounty}
-              activeOrganizationId={activeOrganizationId}
-              onHover={handleHover}
-              selectedStatId={selectedStatId}
-              secondaryStatId={secondaryStatId}
-              categoryFilter={categoryFilter}
-              onAreaSelectionChange={handleAreaSelectionChange}
-              onAreaHoverChange={handleAreaHoverChange}
-              onStatSelectionChange={setSelectedStatId}
-              onCategorySelectionChange={setCategoryFilter}
-              onVisibleIdsChange={(ids, _totalInSource, allSourceIds) => {
-                setOrgsVisibleIds(ids);
-                setOrgsAllSourceIds(allSourceIds);
+                boundaryMode={boundaryMode}
+                selectedZips={selectedZips}
+                pinnedZips={pinnedZips}
+                hoveredZip={hoveredZip}
+                selectedCounties={selectedCounties}
+                pinnedCounties={pinnedCounties}
+                hoveredCounty={hoveredCounty}
+                activeOrganizationId={activeOrganizationId}
+                onHover={handleHover}
+                selectedStatId={selectedStatId}
+                secondaryStatId={secondaryStatId}
+                categoryFilter={categoryFilter}
+                onAreaSelectionChange={handleAreaSelectionChange}
+                onAreaHoverChange={handleAreaHoverChange}
+                onStatSelectionChange={setSelectedStatId}
+                onCategorySelectionChange={setCategoryFilter}
+                onVisibleIdsChange={(ids, _totalInSource, allSourceIds) => {
+                  setOrgsVisibleIds(ids);
+                  setOrgsAllSourceIds(allSourceIds);
                 }}
                 onBoundaryModeChange={setBoundaryMode}
+                onCameraChange={setCameraState}
               />
             </div>
           </main>

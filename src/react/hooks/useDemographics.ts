@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { db } from "../../lib/reactDb";
-import type { BreakdownGroup } from "../components/DemographicsBar";
 import type { AreaKind } from "../../types/areas";
 import {
   DEFAULT_PARENT_AREA_BY_KIND,
@@ -29,6 +28,18 @@ const SEGMENT_ORDER: Record<BreakdownGroupKey, string[]> = {
 const BRAND_SHADE_TOKENS = ["brand-200", "brand-300", "brand-400", "brand-500", "brand-700"];
 
 const BREAKDOWN_KEYS: BreakdownGroupKey[] = ["ethnicity", "income", "education"];
+
+export interface BreakdownSegment {
+  key: string;
+  label: string;
+  colorToken: string;
+  valuePercent: number;
+}
+
+export interface BreakdownGroup {
+  key: string;
+  segments: BreakdownSegment[];
+}
 
 const dedupe = (values: string[] | undefined): string[] => {
   if (!Array.isArray(values)) return [];
@@ -72,7 +83,7 @@ type BreakdownSourceSegment = {
 
 type BreakdownSourceMap = Map<SupportedAreaKind, Map<BreakdownGroupKey, BreakdownSourceSegment[]>>;
 
-type SelectedAreasByKind = Partial<Record<AreaKind, string[]>>;
+type SelectedAreasByKind = Partial<Record<SupportedAreaKind, string[]>>;
 
 interface AggregatedStats {
   selectedCount: number;
@@ -80,6 +91,18 @@ interface AggregatedStats {
   population?: number;
   avgAge?: number;
   marriedPercent?: number;
+}
+
+type AreaSelectionEntry = { kind: SupportedAreaKind; code: string };
+
+interface DefaultContextOption {
+  label: string;
+  areas: AreaSelectionEntry[];
+}
+
+interface UseDemographicsOptions {
+  selectedByKind: SelectedAreasByKind;
+  defaultContext?: DefaultContextOption | null;
 }
 
 export interface DemographicKindSnapshot {
@@ -92,6 +115,16 @@ export interface DemographicKindSnapshot {
 
 export interface DemographicsResult {
   demographicsByKind: Map<SupportedAreaKind, DemographicKindSnapshot>;
+  combinedSnapshot: CombinedDemographicsSnapshot | null;
+}
+
+export interface CombinedDemographicsSnapshot {
+  label: string;
+  stats: AggregatedStats | null;
+  breakdowns: Map<string, BreakdownGroup>;
+  isMissing: boolean;
+  areaCount: number;
+  missingAreaCount: number;
 }
 
 const collectLatestRootRows = (
@@ -200,7 +233,10 @@ const buildAreaLabel = (
   return buildDefaultLabel(kind);
 };
 
-export const useDemographics = (selectedByKind: SelectedAreasByKind): DemographicsResult => {
+export const useDemographics = ({
+  selectedByKind,
+  defaultContext = null,
+}: UseDemographicsOptions): DemographicsResult => {
   const { isLoading: isAuthLoading } = db.useAuth();
   const { areasByKindAndCode } = useAreas();
 
@@ -415,5 +451,161 @@ export const useDemographics = (selectedByKind: SelectedAreasByKind): Demographi
     breakdownSources,
   ]);
 
-  return { demographicsByKind };
+  const combinedSnapshot = useMemo(() => {
+    const uniqueAreas = (entries: AreaSelectionEntry[]): AreaSelectionEntry[] => {
+      const seen = new Set<string>();
+      const result: AreaSelectionEntry[] = [];
+      for (const entry of entries) {
+        const key = `${entry.kind}:${entry.code}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(entry);
+      }
+      return result;
+    };
+
+    const aggregateAreas = (
+      areas: AreaSelectionEntry[],
+      label: string,
+      selectedCount: number,
+    ): CombinedDemographicsSnapshot => {
+      const distinctAreas = uniqueAreas(areas);
+      const areaCount = distinctAreas.length;
+
+      let totalPopulation = 0;
+      let weightedAge = 0;
+      let weightedAgeDenominator = 0;
+      let weightedMarried = 0;
+      let weightedMarriedDenominator = 0;
+      let areasWithPopulation = 0;
+
+      const breakdownAccumulator = new Map<
+        string,
+        { weight: number; totals: Map<string, number> }
+      >();
+
+      for (const area of distinctAreas) {
+        const populationEntry = populationRoots.get(area.kind);
+        const popValue = populationEntry?.data?.[area.code];
+        const weight = typeof popValue === "number" && Number.isFinite(popValue)
+          ? Math.max(popValue, 0)
+          : 0;
+
+        if (weight > 0) {
+          areasWithPopulation += 1;
+          totalPopulation += weight;
+
+          const ageValue = avgAgeRoots.get(area.kind)?.data?.[area.code];
+          if (typeof ageValue === "number" && Number.isFinite(ageValue)) {
+            weightedAge += ageValue * weight;
+            weightedAgeDenominator += weight;
+          }
+
+          const marriedValue = marriedRoots.get(area.kind)?.data?.[area.code];
+          if (typeof marriedValue === "number" && Number.isFinite(marriedValue)) {
+            weightedMarried += marriedValue * weight;
+            weightedMarriedDenominator += weight;
+          }
+
+          const source = breakdownSources.get(area.kind);
+          if (source) {
+            for (const [groupKey, segments] of source) {
+              const acc = breakdownAccumulator.get(groupKey) ?? { weight: 0, totals: new Map<string, number>() };
+              for (const segment of segments) {
+                const v = segment.values?.[area.code];
+                if (typeof v === "number" && Number.isFinite(v)) {
+                  acc.totals.set(segment.key, (acc.totals.get(segment.key) ?? 0) + v * weight);
+                }
+              }
+              acc.weight += weight;
+              breakdownAccumulator.set(groupKey, acc);
+            }
+          }
+        }
+      }
+
+      let stats: AggregatedStats | null = null;
+      if (areasWithPopulation > 0) {
+        stats = {
+          selectedCount,
+          label,
+          population: totalPopulation || undefined,
+        };
+        if (weightedAgeDenominator > 0) {
+          stats.avgAge = weightedAge / weightedAgeDenominator;
+        }
+        if (weightedMarriedDenominator > 0) {
+          stats.marriedPercent = weightedMarried / weightedMarriedDenominator;
+        }
+      }
+
+      const breakdowns = new Map<string, BreakdownGroup>();
+      for (const [groupKey, acc] of breakdownAccumulator.entries()) {
+        const typedGroupKey = groupKey as BreakdownGroupKey;
+        const order = SEGMENT_ORDER[typedGroupKey] ?? [];
+        const segments: BreakdownSegment[] = order.map((segKey, index) => {
+          const sum = acc.totals.get(segKey) ?? 0;
+          const percent = acc.weight > 0 ? Math.round(sum / acc.weight) : 0;
+          return {
+            key: segKey,
+            label: SEGMENT_LABELS[typedGroupKey]?.[segKey] ?? segKey,
+            colorToken: BRAND_SHADE_TOKENS[Math.min(index, BRAND_SHADE_TOKENS.length - 1)],
+            valuePercent: Math.max(0, Math.min(100, percent)),
+          };
+        });
+        breakdowns.set(groupKey, { key: groupKey, segments });
+      }
+
+      return {
+        label,
+        stats,
+        breakdowns,
+        isMissing: areasWithPopulation === 0,
+        areaCount,
+        missingAreaCount: areaCount - areasWithPopulation,
+      };
+    };
+
+    const selectedEntries: AreaSelectionEntry[] = [];
+    for (const kind of SUPPORTED_AREA_KINDS) {
+      const codes = dedupe(selectedByKind[kind]);
+      for (const code of codes) {
+        if (typeof code === "string" && code.length > 0) {
+          selectedEntries.push({ kind, code });
+        }
+      }
+    }
+
+    const activeEntries = selectedEntries.length > 0
+      ? selectedEntries
+      : defaultContext?.areas ?? [];
+
+    if (activeEntries.length === 0) {
+      return null;
+    }
+
+    let label: string;
+    if (selectedEntries.length > 0) {
+      if (selectedEntries.length === 1) {
+        const entry = selectedEntries[0];
+        label = getAreaName(entry.kind, entry.code) ?? entry.code;
+      } else {
+        label = `Selected Areas (${selectedEntries.length})`;
+      }
+    } else {
+      label = defaultContext?.label ?? "All Oklahoma";
+    }
+
+    return aggregateAreas(activeEntries, label, selectedEntries.length);
+  }, [
+    selectedByKind,
+    defaultContext,
+    populationRoots,
+    avgAgeRoots,
+    marriedRoots,
+    breakdownSources,
+    getAreaName,
+  ]);
+
+  return { demographicsByKind, combinedSnapshot };
 };

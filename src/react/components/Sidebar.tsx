@@ -5,7 +5,7 @@ import { StatList } from "./StatList";
 import type { Organization } from "../../types/organization";
 import type { Stat } from "../../types/stat";
 import { getCategoryLabel } from "../../types/categories";
-import type { DemographicKindSnapshot } from "../hooks/useDemographics";
+import type { CombinedDemographicsSnapshot } from "../hooks/useDemographics";
 import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
 import type { AreaId } from "../../types/areas";
 
@@ -22,7 +22,7 @@ interface SidebarProps {
   };
   activeOrganizationId?: string | null;
   highlightedOrganizationIds?: string[] | null;
-  demographicSnapshots?: DemographicKindSnapshot[];
+  combinedDemographics?: CombinedDemographicsSnapshot | null;
   statsById?: Map<string, Stat>;
   seriesByStatIdByKind?: Map<string, SeriesByKind>;
   statDataById?: Map<string, Partial<Record<SupportedAreaKind, StatBoundaryEntry>>>;
@@ -47,7 +47,7 @@ export const Sidebar = ({
   organizations = { inSelection: [], all: [], totalSourceCount: 0 },
   activeOrganizationId = null,
   highlightedOrganizationIds = null,
-  demographicSnapshots = [],
+  combinedDemographics = null,
   statsById = new Map(),
   seriesByStatIdByKind = new Map(),
   statDataById = new Map(),
@@ -104,7 +104,7 @@ export const Sidebar = ({
   return (
     <aside className="relative flex w-full max-w-sm flex-col border-r border-slate-200 bg-white/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60">
       {/* Demographics Bar */}
-      <DemographicsBar snapshots={demographicSnapshots} />
+      <DemographicsBar snapshot={combinedDemographics ?? null} />
 
       {/* Stat Visualization */}
       <StatViz
