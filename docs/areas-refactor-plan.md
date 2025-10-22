@@ -18,22 +18,19 @@ _Last updated: 2025‑02‑20_
 | ----- | ----- | ---------- |
 | Phase 0 | Registry groundwork (pre‑existing) | `AreaKind`/`AreaId`, map registry, toolbar + selection plumbing |
 | Phase 1 (current work) | Schema + seed alignment | Added `areas` entity, populated centroids/bounds, updated seed scripts, normalised selection payloads |
-| Phase 2 (current work) | Shared data plumbing | `useAreas`, `useStats`, `useDemographics` return per‑kind snapshots; sidebar/toolbar now consume unified selections |
-| Phase 3 (in progress) | Sidebar polish | Stat viz + list use blended data, demographics cards show counties + ZIPs with “no data” messaging |
+| Phase 2 | Shared data plumbing | `useAreas`, `useStats`, `useDemographics` return per‑kind snapshots; sidebar/toolbar now consume unified selections |
+| Phase 3 | Unified demographics & sidebar | Map emits camera defaults, `useDemographics` blends selection + viewport defaults, single sidebar card with graceful “no data” messaging |
 
 ---
 
 ## Open Phases & Deliverables
 
-1. **Viewport‑aware demographics (WIP planning)**
-   - Detect camera context (statewide vs Tulsa vs other county) and surface a default demographic snapshot when nothing is selected.
-   - Blend demographics for multi‑area selections (ZIP + county) and flag gaps.
-2. **Map/report parity**
+1. **Map/report parity**
    - County choropleth legend + secondary stat overlay.
    - Report exports include counties, highlight missing metrics cleanly.
-3. **QA & polish**
+2. **Camera-driven QA & polish**
    - Manual smoke (selection, pinning, export, zoom states).
-   - Copy/styling tweaks once combined demographics card lands.
+   - Copy/styling tweaks now that combined card is live.
 
 ---
 
@@ -45,13 +42,13 @@ _Last updated: 2025‑02‑20_
 
 ## Implementation Steps – Next Up
 
-### B. Stats Integration Follow‑ups
-4. Update organisation sorting (stat weighting) to use the blended snapshot when counties are in play.
-5. Expose helper to get an area label (from `useAreas`) so stat/demographic UIs don’t repeat lookup logic.
+### A. Stats Integration Follow‑ups
+1. ✔️ Update organisation sorting (stat weighting) to use the blended snapshot when counties are in play.
+2. Expose helper to get an area label (from `useAreas`) so stat/demographic UIs don’t repeat lookup logic.
 
-### C. Prep for Phase 4 (map/report parity)
-6. Mirror secondary stat overlay for counties (currently ZIP‑only).
-7. Adjust report composer to iterate `AreaId[]` rather than ZIP strings.
+### B. Prep for Phase 4 (map/report parity)
+3. Mirror secondary stat overlay for counties (currently ZIP‑only).
+4. Adjust report composer to iterate `AreaId[]` rather than ZIP strings.
 
 ---
 

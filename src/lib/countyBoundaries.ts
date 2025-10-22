@@ -72,3 +72,60 @@ export const getCountyName = (id: string): string | undefined => featureById.get
 
 export const getAllCountyIds = (): string[] => features.map((f) => f.properties?.county).filter((v): v is string => typeof v === "string");
 
+const pointInRing = (point: Position, ring: Position[]): boolean => {
+  let inside = false;
+  const [x, y] = point;
+
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
+
+    const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
+};
+
+const pointInPolygon = (point: Position, polygon: Position[][]): boolean => {
+  if (polygon.length === 0) return false;
+  if (!pointInRing(point, polygon[0])) return false;
+  for (let i = 1; i < polygon.length; i++) {
+    if (pointInRing(point, polygon[i])) return false;
+  }
+  return true;
+};
+
+const pointInGeometry = (point: Position, geometry: GeoJSON.Geometry): boolean => {
+  if (geometry.type === "Polygon") {
+    return pointInPolygon(point, geometry.coordinates as Position[][]);
+  }
+
+  if (geometry.type === "MultiPolygon") {
+    return (geometry.coordinates as Position[][][]).some((poly) => pointInPolygon(point, poly));
+  }
+
+  return false;
+};
+
+export const findCountyForLocation = (longitude: number, latitude: number): string | null => {
+  const point: Position = [longitude, latitude];
+
+  for (const feature of features) {
+    const county = feature.properties?.county;
+    if (!county) continue;
+    const bounds = getCountyBounds(county);
+    if (!bounds) continue;
+    const [[minLng, minLat], [maxLng, maxLat]] = bounds;
+    if (longitude < minLng || longitude > maxLng || latitude < minLat || latitude > maxLat) {
+      continue;
+    }
+    if (feature.geometry && pointInGeometry(point, feature.geometry)) {
+      return county;
+    }
+  }
+
+  return null;
+};

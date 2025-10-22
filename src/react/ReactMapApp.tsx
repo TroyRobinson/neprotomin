@@ -9,6 +9,7 @@ import { useOrganizations } from "./hooks/useOrganizations";
 import { useAreas } from "./hooks/useAreas";
 import type { Organization } from "../types/organization";
 import { findZipForLocation } from "../lib/zipBoundaries";
+import { findCountyForLocation } from "../lib/countyBoundaries";
 import { useMemo } from "react";
 import type { BoundaryMode } from "../types/boundaries";
 import { AuthModal } from "./components/AuthModal";
@@ -334,6 +335,15 @@ export const ReactMapApp = () => {
     return map;
   }, [organizations]);
 
+  const orgCountyById = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const o of organizations) {
+      const county = findCountyForLocation(o.longitude, o.latitude);
+      map.set(o.id, county);
+    }
+    return map;
+  }, [organizations]);
+
   const statDataByStatId = useMemo(
     () =>
       new Map<
@@ -626,13 +636,30 @@ export const ReactMapApp = () => {
 
                 // If a stat is selected, sort organizations by the stat value of their ZIP (desc)
                 if (selectedStatId) {
-                  const entry = statDataByStatId.get(selectedStatId)?.ZIP;
-                  if (entry) {
+                  const entryMap = statDataByStatId.get(selectedStatId);
+                  if (entryMap) {
+                    const zipEntry = entryMap.ZIP;
+                    const countyEntry = entryMap.COUNTY;
                     const scoreFor = (org: Organization): number => {
-                      const zip = orgZipById.get(org.id);
-                      if (!zip) return Number.NEGATIVE_INFINITY;
-                      const v = (entry.data || ({} as Record<string, number>))[zip];
-                      return typeof v === "number" && Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
+                      if (zipEntry) {
+                        const zip = orgZipById.get(org.id);
+                        if (zip) {
+                          const v = zipEntry.data?.[zip];
+                          if (typeof v === "number" && Number.isFinite(v)) {
+                            return v;
+                          }
+                        }
+                      }
+                      if (countyEntry) {
+                        const county = orgCountyById.get(org.id);
+                        if (county) {
+                          const v = countyEntry.data?.[county];
+                          if (typeof v === "number" && Number.isFinite(v)) {
+                            return v;
+                          }
+                        }
+                      }
+                      return Number.NEGATIVE_INFINITY;
                     };
                     const cmp = (a: Organization, b: Organization) => {
                       const sa = scoreFor(a);
