@@ -4,6 +4,7 @@ import { tulsaZipBoundaries } from "../../../data/tulsaZipBoundaries";
 import { oklahomaCountyBoundaries } from "../../../data/oklahomaCountyBoundaries";
 import type { BoundaryMode } from "../../../types/boundaries";
 import { getZipCentroidFeatureCollection } from "../../../lib/zipCentroids";
+import { getCountyCentroidFeatureCollection } from "../../../lib/countyCentroids";
 import { getAreaRegistryEntry } from "../areas/registry";
 import {
   LAYER_CLUSTERS_ID,
@@ -30,6 +31,9 @@ export interface BoundaryLayerIds {
   ZIP_CENTROIDS_SOURCE_ID: string;
   SECONDARY_STAT_LAYER_ID: string;
   SECONDARY_STAT_HOVER_LAYER_ID: string;
+  COUNTY_CENTROIDS_SOURCE_ID: string;
+  COUNTY_SECONDARY_LAYER_ID: string;
+  COUNTY_SECONDARY_HOVER_LAYER_ID: string;
   COUNTY_BOUNDARY_SOURCE_ID: string;
   COUNTY_BOUNDARY_FILL_LAYER_ID: string;
   COUNTY_BOUNDARY_LINE_LAYER_ID: string;
@@ -64,6 +68,9 @@ export const ensureBoundaryLayers = (
     ZIP_CENTROIDS_SOURCE_ID,
     SECONDARY_STAT_LAYER_ID,
     SECONDARY_STAT_HOVER_LAYER_ID,
+    COUNTY_CENTROIDS_SOURCE_ID,
+    COUNTY_SECONDARY_LAYER_ID,
+    COUNTY_SECONDARY_HOVER_LAYER_ID,
     COUNTY_BOUNDARY_SOURCE_ID,
     COUNTY_BOUNDARY_FILL_LAYER_ID,
     COUNTY_BOUNDARY_LINE_LAYER_ID,
@@ -232,6 +239,58 @@ export const ensureBoundaryLayers = (
       layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
       paint: {
         "circle-radius": 7,
+        "circle-color": "#0f766e",
+        "circle-opacity": 0,
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 2,
+        "circle-translate": [0, 0],
+      } as any,
+    };
+    if (before) map.addLayer(layer, before);
+    else map.addLayer(layer);
+  }
+
+  if (!map.getSource(COUNTY_CENTROIDS_SOURCE_ID)) {
+    map.addSource(COUNTY_CENTROIDS_SOURCE_ID, {
+      type: "geojson",
+      data: getCountyCentroidFeatureCollection(),
+    });
+  } else {
+    const source = map.getSource(COUNTY_CENTROIDS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    try { source?.setData(getCountyCentroidFeatureCollection() as any); } catch {}
+  }
+
+  if (!map.getLayer(COUNTY_SECONDARY_LAYER_ID)) {
+    const before = map.getLayer(LAYER_CLUSTERS_ID) ? LAYER_CLUSTERS_ID : undefined;
+    const layer: any = {
+      id: COUNTY_SECONDARY_LAYER_ID,
+      type: "circle",
+      source: COUNTY_CENTROIDS_SOURCE_ID,
+      filter: ["==", ["get", "county"], "__none__"],
+      layout: { visibility: boundaryMode === "counties" ? "visible" : "none" },
+      paint: {
+        "circle-radius": 6.5,
+        "circle-color": "#0f766e",
+        "circle-opacity": 0,
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1,
+        "circle-translate": [0, 0],
+      } as any,
+    };
+    if (before) map.addLayer(layer, before);
+    else map.addLayer(layer);
+  }
+
+  if (!map.getLayer(COUNTY_SECONDARY_HOVER_LAYER_ID)) {
+    const before = map.getLayer(COUNTY_SECONDARY_LAYER_ID) ? COUNTY_SECONDARY_LAYER_ID : undefined;
+    const layer: any = {
+      id: COUNTY_SECONDARY_HOVER_LAYER_ID,
+      type: "circle",
+      source: COUNTY_CENTROIDS_SOURCE_ID,
+      filter: ["==", ["get", "county"], "__none__"],
+      layout: { visibility: boundaryMode === "counties" ? "visible" : "none" },
+      paint: {
+        "circle-radius": 8.5,
         "circle-color": "#0f766e",
         "circle-opacity": 0,
         "circle-stroke-color": "#ffffff",
@@ -467,6 +526,8 @@ export const updateBoundaryVisibility = (
     BOUNDARY_STATDATA_FILL_LAYER_ID,
     SECONDARY_STAT_LAYER_ID,
     SECONDARY_STAT_HOVER_LAYER_ID,
+    COUNTY_SECONDARY_LAYER_ID,
+    COUNTY_SECONDARY_HOVER_LAYER_ID,
     BOUNDARY_LINE_LAYER_ID,
     BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
     BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
@@ -509,6 +570,8 @@ export const updateBoundaryVisibility = (
   setVis(COUNTY_BOUNDARY_PINNED_FILL_LAYER_ID, countyVisibility);
   setVis(COUNTY_BOUNDARY_PINNED_LINE_LAYER_ID, countyVisibility);
   setVis(COUNTY_STATDATA_FILL_LAYER_ID, countyVisibility);
+  setVis(COUNTY_SECONDARY_LAYER_ID, countyVisibility);
+  setVis(COUNTY_SECONDARY_HOVER_LAYER_ID, countyVisibility);
 };
 
 export const updateZipSelectionHighlight = (

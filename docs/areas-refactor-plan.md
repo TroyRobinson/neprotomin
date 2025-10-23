@@ -1,6 +1,6 @@
 # Areas Refactor – Working Plan & Handoff Guide
 
-_Last updated: 2025‑02‑20_
+ _Last updated: 2025‑10‑22_
 
 ---
 
@@ -47,8 +47,13 @@ _Last updated: 2025‑02‑20_
 2. ✔️ Expose helper to get an area label (from `useAreas`) so stat/demographic UIs don’t repeat lookup logic.
 
 ### B. Prep for Phase 4 (map/report parity)
-3. Mirror secondary stat overlay for counties (currently ZIP‑only).
+3. ✔️ Mirror secondary stat overlay for counties (currently ZIP-only); county centroid layer now resets its filter like the ZIP overlay.
 4. Adjust report composer to iterate `AreaId[]` rather than ZIP strings.
+
+### C. Current blockers & questions
+- Need QA to ensure the new county filter reset survives style swaps (`styledata`/`idle` re-entry) and doesn’t flicker during hover transitions.
+- Do we want a separate translate/offset for counties, or should we share the ZIP offset so mixed selections feel consistent? Needs design confirmation.
+- Should the county centroid source be pruned to active counties only, or is the full statewide feature set required for future expansion?
 
 ---
 
@@ -84,7 +89,6 @@ Optional niceties once core work lands:
 - Seed scripts: `scripts/seed.ts` ensures `areas` table stays in sync locally.
 
 If you pick up from here:
-1. Mirror the secondary stat overlay for counties.
+1. QA the county secondary stat overlay (hover/pin transitions, style swaps).
 2. Update report generation to operate on `AreaId[]`.
 3. Run `npm run build` and manually test zoom/selection edge cases.
-

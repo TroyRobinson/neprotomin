@@ -30,3 +30,6 @@ export const COUNTY_STATDATA_FILL_LAYER_ID = "oklahoma-county-statdata-fill";
 export const ZIP_CENTROIDS_SOURCE_ID = "tulsa-zip-centroids";
 export const SECONDARY_STAT_LAYER_ID = "tulsa-zip-secondary-stat-overlay";
 export const SECONDARY_STAT_HOVER_LAYER_ID = "tulsa-zip-secondary-stat-overlay-hover";
+export const COUNTY_CENTROIDS_SOURCE_ID = "oklahoma-county-centroids";
+export const COUNTY_SECONDARY_LAYER_ID = "oklahoma-county-secondary-stat-overlay";
+export const COUNTY_SECONDARY_HOVER_LAYER_ID = "oklahoma-county-secondary-stat-overlay-hover";

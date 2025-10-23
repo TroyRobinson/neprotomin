@@ -1,4 +1,4 @@
-import type { Position } from 'geojson';
+import type { Position, FeatureCollection, Feature, Point } from 'geojson';
 import { oklahomaCountyBoundaries } from '../data/oklahomaCountyBoundaries';
 
 const centroids = new Map<string, [number, number]>();
@@ -36,3 +36,24 @@ for (const f of oklahomaCountyBoundaries.features as any[]) {
 export const getCountyCentroidsMap = () => centroids;
 export const getCountyName = (id: string) => names.get(id) || id;
 
+export const getCountyCentroidFeatureCollection = (): FeatureCollection<
+  Point,
+  { county: string; name: string | undefined }
+> => {
+  const features: Feature<Point, { county: string; name: string | undefined }>[] = [];
+  for (const f of oklahomaCountyBoundaries.features as any[]) {
+    const id = f?.properties?.county as string | undefined;
+    if (!id) continue;
+    const center = centroids.get(id) ?? computeBBoxCenter(f.geometry?.coordinates);
+    if (!center) continue;
+    features.push({
+      type: "Feature",
+      properties: { county: id, name: names.get(id) },
+      geometry: {
+        type: "Point",
+        coordinates: center,
+      },
+    });
+  }
+  return { type: "FeatureCollection", features };
+};

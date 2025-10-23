@@ -104,6 +104,9 @@ import {
   ZIP_CENTROIDS_SOURCE_ID,
   SECONDARY_STAT_LAYER_ID,
   SECONDARY_STAT_HOVER_LAYER_ID,
+  COUNTY_CENTROIDS_SOURCE_ID,
+  COUNTY_SECONDARY_LAYER_ID,
+  COUNTY_SECONDARY_HOVER_LAYER_ID,
   COUNTY_BOUNDARY_SOURCE_ID,
   COUNTY_BOUNDARY_FILL_LAYER_ID,
   COUNTY_BOUNDARY_LINE_LAYER_ID,
@@ -474,6 +477,9 @@ export const createMapView = ({
     ZIP_CENTROIDS_SOURCE_ID,
     SECONDARY_STAT_LAYER_ID,
     SECONDARY_STAT_HOVER_LAYER_ID,
+    COUNTY_CENTROIDS_SOURCE_ID,
+    COUNTY_SECONDARY_LAYER_ID,
+    COUNTY_SECONDARY_HOVER_LAYER_ID,
     COUNTY_BOUNDARY_SOURCE_ID,
     COUNTY_BOUNDARY_FILL_LAYER_ID,
     COUNTY_BOUNDARY_LINE_LAYER_ID,
@@ -500,6 +506,9 @@ export const createMapView = ({
     ZIP_CENTROIDS_SOURCE_ID,
     SECONDARY_STAT_LAYER_ID,
     SECONDARY_STAT_HOVER_LAYER_ID,
+    COUNTY_CENTROIDS_SOURCE_ID,
+    COUNTY_SECONDARY_LAYER_ID,
+    COUNTY_SECONDARY_HOVER_LAYER_ID,
     COUNTY_BOUNDARY_SOURCE_ID,
     COUNTY_BOUNDARY_FILL_LAYER_ID,
     COUNTY_BOUNDARY_LINE_LAYER_ID,
@@ -526,6 +535,9 @@ export const createMapView = ({
     ZIP_CENTROIDS_SOURCE_ID,
     SECONDARY_STAT_LAYER_ID,
     SECONDARY_STAT_HOVER_LAYER_ID,
+    COUNTY_CENTROIDS_SOURCE_ID,
+    COUNTY_SECONDARY_LAYER_ID,
+    COUNTY_SECONDARY_HOVER_LAYER_ID,
     COUNTY_BOUNDARY_SOURCE_ID,
     COUNTY_BOUNDARY_FILL_LAYER_ID,
     COUNTY_BOUNDARY_LINE_LAYER_ID,
@@ -554,11 +566,14 @@ export const createMapView = ({
       ZIP_CENTROIDS_SOURCE_ID,
       SECONDARY_STAT_LAYER_ID,
       SECONDARY_STAT_HOVER_LAYER_ID,
-    COUNTY_BOUNDARY_SOURCE_ID,
-    COUNTY_BOUNDARY_FILL_LAYER_ID,
-    COUNTY_BOUNDARY_LINE_LAYER_ID,
-    COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
-    COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
+      COUNTY_CENTROIDS_SOURCE_ID,
+      COUNTY_SECONDARY_LAYER_ID,
+      COUNTY_SECONDARY_HOVER_LAYER_ID,
+      COUNTY_BOUNDARY_SOURCE_ID,
+      COUNTY_BOUNDARY_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_LINE_LAYER_ID,
+      COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
     COUNTY_BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
     COUNTY_BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
     COUNTY_BOUNDARY_PINNED_FILL_LAYER_ID,
@@ -583,6 +598,9 @@ export const createMapView = ({
     ZIP_CENTROIDS_SOURCE_ID,
     SECONDARY_STAT_LAYER_ID,
     SECONDARY_STAT_HOVER_LAYER_ID,
+    COUNTY_CENTROIDS_SOURCE_ID,
+    COUNTY_SECONDARY_LAYER_ID,
+    COUNTY_SECONDARY_HOVER_LAYER_ID,
     COUNTY_BOUNDARY_SOURCE_ID,
     COUNTY_BOUNDARY_FILL_LAYER_ID,
     COUNTY_BOUNDARY_LINE_LAYER_ID,
@@ -611,6 +629,9 @@ export const createMapView = ({
       ZIP_CENTROIDS_SOURCE_ID,
       SECONDARY_STAT_LAYER_ID,
       SECONDARY_STAT_HOVER_LAYER_ID,
+      COUNTY_CENTROIDS_SOURCE_ID,
+      COUNTY_SECONDARY_LAYER_ID,
+      COUNTY_SECONDARY_HOVER_LAYER_ID,
       COUNTY_BOUNDARY_SOURCE_ID,
       COUNTY_BOUNDARY_FILL_LAYER_ID,
       COUNTY_BOUNDARY_LINE_LAYER_ID,
@@ -720,6 +741,9 @@ export const createMapView = ({
       ZIP_CENTROIDS_SOURCE_ID,
       SECONDARY_STAT_LAYER_ID,
       SECONDARY_STAT_HOVER_LAYER_ID,
+      COUNTY_CENTROIDS_SOURCE_ID,
+      COUNTY_SECONDARY_LAYER_ID,
+      COUNTY_SECONDARY_HOVER_LAYER_ID,
       COUNTY_BOUNDARY_SOURCE_ID,
       COUNTY_BOUNDARY_FILL_LAYER_ID,
       COUNTY_BOUNDARY_LINE_LAYER_ID,
@@ -744,10 +768,10 @@ export const createMapView = ({
     updateHighlight();
     updateBoundaryPaint();
     updateBoundaryVisibility();
-    zipSelection.refresh();
-    countySelection.refresh();
-    updateStatDataChoropleth();
-    updateSecondaryStatOverlay();
+  zipSelection.refresh();
+  countySelection.refresh();
+  updateStatDataChoropleth();
+  updateSecondaryStatOverlay();
     updateOrganizationPinsVisibility();
     // visibility will be emitted by the wired tracker on next move/zoom end
     // Toggle label visibility according to boundary mode
@@ -1114,8 +1138,16 @@ export const createMapView = ({
       BOUNDARY_STATDATA_FILL_LAYER_ID,
       COUNTY_STATDATA_FILL_LAYER_ID,
       SECONDARY_STAT_LAYER_ID,
+      COUNTY_SECONDARY_LAYER_ID,
       SECONDARY_STAT_HOVER_LAYER_ID,
-    }, boundaryMode, currentTheme, secondaryStatId, statDataByStatId, pinnedZips, transientZips, (hoveredZipFromToolbar || hoveredZipFromMap || null));
+      COUNTY_SECONDARY_HOVER_LAYER_ID,
+    }, boundaryMode, currentTheme, secondaryStatId, statDataByStatId,
+      pinnedZips,
+      transientZips,
+      (hoveredZipFromToolbar || hoveredZipFromMap || null),
+      pinnedCounties,
+      transientCounties,
+      (hoveredCountyFromToolbar || hoveredCountyFromMap || null));
   }
 
   const setClusterHighlight = (clusterId: number | null) => {
@@ -1170,7 +1202,9 @@ export const createMapView = ({
       BOUNDARY_STATDATA_FILL_LAYER_ID,
       COUNTY_STATDATA_FILL_LAYER_ID,
       SECONDARY_STAT_LAYER_ID,
+      COUNTY_SECONDARY_LAYER_ID,
       SECONDARY_STAT_HOVER_LAYER_ID,
+      COUNTY_SECONDARY_HOVER_LAYER_ID,
     }, currentTheme, boundaryMode, selectedStatId, statDataByStatId);
   }
 
