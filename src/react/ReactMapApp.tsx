@@ -5,6 +5,7 @@ import { MapLibreMap } from "./components/MapLibreMap";
 import { Sidebar } from "./components/Sidebar";
 import { useDemographics } from "./hooks/useDemographics";
 import { useStats } from "./hooks/useStats";
+import type { StatBoundaryEntry } from "./hooks/useStats";
 import { useOrganizations } from "./hooks/useOrganizations";
 import { useAreas } from "./hooks/useAreas";
 import type { Organization } from "../types/organization";
@@ -306,7 +307,7 @@ export const ReactMapApp = () => {
     defaultContext: defaultAreaContext,
   });
 
-  const { statsById, seriesByStatId, seriesByStatIdByKind, statDataByBoundary } = useStats();
+  const { statsById, seriesByStatIdByKind, statDataByBoundary } = useStats();
   const { organizations } = useOrganizations();
 
   const areaNameLookup = useMemo(
@@ -317,6 +318,14 @@ export const ReactMapApp = () => {
   const selectedAreasMap = useMemo(
     () => ({ ZIP: selectedZips, COUNTY: selectedCounties }),
     [selectedZips, selectedCounties],
+  );
+
+  const selectedAreasForReport = useMemo(
+    () => [
+      ...selectedZips.map<AreaId>((zip) => ({ kind: "ZIP", id: zip })),
+      ...selectedCounties.map<AreaId>((county) => ({ kind: "COUNTY", id: county })),
+    ],
+    [selectedCounties, selectedZips],
   );
 
   const pinnedAreasMap = useMemo(
@@ -404,168 +413,192 @@ export const ReactMapApp = () => {
   };
 
   const handleExport = () => {
-    const zips = Array.from(selectedZips).sort();
-    if (zips.length === 0) return;
+    const primaryKind: SupportedAreaKind | null =
+      selectedZips.length > 0 ? "ZIP" : selectedCounties.length > 0 ? "COUNTY" : null;
+    if (!primaryKind) return;
 
-    const headers: string[] = ["zip", "population", "avg_age", "married_percent"];
+    const areaCodes = primaryKind === "ZIP" ? [...selectedZips].sort() : [...selectedCounties].sort();
+    if (areaCodes.length === 0) return;
+
+    const areaColumn = primaryKind === "ZIP" ? "zip" : "county";
+    const headers: string[] = [areaColumn, "area_name"];
 
     const selectedCategory = categoryFilter;
     const allStats = Array.from(statsById.values());
-    const statColumns: { id: string; header: string }[] = [];
+    const columnEntries: { id: string; header: string; entry: StatBoundaryEntry }[] = [];
+    const addColumn = (statId: string, header: string) => {
+      const entry = statDataByStatId.get(statId)?.[primaryKind];
+      if (!entry) return;
+      columnEntries.push({ id: statId, header, entry });
+    };
+
     if (selectedCategory) {
-      const inCategory = allStats.filter((s) => s.category === selectedCategory);
-      for (const s of inCategory) {
-        const slug = s.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-        statColumns.push({ id: s.id, header: slug || `stat_${s.id.slice(0, 6)}` });
+      const inCategory = allStats.filter((stat) => stat.category === selectedCategory);
+      for (const stat of inCategory) {
+        const slug = stat.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+        addColumn(stat.id, slug || `stat_${stat.id.slice(0, 6)}`);
       }
     } else if (selectedStatId) {
-      const s = statsById.get(selectedStatId);
-      if (s) {
-        const slug = s.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-        statColumns.push({ id: s.id, header: slug || `stat_${s.id.slice(0, 6)}` });
+      const stat = statsById.get(selectedStatId);
+      if (stat) {
+        const slug = stat.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+        addColumn(stat.id, slug || `stat_${stat.id.slice(0, 6)}`);
       }
     }
-    for (const c of statColumns) headers.push(c.header);
 
     let orgCountHeader: string | null = null;
-    const activeOrgsByZip = new Map<string, number>();
+    const activeOrgsByArea = new Map<string, number>();
     if (selectedCategory) {
       orgCountHeader = `number_of_${selectedCategory}_orgs_active`;
-      headers.splice(4, 0, orgCountHeader);
+      headers.push(orgCountHeader);
 
       const idsFilter = new Set(orgsAllSourceIds);
-      const fromSource = organizations.filter((o) => idsFilter.size === 0 || idsFilter.has(o.id));
-      const catOrgs = fromSource.filter((o) => o.category === selectedCategory);
-      for (const org of catOrgs) {
-        const zip = orgZipById.get(org.id);
-        if (!zip) continue;
-        activeOrgsByZip.set(zip, (activeOrgsByZip.get(zip) || 0) + 1);
+      const fromSource = organizations.filter((org) => idsFilter.size === 0 || idsFilter.has(org.id));
+      const categoryOrgs = fromSource.filter((org) => org.category === selectedCategory);
+      for (const org of categoryOrgs) {
+        const code = primaryKind === "ZIP" ? orgZipById.get(org.id) : orgCountyById.get(org.id);
+        if (!code) continue;
+        activeOrgsByArea.set(code, (activeOrgsByArea.get(code) || 0) + 1);
       }
     }
 
-    const rows: (string | number)[][] = [];
-    const r1 = (n: number): string => (Math.round(n * 10) / 10).toFixed(1);
+    headers.push("population", "avg_age", "married_percent");
+    for (const column of columnEntries) headers.push(column.header);
 
-    let totalPop = 0;
-    let weightedAge = 0;
-    let weightedMarried = 0;
-    const statSums = new Map<string, number>();
-    const statCounts = new Map<string, number>();
+    const r1 = (value: number): string => (Math.round(value * 10) / 10).toFixed(1);
 
-    // Helpers to look up stat data by stat name
-    const getEntryByName = (name: string): { data: Record<string, number> } | null => {
-      for (const [statId, entry] of statDataByStatId) {
-        const s = statsById.get(statId);
-        if (s?.name === name) {
-          return entry?.ZIP ?? entry?.COUNTY ?? null;
+    const getEntryByName = (name: string): StatBoundaryEntry | null => {
+      for (const [statId, entry] of statDataByStatId.entries()) {
+        const stat = statsById.get(statId);
+        if (stat?.name === name) {
+          return entry?.[primaryKind] ?? null;
         }
       }
       return null;
     };
 
-    const popEntry = getEntryByName("Population");
+    const populationEntry = getEntryByName("Population");
     const ageEntry = getEntryByName("Average Age");
     const marriedEntry = getEntryByName("Married Percent");
-    if (!popEntry) return;
+    if (!populationEntry) return;
 
-    for (const zip of zips) {
-      const pop = Math.max(0, Math.round((popEntry.data || ({} as any))[zip] || 0));
-      const age = (ageEntry?.data || ({} as any))[zip];
-      const married = (marriedEntry?.data || ({} as any))[zip];
+    const rows: (string | number)[][] = [];
+    let totalPopulation = 0;
+    let weightedAge = 0;
+    let weightedMarried = 0;
+    const statSums = new Map<string, number>();
+    const statCounts = new Map<string, number>();
 
-      totalPop += pop;
-      weightedAge += age * pop;
-      weightedMarried += married * pop;
+    for (const code of areaCodes) {
+      const population = Math.max(0, Math.round((populationEntry.data || ({} as Record<string, number>))[code] || 0));
+      const age = (ageEntry?.data || ({} as Record<string, number>))[code];
+      const married = (marriedEntry?.data || ({} as Record<string, number>))[code];
 
-      const base: (string | number)[] = [zip, pop, typeof age === "number" ? r1(age) : "", typeof married === "number" ? r1(married) : ""];
-      if (orgCountHeader) base.splice(4, 0, activeOrgsByZip.get(zip) || 0);
-      const row: (string | number)[] = base;
+      totalPopulation += population;
+      if (typeof age === "number") weightedAge += age * population;
+      if (typeof married === "number") weightedMarried += married * population;
 
-      for (const col of statColumns) {
-        const sd = statDataByStatId.get(col.id)?.ZIP;
-        const v = sd?.data?.[zip];
-        if (typeof v === "number") {
-          row.push(r1(v));
-          statSums.set(col.id, (statSums.get(col.id) || 0) + v);
-          statCounts.set(col.id, (statCounts.get(col.id) || 0) + 1);
+      const row: (string | number)[] = [
+        code,
+        areaNameLookup(primaryKind, code) || code,
+      ];
+      if (orgCountHeader) row.push(activeOrgsByArea.get(code) || 0);
+      row.push(
+        population,
+        typeof age === "number" ? r1(age) : "",
+        typeof married === "number" ? r1(married) : "",
+      );
+
+      for (const column of columnEntries) {
+        const value = column.entry.data?.[code];
+        if (typeof value === "number") {
+          row.push(r1(value));
+          statSums.set(column.id, (statSums.get(column.id) || 0) + value);
+          statCounts.set(column.id, (statCounts.get(column.id) || 0) + 1);
         } else {
           row.push("");
         }
       }
-
       rows.push(row);
     }
 
-    const avgAge = totalPop > 0 ? weightedAge / totalPop : 0;
-    const avgMarried = totalPop > 0 ? weightedMarried / totalPop : 0;
-    const summaryBase: (string | number)[] = ["ALL_AREAS", totalPop, r1(avgAge), r1(avgMarried)];
-    if (orgCountHeader) summaryBase.splice(4, 0, zips.reduce((acc, z) => acc + (activeOrgsByZip.get(z) || 0), 0));
-    const summary: (string | number)[] = summaryBase;
-    for (const col of statColumns) {
-      const c = statCounts.get(col.id) || 0;
-      if (c > 0) summary.push(r1((statSums.get(col.id) || 0) / c));
-      else summary.push("");
+    const averageAge = totalPopulation > 0 ? weightedAge / totalPopulation : 0;
+    const averageMarried = totalPopulation > 0 ? weightedMarried / totalPopulation : 0;
+    const summaryRow: (string | number)[] = [
+      primaryKind === "ZIP" ? "ALL_SELECTED_ZIPS" : "ALL_SELECTED_COUNTIES",
+      "—",
+    ];
+    if (orgCountHeader) summaryRow.push(areaCodes.reduce((sum, code) => sum + (activeOrgsByArea.get(code) || 0), 0));
+    summaryRow.push(totalPopulation, r1(averageAge), r1(averageMarried));
+    for (const column of columnEntries) {
+      const count = statCounts.get(column.id) || 0;
+      if (count > 0) summaryRow.push(r1((statSums.get(column.id) || 0) / count));
+      else summaryRow.push("");
     }
 
-    const allCityZips = Object.keys(popEntry.data || {}).sort();
-    let cityPop = 0;
-    let cityWeightedAge = 0;
-    let cityWeightedMarried = 0;
-    const cityStatSums = new Map<string, number>();
-    const cityStatCounts = new Map<string, number>();
-    let cityOrgCount = 0;
-    if (orgCountHeader) {
-      cityOrgCount = Array.from(activeOrgsByZip.values()).reduce((a, b) => a + b, 0);
-    }
-    for (const zip of allCityZips) {
-      const p = Math.max(0, Math.round((popEntry.data || ({} as any))[zip] || 0));
-      cityPop += p;
-      const age = (ageEntry?.data || ({} as any))[zip];
-      const married = (marriedEntry?.data || ({} as any))[zip];
-      if (typeof age === "number") cityWeightedAge += age * p;
-      if (typeof married === "number") cityWeightedMarried += married * p;
-      for (const col of statColumns) {
-        const sd = statDataByStatId.get(col.id)?.ZIP;
-        const v = sd?.data?.[zip];
-        if (typeof v === "number") {
-          cityStatSums.set(col.id, (cityStatSums.get(col.id) || 0) + v);
-          cityStatCounts.set(col.id, (cityStatCounts.get(col.id) || 0) + 1);
+    const baselineLabel = primaryKind === "ZIP" ? "CITY_TULSA" : "STATE_OKLAHOMA";
+    const baselineName = primaryKind === "ZIP" ? "Tulsa" : "Oklahoma";
+    const baselineStatSums = new Map<string, number>();
+    const baselineStatCounts = new Map<string, number>();
+    let baselinePopulation = 0;
+    let baselineWeightedAge = 0;
+    let baselineWeightedMarried = 0;
+    const allAreaKeys = Object.keys(populationEntry.data || {}).sort();
+    for (const code of allAreaKeys) {
+      const population = Math.max(0, Math.round((populationEntry.data || ({} as Record<string, number>))[code] || 0));
+      baselinePopulation += population;
+      const age = (ageEntry?.data || ({} as Record<string, number>))[code];
+      if (typeof age === "number") baselineWeightedAge += age * population;
+      const married = (marriedEntry?.data || ({} as Record<string, number>))[code];
+      if (typeof married === "number") baselineWeightedMarried += married * population;
+
+      for (const column of columnEntries) {
+        const value = column.entry.data?.[code];
+        if (typeof value === "number") {
+          baselineStatSums.set(column.id, (baselineStatSums.get(column.id) || 0) + value);
+          baselineStatCounts.set(column.id, (baselineStatCounts.get(column.id) || 0) + 1);
         }
       }
     }
-    const cityAvgAge = cityPop > 0 ? cityWeightedAge / cityPop : 0;
-    const cityAvgMarried = cityPop > 0 ? cityWeightedMarried / cityPop : 0;
-    const cityBase: (string | number)[] = ["CITY_TULSA", cityPop, r1(cityAvgAge), r1(cityAvgMarried)];
-    if (orgCountHeader) cityBase.splice(4, 0, cityOrgCount);
-    const cityRow: (string | number)[] = cityBase;
-    for (const col of statColumns) {
-      const c = cityStatCounts.get(col.id) || 0;
-      if (c > 0) cityRow.push(r1((cityStatSums.get(col.id) || 0) / c));
-      else cityRow.push("");
+
+    const baselineRow: (string | number)[] = [baselineLabel, baselineName];
+    if (orgCountHeader) {
+      const totalOrgCount = Array.from(activeOrgsByArea.values()).reduce((sum, count) => sum + count, 0);
+      baselineRow.push(totalOrgCount);
+    }
+    baselineRow.push(
+      baselinePopulation,
+      r1(baselinePopulation > 0 ? baselineWeightedAge / baselinePopulation : 0),
+      r1(baselinePopulation > 0 ? baselineWeightedMarried / baselinePopulation : 0),
+    );
+    for (const column of columnEntries) {
+      const count = baselineStatCounts.get(column.id) || 0;
+      if (count > 0) baselineRow.push(r1((baselineStatSums.get(column.id) || 0) / count));
+      else baselineRow.push("");
     }
 
     const lines: string[] = [];
     lines.push(headers.join(","));
     for (const row of rows) lines.push(row.join(","));
-    lines.push(summary.join(","));
-    lines.push(cityRow.join(","));
+    lines.push(summaryRow.join(","));
+    lines.push(baselineRow.join(","));
 
     const csv = lines.join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const now = new Date();
-    const ts = now.toISOString().replace(/[:T]/g, "-").slice(0, 19);
+    const link = document.createElement("a");
+    const timestamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
     const statSuffix = selectedCategory
       ? `_${selectedCategory}`
       : selectedStatId
       ? `_${(statsById.get(selectedStatId)?.name || "stat").replace(/\s+/g, "_")}`
       : "";
-    a.download = `areas_export${statSuffix}_${ts}.csv`;
-    a.href = url;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const scopeSuffix = primaryKind === "ZIP" ? "_zips" : "_counties";
+    link.download = `areas_export${scopeSuffix}${statSuffix}_${timestamp}.csv`;
+    link.href = url;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
@@ -747,20 +780,14 @@ export const ReactMapApp = () => {
           {activeScreen === "report" && (
             <Suspense fallback={<div className="flex flex-1 items-center justify-center text-sm text-slate-500">Loading report…</div>}>
               <ReportScreen
-                selectedZips={selectedZips}
+                selectedAreas={selectedAreasForReport}
                 organizations={organizations}
                 orgZipById={orgZipById}
+                orgCountyById={orgCountyById}
                 statsById={statsById}
-                statDataById={(() => {
-                  const map = new Map<string, { type: string; data: Record<string, number> }>();
-                  for (const [id, entry] of statDataByStatId.entries()) {
-                    const zipEntry = entry.ZIP ?? entry.COUNTY;
-                    if (!zipEntry) continue;
-                    map.set(id, { type: zipEntry.type, data: zipEntry.data });
-                  }
-                  return map;
-                })()}
-                seriesByStatId={seriesByStatId}
+                statDataById={statDataByStatId}
+                seriesByStatIdByKind={seriesByStatIdByKind}
+                areaNameLookup={areaNameLookup}
               />
             </Suspense>
           )}

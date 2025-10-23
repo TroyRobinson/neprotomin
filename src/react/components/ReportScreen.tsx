@@ -1,18 +1,28 @@
 import { useMemo } from "react";
+
+import type { AreaId } from "../../types/areas";
 import type { Organization } from "../../types/organization";
 import type { Stat } from "../../types/stat";
 import { ReportHighlights } from "./ReportHighlights";
+import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
 
-type SeriesEntry = { date: string; type: string; data: Record<string, number> };
+type SupportedAreaKind = "ZIP" | "COUNTY";
 
 interface ReportScreenProps {
-  selectedZips: string[];
+  selectedAreas: AreaId[];
   organizations: Organization[];
   orgZipById: Map<string, string | null>;
+  orgCountyById: Map<string, string | null>;
   statsById: Map<string, Stat>;
-  statDataById: Map<string, { type: string; data: Record<string, number> }>;
-  seriesByStatId: Map<string, SeriesEntry[]>;
+  statDataById: Map<string, Partial<Record<SupportedAreaKind, StatBoundaryEntry>>>;
+  seriesByStatIdByKind: Map<string, SeriesByKind>;
+  areaNameLookup: (kind: SupportedAreaKind, code: string) => string;
 }
+
+const comparisonLabelByKind: Record<SupportedAreaKind, string> = {
+  ZIP: "City",
+  COUNTY: "State",
+};
 
 function formatNumber(n: number): string {
   if (!Number.isFinite(n)) return "—";
@@ -30,137 +40,206 @@ function formatYears(n: number): string {
 }
 
 export const ReportScreen = ({
-  selectedZips,
+  selectedAreas,
   organizations,
   orgZipById,
+  orgCountyById,
   statsById,
   statDataById,
-  seriesByStatId,
+  seriesByStatIdByKind,
+  areaNameLookup,
 }: ReportScreenProps) => {
+  const selectedByKind = useMemo(
+    () => ({
+      ZIP: selectedAreas.filter((area) => area.kind === "ZIP").map((area) => area.id),
+      COUNTY: selectedAreas.filter((area) => area.kind === "COUNTY").map((area) => area.id),
+    }),
+    [selectedAreas],
+  );
+
+  const primaryKind = useMemo<SupportedAreaKind | null>(() => {
+    if (selectedByKind.ZIP.length > 0) return "ZIP";
+    if (selectedByKind.COUNTY.length > 0) return "COUNTY";
+    return null;
+  }, [selectedByKind]);
+
+  const primaryCodes = primaryKind ? selectedByKind[primaryKind] : [];
+  const hasMixedSelection = selectedAreas.some((area) => area.kind !== (primaryKind ?? "ZIP"));
+
   const header = useMemo(() => {
-    if (selectedZips.length === 0) return { title: "Report", sub: "Select one or more ZIPs to generate a report.", zipList: null as string | null };
-    const label = selectedZips.length === 1 ? selectedZips[0] : `${selectedZips.length} ZIPs`;
+    if (!primaryKind || primaryCodes.length === 0) {
+      const sub = hasMixedSelection
+        ? "Reports support ZIP or county selections. Add one to generate details."
+        : "Select one or more ZIPs or counties to generate a report.";
+      return { title: "Report", sub, list: null as string | null };
+    }
+    const labels = primaryCodes.map((code) => areaNameLookup(primaryKind, code) || code);
+    const labelSuffix = primaryKind === "ZIP" ? "ZIPs" : "counties";
+    const titleLabel = labels.length === 1 ? labels[0] : `${labels.length} ${labelSuffix}`;
+    const sub =
+      primaryKind === "COUNTY" && selectedByKind.ZIP.length > 0
+        ? "ZIP selections appear separately in the sidebar."
+        : "";
     return {
-      title: `Report · ${label}`,
-      sub: "",
-      zipList: selectedZips.length > 1 ? selectedZips.join(", ") : null,
+      title: `Report · ${titleLabel}`,
+      sub,
+      list: labels.length > 1 ? labels.join(", ") : null,
     };
-  }, [selectedZips]);
+  }, [areaNameLookup, hasMixedSelection, primaryCodes, primaryKind, selectedByKind.ZIP.length]);
 
   const callouts = useMemo(() => {
-    if (selectedZips.length === 0) return { population: "—", avgAge: "—", married: "—" };
-
-    // Pull population, average age and married percent from statData
-    const getByName = (name: string): { data: Record<string, number> } | null => {
-      for (const [statId, entry] of statDataById) {
-        const s = statsById.get(statId);
-        if (s?.name === name) return entry;
+    if (!primaryKind || primaryCodes.length === 0) return { population: "—", avgAge: "—", married: "—" };
+    const getEntryByName = (name: string): StatBoundaryEntry | null => {
+      for (const [statId, entry] of statDataById.entries()) {
+        const stat = statsById.get(statId);
+        if (stat?.name === name) {
+          return entry?.[primaryKind] ?? null;
+        }
       }
       return null;
     };
 
-    const popEntry = getByName("Population");
-    const ageEntry = getByName("Average Age");
-    const marriedEntry = getByName("Married Percent");
-    if (!popEntry) return { population: "—", avgAge: "—", married: "—" };
+    const populationEntry = getEntryByName("Population");
+    const ageEntry = getEntryByName("Average Age");
+    const marriedEntry = getEntryByName("Married Percent");
+    if (!populationEntry) return { population: "—", avgAge: "—", married: "—" };
 
-    let totalPop = 0;
+    let totalPopulation = 0;
     let weightedAge = 0;
     let weightedMarried = 0;
-    for (const z of selectedZips) {
-      const p = Math.max(0, Math.round((popEntry.data || ({} as any))[z] || 0));
-      totalPop += p;
-      const age = (ageEntry?.data || ({} as any))[z];
-      if (typeof age === "number") weightedAge += age * p;
-      const married = (marriedEntry?.data || ({} as any))[z];
-      if (typeof married === "number") weightedMarried += married * p;
+    for (const code of primaryCodes) {
+      const population = Math.max(0, Math.round((populationEntry.data || ({} as Record<string, number>))[code] || 0));
+      totalPopulation += population;
+      const age = (ageEntry?.data || ({} as Record<string, number>))[code];
+      if (typeof age === "number") weightedAge += age * population;
+      const married = (marriedEntry?.data || ({} as Record<string, number>))[code];
+      if (typeof married === "number") weightedMarried += married * population;
     }
-    if (totalPop === 0) return { population: "—", avgAge: "—", married: "—" };
-    const avgAge = weightedAge > 0 ? weightedAge / totalPop : NaN;
-    const avgMarried = weightedMarried > 0 ? weightedMarried / totalPop : NaN;
-    return { population: formatNumber(totalPop), avgAge: formatYears(avgAge), married: formatPercent(avgMarried) };
-  }, [selectedZips, statDataById, statsById]);
+    if (totalPopulation === 0) return { population: "—", avgAge: "—", married: "—" };
+    const averageAge = weightedAge > 0 ? weightedAge / totalPopulation : NaN;
+    const averageMarried = weightedMarried > 0 ? weightedMarried / totalPopulation : NaN;
+    return {
+      population: formatNumber(totalPopulation),
+      avgAge: formatYears(averageAge),
+      married: formatPercent(averageMarried),
+    };
+  }, [primaryCodes, primaryKind, statDataById, statsById]);
+
+  const comparisonLabel = primaryKind ? comparisonLabelByKind[primaryKind] : "City";
 
   const ranking = useMemo(() => {
-    type Row = { statId: string; name: string; type: string; selectedValue: number; cityValue: number; diff: number; score: number };
+    if (!primaryKind || primaryCodes.length === 0) return { left: [], right: [] };
+    type Row = {
+      statId: string;
+      name: string;
+      type: string;
+      selectedValue: number;
+      comparisonValue: number;
+      diff: number;
+      score: number;
+    };
     const rows: Row[] = [];
-    for (const [statId, entry] of statDataById) {
-      const distValues = Object.values(entry.data || {}).filter((x) => typeof x === "number" && Number.isFinite(x)) as number[];
-      if (distValues.length === 0) continue;
-      const min = Math.min(...distValues);
-      const max = Math.max(...distValues);
+    for (const [statId, byKind] of statDataById.entries()) {
+      const entry = byKind?.[primaryKind];
+      if (!entry) continue;
+      const values = Object.values(entry.data || {}).filter(
+        (value): value is number => typeof value === "number" && Number.isFinite(value),
+      );
+      if (values.length === 0) continue;
+      const min = Math.min(...values);
+      const max = Math.max(...values);
       const range = Math.max(0, max - min);
-      const cAvg = distValues.reduce((a, b) => a + b, 0) / distValues.length;
+      const comparisonAverage = values.reduce((sum, value) => sum + value, 0) / values.length;
 
       let selectedValue = 0;
-      if (selectedZips.length === 1) {
-        const z = selectedZips[0];
-        selectedValue = typeof entry.data[z] === "number" ? (entry.data[z] as number) : 0;
+      if (primaryCodes.length === 1) {
+        const code = primaryCodes[0];
+        const value = entry.data?.[code];
+        selectedValue = typeof value === "number" ? value : 0;
       } else {
-        const vals: number[] = [];
-        for (const z of selectedZips) {
-          const v = entry.data?.[z];
-          if (typeof v === "number" && Number.isFinite(v)) vals.push(v);
-        }
-        if (vals.length === 0) continue;
-        selectedValue = vals.reduce((a, b) => a + b, 0) / vals.length;
+        const selectedValues = primaryCodes
+          .map((code) => entry.data?.[code])
+          .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+        if (selectedValues.length === 0) continue;
+        selectedValue = selectedValues.reduce((sum, value) => sum + value, 0) / selectedValues.length;
       }
 
-      let score = 0;
-      if (selectedZips.length === 1) score = range > 0 ? (selectedValue - min) / range : 0;
-      else score = range > 0 ? Math.abs(selectedValue - cAvg) / range : 0;
-      const s = statsById.get(statId);
-      if (!s) continue;
-      rows.push({ statId, name: s.name, type: entry.type, selectedValue, cityValue: cAvg, diff: selectedValue - cAvg, score });
+      const stat = statsById.get(statId);
+      if (!stat) continue;
+      const score =
+        primaryCodes.length === 1
+          ? range > 0
+            ? (selectedValue - min) / range
+            : 0
+          : range > 0
+          ? Math.abs(selectedValue - comparisonAverage) / range
+          : 0;
+      const diff = selectedValue - comparisonAverage;
+      rows.push({
+        statId,
+        name: stat.name,
+        type: entry.type,
+        selectedValue,
+        comparisonValue: comparisonAverage,
+        diff,
+        score,
+      });
     }
     rows.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
     const top = rows.slice(0, 6);
-    const left = top.slice(0, 3);
-    const right = top.slice(3);
-    return { left, right };
-  }, [selectedZips, statDataById, statsById]);
+    return { left: top.slice(0, 3), right: top.slice(3) };
+  }, [primaryCodes, primaryKind, statDataById, statsById]);
 
-  const highlights = useMemo(() => {
-    const topFour = ranking.left.concat(ranking.right).slice(0, 4).map((r) => ({ statId: r.statId, name: r.name, type: r.type }));
-    return topFour;
-  }, [ranking]);
+  const highlights = useMemo(
+    () => ranking.left.concat(ranking.right).slice(0, 4).map((row) => ({ statId: row.statId, name: row.name, type: row.type })),
+    [ranking],
+  );
 
   const orgsInSelection = useMemo(() => {
-    if (selectedZips.length === 0) return [] as Organization[];
-    const sel = new Set(selectedZips);
-    return organizations.filter((o) => {
-      const z = orgZipById.get(o.id);
-      return !!z && sel.has(z);
+    if (!primaryKind || primaryCodes.length === 0) return [] as Organization[];
+    const selectedSet = new Set(primaryCodes);
+    if (primaryKind === "ZIP") {
+      return organizations.filter((org) => {
+        const zip = orgZipById.get(org.id);
+        return !!zip && selectedSet.has(zip);
+      });
+    }
+    return organizations.filter((org) => {
+      const county = orgCountyById.get(org.id);
+      return !!county && selectedSet.has(county);
     });
-  }, [organizations, orgZipById, selectedZips]);
+  }, [orgCountyById, orgZipById, organizations, primaryCodes, primaryKind]);
 
   return (
     <section className="relative flex-1 overflow-y-auto bg-white dark:bg-slate-900">
       <div className="mx-auto w-full max-w-6xl px-6 py-6">
-        {/* Header */}
         <div className="mb-4">
           <div className="flex items-end justify-between">
             <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">{header.title}</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">{header.sub}</p>
           </div>
-          {header.zipList && (
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{header.zipList}</p>
-          )}
+          {header.list && <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{header.list}</p>}
         </div>
 
-        {selectedZips.length === 0 ? (
+        {primaryCodes.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="mb-4">
               <svg className="mx-auto h-12 w-12 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.5"
+                  d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                />
               </svg>
             </div>
             <h3 className="mb-2 text-lg font-semibold text-slate-800 dark:text-slate-100">No area selected</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Please enter a ZIP above or select one on the map</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {hasMixedSelection ? "Add a ZIP or county to generate a report." : "Please enter a ZIP or county above, or select one on the map."}
+            </p>
           </div>
         ) : (
           <>
-            {/* Callouts */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/40">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Population</p>
@@ -176,50 +255,54 @@ export const ReportScreen = ({
               </div>
             </div>
 
-            {/* Highlights */}
             <ReportHighlights
               items={highlights}
-              selectedZips={selectedZips}
+              selectedKind={primaryKind}
+              selectedCodes={primaryCodes}
+              areaNameLookup={areaNameLookup}
               statDataById={statDataById}
-              seriesByStatId={seriesByStatId}
+              seriesByStatIdByKind={seriesByStatIdByKind}
             />
 
-            {/* Ranking */}
             <div className="mt-6">
-              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Top differences vs city</h3>
+              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Top differences vs {comparisonLabel.toLowerCase()}
+              </h3>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
-                  {ranking.left.length === 0 && (
-                    <li className="px-4 py-6 text-sm text-slate-500 dark:text-slate-400">No selection.</li>
-                  )}
-                  {ranking.left.map((r) => (
-                    <li key={r.statId} className="flex items-center justify-between bg-white px-4 py-3 dark:bg-slate-900">
+                  {ranking.left.length === 0 && <li className="px-4 py-6 text-sm text-slate-500 dark:text-slate-400">No selection.</li>}
+                  {ranking.left.map((row) => (
+                    <li key={row.statId} className="flex items-center justify-between bg-white px-4 py-3 dark:bg-slate-900">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{r.name}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">City: {/* simplified */}{r.cityValue.toFixed(2)}</p>
+                        <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{row.name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {comparisonLabel}: {row.comparisonValue.toFixed(2)}
+                        </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-semibold text-slate-800 dark:text-white">{r.selectedValue.toFixed(2)}</p>
-                        <p className={`text-xs font-medium ${r.diff >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                          {r.diff >= 0 ? "+" : "-"}
-                          {Math.abs(r.diff).toFixed(2)} vs city
+                        <p className="text-sm font-semibold text-slate-800 dark:text-white">{row.selectedValue.toFixed(2)}</p>
+                        <p className={`text-xs font-medium ${row.diff >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                          {row.diff >= 0 ? "+" : "-"}
+                          {Math.abs(row.diff).toFixed(2)} vs {comparisonLabel.toLowerCase()}
                         </p>
                       </div>
                     </li>
                   ))}
                 </ul>
                 <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
-                  {ranking.right.map((r) => (
-                    <li key={r.statId} className="flex items-center justify-between bg-white px-4 py-3 dark:bg-slate-900">
+                  {ranking.right.map((row) => (
+                    <li key={row.statId} className="flex items-center justify-between bg-white px-4 py-3 dark:bg-slate-900">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{r.name}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">City: {r.cityValue.toFixed(2)}</p>
+                        <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{row.name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {comparisonLabel}: {row.comparisonValue.toFixed(2)}
+                        </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-semibold text-slate-800 dark:text-white">{r.selectedValue.toFixed(2)}</p>
-                        <p className={`text-xs font-medium ${r.diff >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                          {r.diff >= 0 ? "+" : "-"}
-                          {Math.abs(r.diff).toFixed(2)} vs city
+                        <p className="text-sm font-semibold text-slate-800 dark:text-white">{row.selectedValue.toFixed(2)}</p>
+                        <p className={`text-xs font-medium ${row.diff >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                          {row.diff >= 0 ? "+" : "-"}
+                          {Math.abs(row.diff).toFixed(2)} vs {comparisonLabel.toLowerCase()}
                         </p>
                       </div>
                     </li>
@@ -228,7 +311,6 @@ export const ReportScreen = ({
               </div>
             </div>
 
-            {/* Orgs in selection */}
             <div className="mt-6">
               <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Organizations in selection</h3>
               {orgsInSelection.length === 0 ? (
@@ -239,8 +321,17 @@ export const ReportScreen = ({
                     <li key={org.id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/40">
                       <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{org.name}</p>
                       <div className="mt-1 flex items-center justify-between">
-                        <span className="rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-200">{org.category}</span>
-                        <a href={org.url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-slate-500 hover:text-brand-700 dark:text-slate-400">Visit site</a>
+                        <span className="rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                          {org.category}
+                        </span>
+                        <a
+                          href={org.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-medium text-slate-500 hover:text-brand-700 dark:text-slate-400"
+                        >
+                          Visit site
+                        </a>
                       </div>
                     </li>
                   ))}
@@ -253,5 +344,3 @@ export const ReportScreen = ({
     </section>
   );
 };
-
-

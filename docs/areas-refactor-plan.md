@@ -48,12 +48,13 @@
 
 ### B. Prep for Phase 4 (map/report parity)
 3. ✔️ Mirror secondary stat overlay for counties (currently ZIP-only); county centroid layer now resets its filter like the ZIP overlay.
-4. Adjust report composer to iterate `AreaId[]` rather than ZIP strings.
+4. ✔️ Report composer iterates `AreaId[]` and now aggregates/export county selections alongside ZIP rows.
 
 ### C. Current blockers & questions
 - Need QA to ensure the new county filter reset survives style swaps (`styledata`/`idle` re-entry) and doesn’t flicker during hover transitions.
 - Do we want a separate translate/offset for counties, or should we share the ZIP offset so mixed selections feel consistent? Needs design confirmation.
 - Should the county centroid source be pruned to active counties only, or is the full statewide feature set required for future expansion?
+- Validate county-weight weighting (population vs. simple average) and confirm numbers align with analytics expectations.
 
 ---
 
@@ -90,5 +91,5 @@ Optional niceties once core work lands:
 
 If you pick up from here:
 1. QA the county secondary stat overlay (hover/pin transitions, style swaps).
-2. Update report generation to operate on `AreaId[]`.
+2. Sanity check county aggregation/export figures against source dashboards (confirm weighting + labels).
 3. Run `npm run build` and manually test zoom/selection edge cases.

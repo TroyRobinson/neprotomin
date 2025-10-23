@@ -1,4 +1,8 @@
-import { useMemo, useRef, useEffect } from "react";
+import { useEffect, useMemo, useRef } from "react";
+
+import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
+
+type SupportedAreaKind = "ZIP" | "COUNTY";
 
 type SeriesEntry = { date: string; type: string; data: Record<string, number> };
 
@@ -10,69 +14,126 @@ interface HighlightItem {
 
 interface ReportHighlightsProps {
   items: HighlightItem[];
-  selectedZips: string[];
-  statDataById: Map<string, { type: string; data: Record<string, number> }>;
-  seriesByStatId: Map<string, SeriesEntry[]>;
+  selectedKind: SupportedAreaKind | null;
+  selectedCodes: string[];
+  areaNameLookup: (kind: SupportedAreaKind, code: string) => string;
+  statDataById: Map<string, Partial<Record<SupportedAreaKind, StatBoundaryEntry>>>;
+  seriesByStatIdByKind: Map<string, SeriesByKind>;
 }
 
 const HIGHLIGHT_COLORS = ["#375bff", "#8f20f8", "#cf873f", "#ff7f00"];
 
-export const ReportHighlights = ({ items, selectedZips, statDataById, seriesByStatId }: ReportHighlightsProps) => {
-  const expandedFirstId = items[0]?.statId || null;
+const formatValueByType = (value: number, type: string): string => {
+  if (!Number.isFinite(value)) return "—";
+  if (type === "percent") return `${Math.round(value)}%`;
+  if (type === "years") return `${value.toFixed(1)}`;
+  return new Intl.NumberFormat().format(Math.round(value));
+};
+
+export const ReportHighlights = ({
+  items,
+  selectedKind,
+  selectedCodes,
+  areaNameLookup,
+  statDataById,
+  seriesByStatIdByKind,
+}: ReportHighlightsProps) => {
+  const selectedAreas = useMemo(
+    () =>
+      selectedKind
+        ? selectedCodes.map((code) => ({
+            code,
+            label: areaNameLookup(selectedKind, code) || code,
+          }))
+        : [],
+    [areaNameLookup, selectedCodes, selectedKind],
+  );
+
+  const baselineLabel = selectedKind === "COUNTY" ? "StateAvg" : "CityAvg";
+  const expandedFirstId = items[0]?.statId ?? null;
 
   const cards = useMemo(() => {
-    const isLineCard = (id: string) => id === expandedFirstId;
-    const shouldExpandBarsForLayout = (i: number) => {
-      const thisIsLine = isLineCard(items[i].statId);
-      const neighborIdx = i % 2 === 0 ? i + 1 : i - 1;
-      const neighborIsLine = neighborIdx >= 0 && neighborIdx < items.length ? isLineCard(items[neighborIdx].statId) : false;
+    if (!selectedKind || selectedAreas.length === 0) return [];
+    const shouldExpandBarsForLayout = (index: number) => {
+      const thisIsLine = items[index]?.statId === expandedFirstId;
+      const neighborIdx = index % 2 === 0 ? index + 1 : index - 1;
+      const neighborIsLine = neighborIdx >= 0 && neighborIdx < items.length && items[neighborIdx]?.statId === expandedFirstId;
       return !thisIsLine && neighborIsLine;
     };
 
-    return items.map((item, index) => {
-      const entry = statDataById.get(item.statId);
-      const series = seriesByStatId.get(item.statId) || [];
-      const isLine = isLineCard(item.statId);
+    return items
+      .map((item, index) => {
+        const entryByKind = statDataById.get(item.statId);
+        const entry = entryByKind?.[selectedKind];
+        if (!entry) return null;
+        const series = seriesByStatIdByKind.get(item.statId)?.get(selectedKind) ?? [];
+        const isLine = item.statId === expandedFirstId;
 
-      // Compute bars
-      let bars: { label: string; value: number; selected?: boolean }[] = [];
-      if (entry) {
-        const pairs: { zip: string; value: number }[] = [];
-        for (const [zip, v] of Object.entries(entry.data || {})) {
-          if (typeof v === "number" && Number.isFinite(v)) pairs.push({ zip, value: v });
-        }
-        const cityAvg = pairs.length ? pairs.reduce((a, b) => a + b.value, 0) / pairs.length : 0;
-        const maxAreas = shouldExpandBarsForLayout(index) ? 6 : 3; // non-city bars to display
-        const pairsByZip = new Map(pairs.map((p) => [p.zip, p.value] as const));
-        const selectedIncluded: { zip: string; value: number }[] = [];
-        for (const z of selectedZips) {
-          const v = pairsByZip.get(z);
-          if (typeof v === "number") selectedIncluded.push({ zip: z, value: v });
-        }
-        selectedIncluded.sort((a, b) => b.value - a.value);
-        const selectedCapped = selectedIncluded.slice(0, maxAreas);
-        const need = Math.max(0, maxAreas - selectedCapped.length);
-        const selectedSet = new Set(selectedCapped.map((s) => s.zip));
-        pairs.sort((a, b) => b.value - a.value);
-        const nonSelectedTop: { zip: string; value: number }[] = [];
-        for (const p of pairs) {
-          if (nonSelectedTop.length >= need) break;
-          if (!selectedSet.has(p.zip)) nonSelectedTop.push(p);
-        }
-        const base = [{ label: "CityAvg", value: cityAvg }].concat(nonSelectedTop.map((p) => ({ label: p.zip, value: p.value })));
-        base.sort((a, b) => b.value - a.value);
-        const selectedBars = selectedCapped.map((p) => ({ label: p.zip, value: p.value, selected: true }));
-        bars = base.concat(selectedBars).sort((a, b) => b.value - a.value || String(a.label).localeCompare(String(b.label)));
-      }
+        const dataEntries = Object.entries(entry.data || {}).filter(
+          (pair): pair is [string, number] => typeof pair[1] === "number" && Number.isFinite(pair[1]),
+        );
+        const pairs = dataEntries.map(([code, value]) => ({ code, value }));
+        const cityAverage = pairs.length ? pairs.reduce((sum, pair) => sum + pair.value, 0) / pairs.length : 0;
+        const selectedSet = new Set(selectedAreas.map((area) => area.code));
+        const maxAreas = shouldExpandBarsForLayout(index) ? 6 : 3;
 
-      return { item, series, isLine, bars };
-    });
-  }, [items, selectedZips, statDataById, seriesByStatId, expandedFirstId]);
+        const selectedEntries = selectedAreas
+          .map((area) => {
+            const v = entry.data?.[area.code];
+            return typeof v === "number" ? { ...area, value: v } : null;
+          })
+          .filter((value): value is { code: string; label: string; value: number } => value !== null)
+          .sort((a, b) => b.value - a.value)
+          .slice(0, maxAreas);
+
+        const remainingSlots = Math.max(0, maxAreas - selectedEntries.length);
+        const topNonSelected = pairs
+          .filter((pair) => !selectedSet.has(pair.code))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, remainingSlots)
+          .map(({ code, value }) => ({
+            code,
+            label: areaNameLookup(selectedKind, code) || code,
+            value,
+            selected: false,
+          }));
+
+        const baselineEntry = { label: baselineLabel, value: cityAverage };
+        const selectedBars = selectedEntries.map(({ code, label, value }) => ({
+          code,
+          label,
+          value,
+          selected: true,
+        }));
+        const bars = [baselineEntry, ...topNonSelected, ...selectedBars].sort(
+          (a, b) => b.value - a.value || String(a.label).localeCompare(String(b.label)),
+        );
+
+        return {
+          item,
+          series,
+          isLine,
+          bars,
+        };
+      })
+      .filter(Boolean) as { item: HighlightItem; series: SeriesEntry[]; isLine: boolean; bars: { code?: string; label: string; value: number; selected?: boolean }[] }[];
+  }, [
+    areaNameLookup,
+    baselineLabel,
+    expandedFirstId,
+    items,
+    selectedAreas,
+    selectedKind,
+    statDataById,
+    seriesByStatIdByKind,
+  ]);
 
   return (
     <div className="mt-6">
       <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Highlights</h3>
-      <p className="mb-3 text-xs text-slate-400 dark:text-slate-500">Sorted by highest value for ZIP(s) compared to city</p>
+      <p className="mb-3 text-xs text-slate-400 dark:text-slate-500">
+        Sorted by highest value for selected {selectedKind === "COUNTY" ? "counties" : "ZIPs"} compared to {baselineLabel}
+      </p>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {cards.length === 0 ? (
           <p className="px-1 py-2 text-sm text-slate-500 dark:text-slate-400">No highlights available.</p>
@@ -84,7 +145,11 @@ export const ReportHighlights = ({ items, selectedZips, statDataById, seriesBySt
                 <span className="text-[11px] text-slate-400">{item.type}</span>
               </div>
               <div className="mt-2">
-                {isLine ? <LineMiniChart series={series} selectedZips={selectedZips} /> : <BarsMiniChart bars={bars} type={item.type} selectedZips={selectedZips} />}
+                {isLine ? (
+                  <LineMiniChart series={series} baselineLabel={baselineLabel} selectedAreas={selectedAreas} valueType={item.type} />
+                ) : (
+                  <BarsMiniChart bars={bars} type={item.type} selectedAreas={selectedAreas} baselineLabel={baselineLabel} />
+                )}
               </div>
             </div>
           ))
@@ -94,39 +159,46 @@ export const ReportHighlights = ({ items, selectedZips, statDataById, seriesBySt
   );
 };
 
-function formatValueByType(v: number, type: string): string {
-  if (!Number.isFinite(v)) return "—";
-  if (type === "percent") return `${Math.round(v)}%`;
-  if (type === "years") return `${v.toFixed(1)}`;
-  return new Intl.NumberFormat().format(Math.round(v));
-}
-
-const BarsMiniChart = ({ bars, type, selectedZips }: { bars: { label: string; value: number; selected?: boolean }[]; type: string; selectedZips: string[] }) => {
-  const colorByZip = new Map<string, string>();
-  const used = new Set<string>();
-  for (const z of selectedZips) {
-    if (!colorByZip.has(z)) {
-      const next = HIGHLIGHT_COLORS[Array.from(used).length % HIGHLIGHT_COLORS.length];
-      colorByZip.set(z, next);
-      used.add(next);
-    }
+const BarsMiniChart = ({
+  bars,
+  type,
+  selectedAreas,
+  baselineLabel,
+}: {
+  bars: { code?: string; label: string; value: number; selected?: boolean }[];
+  type: string;
+  selectedAreas: { code: string; label: string }[];
+  baselineLabel: string;
+}) => {
+  const colorByCode = new Map<string, string>();
+  const usedColors = new Set<string>();
+  for (const { code } of selectedAreas) {
+    if (colorByCode.has(code)) continue;
+    const next = HIGHLIGHT_COLORS[colorByCode.size % HIGHLIGHT_COLORS.length];
+    colorByCode.set(code, next);
+    usedColors.add(next);
   }
 
-  const max = Math.max(...bars.map((b) => b.value), 1);
+  const maxValue = Math.max(...bars.map((bar) => bar.value), 1);
   return (
     <div>
-      {bars.map((b, idx) => {
-        const isCity = b.label === "CityAvg";
-        const isSelected = !!b.selected;
-        const barColor = isCity ? "#94a3b8" : isSelected ? (colorByZip.get(b.label) || "#375bff") + "80" : "#94a3b8A0";
-        const widthPct = Math.max(0, Math.round((b.value / max) * 100));
+      {bars.map((bar, idx) => {
+        const isBaseline = bar.label === baselineLabel;
+        const color = isBaseline
+          ? "#94a3b8"
+          : bar.selected
+          ? (colorByCode.get(bar.code ?? "") || HIGHLIGHT_COLORS[idx % HIGHLIGHT_COLORS.length]) + "CC"
+          : "#94a3b8A0";
+        const width = Math.max(0, Math.round((bar.value / maxValue) * 100));
         return (
-          <div key={`${b.label}-${idx}`} className="mb-1.5 flex items-center gap-2">
-            <span className="w-16 shrink-0 text-[11px] text-slate-500 dark:text-slate-400">{b.label}</span>
+          <div key={`${bar.label}-${idx}`} className="mb-1.5 flex items-center gap-2">
+            <span className="w-24 shrink-0 truncate text-[11px] text-slate-500 dark:text-slate-400">{bar.label}</span>
             <div className="relative h-3 flex-1 rounded bg-slate-100 dark:bg-slate-800">
-              <div className="h-3 rounded" style={{ width: `${widthPct}%`, background: barColor }} />
+              <div className="h-3 rounded" style={{ width: `${width}%`, background: color }} />
             </div>
-            <span className="ml-2 w-14 shrink-0 text-right text-[11px] tabular-nums text-slate-500 dark:text-slate-400">{formatValueByType(b.value, type)}</span>
+            <span className="ml-2 w-16 shrink-0 text-right text-[11px] tabular-nums text-slate-500 dark:text-slate-400">
+              {formatValueByType(bar.value, type)}
+            </span>
           </div>
         );
       })}
@@ -134,37 +206,53 @@ const BarsMiniChart = ({ bars, type, selectedZips }: { bars: { label: string; va
   );
 };
 
-const LineMiniChart = ({ series, selectedZips }: { series: SeriesEntry[]; selectedZips: string[] }) => {
+const LineMiniChart = ({
+  series,
+  baselineLabel,
+  selectedAreas,
+  valueType,
+}: {
+  series: SeriesEntry[];
+  baselineLabel: string;
+  selectedAreas: { code: string; label: string }[];
+  valueType: string;
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    if (!series || series.length === 0) {
+      el.innerHTML = "<div class='text-xs text-slate-400 dark:text-slate-500'>No time series data.</div>";
+      return;
+    }
+
     const width = Math.max(320, Math.floor(el.clientWidth || 320));
     const height = 140;
     const margin = { top: 6, right: 8, bottom: 22, left: 0 };
     const innerW = width - margin.left - margin.right;
     const innerH = height - margin.top - margin.bottom;
-    const dates = series.map((s) => s.date);
+    const dates = series.map((entry) => entry.date);
     const x = (i: number) => (dates.length <= 1 ? innerW / 2 : (i / (dates.length - 1)) * innerW);
 
-    const allVals: number[] = [];
-    const cityPoints = series.map((e) => {
-      const vals = Object.values(e.data || {}) as number[];
-      const nums = vals.filter((v) => typeof v === "number");
-      const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
-      allVals.push(avg);
+    const allValues: number[] = [];
+    const baselinePoints = series.map((entry) => {
+      const vals = Object.values(entry.data || {}) as number[];
+      const numbers = vals.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+      const avg = numbers.length ? numbers.reduce((sum, value) => sum + value, 0) / numbers.length : 0;
+      allValues.push(avg);
       return avg;
     });
-    const labels = selectedZips.slice();
-    labels.forEach((zip) => series.forEach((e) => allVals.push((e.data?.[zip] as number) ?? 0)));
-    const minV = Math.min(...allVals);
-    const maxV = Math.max(...allVals);
-    const range = Math.max(1e-9, maxV - minV);
-    const padBottom = range * 0.05;
-    const yMin = minV - padBottom;
-    const yMax = maxV;
-    const y = (v: number) => innerH - ((v - yMin) / Math.max(1e-9, (yMax - yMin))) * innerH;
+    selectedAreas.forEach(({ code }) =>
+      series.forEach((entry) => {
+        const value = entry.data?.[code];
+        if (typeof value === "number") allValues.push(value);
+      }),
+    );
+    const minValue = Math.min(...allValues);
+    const maxValue = Math.max(...allValues);
+    const range = Math.max(1e-9, maxValue - minValue);
+    const y = (value: number) => innerH - ((value - minValue) / range) * innerH;
 
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
@@ -175,12 +263,12 @@ const LineMiniChart = ({ series, selectedZips }: { series: SeriesEntry[]; select
     g.setAttribute("transform", `translate(${margin.left},${margin.top})`);
     svg.appendChild(g);
 
-    // gridlines
-    const ticks = 3;
-    for (let i = 0; i <= ticks; i++) {
-      const t = i / ticks;
-      const v = minV + (maxV - minV) * t;
-      const yPos = y(v);
+    // grid
+    const gridLines = 3;
+    for (let i = 0; i <= gridLines; i++) {
+      const t = i / gridLines;
+      const value = minValue + (maxValue - minValue) * t;
+      const yPos = y(value);
       const line = document.createElementNS(ns, "line");
       line.setAttribute("x1", "0");
       line.setAttribute("x2", String(innerW));
@@ -192,39 +280,37 @@ const LineMiniChart = ({ series, selectedZips }: { series: SeriesEntry[]; select
       g.appendChild(line);
     }
 
-    // city line (dashed)
-    const cityPath = document.createElementNS(ns, "path");
-    const cityPts = cityPoints.map((v, i) => ({ x: x(i), y: y(v) }));
-    cityPath.setAttribute("d", buildSmoothPath(cityPts, 0.2));
-    cityPath.setAttribute("fill", "none");
-    cityPath.setAttribute("stroke", "#94a3b8");
-    cityPath.setAttribute("stroke-width", "2.2");
-    cityPath.setAttribute("stroke-dasharray", "4 3");
-    g.appendChild(cityPath);
+    // baseline
+    const baselinePath = document.createElementNS(ns, "path");
+    const baselineCoords = baselinePoints.map((value, idx) => ({ x: x(idx), y: y(value) }));
+    baselinePath.setAttribute("d", buildSmoothPath(baselineCoords, 0.2));
+    baselinePath.setAttribute("fill", "none");
+    baselinePath.setAttribute("stroke", "#94a3b8");
+    baselinePath.setAttribute("stroke-width", "2.2");
+    baselinePath.setAttribute("stroke-dasharray", "4 3");
+    g.appendChild(baselinePath);
 
     // selected lines
-    const colorByZip = new Map<string, string>();
-    const used = new Set<string>();
-    selectedZips.forEach((zip) => {
-      if (colorByZip.has(zip)) return;
-      const next = HIGHLIGHT_COLORS[Array.from(used).length % HIGHLIGHT_COLORS.length];
-      colorByZip.set(zip, next);
-      used.add(next);
-    });
-    const lineGroups: { zip: string; color: string; path: SVGPathElement; points: { x: number; y: number; v: number }[] }[] = [];
-    selectedZips.forEach((zip) => {
-      const path = document.createElementNS(ns, "path");
-      const vals = series.map((e) => (typeof e.data[zip] === "number" ? (e.data[zip] as number) : 0));
-      const pts = vals.map((v, i) => ({ x: x(i), y: y(v), v }));
-      path.setAttribute("d", buildSmoothPath(pts, 0.2));
-      path.setAttribute("fill", "none");
-      path.setAttribute("stroke", (colorByZip.get(zip) || "#375bff") + "CC");
-      path.setAttribute("stroke-width", "1.9");
-      g.appendChild(path);
-      lineGroups.push({ zip, color: (colorByZip.get(zip) || "#375bff") + "CC", path, points: pts });
+    const colorByCode = new Map<string, string>();
+    selectedAreas.forEach((area, idx) => {
+      colorByCode.set(area.code, HIGHLIGHT_COLORS[idx % HIGHLIGHT_COLORS.length]);
     });
 
-    // x labels (first/last)
+    const lineGroups = selectedAreas.map((area) => {
+      const vals = series.map((entry) =>
+        typeof entry.data?.[area.code] === "number" ? (entry.data?.[area.code] as number) : 0,
+      );
+      const pts = vals.map((value, idx) => ({ x: x(idx), y: y(value), value }));
+      const path = document.createElementNS(ns, "path");
+      path.setAttribute("d", buildSmoothPath(pts, 0.2));
+      path.setAttribute("fill", "none");
+      const color = (colorByCode.get(area.code) || "#375bff") + "CC";
+      path.setAttribute("stroke", color);
+      path.setAttribute("stroke-width", "1.9");
+      g.appendChild(path);
+      return { code: area.code, label: area.label, color, path, points: pts };
+    });
+
     if (dates.length > 0) {
       const first = document.createElementNS(ns, "text");
       first.setAttribute("x", "0");
@@ -233,6 +319,7 @@ const LineMiniChart = ({ series, selectedZips }: { series: SeriesEntry[]; select
       first.setAttribute("font-size", "10");
       first.textContent = dates[0];
       g.appendChild(first);
+
       const last = document.createElementNS(ns, "text");
       last.setAttribute("x", String(innerW));
       last.setAttribute("y", String(innerH + 14));
@@ -243,11 +330,9 @@ const LineMiniChart = ({ series, selectedZips }: { series: SeriesEntry[]; select
       g.appendChild(last);
     }
 
-    // mount
     el.innerHTML = "";
     el.appendChild(svg);
 
-    // Hover interaction: vertical guide + circles + tooltip
     const guide = document.createElementNS(ns, "line");
     guide.setAttribute("x1", "0");
     guide.setAttribute("x2", "0");
@@ -258,14 +343,14 @@ const LineMiniChart = ({ series, selectedZips }: { series: SeriesEntry[]; select
     guide.setAttribute("opacity", "0");
     g.appendChild(guide);
 
-    const markerByZip = new Map<string, SVGCircleElement>();
-    for (const lg of lineGroups) {
-      const c = document.createElementNS(ns, "circle");
-      c.setAttribute("r", "3");
-      c.setAttribute("fill", lg.color);
-      c.setAttribute("opacity", "0");
-      g.appendChild(c);
-      markerByZip.set(lg.zip, c);
+    const markerByCode = new Map<string, SVGCircleElement>();
+    for (const group of lineGroups) {
+      const marker = document.createElementNS(ns, "circle");
+      marker.setAttribute("r", "3");
+      marker.setAttribute("fill", group.color);
+      marker.setAttribute("opacity", "0");
+      g.appendChild(marker);
+      markerByCode.set(group.code, marker);
     }
 
     const overlay = document.createElementNS(ns, "rect");
@@ -280,47 +365,51 @@ const LineMiniChart = ({ series, selectedZips }: { series: SeriesEntry[]; select
     tooltip.style.position = "absolute";
     tooltip.style.pointerEvents = "none";
     tooltip.style.background = "rgba(255,255,255,0.95)";
-    tooltip.style.border = "1px solid #e2e8f0"; // slate-200
+    tooltip.style.border = "1px solid #e2e8f0";
     tooltip.style.borderRadius = "8px";
     tooltip.style.boxShadow = "0 4px 10px rgba(0,0,0,0.08)";
     tooltip.style.padding = "6px 8px";
     tooltip.style.fontSize = "11px";
-    tooltip.style.color = "#0f172a"; // slate-900
+    tooltip.style.color = "#0f172a";
     tooltip.style.opacity = "0";
     el.appendChild(tooltip);
 
-    const showAtIndex = (i: number, clientX: number, clientY: number) => {
-      if (i < 0 || i >= dates.length) return;
-      const gx = x(i);
+    const showAtIndex = (index: number, clientX: number, clientY: number) => {
+      if (index < 0 || index >= dates.length) return;
+      const gx = x(index);
       guide.setAttribute("x1", String(gx));
       guide.setAttribute("x2", String(gx));
       guide.setAttribute("opacity", "0.8");
 
       const rows: { label: string; color: string; value: number; y: number }[] = [];
-      for (const lg of lineGroups) {
-        const p = lg.points[i];
-        if (!p) continue;
-        const circle = markerByZip.get(lg.zip)!;
-        circle.setAttribute("cx", String(gx));
-        circle.setAttribute("cy", String(p.y));
-        circle.setAttribute("opacity", "1");
-        rows.push({ label: lg.zip, color: lg.color, value: p.v, y: p.y });
+      for (const group of lineGroups) {
+        const point = group.points[index];
+        if (!point) continue;
+        const marker = markerByCode.get(group.code);
+        if (marker) {
+          marker.setAttribute("cx", String(gx));
+          marker.setAttribute("cy", String(point.y));
+          marker.setAttribute("opacity", "1");
+        }
+        rows.push({ label: group.label, color: group.color, value: point.value, y: point.y });
       }
-      // City avg point
-      const cityVal = cityPoints[i];
-      rows.push({ label: "CityAvg", color: "#94a3b8", value: cityVal, y: y(cityVal) });
+
+      const baselineValue = baselinePoints[index];
+      rows.push({ label: baselineLabel, color: "#94a3b8", value: baselineValue, y: y(baselineValue) });
       rows.sort((a, b) => b.value - a.value);
 
-      // Tooltip content
       tooltip.innerHTML = rows
         .map(
-          (r) =>
-            `<div style="display:flex;align-items:center;gap:6px;white-space:nowrap"><span style="display:inline-block;width:10px;height:2px;background:${r.color};"></span><span>${r.label}</span><span style="margin-left:6px;color:#64748b">${r.value.toFixed(2)}</span></div>`
+          (row) =>
+            `<div style="display:flex;align-items:center;gap:6px;white-space:nowrap">
+              <span style="display:inline-block;width:10px;height:2px;background:${row.color};"></span>
+              <span>${row.label}</span>
+              <span style="margin-left:6px;color:#64748b">${formatValueByType(row.value, valueType)}</span>
+            </div>`,
         )
         .join("");
       tooltip.style.opacity = "1";
 
-      // Position tooltip near cursor but keep inside container
       const rect = el.getBoundingClientRect();
       const tx = Math.min(rect.width - 160, Math.max(8, clientX - rect.left + 12));
       const ty = Math.min(rect.height - 60, Math.max(8, clientY - rect.top - 24));
@@ -328,19 +417,21 @@ const LineMiniChart = ({ series, selectedZips }: { series: SeriesEntry[]; select
       tooltip.style.top = `${ty}px`;
     };
 
-    const handleMove = (evt: MouseEvent) => {
+    const handleMove = (event: MouseEvent) => {
       const rect = svg.getBoundingClientRect();
-      const px = evt.clientX - rect.left - margin.left;
+      const px = event.clientX - rect.left - margin.left;
       const t = Math.max(0, Math.min(innerW, px));
-      const frac = innerW <= 0 || dates.length <= 1 ? 0 : t / innerW;
-      const i = Math.round(frac * (dates.length - 1));
-      showAtIndex(i, evt.clientX, evt.clientY);
+      const fraction = innerW <= 0 || dates.length <= 1 ? 0 : t / innerW;
+      const index = Math.round(fraction * (dates.length - 1));
+      showAtIndex(index, event.clientX, event.clientY);
     };
+
     const handleLeave = () => {
       guide.setAttribute("opacity", "0");
       tooltip.style.opacity = "0";
-      for (const c of markerByZip.values()) c.setAttribute("opacity", "0");
+      for (const marker of markerByCode.values()) marker.setAttribute("opacity", "0");
     };
+
     overlay.addEventListener("mousemove", handleMove);
     overlay.addEventListener("mouseleave", handleLeave);
 
@@ -348,7 +439,7 @@ const LineMiniChart = ({ series, selectedZips }: { series: SeriesEntry[]; select
       overlay.removeEventListener("mousemove", handleMove);
       overlay.removeEventListener("mouseleave", handleLeave);
     };
-  }, [series, selectedZips]);
+  }, [baselineLabel, selectedAreas, series, valueType]);
 
   return <div ref={containerRef} className="relative w-full" />;
 };
@@ -357,7 +448,7 @@ function buildSmoothPath(points: { x: number; y: number }[], tension = 0.2): str
   if (points.length === 0) return "";
   if (points.length === 1) return `M${points[0].x},${points[0].y}`;
   const path: string[] = [`M${points[0].x},${points[0].y}`];
-  for (let i = 0; i < points.length - 1; i++) {
+  for (let i = 0; i < points.length - 1; i += 1) {
     const p0 = points[i === 0 ? 0 : i - 1];
     const p1 = points[i];
     const p2 = points[i + 1];
@@ -370,5 +461,3 @@ function buildSmoothPath(points: { x: number; y: number }[], tension = 0.2): str
   }
   return path.join(" ");
 }
-
-
