@@ -55,6 +55,7 @@
 - Do we want a separate translate/offset for counties, or should we share the ZIP offset so mixed selections feel consistent? Needs design confirmation.
 - Should the county centroid source be pruned to active counties only, or is the full statewide feature set required for future expansion?
 - Validate county-weight weighting (population vs. simple average) and confirm numbers align with analytics expectations.
+- Report currently prioritises ZIP selections when both ZIPs and counties are pinned; document whether mixed reports should show both or split into sections.
 
 ---
 
