@@ -50,11 +50,9 @@ const SegmentBar = ({ segments }: { segments: BreakdownSegmentDisplay[] }) => {
   };
 
   return (
-    <div
-      ref={containerRef}
-      className="relative h-5 w-full overflow-hidden rounded bg-slate-200 dark:bg-slate-800"
-    >
-      {segments.map((seg) => {
+    <div ref={containerRef} className="relative h-5 w-full">
+      <div className="relative h-full w-full overflow-hidden rounded bg-slate-200 dark:bg-slate-800">
+        {segments.map((seg) => {
         const width = Math.max(0, Math.min(100, Math.round(seg.valuePercent)));
         const left = offset;
         offset += width;
@@ -71,6 +69,7 @@ const SegmentBar = ({ segments }: { segments: BreakdownSegmentDisplay[] }) => {
           />
         );
       })}
+      </div>
       {tooltip && (
         <div
           className="pointer-events-none absolute z-10 whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-[10px] font-medium text-white shadow dark:bg-slate-200 dark:text-slate-900"
