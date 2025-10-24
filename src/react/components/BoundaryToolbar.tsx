@@ -89,14 +89,21 @@ export const BoundaryToolbar = ({
   const hoveredCounty = hoveredArea?.kind === "COUNTY" ? hoveredArea.id : null;
   const pinnedZipSet = new Set(pinnedZips);
   const pinnedCountySet = new Set(pinnedCounties);
-  const hasZipSelections = selectedZips.length > 0;
-  const hasCountySelections = selectedCounties.length > 0;
-  const hasSelections = hasZipSelections || hasCountySelections;
   const activeAreaKind = boundaryModeToAreaKind[boundaryMode] ?? null;
   const areaDisplay = activeAreaKind ? areaDisplayByKind[activeAreaKind] : null;
   const areaLabel = areaDisplay?.singular ?? "area";
   const areaPluralLabel = areaDisplay?.plural ?? "areas";
-  const inLineMode = selectedZips.length > 0 && selectedZips.length < 4;
+
+  const isActiveZip = activeAreaKind === "ZIP";
+  const isActiveCounty = activeAreaKind === "COUNTY";
+  const activeSelections = isActiveZip ? selectedZips : isActiveCounty ? selectedCounties : [];
+  const activePinnedSet = isActiveZip ? pinnedZipSet : isActiveCounty ? pinnedCountySet : new Set<string>();
+  const activeSelectedCount = activeSelections.length;
+  const activePinnedCount = activeSelections.filter((id) => activePinnedSet.has(id)).length;
+  const activeHasSelections = activeSelectedCount > 0;
+  const allPinned = activeHasSelections && activePinnedCount === activeSelectedCount;
+
+  const inLineMode = isActiveZip && selectedZips.length > 0 && selectedZips.length < 4;
 
   useEffect(() => {
     const unsubscribe = themeController.subscribe((theme) => {
@@ -200,12 +207,6 @@ export const BoundaryToolbar = ({
     onUpdateSelection(kind, { selected: [...selected], pinned: nextPinned });
   };
 
-  const pinnedCount = selectedZips.filter((z) => pinnedZipSet.has(z)).length;
-  const countyPinnedCount = selectedCounties.filter((c) => pinnedCountySet.has(c)).length;
-  const totalSelectedCount = selectedZips.length + selectedCounties.length;
-  const totalPinnedCount = pinnedCount + countyPinnedCount;
-  const allPinned = totalSelectedCount > 0 && totalPinnedCount === totalSelectedCount;
-
   // Build color mapping by selection order
   const colorByZip = new Map<string, string>();
   if (inLineMode) {
@@ -227,7 +228,8 @@ export const BoundaryToolbar = ({
       <div className="flex flex-1 items-center gap-2 overflow-x-auto self-center py-1 pl-0 pr-1">
         {/* Chips Container */}
         <div className="flex items-center gap-2">
-          {sortedZips.map((zip) => {
+          {isActiveZip &&
+            sortedZips.map((zip) => {
             const isPinned = pinnedZipSet.has(zip);
             const isHovered = hoveredZip === zip;
             let chipStyle: React.CSSProperties = {};
@@ -270,7 +272,8 @@ export const BoundaryToolbar = ({
               </button>
             );
           })}
-          {sortedCounties.map((county) => {
+          {isActiveCounty &&
+            sortedCounties.map((county) => {
             const isPinned = pinnedCountySet.has(county);
             const isHovered = hoveredCounty === county;
             let chipClasses =
@@ -303,13 +306,13 @@ export const BoundaryToolbar = ({
         </div>
 
           {/* Add Button and Input */}
-        <div className={`flex items-center gap-1 ${!hasSelections && !inputOpen ? "-ml-2" : ""}`}>
+        <div className={`flex items-center gap-1 ${!activeHasSelections && !inputOpen ? "-ml-2" : ""}`}>
           <button
             ref={addBtnRef}
             type="button"
             onClick={() => setInputOpen(!inputOpen)}
             className={
-              !hasSelections && !inputOpen
+              !activeHasSelections && !inputOpen
                 ? "inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/70 px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300"
                 : "inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-white/70 text-slate-500 transition-colors hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400"
             }
@@ -328,10 +331,10 @@ export const BoundaryToolbar = ({
                 clipRule="evenodd"
               />
             </svg>
-            {!hasSelections && !inputOpen && <span className="ml-1 whitespace-nowrap">add {areaPluralLabel}</span>}
+            {!activeHasSelections && !inputOpen && <span className="ml-1 whitespace-nowrap">add {areaPluralLabel}</span>}
           </button>
 
-          <div ref={inputWrapperRef} className={inputOpen ? "" : "hidden"}>
+          <div ref={inputWrapperRef} className={inputOpen && isActiveZip ? "" : "hidden"}>
             <textarea
               ref={inputRef}
               rows={1}
@@ -343,22 +346,22 @@ export const BoundaryToolbar = ({
             />
           </div>
 
-          {!hasSelections && !inputOpen && (
+          {!activeHasSelections && !inputOpen && (
             <span className="whitespace-nowrap pl-2 text-xs font-medium text-slate-400 dark:text-slate-500">
               hold shift to select multiple map areas
             </span>
           )}
 
-          {totalSelectedCount >= 2 && (
+          {activeSelectedCount >= 2 && activeHasSelections && (
             <button
               type="button"
               onClick={() => {
                 const shouldPinAll = !allPinned;
-                (["ZIP", "COUNTY"] as const).forEach((kind) => {
-                  const selected = kind === "ZIP" ? selectedZips : selectedCounties;
-                  if (selected.length === 0) return;
-                  togglePinAll(kind, selected, shouldPinAll);
-                });
+                if (isActiveZip) {
+                  togglePinAll("ZIP", selectedZips, shouldPinAll);
+                } else if (isActiveCounty) {
+                  togglePinAll("COUNTY", selectedCounties, shouldPinAll);
+                }
               }}
               className="ml-2 cursor-pointer whitespace-nowrap text-xs font-medium text-brand-400 hover:text-brand-600/90"
             >
@@ -366,17 +369,15 @@ export const BoundaryToolbar = ({
             </button>
           )}
 
-          {hasSelections && (
+          {activeHasSelections && (
             <button
               type="button"
               onClick={() => {
-                (["ZIP", "COUNTY"] as const).forEach((kind) => {
-                  const selected = kind === "ZIP" ? selectedZips : selectedCounties;
-                  const pinned = kind === "ZIP" ? pinnedZips : pinnedCounties;
-                  if (selected.length > 0 || pinned.length > 0) {
-                    onUpdateSelection(kind, { selected: [], pinned: [] });
-                  }
-                });
+                if (isActiveZip) {
+                  onUpdateSelection("ZIP", { selected: [], pinned: [] });
+                } else if (isActiveCounty) {
+                  onUpdateSelection("COUNTY", { selected: [], pinned: [] });
+                }
               }}
               className="ml-3 inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
             >
@@ -397,7 +398,7 @@ export const BoundaryToolbar = ({
       {/* Right Side: Export and Boundary Selector */}
       <div className="ml-auto flex items-center gap-2">
         {/* Export Button */}
-        {hasSelections && onExport && (
+        {activeHasSelections && onExport && (
           <button
             type="button"
             onClick={onExport}

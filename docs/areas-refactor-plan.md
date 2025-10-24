@@ -73,7 +73,7 @@
 ## Handoff Checklist
 
 - [x] Map exposes “default area” hint for demographics (zoom + camera derived).
-- [x] `useDemographics` returns both `combinedSnapshot` and `byKind`, with missing‑data flags.
+- [x] `useDemographics` returns both `combinedSnapshot` and `byKind`, with missing-data flags.
 - [x] Sidebar uses unified demographics card; stat viz/list already consuming shared snapshots.
 - [x] Organisation sort weighting reuses blended stat data.
 - [ ] Documentation (this file + existing retros) updated after each milestone.
@@ -93,5 +93,5 @@ Optional niceties once core work lands:
 
 If you pick up from here:
 1. QA the county secondary stat overlay (hover/pin transitions, style swaps).
-2. Sanity check county aggregation/export figures against source dashboards (confirm weighting + labels).
+2. Sanity check report/sidebar behaviour when toggling Areas dropdown (ZIP ↔ county), including highlight extras and grey context chips.
 3. Run `npm run build` and manually test zoom/selection edge cases.

@@ -263,15 +263,21 @@ export const ReportScreen = ({
               items={highlights}
               selectedKind={primaryKind}
               selectedCodes={primaryCodes}
+              supplementalAreas={supplementalAreas}
               areaNameLookup={areaNameLookup}
               statDataById={statDataById}
               seriesByStatIdByKind={seriesByStatIdByKind}
             />
 
             <div className="mt-6">
-              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <h3 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Top differences vs {comparisonLabel.toLowerCase()}
               </h3>
+              {primaryKind && (
+                <p className="-mt-1 mb-2 text-xs text-slate-400 dark:text-slate-500">
+                  For selected {primaryKind === "ZIP" ? "ZIPs" : "counties"}
+                </p>
+              )}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
                   {ranking.left.length === 0 && <li className="px-4 py-6 text-sm text-slate-500 dark:text-slate-400">No selection.</li>}

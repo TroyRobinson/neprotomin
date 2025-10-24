@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 
+import type { AreaId } from "../../types/areas";
 import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
 
 type SupportedAreaKind = "ZIP" | "COUNTY";
@@ -16,12 +17,22 @@ interface ReportHighlightsProps {
   items: HighlightItem[];
   selectedKind: SupportedAreaKind | null;
   selectedCodes: string[];
+  supplementalAreas?: AreaId[];
   areaNameLookup: (kind: SupportedAreaKind, code: string) => string;
   statDataById: Map<string, Partial<Record<SupportedAreaKind, StatBoundaryEntry>>>;
   seriesByStatIdByKind: Map<string, SeriesByKind>;
 }
 
 const HIGHLIGHT_COLORS = ["#375bff", "#8f20f8", "#cf873f", "#ff7f00"];
+
+type AreaEntry = {
+  kind: SupportedAreaKind;
+  code: string;
+  label: string;
+  isPrimary: boolean;
+};
+
+type AreaMetric = AreaEntry & { value: number };
 
 const formatValueByType = (value: number, type: string): string => {
   if (!Number.isFinite(value)) return "—";
@@ -30,115 +41,141 @@ const formatValueByType = (value: number, type: string): string => {
   return new Intl.NumberFormat().format(Math.round(value));
 };
 
+const buildAreaEntries = (
+  selectedKind: SupportedAreaKind | null,
+  selectedCodes: string[],
+  supplementalAreas: AreaId[] | undefined,
+  areaNameLookup: (kind: SupportedAreaKind, code: string) => string,
+): { primary: AreaEntry[]; extras: AreaEntry[] } => {
+  const primary: AreaEntry[] = [];
+  const seen = new Set<string>();
+  if (selectedKind) {
+    for (const code of selectedCodes) {
+      const key = `${selectedKind}:${code}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      primary.push({
+        kind: selectedKind,
+        code,
+        label: areaNameLookup(selectedKind, code) || code,
+        isPrimary: true,
+      });
+    }
+  }
+  const extras: AreaEntry[] = [];
+  for (const area of supplementalAreas ?? []) {
+    if (area.kind !== "ZIP" && area.kind !== "COUNTY") continue;
+    const key = `${area.kind}:${area.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    extras.push({
+      kind: area.kind,
+      code: area.id,
+      label: areaNameLookup(area.kind, area.id) || area.id,
+      isPrimary: false,
+    });
+  }
+  return { primary, extras };
+};
+
 export const ReportHighlights = ({
   items,
   selectedKind,
   selectedCodes,
+  supplementalAreas,
   areaNameLookup,
   statDataById,
   seriesByStatIdByKind,
 }: ReportHighlightsProps) => {
-  const selectedAreas = useMemo(
-    () =>
-      selectedKind
-        ? selectedCodes.map((code) => ({
-            code,
-            label: areaNameLookup(selectedKind, code) || code,
-          }))
-        : [],
-    [areaNameLookup, selectedCodes, selectedKind],
+  const { primary, extras } = useMemo(
+    () => buildAreaEntries(selectedKind, selectedCodes, supplementalAreas, areaNameLookup),
+    [areaNameLookup, selectedCodes, selectedKind, supplementalAreas],
   );
 
   const baselineLabel = selectedKind === "COUNTY" ? "StateAvg" : "CityAvg";
   const expandedFirstId = items[0]?.statId ?? null;
 
   const cards = useMemo(() => {
-    if (!selectedKind || selectedAreas.length === 0) return [];
+    if (!selectedKind || primary.length === 0) return [];
     const shouldExpandBarsForLayout = (index: number) => {
       const thisIsLine = items[index]?.statId === expandedFirstId;
       const neighborIdx = index % 2 === 0 ? index + 1 : index - 1;
-      const neighborIsLine = neighborIdx >= 0 && neighborIdx < items.length && items[neighborIdx]?.statId === expandedFirstId;
+      const neighborIsLine =
+        neighborIdx >= 0 && neighborIdx < items.length && items[neighborIdx]?.statId === expandedFirstId;
       return !thisIsLine && neighborIsLine;
     };
 
     return items
       .map((item, index) => {
         const entryByKind = statDataById.get(item.statId);
-        const entry = entryByKind?.[selectedKind];
-        if (!entry) return null;
-        const series = seriesByStatIdByKind.get(item.statId)?.get(selectedKind) ?? [];
-        const isLine = item.statId === expandedFirstId;
+        const primaryEntry = entryByKind?.[selectedKind];
+        if (!primaryEntry) return null;
 
-        const dataEntries = Object.entries(entry.data || {}).filter(
+        const seriesByKind = seriesByStatIdByKind.get(item.statId) ?? new Map<SupportedAreaKind, SeriesEntry[]>();
+        const maxAreas = shouldExpandBarsForLayout(index) ? 6 : 3;
+        const chosenAreas: AreaEntry[] = primary.slice(0, maxAreas);
+        for (const extra of extras) {
+          if (chosenAreas.length >= maxAreas) break;
+          chosenAreas.push(extra);
+        }
+
+        const dataEntries = Object.entries(primaryEntry.data || {}).filter(
           (pair): pair is [string, number] => typeof pair[1] === "number" && Number.isFinite(pair[1]),
         );
         const pairs = dataEntries.map(([code, value]) => ({ code, value }));
-        const cityAverage = pairs.length ? pairs.reduce((sum, pair) => sum + pair.value, 0) / pairs.length : 0;
-        const selectedSet = new Set(selectedAreas.map((area) => area.code));
-        const maxAreas = shouldExpandBarsForLayout(index) ? 6 : 3;
+        const averagePrimary = pairs.length ? pairs.reduce((sum, pair) => sum + pair.value, 0) / pairs.length : 0;
 
-        const selectedEntries = selectedAreas
-          .map((area) => {
-            const v = entry.data?.[area.code];
-            return typeof v === "number" ? { ...area, value: v } : null;
-          })
-          .filter((value): value is { code: string; label: string; value: number } => value !== null)
-          .sort((a, b) => b.value - a.value)
-          .slice(0, maxAreas);
+        const areaMetrics: AreaMetric[] = [];
+        for (const area of chosenAreas) {
+          const entryForKind = entryByKind?.[area.kind];
+          if (!entryForKind) continue;
+          const raw = entryForKind.data?.[area.code];
+          if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
+          areaMetrics.push({ ...area, value: raw });
+        }
+        if (areaMetrics.length === 0) return null;
 
-        const remainingSlots = Math.max(0, maxAreas - selectedEntries.length);
-        const topNonSelected = pairs
-          .filter((pair) => !selectedSet.has(pair.code))
-          .sort((a, b) => b.value - a.value)
-          .slice(0, remainingSlots)
-          .map(({ code, value }) => ({
-            code,
-            label: areaNameLookup(selectedKind, code) || code,
-            value,
-            selected: false,
-          }));
-
-        const baselineEntry = { label: baselineLabel, value: cityAverage };
-        const selectedBars = selectedEntries.map(({ code, label, value }) => ({
-          code,
-          label,
-          value,
-          selected: true,
-        }));
-        const bars = [baselineEntry, ...topNonSelected, ...selectedBars].sort(
-          (a, b) => b.value - a.value || String(a.label).localeCompare(String(b.label)),
-        );
+        const bars = [
+          { label: baselineLabel, value: averagePrimary },
+          ...areaMetrics.map((area) => ({
+            code: area.code,
+            kind: area.kind,
+            label: area.label,
+            value: area.value,
+            selected: area.isPrimary,
+          })),
+        ].sort((a, b) => b.value - a.value || String(a.label).localeCompare(String(b.label)));
 
         return {
           item,
-          series,
-          isLine,
+          seriesByKind,
+          areaMetrics,
+          baseline: averagePrimary,
+          isLine: item.statId === expandedFirstId,
           bars,
         };
       })
-      .filter(Boolean) as { item: HighlightItem; series: SeriesEntry[]; isLine: boolean; bars: { code?: string; label: string; value: number; selected?: boolean }[] }[];
-  }, [
-    areaNameLookup,
-    baselineLabel,
-    expandedFirstId,
-    items,
-    selectedAreas,
-    selectedKind,
-    statDataById,
-    seriesByStatIdByKind,
-  ]);
+      .filter(Boolean) as Array<{
+        item: HighlightItem;
+        seriesByKind: Map<SupportedAreaKind, SeriesEntry[]>;
+        areaMetrics: AreaMetric[];
+        baseline: number;
+        isLine: boolean;
+        bars: { label: string; value: number; selected?: boolean; kind?: SupportedAreaKind; code?: string }[];
+      }>;
+  }, [baselineLabel, expandedFirstId, extras, items, primary, selectedKind, seriesByStatIdByKind, statDataById]);
 
   return (
     <div className="mt-6">
       <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Highlights</h3>
       <p className="mb-3 text-xs text-slate-400 dark:text-slate-500">
-        Sorted by highest value for selected {selectedKind === "COUNTY" ? "counties" : "ZIPs"} compared to {baselineLabel}
+        Sorted by highest value for selected {selectedKind === "COUNTY" ? "counties" : "ZIPs"} compared to {baselineLabel}. Additional pinned areas appear in grey when space allows.
       </p>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {cards.length === 0 ? (
           <p className="px-1 py-2 text-sm text-slate-500 dark:text-slate-400">No highlights available.</p>
         ) : (
-          cards.map(({ item, isLine, series, bars }) => (
+          cards.map(({ item, isLine, bars, areaMetrics, seriesByKind }) => (
             <div key={item.statId} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
               <div className="mb-2 flex items-baseline justify-between">
                 <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{item.name}</h4>
@@ -146,9 +183,15 @@ export const ReportHighlights = ({
               </div>
               <div className="mt-2">
                 {isLine ? (
-                  <LineMiniChart series={series} baselineLabel={baselineLabel} selectedAreas={selectedAreas} valueType={item.type} />
+                  <LineMiniChart
+                    primaryKind={selectedKind}
+                    areaMetrics={areaMetrics}
+                    seriesByKind={seriesByKind}
+                    baselineLabel={baselineLabel}
+                    valueType={item.type}
+                  />
                 ) : (
-                  <BarsMiniChart bars={bars} type={item.type} selectedAreas={selectedAreas} baselineLabel={baselineLabel} />
+                  <BarsMiniChart bars={bars} type={item.type} baselineLabel={baselineLabel} />
                 )}
               </div>
             </div>
@@ -162,23 +205,12 @@ export const ReportHighlights = ({
 const BarsMiniChart = ({
   bars,
   type,
-  selectedAreas,
   baselineLabel,
 }: {
-  bars: { code?: string; label: string; value: number; selected?: boolean }[];
+  bars: { label: string; value: number; selected?: boolean }[];
   type: string;
-  selectedAreas: { code: string; label: string }[];
   baselineLabel: string;
 }) => {
-  const colorByCode = new Map<string, string>();
-  const usedColors = new Set<string>();
-  for (const { code } of selectedAreas) {
-    if (colorByCode.has(code)) continue;
-    const next = HIGHLIGHT_COLORS[colorByCode.size % HIGHLIGHT_COLORS.length];
-    colorByCode.set(code, next);
-    usedColors.add(next);
-  }
-
   const maxValue = Math.max(...bars.map((bar) => bar.value), 1);
   return (
     <div>
@@ -187,8 +219,8 @@ const BarsMiniChart = ({
         const color = isBaseline
           ? "#94a3b8"
           : bar.selected
-          ? (colorByCode.get(bar.code ?? "") || HIGHLIGHT_COLORS[idx % HIGHLIGHT_COLORS.length]) + "CC"
-          : "#94a3b8A0";
+          ? `${HIGHLIGHT_COLORS[idx % HIGHLIGHT_COLORS.length]}CC`
+          : "#94a3b880";
         const width = Math.max(0, Math.round((bar.value / maxValue) * 100));
         return (
           <div key={`${bar.label}-${idx}`} className="mb-1.5 flex items-center gap-2">
@@ -207,14 +239,16 @@ const BarsMiniChart = ({
 };
 
 const LineMiniChart = ({
-  series,
+  primaryKind,
+  areaMetrics,
+  seriesByKind,
   baselineLabel,
-  selectedAreas,
   valueType,
 }: {
-  series: SeriesEntry[];
+  primaryKind: SupportedAreaKind | null;
+  areaMetrics: AreaMetric[];
+  seriesByKind: Map<SupportedAreaKind, SeriesEntry[]>;
   baselineLabel: string;
-  selectedAreas: { code: string; label: string }[];
   valueType: string;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -222,7 +256,8 @@ const LineMiniChart = ({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    if (!series || series.length === 0) {
+    const baselineSeries = primaryKind ? seriesByKind.get(primaryKind) ?? [] : [];
+    if (!primaryKind || baselineSeries.length === 0) {
       el.innerHTML = "<div class='text-xs text-slate-400 dark:text-slate-500'>No time series data.</div>";
       return;
     }
@@ -232,23 +267,25 @@ const LineMiniChart = ({
     const margin = { top: 6, right: 8, bottom: 22, left: 0 };
     const innerW = width - margin.left - margin.right;
     const innerH = height - margin.top - margin.bottom;
-    const dates = series.map((entry) => entry.date);
+    const dates = baselineSeries.map((entry) => entry.date);
     const x = (i: number) => (dates.length <= 1 ? innerW / 2 : (i / (dates.length - 1)) * innerW);
 
     const allValues: number[] = [];
-    const baselinePoints = series.map((entry) => {
-      const vals = Object.values(entry.data || {}) as number[];
-      const numbers = vals.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-      const avg = numbers.length ? numbers.reduce((sum, value) => sum + value, 0) / numbers.length : 0;
+    const baselinePoints = baselineSeries.map((entry) => {
+      const nums = Object.values(entry.data || {}).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+      const avg = nums.length ? nums.reduce((sum, value) => sum + value, 0) / nums.length : 0;
       allValues.push(avg);
       return avg;
     });
-    selectedAreas.forEach(({ code }) =>
-      series.forEach((entry) => {
-        const value = entry.data?.[code];
-        if (typeof value === "number") allValues.push(value);
-      }),
-    );
+
+    areaMetrics.forEach((area) => {
+      const areaSeries = seriesByKind.get(area.kind) ?? [];
+      areaSeries.forEach((entry) => {
+        const value = entry.data?.[area.code];
+        if (typeof value === "number" && Number.isFinite(value)) allValues.push(value);
+      });
+    });
+
     const minValue = Math.min(...allValues);
     const maxValue = Math.max(...allValues);
     const range = Math.max(1e-9, maxValue - minValue);
@@ -263,11 +300,10 @@ const LineMiniChart = ({
     g.setAttribute("transform", `translate(${margin.left},${margin.top})`);
     svg.appendChild(g);
 
-    // grid
     const gridLines = 3;
     for (let i = 0; i <= gridLines; i++) {
-      const t = i / gridLines;
-      const value = minValue + (maxValue - minValue) * t;
+      const frac = i / gridLines;
+      const value = minValue + (maxValue - minValue) * frac;
       const yPos = y(value);
       const line = document.createElementNS(ns, "line");
       line.setAttribute("x1", "0");
@@ -280,7 +316,6 @@ const LineMiniChart = ({
       g.appendChild(line);
     }
 
-    // baseline
     const baselinePath = document.createElementNS(ns, "path");
     const baselineCoords = baselinePoints.map((value, idx) => ({ x: x(idx), y: y(value) }));
     baselinePath.setAttribute("d", buildSmoothPath(baselineCoords, 0.2));
@@ -290,25 +325,24 @@ const LineMiniChart = ({
     baselinePath.setAttribute("stroke-dasharray", "4 3");
     g.appendChild(baselinePath);
 
-    // selected lines
-    const colorByCode = new Map<string, string>();
-    selectedAreas.forEach((area, idx) => {
-      colorByCode.set(area.code, HIGHLIGHT_COLORS[idx % HIGHLIGHT_COLORS.length]);
-    });
+    const colorForIndex = (area: AreaMetric, idx: number) =>
+      area.isPrimary ? `${HIGHLIGHT_COLORS[idx % HIGHLIGHT_COLORS.length]}CC` : "#94a3b880";
 
-    const lineGroups = selectedAreas.map((area) => {
-      const vals = series.map((entry) =>
-        typeof entry.data?.[area.code] === "number" ? (entry.data?.[area.code] as number) : 0,
-      );
-      const pts = vals.map((value, idx) => ({ x: x(idx), y: y(value), value }));
+    const lineGroups = areaMetrics.map((area, idx) => {
+      const areaSeries = seriesByKind.get(area.kind) ?? [];
+      const vals = areaSeries.map((entry) => {
+        const raw = entry.data?.[area.code];
+        return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
+      });
+      const pts = vals.map((value, i) => ({ x: x(i), y: y(value), value }));
       const path = document.createElementNS(ns, "path");
       path.setAttribute("d", buildSmoothPath(pts, 0.2));
       path.setAttribute("fill", "none");
-      const color = (colorByCode.get(area.code) || "#375bff") + "CC";
+      const color = colorForIndex(area, idx);
       path.setAttribute("stroke", color);
       path.setAttribute("stroke-width", "1.9");
       g.appendChild(path);
-      return { code: area.code, label: area.label, color, path, points: pts };
+      return { key: `${area.kind}:${area.code}`, label: area.label, color, points: pts };
     });
 
     if (dates.length > 0) {
@@ -343,14 +377,14 @@ const LineMiniChart = ({
     guide.setAttribute("opacity", "0");
     g.appendChild(guide);
 
-    const markerByCode = new Map<string, SVGCircleElement>();
+    const markerByKey = new Map<string, SVGCircleElement>();
     for (const group of lineGroups) {
       const marker = document.createElementNS(ns, "circle");
       marker.setAttribute("r", "3");
       marker.setAttribute("fill", group.color);
       marker.setAttribute("opacity", "0");
       g.appendChild(marker);
-      markerByCode.set(group.code, marker);
+      markerByKey.set(group.key, marker);
     }
 
     const overlay = document.createElementNS(ns, "rect");
@@ -385,7 +419,7 @@ const LineMiniChart = ({
       for (const group of lineGroups) {
         const point = group.points[index];
         if (!point) continue;
-        const marker = markerByCode.get(group.code);
+        const marker = markerByKey.get(group.key);
         if (marker) {
           marker.setAttribute("cx", String(gx));
           marker.setAttribute("cy", String(point.y));
@@ -422,14 +456,14 @@ const LineMiniChart = ({
       const px = event.clientX - rect.left - margin.left;
       const t = Math.max(0, Math.min(innerW, px));
       const fraction = innerW <= 0 || dates.length <= 1 ? 0 : t / innerW;
-      const index = Math.round(fraction * (dates.length - 1));
-      showAtIndex(index, event.clientX, event.clientY);
+      const idx = Math.round(fraction * (dates.length - 1));
+      showAtIndex(idx, event.clientX, event.clientY);
     };
 
     const handleLeave = () => {
       guide.setAttribute("opacity", "0");
       tooltip.style.opacity = "0";
-      for (const marker of markerByCode.values()) marker.setAttribute("opacity", "0");
+      for (const marker of markerByKey.values()) marker.setAttribute("opacity", "0");
     };
 
     overlay.addEventListener("mousemove", handleMove);
@@ -439,7 +473,7 @@ const LineMiniChart = ({
       overlay.removeEventListener("mousemove", handleMove);
       overlay.removeEventListener("mouseleave", handleLeave);
     };
-  }, [baselineLabel, selectedAreas, series, valueType]);
+  }, [areaMetrics, baselineLabel, primaryKind, seriesByKind, valueType]);
 
   return <div ref={containerRef} className="relative w-full" />;
 };
@@ -448,7 +482,7 @@ function buildSmoothPath(points: { x: number; y: number }[], tension = 0.2): str
   if (points.length === 0) return "";
   if (points.length === 1) return `M${points[0].x},${points[0].y}`;
   const path: string[] = [`M${points[0].x},${points[0].y}`];
-  for (let i = 0; i < points.length - 1; i += 1) {
+  for (let i = 0; i < points.length - 1; i++) {
     const p0 = points[i === 0 ? 0 : i - 1];
     const p1 = points[i];
     const p2 = points[i + 1];

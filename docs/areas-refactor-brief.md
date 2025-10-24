@@ -8,20 +8,21 @@ _Snapshot: 2025-10-22_
 - Ensure React surfaces (sidebar, report, data views) consume InstantDB via `@instantdb/react` hooks with per-area-kind snapshots.
 
 ## Current Focus
-- Align report + sidebar aggregates with the Areas dropdown (single “active” area kind driven by zoom or manual override).
-- Allow highlights/timeline charts to sprinkle in extra pinned areas from other kinds for context.
-- Add a “control by zoom” option so users can hand the dropdown back to auto-mode after manually choosing an area type.
+- Extend highlights/timeline cards so they can sprinkle in extra pinned areas (beyond the active kind) when there’s room.
+- Tighten the boundary chips so the toolbar only shows chips for the active Areas dropdown selection.
+- Polish QA + copy around the new manual/auto Areas control so zoom hand-offs feel predictable.
 
 ## Status Overview
 - ✅ Demographics, stats hooks, and overlays support both ZIP and county data.
-- ✅ Reports/export already accept `AreaId[]` and produce county-only outputs when counties are active.
-- 🔄 Upcoming work (next iteration) tracks dropdown control state, filters report/sidebar to the active kind, and refines toolbar chips.
+- ✅ Reports/export accept `AreaId[]` and now mirror whichever area kind the Areas dropdown is set to.
+- ✅ Areas dropdown supports “Control by zoom” vs manual mode; sidebar/report headers follow the active kind.
+- 🔄 Next up: highlights/toolbar chip tweaks + mixed-area context polish.
 - ⚠️ Node 22.11.0 triggers a Vite warning (needs ≥22.12.0).
 
 ## Open Questions
 1. Should counties use their own circle translate offsets or share the ZIP offsets? (Design decision pending.)
 2. Do we prune the county centroid source to active areas only, or keep the full statewide set for future use?
-3. When a user mixes ZIPs/counties, how do we message that only the active kind is in the report (copy review)?
+3. When a user mixes ZIPs/counties, how do we message that only the active kind is in the report (copy review on new chips)?
 
 ## QA Checklist (post-iteration)
 - Mixed selections: verify report + sidebar follow the Areas dropdown while highlights show extra context.
