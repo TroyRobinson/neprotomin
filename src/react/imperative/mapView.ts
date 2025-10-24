@@ -50,6 +50,7 @@ interface MapViewOptions {
   onStatSelectionChange?: (statId: string | null) => void;
   onCategorySelectionChange?: (categoryId: string | null) => void;
   onBoundaryModeChange?: (mode: BoundaryMode) => void;
+  shouldAutoBoundarySwitch?: () => boolean;
 }
 
 export interface MapViewController {
@@ -178,6 +179,7 @@ export const createMapView = ({
   onStatSelectionChange,
   onCategorySelectionChange,
   onBoundaryModeChange,
+  shouldAutoBoundarySwitch,
 }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
   container.className = "relative flex flex-1";
@@ -708,6 +710,9 @@ export const createMapView = ({
   };
 
   const evaluateBoundaryModeForZoom = () => {
+    if (typeof shouldAutoBoundarySwitch === "function" && !shouldAutoBoundarySwitch()) {
+      return;
+    }
     if (boundaryMode === "none") return;
     const zoom = map.getZoom();
     if (boundaryMode === "zips" && zoom <= COUNTY_MODE_ENABLE_ZOOM) {

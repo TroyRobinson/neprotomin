@@ -11,13 +11,17 @@ interface AreaSelectionSnapshot {
   pinned: string[];
 }
 
+type BoundaryControlMode = "auto" | "manual";
+
 interface BoundaryToolbarProps {
   boundaryMode?: BoundaryMode;
+  boundaryControlMode?: BoundaryControlMode;
   selections: Record<AreaKind, AreaSelectionSnapshot | undefined>;
   hoveredArea?: AreaId | null;
   // Controls the sticky top offset class (e.g., "top-16" for below topbar, "top-0" inside overlays)
   stickyTopClass?: string;
   onBoundaryModeChange?: (mode: BoundaryMode) => void;
+  onBoundaryControlModeChange?: (mode: BoundaryControlMode) => void;
   onHoverArea?: (area: AreaId | null) => void;
   onExport?: () => void;
   onUpdateSelection: (kind: AreaKind, selection: { selected: string[]; pinned: string[] }) => void;
@@ -57,10 +61,12 @@ function shade(hex: string, amount: number): string {
 
 export const BoundaryToolbar = ({
   boundaryMode = "zips",
+  boundaryControlMode = "auto",
   selections,
   hoveredArea = null,
   stickyTopClass = "top-16",
   onBoundaryModeChange,
+  onBoundaryControlModeChange,
   onHoverArea,
   onExport,
   onUpdateSelection,
@@ -408,13 +414,22 @@ export const BoundaryToolbar = ({
           Areas
           <CustomSelect
             id="boundary-select"
-            value={boundaryMode}
+            value={boundaryControlMode === "auto" ? "auto" : boundaryMode}
             options={[
               { value: "zips", label: "ZIPs" },
               { value: "counties", label: "Counties" },
+              { value: "auto", label: "Control by zoom" },
               { value: "none", label: "None" }
             ]}
-            onChange={(value) => onBoundaryModeChange?.(value as BoundaryMode)}
+            onChange={(value) => {
+              if (value === "auto") {
+                onBoundaryControlModeChange?.("auto");
+                return;
+              }
+              const cast = value as BoundaryMode;
+              onBoundaryControlModeChange?.("manual");
+              onBoundaryModeChange?.(cast);
+            }}
           />
         </label>
       </div>

@@ -40,6 +40,7 @@ interface MapLibreMapProps {
   onCategorySelectionChange?: (categoryId: string | null) => void;
   onBoundaryModeChange?: (mode: BoundaryMode) => void;
   onCameraChange?: (state: { center: [number, number]; zoom: number }) => void;
+  autoBoundarySwitch?: boolean;
 }
 
 /**
@@ -76,6 +77,7 @@ export const MapLibreMap = ({
   onCategorySelectionChange,
   onBoundaryModeChange,
   onCameraChange,
+  autoBoundarySwitch = true,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
@@ -95,6 +97,7 @@ export const MapLibreMap = ({
   const onCategorySelectionChangeRef = useRef(onCategorySelectionChange);
   const onBoundaryModeChangeRef = useRef(onBoundaryModeChange);
   const onCameraChangeRef = useRef(onCameraChange);
+  const shouldAutoSwitchRef = useRef<boolean>(autoBoundarySwitch);
 
   useEffect(() => { onZipSelectionChangeRef.current = onZipSelectionChange; }, [onZipSelectionChange]);
   useEffect(() => { onHoverRef.current = onHover; }, [onHover]);
@@ -108,6 +111,7 @@ export const MapLibreMap = ({
   useEffect(() => { onCategorySelectionChangeRef.current = onCategorySelectionChange; }, [onCategorySelectionChange]);
   useEffect(() => { onBoundaryModeChangeRef.current = onBoundaryModeChange; }, [onBoundaryModeChange]);
   useEffect(() => { onCameraChangeRef.current = onCameraChange; }, [onCameraChange]);
+  useEffect(() => { shouldAutoSwitchRef.current = autoBoundarySwitch; }, [autoBoundarySwitch]);
 
   // Initialize map once on mount
   useEffect(() => {
@@ -148,6 +152,7 @@ export const MapLibreMap = ({
         appliedBoundaryModeRef.current = mode;
         onBoundaryModeChangeRef.current?.(mode);
       },
+      shouldAutoBoundarySwitch: () => shouldAutoSwitchRef.current,
     });
 
     containerRef.current.appendChild(mapController.element);

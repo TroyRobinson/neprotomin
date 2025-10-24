@@ -9,7 +9,9 @@ import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 
 interface ReportScreenProps {
-  selectedAreas: AreaId[];
+  activeKind: SupportedAreaKind | null;
+  activeAreas: AreaId[];
+  supplementalAreas?: AreaId[];
   organizations: Organization[];
   orgZipById: Map<string, string | null>;
   orgCountyById: Map<string, string | null>;
@@ -40,7 +42,9 @@ function formatYears(n: number): string {
 }
 
 export const ReportScreen = ({
-  selectedAreas,
+  activeKind,
+  activeAreas,
+  supplementalAreas = [],
   organizations,
   orgZipById,
   orgCountyById,
@@ -49,22 +53,22 @@ export const ReportScreen = ({
   seriesByStatIdByKind,
   areaNameLookup,
 }: ReportScreenProps) => {
-  const selectedByKind = useMemo(
+  const primaryKind = activeKind;
+
+  const primaryCodes = useMemo(() => {
+    if (!primaryKind) return [] as string[];
+    return activeAreas.filter((area) => area.kind === primaryKind).map((area) => area.id);
+  }, [activeAreas, primaryKind]);
+
+  const supplementalByKind = useMemo(
     () => ({
-      ZIP: selectedAreas.filter((area) => area.kind === "ZIP").map((area) => area.id),
-      COUNTY: selectedAreas.filter((area) => area.kind === "COUNTY").map((area) => area.id),
+      ZIP: supplementalAreas.filter((area) => area.kind === "ZIP").map((area) => area.id),
+      COUNTY: supplementalAreas.filter((area) => area.kind === "COUNTY").map((area) => area.id),
     }),
-    [selectedAreas],
+    [supplementalAreas],
   );
 
-  const primaryKind = useMemo<SupportedAreaKind | null>(() => {
-    if (selectedByKind.ZIP.length > 0) return "ZIP";
-    if (selectedByKind.COUNTY.length > 0) return "COUNTY";
-    return null;
-  }, [selectedByKind]);
-
-  const primaryCodes = primaryKind ? selectedByKind[primaryKind] : [];
-  const hasMixedSelection = selectedAreas.some((area) => area.kind !== (primaryKind ?? "ZIP"));
+  const hasMixedSelection = supplementalAreas.some((area) => area.kind !== (primaryKind ?? "ZIP"));
 
   const header = useMemo(() => {
     if (!primaryKind || primaryCodes.length === 0) {
@@ -77,7 +81,7 @@ export const ReportScreen = ({
     const labelSuffix = primaryKind === "ZIP" ? "ZIPs" : "counties";
     const titleLabel = labels.length === 1 ? labels[0] : `${labels.length} ${labelSuffix}`;
     const sub =
-      primaryKind === "COUNTY" && selectedByKind.ZIP.length > 0
+      primaryKind === "COUNTY" && supplementalByKind.ZIP.length > 0
         ? "ZIP selections appear separately in the sidebar."
         : "";
     return {
@@ -85,7 +89,7 @@ export const ReportScreen = ({
       sub,
       list: labels.length > 1 ? labels.join(", ") : null,
     };
-  }, [areaNameLookup, hasMixedSelection, primaryCodes, primaryKind, selectedByKind.ZIP.length]);
+  }, [areaNameLookup, hasMixedSelection, primaryCodes, primaryKind, supplementalByKind.ZIP.length]);
 
   const callouts = useMemo(() => {
     if (!primaryKind || primaryCodes.length === 0) return { population: "—", avgAge: "—", married: "—" };

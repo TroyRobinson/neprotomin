@@ -3,7 +3,7 @@ import { TopBar } from "./components/TopBar";
 import { BoundaryToolbar } from "./components/BoundaryToolbar";
 import { MapLibreMap } from "./components/MapLibreMap";
 import { Sidebar } from "./components/Sidebar";
-import { useDemographics } from "./hooks/useDemographics";
+import { useDemographics, type CombinedDemographicsSnapshot } from "./hooks/useDemographics";
 import { useStats } from "./hooks/useStats";
 import type { StatBoundaryEntry } from "./hooks/useStats";
 import { useOrganizations } from "./hooks/useOrganizations";
@@ -19,6 +19,9 @@ import type { AreaId, AreaKind, PersistedAreaSelection } from "../types/areas";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
+
+const COUNTY_MODE_ENABLE_ZOOM = 9;
+const COUNTY_MODE_DISABLE_ZOOM = 9.6;
 
 interface AreaSelectionState {
   selected: string[];
@@ -70,6 +73,7 @@ const arraysEqual = (a: string[], b: string[]): boolean => {
 
 export const ReactMapApp = () => {
   const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>("zips");
+  const [boundaryControlMode, setBoundaryControlMode] = useState<"auto" | "manual">("auto");
   const [areaSelections, setAreaSelections] = useState<AreaSelectionMap>(createInitialAreaSelections);
   const [hoveredArea, setHoveredArea] = useState<AreaId | null>(null);
   const [activeOrganizationId, setActiveOrganizationId] = useState<string | null>(null);
@@ -164,6 +168,7 @@ export const ReactMapApp = () => {
     else if (sel.boundaryMode === "zips" || sel.boundaryMode === "counties" || sel.boundaryMode === "none") {
       setBoundaryMode(sel.boundaryMode as BoundaryMode);
     }
+    setBoundaryControlMode("auto");
   };
 
   const { isLoading: isAuthLoading, user } = db.useAuth();
@@ -299,7 +304,7 @@ export const ReactMapApp = () => {
     };
   }, [cameraState, countyRecords, zipRecords]);
 
-  const { combinedSnapshot } = useDemographics({
+  const { combinedSnapshot, demographicsByKind } = useDemographics({
     selectedByKind: {
       ZIP: selectedZips,
       COUNTY: selectedCounties,
@@ -320,7 +325,7 @@ export const ReactMapApp = () => {
     [selectedZips, selectedCounties],
   );
 
-  const selectedAreasForReport = useMemo(
+  const allSelectedAreas = useMemo(
     () => [
       ...selectedZips.map<AreaId>((zip) => ({ kind: "ZIP", id: zip })),
       ...selectedCounties.map<AreaId>((county) => ({ kind: "COUNTY", id: county })),
@@ -328,10 +333,65 @@ export const ReactMapApp = () => {
     [selectedCounties, selectedZips],
   );
 
+  const activeAreaKind: SupportedAreaKind | null = useMemo(() => {
+    if (boundaryMode === "zips") return "ZIP";
+    if (boundaryMode === "counties") return "COUNTY";
+    return null;
+  }, [boundaryMode]);
+
+  const activeSelectedCodes = useMemo(() => {
+    if (!activeAreaKind) return [] as string[];
+    return activeAreaKind === "ZIP" ? selectedZips : selectedCounties;
+  }, [activeAreaKind, selectedCounties, selectedZips]);
+
+  const selectedAreasForReport = useMemo(
+    () =>
+      activeAreaKind
+        ? activeSelectedCodes.map<AreaId>((code) => ({ kind: activeAreaKind, id: code }))
+        : [],
+    [activeAreaKind, activeSelectedCodes],
+  );
+
+  const autoBoundarySwitch = boundaryControlMode === "auto";
+
+  useEffect(() => {
+    if (!autoBoundarySwitch || !cameraState) return;
+    const { zoom } = cameraState;
+    let nextMode = boundaryMode;
+    if (zoom <= COUNTY_MODE_ENABLE_ZOOM) nextMode = "counties";
+    else if (zoom >= COUNTY_MODE_DISABLE_ZOOM) nextMode = "zips";
+    if (nextMode !== boundaryMode) {
+      setBoundaryMode(nextMode);
+    }
+  }, [autoBoundarySwitch, cameraState, boundaryMode]);
+
   const pinnedAreasMap = useMemo(
     () => ({ ZIP: pinnedZips, COUNTY: pinnedCounties }),
     [pinnedZips, pinnedCounties],
   );
+
+  const activeDemographicsSnapshot = useMemo(() => {
+    if (!activeAreaKind) return null;
+    const entry = demographicsByKind.get(activeAreaKind);
+    if (!entry) return null;
+    const count = entry.stats?.selectedCount ?? activeSelectedCodes.length;
+    const label = entry.stats?.label
+      ?? (count > 1
+        ? `${count} ${activeAreaKind === "ZIP" ? "ZIPs" : "Counties"}`
+        : count === 1
+        ? areaNameLookup(activeAreaKind, activeSelectedCodes[0])
+        : activeAreaKind === "ZIP"
+        ? "ZIP Overview"
+        : "County Overview");
+    return {
+      label,
+      stats: entry.stats,
+      breakdowns: entry.breakdowns,
+      isMissing: entry.isMissing,
+      areaCount: count,
+      missingAreaCount: 0,
+    } as CombinedDemographicsSnapshot;
+  }, [activeAreaKind, activeSelectedCodes, areaNameLookup, demographicsByKind]);
   // areasByKey removed; population/age/married now sourced from statData
   const orgZipById = useMemo(() => {
     const map = new Map<string, string | null>();
@@ -410,6 +470,19 @@ export const ReactMapApp = () => {
 
   const handleAreaHoverChange = (area: AreaId | null) => {
     setHoveredAreaState(area);
+  };
+
+  const handleBoundaryControlModeChange = (mode: "auto" | "manual") => {
+    setBoundaryControlMode(mode);
+  };
+
+  const handleBoundaryModeManualSelect = (mode: BoundaryMode) => {
+    setBoundaryControlMode("manual");
+    setBoundaryMode(mode);
+  };
+
+  const handleMapBoundaryModeChange = (mode: BoundaryMode) => {
+    setBoundaryMode(mode);
   };
 
   const handleExport = () => {
@@ -637,10 +710,12 @@ export const ReactMapApp = () => {
       {/* Map section (always mounted) */}
           <BoundaryToolbar
             boundaryMode={boundaryMode}
+            boundaryControlMode={boundaryControlMode}
             selections={toolbarSelections}
             hoveredArea={hoveredArea}
             stickyTopClass="top-16"
-            onBoundaryModeChange={setBoundaryMode}
+            onBoundaryModeChange={handleBoundaryModeManualSelect}
+            onBoundaryControlModeChange={handleBoundaryControlModeChange}
             onHoverArea={setHoveredAreaState}
             onExport={handleExport}
             onUpdateSelection={handleUpdateAreaSelection}
@@ -654,12 +729,28 @@ export const ReactMapApp = () => {
                 const visibleIds = new Set(orgsVisibleIds);
                 const fromSource = organizations.filter((o) => sourceIds.size === 0 || sourceIds.has(o.id));
                 const visible = fromSource.filter((o) => visibleIds.size === 0 || visibleIds.has(o.id));
+                const zipSel = new Set(selectedZips);
+                const countySel = new Set(selectedCounties);
                 let inSelection: Organization[] = [];
-                if (selectedZips.length > 0) {
-                  const sel = new Set(selectedZips);
+                if (activeAreaKind === "ZIP" && zipSel.size > 0) {
                   inSelection = visible.filter((o) => {
                     const zip = orgZipById.get(o.id);
-                    return !!zip && sel.has(zip);
+                    return !!zip && zipSel.has(zip);
+                  });
+                } else if (activeAreaKind === "COUNTY" && countySel.size > 0) {
+                  inSelection = visible.filter((o) => {
+                    const county = orgCountyById.get(o.id);
+                    return !!county && countySel.has(county);
+                  });
+                } else if (zipSel.size > 0) {
+                  inSelection = visible.filter((o) => {
+                    const zip = orgZipById.get(o.id);
+                    return !!zip && zipSel.has(zip);
+                  });
+                } else if (countySel.size > 0) {
+                  inSelection = visible.filter((o) => {
+                    const county = orgCountyById.get(o.id);
+                    return !!county && countySel.has(county);
                   });
                 }
                 const inSelectionIds = new Set(inSelection.map((o) => o.id));
@@ -710,7 +801,7 @@ export const ReactMapApp = () => {
               statsById={statsById}
               seriesByStatIdByKind={seriesByStatIdByKind}
               statDataById={statDataByStatId}
-              combinedDemographics={combinedSnapshot}
+              demographicsSnapshot={activeDemographicsSnapshot ?? combinedSnapshot}
               selectedAreas={selectedAreasMap}
               pinnedAreas={pinnedAreasMap}
               areaNameLookup={areaNameLookup}
@@ -733,6 +824,7 @@ export const ReactMapApp = () => {
                 zoomOutRequestNonce={zoomOutNonce}
                 clearMapCategoryNonce={clearMapCategoryNonce}
                 boundaryMode={boundaryMode}
+                autoBoundarySwitch={autoBoundarySwitch}
                 selectedZips={selectedZips}
                 pinnedZips={pinnedZips}
                 hoveredZip={hoveredZip}
@@ -752,7 +844,7 @@ export const ReactMapApp = () => {
                   setOrgsVisibleIds(ids);
                   setOrgsAllSourceIds(allSourceIds);
                 }}
-                onBoundaryModeChange={setBoundaryMode}
+                onBoundaryModeChange={handleMapBoundaryModeChange}
                 onCameraChange={setCameraState}
               />
             </div>
@@ -768,10 +860,12 @@ export const ReactMapApp = () => {
           <div className="absolute left-0 right-0 top-0 z-10">
             <BoundaryToolbar
               boundaryMode={boundaryMode}
+              boundaryControlMode={boundaryControlMode}
               selections={toolbarSelections}
               hoveredArea={hoveredArea}
               stickyTopClass="top-0"
-              onBoundaryModeChange={setBoundaryMode}
+              onBoundaryModeChange={handleBoundaryModeManualSelect}
+              onBoundaryControlModeChange={handleBoundaryControlModeChange}
               onHoverArea={setHoveredAreaState}
               onExport={handleExport}
               onUpdateSelection={handleUpdateAreaSelection}
@@ -780,7 +874,9 @@ export const ReactMapApp = () => {
           {activeScreen === "report" && (
             <Suspense fallback={<div className="flex flex-1 items-center justify-center text-sm text-slate-500">Loading report…</div>}>
               <ReportScreen
-                selectedAreas={selectedAreasForReport}
+                activeKind={activeAreaKind}
+                activeAreas={selectedAreasForReport}
+                supplementalAreas={allSelectedAreas}
                 organizations={organizations}
                 orgZipById={orgZipById}
                 orgCountyById={orgCountyById}
