@@ -486,23 +486,40 @@ export const ReactMapApp = () => {
   };
 
   const handleExport = () => {
-    const primaryKind: SupportedAreaKind | null =
-      selectedZips.length > 0 ? "ZIP" : selectedCounties.length > 0 ? "COUNTY" : null;
+    const primaryKind = activeAreaKind;
     if (!primaryKind) return;
 
-    const areaCodes = primaryKind === "ZIP" ? [...selectedZips].sort() : [...selectedCounties].sort();
+    const areaCodes = [...activeSelectedCodes].sort();
     if (areaCodes.length === 0) return;
 
-    const areaColumn = primaryKind === "ZIP" ? "zip" : "county";
-    const headers: string[] = [areaColumn, "area_name"];
+    const otherKind: SupportedAreaKind = primaryKind === "ZIP" ? "COUNTY" : "ZIP";
+    const primaryKeySet = new Set(areaCodes.map((code) => `${primaryKind}:${code}`));
+    const contextKeySet = new Set<string>();
+    const contextAreas: AreaId[] = [];
+    const addContextArea = (kind: SupportedAreaKind, code: string) => {
+      const key = `${kind}:${code}`;
+      if (primaryKeySet.has(key) || contextKeySet.has(key)) return;
+      contextKeySet.add(key);
+      contextAreas.push({ kind, id: code });
+    };
+
+    const pinnedOther = otherKind === "ZIP" ? pinnedZips : pinnedCounties;
+    pinnedOther.forEach((code) => addContextArea(otherKind, code));
+
+    const headers: string[] = ["area_kind", "area_code", "area_name", "is_context"];
 
     const selectedCategory = categoryFilter;
     const allStats = Array.from(statsById.values());
-    const columnEntries: { id: string; header: string; entry: StatBoundaryEntry }[] = [];
+    const columnEntries: Array<{
+      id: string;
+      header: string;
+      entries: Partial<Record<SupportedAreaKind, StatBoundaryEntry>>;
+    }> = [];
+
     const addColumn = (statId: string, header: string) => {
-      const entry = statDataByStatId.get(statId)?.[primaryKind];
-      if (!entry) return;
-      columnEntries.push({ id: statId, header, entry });
+      const entries = statDataByStatId.get(statId);
+      if (!entries) return;
+      columnEntries.push({ id: statId, header, entries });
     };
 
     if (selectedCategory) {
@@ -520,18 +537,23 @@ export const ReactMapApp = () => {
     }
 
     let orgCountHeader: string | null = null;
-    const activeOrgsByArea = new Map<string, number>();
+    const orgCountsByKind: Record<SupportedAreaKind, Map<string, number>> = {
+      ZIP: new Map(),
+      COUNTY: new Map(),
+    };
+
     if (selectedCategory) {
       orgCountHeader = `number_of_${selectedCategory}_orgs_active`;
       headers.push(orgCountHeader);
 
       const idsFilter = new Set(orgsAllSourceIds);
       const fromSource = organizations.filter((org) => idsFilter.size === 0 || idsFilter.has(org.id));
-      const categoryOrgs = fromSource.filter((org) => org.category === selectedCategory);
-      for (const org of categoryOrgs) {
-        const code = primaryKind === "ZIP" ? orgZipById.get(org.id) : orgCountyById.get(org.id);
-        if (!code) continue;
-        activeOrgsByArea.set(code, (activeOrgsByArea.get(code) || 0) + 1);
+      const catOrgs = fromSource.filter((org) => org.category === selectedCategory);
+      for (const org of catOrgs) {
+        const zip = orgZipById.get(org.id);
+        if (zip) orgCountsByKind.ZIP.set(zip, (orgCountsByKind.ZIP.get(zip) || 0) + 1);
+        const county = orgCountyById.get(org.id);
+        if (county) orgCountsByKind.COUNTY.set(county, (orgCountsByKind.COUNTY.get(county) || 0) + 1);
       }
     }
 
@@ -540,68 +562,106 @@ export const ReactMapApp = () => {
 
     const r1 = (value: number): string => (Math.round(value * 10) / 10).toFixed(1);
 
-    const getEntryByName = (name: string): StatBoundaryEntry | null => {
-      for (const [statId, entry] of statDataByStatId.entries()) {
+    const getEntriesByName = (name: string): Partial<Record<SupportedAreaKind, StatBoundaryEntry>> | null => {
+      for (const [statId, entries] of statDataByStatId.entries()) {
         const stat = statsById.get(statId);
-        if (stat?.name === name) {
-          return entry?.[primaryKind] ?? null;
-        }
+        if (stat?.name === name) return entries;
       }
       return null;
     };
 
-    const populationEntry = getEntryByName("Population");
-    const ageEntry = getEntryByName("Average Age");
-    const marriedEntry = getEntryByName("Married Percent");
-    if (!populationEntry) return;
+    const populationEntries = getEntriesByName("Population");
+    const ageEntries = getEntriesByName("Average Age");
+    const marriedEntries = getEntriesByName("Married Percent");
+    const populationPrimary = populationEntries?.[primaryKind];
+    if (!populationPrimary) return;
 
     const rows: (string | number)[][] = [];
     let totalPopulation = 0;
     let weightedAge = 0;
     let weightedMarried = 0;
+    let weightedAgeDenominator = 0;
+    let weightedMarriedDenominator = 0;
     const statSums = new Map<string, number>();
     const statCounts = new Map<string, number>();
 
-    for (const code of areaCodes) {
-      const population = Math.max(0, Math.round((populationEntry.data || ({} as Record<string, number>))[code] || 0));
-      const age = (ageEntry?.data || ({} as Record<string, number>))[code];
-      const married = (marriedEntry?.data || ({} as Record<string, number>))[code];
-
-      totalPopulation += population;
-      if (typeof age === "number") weightedAge += age * population;
-      if (typeof married === "number") weightedMarried += married * population;
+    const buildRow = (
+      kind: SupportedAreaKind,
+      code: string,
+      isContext: boolean,
+    ): {
+      row: (string | number)[];
+      population: number | null;
+      age: number | null;
+      married: number | null;
+    } => {
+      const populationEntry = populationEntries?.[kind];
+      const ageEntry = ageEntries?.[kind];
+      const marriedEntry = marriedEntries?.[kind];
+      const popRaw = populationEntry?.data?.[code];
+      const population = typeof popRaw === "number" && Number.isFinite(popRaw) ? Math.max(0, Math.round(popRaw)) : null;
+      const ageRaw = ageEntry?.data?.[code];
+      const age = typeof ageRaw === "number" && Number.isFinite(ageRaw) ? ageRaw : null;
+      const marriedRaw = marriedEntry?.data?.[code];
+      const married = typeof marriedRaw === "number" && Number.isFinite(marriedRaw) ? marriedRaw : null;
 
       const row: (string | number)[] = [
+        kind,
         code,
-        areaNameLookup(primaryKind, code) || code,
+        areaNameLookup(kind, code) || code,
+        isContext ? "1" : "0",
       ];
-      if (orgCountHeader) row.push(activeOrgsByArea.get(code) || 0);
+      if (orgCountHeader) row.push(orgCountsByKind[kind].get(code) || 0);
       row.push(
-        population,
-        typeof age === "number" ? r1(age) : "",
-        typeof married === "number" ? r1(married) : "",
+        population ?? "",
+        age != null ? r1(age) : "",
+        married != null ? r1(married) : "",
       );
+      for (const column of columnEntries) {
+        const value = column.entries[kind]?.data?.[code];
+        row.push(typeof value === "number" && Number.isFinite(value) ? r1(value) : "");
+      }
+      return { row, population, age, married };
+    };
+
+    for (const code of areaCodes) {
+      const { row, population, age, married } = buildRow(primaryKind, code, false);
+      rows.push(row);
+
+      const populationValue = population ?? 0;
+      totalPopulation += populationValue;
+      if (age != null && populationValue > 0) {
+        weightedAge += age * populationValue;
+        weightedAgeDenominator += populationValue;
+      }
+      if (married != null && populationValue > 0) {
+        weightedMarried += married * populationValue;
+        weightedMarriedDenominator += populationValue;
+      }
 
       for (const column of columnEntries) {
-        const value = column.entry.data?.[code];
-        if (typeof value === "number") {
-          row.push(r1(value));
+        const value = column.entries[primaryKind]?.data?.[code];
+        if (typeof value === "number" && Number.isFinite(value)) {
           statSums.set(column.id, (statSums.get(column.id) || 0) + value);
           statCounts.set(column.id, (statCounts.get(column.id) || 0) + 1);
-        } else {
-          row.push("");
         }
       }
-      rows.push(row);
     }
 
-    const averageAge = totalPopulation > 0 ? weightedAge / totalPopulation : 0;
-    const averageMarried = totalPopulation > 0 ? weightedMarried / totalPopulation : 0;
+    const contextRows = contextAreas
+      .sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id))
+      .map(({ kind, id }) => buildRow(kind as SupportedAreaKind, id, true).row)
+      .filter((row) => row != null);
+
+    const averageAge = weightedAgeDenominator > 0 ? weightedAge / weightedAgeDenominator : 0;
+    const averageMarried = weightedMarriedDenominator > 0 ? weightedMarried / weightedMarriedDenominator : 0;
     const summaryRow: (string | number)[] = [
+      primaryKind,
       primaryKind === "ZIP" ? "ALL_SELECTED_ZIPS" : "ALL_SELECTED_COUNTIES",
       "—",
+      "0",
     ];
-    if (orgCountHeader) summaryRow.push(areaCodes.reduce((sum, code) => sum + (activeOrgsByArea.get(code) || 0), 0));
+    if (orgCountHeader) summaryRow.push(areaCodes.reduce((sum, code) => sum + (orgCountsByKind[primaryKind].get(code) || 0), 0));
     summaryRow.push(totalPopulation, r1(averageAge), r1(averageMarried));
     for (const column of columnEntries) {
       const count = statCounts.get(column.id) || 0;
@@ -616,33 +676,37 @@ export const ReactMapApp = () => {
     let baselinePopulation = 0;
     let baselineWeightedAge = 0;
     let baselineWeightedMarried = 0;
-    const allAreaKeys = Object.keys(populationEntry.data || {}).sort();
+    const allAreaKeys = Object.keys(populationPrimary.data || {}).sort();
     for (const code of allAreaKeys) {
-      const population = Math.max(0, Math.round((populationEntry.data || ({} as Record<string, number>))[code] || 0));
+      const popRaw = populationPrimary.data?.[code];
+      const population = typeof popRaw === "number" && Number.isFinite(popRaw) ? Math.max(0, Math.round(popRaw)) : 0;
       baselinePopulation += population;
-      const age = (ageEntry?.data || ({} as Record<string, number>))[code];
-      if (typeof age === "number") baselineWeightedAge += age * population;
-      const married = (marriedEntry?.data || ({} as Record<string, number>))[code];
-      if (typeof married === "number") baselineWeightedMarried += married * population;
-
+      const ageRaw = ageEntries?.[primaryKind]?.data?.[code];
+      if (typeof ageRaw === "number" && Number.isFinite(ageRaw)) baselineWeightedAge += ageRaw * population;
+      const marriedRaw = marriedEntries?.[primaryKind]?.data?.[code];
+      if (typeof marriedRaw === "number" && Number.isFinite(marriedRaw)) baselineWeightedMarried += marriedRaw * population;
       for (const column of columnEntries) {
-        const value = column.entry.data?.[code];
-        if (typeof value === "number") {
+        const value = column.entries[primaryKind]?.data?.[code];
+        if (typeof value === "number" && Number.isFinite(value)) {
           baselineStatSums.set(column.id, (baselineStatSums.get(column.id) || 0) + value);
           baselineStatCounts.set(column.id, (baselineStatCounts.get(column.id) || 0) + 1);
         }
       }
     }
 
-    const baselineRow: (string | number)[] = [baselineLabel, baselineName];
+    const baselineRow: (string | number)[] = [
+      primaryKind,
+      baselineLabel,
+      baselineName,
+      "0",
+    ];
     if (orgCountHeader) {
-      const totalOrgCount = Array.from(activeOrgsByArea.values()).reduce((sum, count) => sum + count, 0);
-      baselineRow.push(totalOrgCount);
+      baselineRow.push(Array.from(orgCountsByKind[primaryKind].values()).reduce((sum, count) => sum + count, 0));
     }
     baselineRow.push(
       baselinePopulation,
-      r1(baselinePopulation > 0 ? baselineWeightedAge / baselinePopulation : 0),
-      r1(baselinePopulation > 0 ? baselineWeightedMarried / baselinePopulation : 0),
+      baselinePopulation > 0 ? r1(baselineWeightedAge / baselinePopulation) : "",
+      baselinePopulation > 0 ? r1(baselineWeightedMarried / baselinePopulation) : "",
     );
     for (const column of columnEntries) {
       const count = baselineStatCounts.get(column.id) || 0;
@@ -653,10 +717,11 @@ export const ReactMapApp = () => {
     const lines: string[] = [];
     lines.push(headers.join(","));
     for (const row of rows) lines.push(row.join(","));
+    for (const row of contextRows) lines.push(row.join(","));
     lines.push(summaryRow.join(","));
     lines.push(baselineRow.join(","));
 
-    const csv = lines.join("\n");
+    const csv = lines.join("\\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");

@@ -88,25 +88,27 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId }: ZipLabelsO
     if (backgroundColor) pillLabel.style.backgroundColor = backgroundColor as any;
     if (textColor) pillLabel.style.color = textColor as any;
 
+    const displayLabel = idToLabel(zip);
+
     if (hasStatOverlay && currentStatData && zip in currentStatData) {
       const statValue = currentStatData[zip];
       const isSelectedOrPinned = isSelected || isPinned;
       if (isSelectedOrPinned) {
-        pillLabel.textContent = zip;
-      element.style.pointerEvents = "auto";
-      element.style.cursor = "pointer";
-      pillLabel.addEventListener('mouseenter', () => {
-        pillLabel.textContent = formatStatValue(statValue, currentStatType);
-      });
-      pillLabel.addEventListener('mouseleave', () => {
-        pillLabel.textContent = zip;
+        pillLabel.textContent = displayLabel;
+        element.style.pointerEvents = "auto";
+        element.style.cursor = "pointer";
+        pillLabel.addEventListener('mouseenter', () => {
+          pillLabel.textContent = formatStatValue(statValue, currentStatType);
+        });
+        pillLabel.addEventListener('mouseleave', () => {
+          pillLabel.textContent = displayLabel;
         });
       } else {
         pillLabel.textContent = formatStatValue(statValue, currentStatType);
         element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
       }
     } else {
-      pillLabel.textContent = idToLabel(zip);
+      pillLabel.textContent = displayLabel;
       element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
     }
 

@@ -1034,6 +1034,7 @@ export const createMapView = ({
         map.getCanvas().style.cursor = "pointer";
         hoveredCountyFromMap = null;
         countySelection.updateHover();
+        countyLabels?.setHoveredZip(null);
         onCountyHoverChange?.(null);
         onAreaHoverChange?.(null);
       };
@@ -1044,6 +1045,7 @@ export const createMapView = ({
         if (!county || county === hoveredCountyFromMap) return;
         hoveredCountyFromMap = county;
         countySelection.updateHover();
+        countyLabels?.setHoveredZip(county);
         onCountyHoverChange?.(county);
         onAreaHoverChange?.({ kind: "COUNTY", id: county });
       };
@@ -1353,6 +1355,9 @@ export const createMapView = ({
       const zipEntry = getStatEntryByBoundary(selectedStatId, "ZIP");
       zipLabels?.setStatOverlay(selectedStatId, zipEntry?.data || null, zipEntry?.type || "count");
       zipLabels?.setSecondaryStatOverlay?.(null, null);
+      const countyEntry = getStatEntryByBoundary(selectedStatId, "COUNTY");
+      countyLabels?.setStatOverlay(selectedStatId, countyEntry?.data || null, countyEntry?.type || "count");
+      countyLabels?.setSecondaryStatOverlay?.(null, null);
       if (typeof onStatSelectionChange === 'function') {
         onStatSelectionChange(selectedStatId);
       }
@@ -1362,6 +1367,8 @@ export const createMapView = ({
       updateSecondaryStatOverlay();
       const secondaryEntry = getStatEntryByBoundary(secondaryStatId, "ZIP");
       zipLabels?.setSecondaryStatOverlay?.(secondaryStatId, secondaryEntry?.data || null, secondaryEntry?.type || "count");
+      const countySecondary = getStatEntryByBoundary(secondaryStatId, "COUNTY");
+      countyLabels?.setSecondaryStatOverlay?.(secondaryStatId, countySecondary?.data || null, countySecondary?.type || "count");
     },
     setBoundaryMode,
     setPinnedZips: (zips: string[]) => {
@@ -1382,6 +1389,7 @@ export const createMapView = ({
       hoveredCountyFromToolbar = county;
       countySelection.updateHover();
       const finalHovered = county || hoveredCountyFromMap;
+      countyLabels?.setHoveredZip(finalHovered);
       onCountyHoverChange?.(finalHovered || null);
       onAreaHoverChange?.(finalHovered ? { kind: "COUNTY", id: finalHovered } : null);
     },
