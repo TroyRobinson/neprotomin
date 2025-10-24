@@ -161,6 +161,7 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId }: ZipLabelsO
   };
 
   const updateLabels = () => {
+    if (!visible) return;
     for (const [_zip, element] of labelElements) {
       element.remove();
     }
@@ -204,33 +205,33 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId }: ZipLabelsO
     }
     currentSelectedZips = selectedSet;
     currentPinnedZips = pinnedSet;
-    updateLabels();
+    if (visible) updateLabels();
   };
 
   const setHoveredZip = (zip: string | null) => {
     if (currentHoveredZip === zip) return;
     currentHoveredZip = zip;
-    updateLabels();
+    if (visible) updateLabels();
   };
 
   const setStatOverlay = (statId: string | null, statData: Record<string, number> | null, statType?: string) => {
     currentStatId = statId;
     currentStatData = statData;
     if (statType) currentStatType = statType;
-    updateLabels();
+    if (visible) updateLabels();
   };
 
   const setSecondaryStatOverlay = (statId: string | null, statData: Record<string, number> | null, statType?: string) => {
     currentSecondaryStatId = statId;
     currentSecondaryData = statData;
     if (statType) currentSecondaryStatType = statType;
-    updateLabels();
+    if (visible) updateLabels();
   };
 
   const setTheme = (theme: "light" | "dark") => {
     if (currentTheme === theme) return;
     currentTheme = theme;
-    updateLabels();
+    if (visible) updateLabels();
   };
 
   const setVisible = (v: boolean) => {
