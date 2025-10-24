@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Stat } from "../../types/stat";
 import type { AreaId } from "../../types/areas";
 import { areaIdKey } from "../../types/areas";
@@ -73,8 +73,25 @@ interface LineChartProps {
 }
 
 const LineChart = ({ series, onHoverLine }: LineChartProps) => {
-  const width = 320;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [width, setWidth] = useState(320);
   const height = 120;
+
+  useEffect(() => {
+    const container = svgRef.current?.parentElement;
+    if (!container) return;
+    const update = () => {
+      const next = container.clientWidth;
+      if (next > 0) {
+        setWidth((prev) => (Math.abs(prev - next) > 1 ? next : prev));
+      }
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => update());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   const allVals: number[] = [];
   for (const s of series) for (const p of s.points) allVals.push(p.value);
@@ -89,7 +106,7 @@ const LineChart = ({ series, onHoverLine }: LineChartProps) => {
   const dynamicLeftMargin = Math.max(16, labelWidth + 8);
 
   const margin = { top: 8, right: 8, bottom: 16, left: dynamicLeftMargin };
-  const innerW = width - margin.left - margin.right;
+  const innerW = Math.max(16, width - margin.left - margin.right);
   const innerH = height - margin.top - margin.bottom;
 
   const dates = series.length > 0 ? series[0].points.map((p) => p.date) : [];
@@ -102,7 +119,7 @@ const LineChart = ({ series, onHoverLine }: LineChartProps) => {
   const ticks = 3;
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height}>
+    <svg ref={svgRef} viewBox={`0 0 ${width} ${height}`} width={width} height={height}>
       <g transform={`translate(${margin.left},${margin.top})`}>
         {Array.from({ length: ticks + 1 }).map((_, i) => {
           const t = i / ticks;
