@@ -84,6 +84,12 @@ const LineChart = ({ series, onHoverLine, statType }: LineChartProps) => {
     clientY: number;
     plotY: number;
   } | null>(null);
+  const hoverLineHandlerRef = useRef(onHoverLine);
+
+  // Keep the latest onHoverLine handler without retriggering downstream effects.
+  useEffect(() => {
+    hoverLineHandlerRef.current = onHoverLine;
+  }, [onHoverLine]);
 
   useEffect(() => {
     const container = svgRef.current?.parentElement;
@@ -196,13 +202,14 @@ const LineChart = ({ series, onHoverLine, statType }: LineChartProps) => {
   }, [activeRows, hoverState]);
 
   useEffect(() => {
-    if (!onHoverLine) return;
+    const handler = hoverLineHandlerRef.current;
+    if (!handler) return;
     if (primaryHoverRow) {
-      onHoverLine(primaryHoverRow.label, primaryHoverRow.areaKey);
+      handler(primaryHoverRow.label, primaryHoverRow.areaKey);
     } else {
-      onHoverLine(null);
+      handler(null);
     }
-  }, [primaryHoverRow, onHoverLine]);
+  }, [primaryHoverRow]);
 
   useEffect(() => {
     const tooltip = tooltipRef.current;
