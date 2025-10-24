@@ -85,8 +85,8 @@ export const BoundaryToolbar = ({
   const pinnedZips = zipSelection.pinned;
   const selectedCounties = countySelection.selected;
   const pinnedCounties = countySelection.pinned;
-  const hoveredZip = hoveredArea?.kind === "ZIP" ? hoveredArea.id : null;
-  const hoveredCounty = hoveredArea?.kind === "COUNTY" ? hoveredArea.id : null;
+  const hoveredZip = null;
+  const hoveredCounty = null;
   const pinnedZipSet = new Set(pinnedZips);
   const pinnedCountySet = new Set(pinnedCounties);
   const activeAreaKind = boundaryModeToAreaKind[boundaryMode] ?? null;

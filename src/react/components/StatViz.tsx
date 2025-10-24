@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Stat } from "../../types/stat";
 import type { AreaId } from "../../types/areas";
 import { areaIdKey } from "../../types/areas";
@@ -69,13 +69,21 @@ interface StatVizProps {
 
 interface LineChartProps {
   series: { label: string; color: string; points: { date: string; value: number }[]; areaKey?: string }[];
+  statType?: string | null;
   onHoverLine?: (label: string | null, areaKey?: string) => void;
 }
 
-const LineChart = ({ series, onHoverLine }: LineChartProps) => {
+const LineChart = ({ series, onHoverLine, statType }: LineChartProps) => {
   const svgRef = useRef<SVGSVGElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(320);
   const height = 120;
+  const [hoverState, setHoverState] = useState<{
+    index: number;
+    clientX: number;
+    clientY: number;
+    plotY: number;
+  } | null>(null);
 
   useEffect(() => {
     const container = svgRef.current?.parentElement;
@@ -118,9 +126,113 @@ const LineChart = ({ series, onHoverLine }: LineChartProps) => {
   const gridOpacity = "0.35";
   const ticks = 3;
 
+  const handlePointer = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      if (dates.length === 0) {
+        setHoverState(null);
+        return;
+      }
+      const svg = svgRef.current;
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      const px = event.clientX - rect.left - margin.left;
+      const py = event.clientY - rect.top - margin.top;
+      if (py < 0 || py > innerH) {
+        setHoverState(null);
+        return;
+      }
+      const tx = Math.max(0, Math.min(innerW, px));
+      const fraction = innerW <= 0 || dates.length <= 1 ? 0 : tx / innerW;
+      const idx = Math.round(fraction * (dates.length - 1));
+      const nextState = {
+        index: idx,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        plotY: Math.max(0, Math.min(innerH, py)),
+      };
+      setHoverState(nextState);
+    },
+    [dates.length, innerH, innerW, margin.left, margin.top],
+  );
+
+  const handleLeave = useCallback(() => {
+    setHoverState(null);
+  }, []);
+
+  const activeRows = useMemo(() => {
+    if (!hoverState || dates.length === 0) return null;
+    const idx = hoverState.index;
+    const entries = series
+      .map((s) => ({
+        label: s.label,
+        color: s.color,
+        value: s.points[idx]?.value ?? null,
+        areaKey: s.areaKey,
+        yCoord: (() => {
+          const point = s.points[idx];
+          return point ? y(point.value) : null;
+        })(),
+      }))
+      .filter((row) => row.value != null)
+      .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+    if (entries.length === 0) return null;
+    return { index: idx, rows: entries };
+  }, [hoverState, series, dates.length]);
+
+  const primaryHoverRow = useMemo(() => {
+    if (!activeRows) return null;
+    const withArea = activeRows.rows.filter((row) => row.areaKey);
+    if (withArea.length === 0) return activeRows.rows[0] ?? null;
+    if (!hoverState) return withArea[0];
+    const targetY = hoverState.plotY;
+    return withArea.reduce((best, row) => {
+      if (!best) return row;
+      if (row.yCoord == null) return best;
+      if (best.yCoord == null) return row;
+      const dist = Math.abs(row.yCoord - targetY);
+      const bestDist = Math.abs(best.yCoord - targetY);
+      return dist < bestDist ? row : best;
+    }, withArea[0] ?? null);
+  }, [activeRows, hoverState]);
+
+  useEffect(() => {
+    if (!onHoverLine) return;
+    if (primaryHoverRow) {
+      onHoverLine(primaryHoverRow.label, primaryHoverRow.areaKey);
+    } else {
+      onHoverLine(null);
+    }
+  }, [primaryHoverRow, onHoverLine]);
+
+  useEffect(() => {
+    const tooltip = tooltipRef.current;
+    const svg = svgRef.current;
+    if (!tooltip || !svg || !hoverState || !activeRows) {
+      if (tooltip) tooltip.style.opacity = "0";
+      return;
+    }
+    const rect = svg.getBoundingClientRect();
+    const tx = Math.min(rect.width - 160, Math.max(12, hoverState.clientX - rect.left + 14));
+    const ty = Math.min(rect.height - 40, Math.max(12, hoverState.clientY - rect.top + 36));
+    tooltip.style.left = `${tx}px`;
+    tooltip.style.top = `${ty}px`;
+    tooltip.style.opacity = "1";
+  }, [hoverState, activeRows]);
+
+  const guideX = hoverState && hoverState.index < dates.length ? x(hoverState.index) : null;
+
   return (
-    <svg ref={svgRef} viewBox={`0 0 ${width} ${height}`} width={width} height={height}>
-      <g transform={`translate(${margin.left},${margin.top})`}>
+    <div className="relative">
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${width} ${height}`}
+        width={width}
+        height={height}
+        onPointerMove={handlePointer}
+        onPointerEnter={handlePointer}
+        onPointerLeave={handleLeave}
+      >
+        <g transform={`translate(${margin.left},${margin.top})`}>
         {Array.from({ length: ticks + 1 }).map((_, i) => {
           const t = i / ticks;
           const v = yMin + (yMax - yMin) * t;
@@ -156,26 +268,93 @@ const LineChart = ({ series, onHoverLine }: LineChartProps) => {
         ))}
 
         {series.map((s, idx) => {
-          const pts = s.points.map((p, i) => ({ x: x(i), y: y(p.value) }));
+          const pts = s.points.map((p, i) => ({ x: x(i), y: y(p.value), value: p.value }));
           if (pts.length === 0) return null;
           const path = buildSmoothPath(pts, 0.2);
+          const marker = hoverState ? pts[hoverState.index] : null;
+          const isHighlighted = primaryHoverRow?.label === s.label;
+          const baseStroke =
+            s.label === "City Average"
+              ? isHighlighted
+                ? 3
+                : 2.5
+              : isHighlighted
+              ? 3
+              : 2;
+          const strokeOpacity = isHighlighted ? 0.9 : 0.6;
           return (
-            <path
-              key={idx}
-              d={path}
-              fill="none"
-              stroke={s.color}
-              strokeOpacity={0.6}
-              strokeWidth={s.label === "City Average" ? 2.5 : 2}
-              strokeDasharray={s.label === "City Average" ? "4 3" : "0"}
-              style={{ cursor: s.areaKey ? "pointer" : "default" }}
-              onMouseEnter={() => onHoverLine?.(s.label, s.areaKey)}
-              onMouseLeave={() => onHoverLine?.(null)}
-            />
+            <g key={idx}>
+              <path
+                d={path}
+                fill="none"
+                stroke={s.color}
+                strokeOpacity={strokeOpacity}
+                strokeWidth={baseStroke}
+                strokeDasharray={s.label === "City Average" ? "4 3" : "0"}
+                style={{ cursor: "crosshair" }}
+              />
+              {marker && (
+                <circle
+                  cx={marker.x}
+                  cy={marker.y}
+                  r={3}
+                  fill={s.color}
+                  stroke={isDark ? "#1e293b" : "#e2e8f0"}
+                  strokeWidth={1}
+                  opacity={0.9}
+                />
+              )}
+            </g>
           );
         })}
+
+        {guideX != null && (
+          <line
+            x1={guideX}
+            x2={guideX}
+            y1={0}
+            y2={innerH}
+            stroke={isDark ? "#475569" : "#94a3b8"}
+            strokeWidth={1}
+            strokeDasharray="2 2"
+            opacity={0.8}
+          />
+        )}
       </g>
-    </svg>
+      </svg>
+      <div
+        ref={tooltipRef}
+        className="pointer-events-none absolute z-10 rounded border border-slate-200/80 bg-white/95 px-2 py-1 text-[10px] text-slate-800 shadow-lg transition-opacity duration-75 dark:border-slate-700/60 dark:bg-slate-900/95 dark:text-slate-100"
+        style={{ opacity: 0, minWidth: "120px" }}
+      >
+        {activeRows && (
+          <div className="space-y-0.5">
+            <div className="text-[9px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              {dates[activeRows.index]}
+            </div>
+            {activeRows.rows.map((row) => (
+              <div
+                key={row.label}
+                className={`flex items-center justify-between gap-2 whitespace-nowrap ${
+                  row.label === primaryHoverRow?.label ? "font-semibold text-slate-700 dark:text-slate-100" : ""
+                }`}
+              >
+                <span className="flex items-center gap-2 text-[10px]">
+                  <span
+                    className="inline-block h-[3px] w-3 rounded-full"
+                    style={{ backgroundColor: row.color }}
+                  />
+                  {row.label}
+                </span>
+                <span className="tabular-nums text-[10px] text-slate-500 dark:text-slate-300">
+                  {formatStatValue(row.value ?? 0, statType ?? "count")}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -497,6 +676,7 @@ export const StatViz = ({
           ) : (
             <LineChart
               series={chartData.series}
+              statType={chartData.statType}
               onHoverLine={(label, areaKey) => {
                 setHoveredLineLabel(label);
                 if (areaKey) handleHoverAreaKey(areaKey);
