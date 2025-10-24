@@ -199,7 +199,6 @@ const StatListItem = ({
   onStatSelect,
 }: StatListItemProps) => {
   const [showTooltip, setShowTooltip] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
   const handleClick = (e: React.MouseEvent) => {
@@ -227,7 +226,7 @@ const StatListItem = ({
   };
 
   const common =
-    "group relative flex items-center justify-between rounded-full border px-3 py-2 shadow-sm transition-colors cursor-pointer select-none";
+    "group relative flex items-center justify-between rounded-2xl border px-3 py-2 shadow-sm transition-colors cursor-pointer select-none";
 
   const className = isSelected
     ? `${common} border-2 border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-400/15`
@@ -236,22 +235,13 @@ const StatListItem = ({
   const handleClearClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     setShowTooltip(false);
-    setIsHovered(false);
     onStatSelect?.(null, { clear: true });
   };
 
   const valueLabel = row.hasData ? formatStatValue(row.value, row.type) : "—";
 
   return (
-    <li
-      className={className}
-      onClick={handleClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => {
-        setIsHovered(false);
-        setShowTooltip(false);
-      }}
-    >
+    <li className={className} onClick={handleClick} onMouseLeave={() => setShowTooltip(false)}>
       <div>
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{row.name}</span>
@@ -284,8 +274,10 @@ const StatListItem = ({
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{valueLabel}</span>
-        {(isSelected || isHovered) && (
+        <span className={`text-sm font-semibold text-slate-700 dark:text-slate-200 ${isSecondary ? "ml-2" : ""}`}>
+          {valueLabel}
+        </span>
+        {isSelected && (
           <button
             type="button"
             className="rounded-full border border-slate-300 px-2 py-0.5 text-[10px] font-medium text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:border-slate-600 dark:text-slate-300 dark:hover:border-brand-500 dark:hover:text-brand-300"
