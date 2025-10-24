@@ -8,7 +8,7 @@ _Snapshot: 2025-10-22_
 - Ensure React surfaces (sidebar, report, data views) consume InstantDB via `@instantdb/react` hooks with per-area-kind snapshots.
 
 ## Current Focus
-- Extend highlights/timeline cards so they can sprinkle in extra pinned areas (beyond the active kind) when there’s room.
+- Extend highlights/timeline cards so they sprinkle in (1) active-kind selections, (2) pinned other kinds, **and** (3) top remaining areas of the active kind to fill the card limits.
 - Tighten the boundary chips so the toolbar only shows chips for the active Areas dropdown selection.
 - Polish QA + copy around the new manual/auto Areas control so zoom hand-offs feel predictable.
 
@@ -23,6 +23,7 @@ _Snapshot: 2025-10-22_
 1. Should counties use their own circle translate offsets or share the ZIP offsets? (Design decision pending.)
 2. Do we prune the county centroid source to active areas only, or keep the full statewide set for future use?
 3. When a user mixes ZIPs/counties, how do we message that only the active kind is in the report (copy review on new chips)?
+4. Highlight extras: confirm the card limit logic feels right when selected + pinned + highest-value areas compete for slots.
 
 ## QA Checklist (post-iteration)
 - Mixed selections: verify report + sidebar follow the Areas dropdown while highlights show extra context.

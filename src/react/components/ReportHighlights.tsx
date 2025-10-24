@@ -113,11 +113,33 @@ export const ReportHighlights = ({
 
         const seriesByKind = seriesByStatIdByKind.get(item.statId) ?? new Map<SupportedAreaKind, SeriesEntry[]>();
         const maxAreas = shouldExpandBarsForLayout(index) ? 6 : 3;
-        const chosenAreas: AreaEntry[] = primary.slice(0, maxAreas);
-        for (const extra of extras) {
-          if (chosenAreas.length >= maxAreas) break;
-          chosenAreas.push(extra);
+
+        const chosenAreas: AreaEntry[] = [];
+        const seenPrimary = new Set<string>();
+        const pushArea = (area: AreaEntry) => {
+          if (chosenAreas.length >= maxAreas) return;
+          if (area.kind === selectedKind) {
+            if (seenPrimary.has(area.code)) return;
+            seenPrimary.add(area.code);
+          }
+          chosenAreas.push(area);
+        };
+
+        primary.forEach(pushArea);
+        extras.forEach(pushArea);
+
+        if (chosenAreas.length < maxAreas && primaryEntry) {
+          const fallbackPairs = Object.entries(primaryEntry.data || {})
+            .filter((pair): pair is [string, number] => typeof pair[1] === "number" && Number.isFinite(pair[1]))
+            .sort((a, b) => b[1] - a[1]);
+          for (const [code] of fallbackPairs) {
+            if (chosenAreas.length >= maxAreas) break;
+            if (seenPrimary.has(code)) continue;
+            pushArea({ kind: selectedKind, code, label: areaNameLookup(selectedKind, code) || code, isPrimary: false });
+          }
         }
+
+        if (chosenAreas.length === 0) return null;
 
         const dataEntries = Object.entries(primaryEntry.data || {}).filter(
           (pair): pair is [string, number] => typeof pair[1] === "number" && Number.isFinite(pair[1]),
