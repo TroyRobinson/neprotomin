@@ -41,6 +41,7 @@ Agent playbook (concise)
 - UI architecture
   - Keep modules small and single‑purpose: `topbar` (theme + nav), `sidebar` (list + hover), `mapView` (render + hover), `state/organizations` (subscribe + normalize), `lib/seed` (seed once).
   - Cross‑component hover/selection flows through explicit setters (`setActiveOrganization`) rather than shared DOM.
+  - Hover effects that call setters from callback props (e.g. StatViz line hover) should cache the handler in a ref or memoized callback so `useEffect` doesn’t re-trigger recursively (`Maximum update depth exceeded`).
   - React components live in `src/react/` and use InstantDB React hooks; vanilla components in `src/ui/` use imperative stores.
 
 - Theming
