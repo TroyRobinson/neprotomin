@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { CombinedDemographicsSnapshot, BreakdownGroup } from "../hooks/useDemographics";
 
@@ -107,6 +107,22 @@ const renderBreakdowns = (groups: Map<string, BreakdownGroup>) => {
 };
 
 export const DemographicsBar = ({ snapshot }: DemographicsBarProps) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const snapshotKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!snapshot) {
+      snapshotKeyRef.current = null;
+      setIsExpanded(false);
+      return;
+    }
+    const key = `${snapshot.label}|${snapshot.areaCount}|${snapshot.stats?.selectedCount ?? 0}|${snapshot.isMissing}`;
+    const prevKey = snapshotKeyRef.current;
+    snapshotKeyRef.current = key;
+    if (prevKey === key || isExpanded) return;
+    setIsExpanded(false);
+  }, [snapshot, isExpanded]);
+
   if (!snapshot) {
     return (
       <div className="border-b border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
@@ -121,17 +137,25 @@ export const DemographicsBar = ({ snapshot }: DemographicsBarProps) => {
   const marriedLabel = formatPercent(stats?.marriedPercent);
   const hasBreakdowns = snapshot.breakdowns.size > 0;
   const selectedCount = stats?.selectedCount ?? 0;
+  const toggleExpanded = () => setIsExpanded((prev) => !prev);
+  const showSelectedPill = selectedCount > 1;
+  const headerLabel = stats?.label ?? snapshot.label;
 
   return (
     <div className="border-b border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
-      <div className="flex items-center justify-between">
+      <button
+        type="button"
+        className="flex w-full items-start justify-between gap-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+        onClick={toggleExpanded}
+        aria-expanded={isExpanded}
+      >
         <div className="flex flex-col">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              {stats?.label ?? snapshot.label}
+              {headerLabel}
             </span>
-            {selectedCount > 0 && (
-              <span className="rounded-full bg-slate-200 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+            {showSelectedPill && (
+              <span className="rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-600 dark:text-slate-200">
                 {selectedCount} selected
               </span>
             )}
@@ -148,19 +172,26 @@ export const DemographicsBar = ({ snapshot }: DemographicsBarProps) => {
             </span>
           </div>
         </div>
-        <div className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
-          {snapshot.areaCount} area{snapshot.areaCount === 1 ? "" : "s"}
+        <span
+          className={`mt-[2px] text-base text-slate-400 transition-transform dark:text-slate-500 ${
+            isExpanded ? "rotate-180" : ""
+          }`}
+          aria-hidden="true"
+        >
+          ▾
+        </span>
+      </button>
+
+      {isExpanded && (
+        <div className="mt-3">
+          {snapshot.isMissing ? (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Data unavailable for this area. Try selecting different areas or check back later.
+            </p>
+          ) : (
+            hasBreakdowns && <div className="space-y-3">{renderBreakdowns(snapshot.breakdowns)}</div>
+          )}
         </div>
-      </div>
-
-      {snapshot.isMissing && (
-        <p className="mt-3 text-[11px] text-slate-500 dark:text-slate-400">
-          Data unavailable for this area. Try selecting different areas or check back later.
-        </p>
-      )}
-
-      {!snapshot.isMissing && hasBreakdowns && (
-        <div className="mt-3 space-y-3">{renderBreakdowns(snapshot.breakdowns)}</div>
       )}
     </div>
   );

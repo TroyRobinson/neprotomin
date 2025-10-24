@@ -225,7 +225,7 @@ const buildAreaLabel = (
     return getAreaName(kind, resolvedSelection[0]) ?? resolvedSelection[0];
   }
   if (resolvedSelection.length > 1) {
-    return `${resolvedSelection.length} ${pluralLabelForKind(kind)}`;
+    return pluralLabelForKind(kind);
   }
   if (fallbackIds.length === 1) {
     return getAreaName(kind, fallbackIds[0]) ?? fallbackIds[0];
