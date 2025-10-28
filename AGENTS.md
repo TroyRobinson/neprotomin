@@ -1,5 +1,43 @@
 Agent playbook (concise)
 
+# Reviewing Git History
+When you think may be helpful for catching up on context from a prior dev or agents work on an area of the codebase you're trying to understand:
+
+For changes in current history:
+```bash
+# Find commits touching specific files/folders
+git log src/react/components/
+
+# Search commit messages
+git log --grep="feature-name"
+
+# Search code changes
+git log -S"function-name" --patch
+```
+
+For recent changes from old history:
+```bash
+# Last 2 weeks of commits from old history
+git log backup-main-before-cleanup --since="2 weeks ago"
+
+# Commits from specific date range
+git log backup-main-before-cleanup --since="2025-10-01" --until="2025-10-28"
+
+# Recent commits touching specific files
+git log backup-main-before-cleanup --since="1 month ago" src/react/components/
+```
+
+For complete history:
+```bash
+# All commits from backup branch
+git log backup-main-before-cleanup
+
+# Or check saved log file
+cat commit_history.txt
+```
+
+Remember: Large data files are now managed outside Git. See `data/raw/README.md`
+
 # Misc Notes & Instructions:
 
 - Docs: docs in the /docs folder may be out-dated unless the user is specifically directing you to them.
