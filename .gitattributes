@@ -1,0 +1,4 @@
+data/raw/tl_2020_us_county.zip filter=lfs diff=lfs merge=lfs -text
+data/raw/oklahoma-zcta-with-counties.geojson filter=lfs diff=lfs merge=lfs -text
+data/raw/tl_2020_us_county.shp filter=lfs diff=lfs merge=lfs -text
+data/raw/oklahoma-zcta-final.geojson filter=lfs diff=lfs merge=lfs -text

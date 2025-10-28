@@ -1,0 +1,4 @@
+data/raw/tl_2020_us_county.zip
+data/raw/oklahoma-zcta-with-counties.geojson
+data/raw/tl_2020_us_county.shp
+data/raw/oklahoma-zcta-final.geojson
