@@ -1163,11 +1163,39 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       };
     })();
 
+    const extractShiftKey = (event: Event | undefined): boolean =>
+      Boolean(event && typeof (event as any).shiftKey === "boolean" && (event as any).shiftKey);
+
+    const selectZipForOrgInteraction = (
+      point: maplibregl.PointLike,
+      originalEvent?: Event,
+    ): boolean => {
+      if (boundaryMode !== "zips") return false;
+      const features = map.queryRenderedFeatures(point, { layers: zipLayerOrder });
+      for (const feature of features) {
+        const zip = feature?.properties?.[zipFeatureProperty];
+        if (typeof zip === "string" && zip.length > 0) {
+          const shiftKey = extractShiftKey(originalEvent);
+          zipSelection.toggle(zip, shiftKey, false);
+          return true;
+        }
+      }
+      return false;
+    };
+
     const unwireOrganizations = (() => {
       const onPointsMouseEnter = () => { map.getCanvas().style.cursor = "pointer"; };
       const onPointsMouseLeave = () => { map.getCanvas().style.cursor = "pointer"; clearClusterHighlight(); onHover(null); };
       const onPointsMouseMove = (e: any) => { const f = e.features?.[0]; const id = f?.properties?.id as string | undefined; clearClusterHighlight(); onHover(id || null); };
-      const onPointsClick = (e: any) => { e.originalEvent.stopPropagation(); };
+      const onPointsClick = (e: any) => {
+        const handled = selectZipForOrgInteraction(e.point, e.originalEvent);
+        if (handled) {
+          resetCountyPressState();
+          if (typeof e.preventDefault === "function") e.preventDefault();
+          const original = e.originalEvent as Event | undefined;
+          original?.stopPropagation?.();
+        }
+      };
       map.on("mouseenter", LAYER_POINTS_ID, onPointsMouseEnter);
       map.on("mouseleave", LAYER_POINTS_ID, onPointsMouseLeave);
       map.on("mousemove", LAYER_POINTS_ID, onPointsMouseMove);
@@ -1189,6 +1217,13 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       } catch {}
       };
       const onClustersClick = async (e: any) => {
+        const handledSelection = selectZipForOrgInteraction(e.point, e.originalEvent);
+        if (handledSelection) {
+          resetCountyPressState();
+          if (typeof e.preventDefault === "function") e.preventDefault();
+          const original = e.originalEvent as Event | undefined;
+          original?.stopPropagation?.();
+        }
         const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS_ID] });
       const feature = features[0];
       if (!feature || feature.geometry?.type !== "Point") return;

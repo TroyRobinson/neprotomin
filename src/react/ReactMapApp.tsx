@@ -508,9 +508,19 @@ export const ReactMapApp = () => {
   // areasByKey removed; population/age/married now sourced from statData
   const orgZipById = useMemo(() => {
     const map = new Map<string, string | null>();
-    for (const o of organizations) {
-      const zip = findZipForLocation(o.longitude, o.latitude);
-      map.set(o.id, zip);
+    const normalizePostal = (value: string | null | undefined): string | null => {
+      if (!value) return null;
+      const match = value.match(/\b\d{5}\b/);
+      return match ? match[0] : null;
+    };
+    for (const org of organizations) {
+      const postal = normalizePostal(org.postalCode);
+      if (postal) {
+        map.set(org.id, postal);
+        continue;
+      }
+      const resolved = findZipForLocation(org.longitude, org.latitude);
+      map.set(org.id, resolved);
     }
     return map;
   }, [organizations]);
