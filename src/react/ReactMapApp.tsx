@@ -1376,9 +1376,9 @@ export const ReactMapApp = () => {
             className="pointer-events-none absolute inset-x-0 bottom-0 z-20 md:hidden"
             style={{ top: topBarHeight }}
           >
-            <div className="pointer-events-auto flex h-full w-full flex-col">
+            <div className="flex h-full w-full flex-col">
               <div
-                className="flex h-full w-full flex-col rounded-t-3xl border border-slate-200 bg-white shadow-xl transition-transform duration-200 ease-out dark:border-slate-800 dark:bg-slate-900"
+                className="pointer-events-auto flex h-full w-full flex-col rounded-t-3xl border border-slate-200 bg-white shadow-xl transition-transform duration-200 ease-out dark:border-slate-800 dark:bg-slate-900"
                 style={{ transform: `translate3d(0, ${sheetTranslateY}px, 0)` }}
               >
                 <button
@@ -1447,7 +1447,6 @@ export const ReactMapApp = () => {
               selections={toolbarSelections}
               hoveredArea={hoveredArea}
               stickyTopClass="top-0"
-              stickyOffset={0}
               onBoundaryModeChange={handleBoundaryModeManualSelect}
               onBoundaryControlModeChange={handleBoundaryControlModeChange}
               onHoverArea={setHoveredAreaState}
