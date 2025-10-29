@@ -25,6 +25,7 @@ import {
 const DRY_RUN = args.dry === "1" || args.dry === true;
 const PLACE_ID_QUERY_CHUNK = 100;
 const EXISTING_PAGE_SIZE = 200;
+const ZIP_REGEX = /\b(\d{5})(?:-\d{4})?\b/;
 
 function normalizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -60,6 +61,56 @@ function makeLocationSignature(params: {
   if (!nameKey || !latKey || !lngKey) return null;
   return `${nameKey}::${latKey}::${lngKey}`;
 }
+
+const extractZipFromText = (...values: Array<string | null | undefined>): string | null => {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const match = value.match(ZIP_REGEX);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  return null;
+};
+
+const extractZipFromRaw = (raw: Record<string, unknown> | null | undefined): string | null => {
+  if (!raw || typeof raw !== "object") return null;
+  const components = Array.isArray((raw as any).addressComponents)
+    ? ((raw as any).addressComponents as Array<Record<string, unknown>>)
+    : null;
+  if (!components) return null;
+  for (const comp of components) {
+    if (!comp) continue;
+    const types = Array.isArray((comp as any).types)
+      ? ((comp as any).types as string[])
+      : typeof (comp as any).componentType === "string"
+        ? [String((comp as any).componentType)]
+        : [];
+    if (!types.some((type) => type === "postal_code")) continue;
+    const value =
+      typeof (comp as any).longText === "string"
+        ? ((comp as any).longText as string)
+        : typeof (comp as any).shortText === "string"
+          ? ((comp as any).shortText as string)
+          : null;
+    if (value) {
+      const match = value.match(ZIP_REGEX);
+      if (match && match[1]) return match[1];
+    }
+  }
+  return null;
+};
+
+const resolvePostalCode = (place: NormalizedPlace): string | null => {
+  if (typeof place.postalCode === "string" && place.postalCode.trim().length > 0) {
+    return place.postalCode.trim();
+  }
+  const fromAddress = extractZipFromText(place.formattedAddress, place.shortAddress);
+  if (fromAddress) return fromAddress;
+  const fromRaw = extractZipFromRaw(place.raw ?? null);
+  if (fromRaw) return fromRaw;
+  return null;
+};
 
 async function resolveFileFromArgs(): Promise<string> {
   if (typeof args.file === "string" && args.file.length > 0) {
@@ -150,6 +201,14 @@ function recordInMaps(
 }
 
 function createPlaceholderRow(idValue: string, place: NormalizedPlace, now: number): OrgRow {
+  const postalCode = resolvePostalCode(place);
+  const fallbackAddressParts = [place.city, place.state, postalCode]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .join(", ");
+  const address =
+    place.formattedAddress ??
+    place.shortAddress ??
+    (fallbackAddressParts.length > 0 ? fallbackAddressParts : null);
   return {
     id: idValue,
     placeId: place.placeId ?? null,
@@ -159,8 +218,8 @@ function createPlaceholderRow(idValue: string, place: NormalizedPlace, now: numb
     category: "food",
     latitude: place.latitude,
     longitude: place.longitude,
-    address: place.formattedAddress ?? place.shortAddress ?? null,
-    postalCode: place.postalCode ?? null,
+    address,
+    postalCode,
     phone: place.phone ?? null,
     lastSyncedAt: now,
   };
@@ -234,7 +293,8 @@ function updateMapsWithPlace(
 }
 
 function buildPayloadFromPlace(place: NormalizedPlace, now: number) {
-  const fallbackAddressParts = [place.city, place.state, place.postalCode]
+  const postalCode = resolvePostalCode(place);
+  const fallbackAddressParts = [place.city, place.state, postalCode]
     .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
     .join(", ");
   const fallbackAddress = fallbackAddressParts.length > 0 ? fallbackAddressParts : null;
@@ -266,7 +326,7 @@ function buildPayloadFromPlace(place: NormalizedPlace, now: number) {
     address,
     city: place.city ?? null,
     state: place.state ?? null,
-    postalCode: place.postalCode ?? null,
+    postalCode,
     phone: place.phone ?? null,
     hours: place.hours ?? null,
     googleCategory: place.googleCategory ?? null,

@@ -1,20 +1,6 @@
-await import("dotenv/config");
-let minimist: typeof import("minimist") | undefined;
-let initAdmin: typeof import("@instantdb/admin").init | undefined;
-
-const getMinimist = async () => {
-  if (!minimist) {
-    ({ default: minimist } = await import("minimist"));
-  }
-  return minimist!;
-};
-
-const getAdminInit = async () => {
-  if (!initAdmin) {
-    ({ init: initAdmin } = await import("@instantdb/admin"));
-  }
-  return initAdmin!;
-};
+import "dotenv/config";
+import minimist from "minimist";
+import { init as initAdmin } from "@instantdb/admin";
 
 type OrganizationRow = {
   id: string;
@@ -23,7 +9,7 @@ type OrganizationRow = {
   postalCode?: string | null;
 };
 
-const args = (await getMinimist())(process.argv.slice(2), {
+const args = minimist(process.argv.slice(2), {
   boolean: ["apply", "quiet"],
   default: { apply: false, quiet: false, chunk: 100, limit: 0 },
 });
@@ -41,8 +27,7 @@ if (!appId || !adminToken) {
   process.exit(1);
 }
 
-const init = await getAdminInit();
-const db = init({ appId, adminToken });
+const db = initAdmin({ appId, adminToken });
 
 const ZIP_REGEX = /\b(\d{5})(?:-\d{4})?\b/;
 
