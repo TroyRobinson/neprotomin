@@ -16,6 +16,7 @@ import { createZipFloatingTitle, type ZipFloatingTitleController } from "./compo
 import { createZipLabels, type ZipLabelsController } from "./components/zipLabels";
 import { createChoroplethLegend, type ChoroplethLegendController } from "./components/choroplethLegend";
 import { createSecondaryChoroplethLegend, type SecondaryChoroplethLegendController } from "./components/secondaryChoroplethLegend";
+import { createOrgLegend, type OrgLegendController } from "./components/orgLegend";
 import { getCountyCentroidsMap, getCountyName } from "../../lib/countyCentroids";
 import type { AreaId, AreaKind } from "../../types/areas";
 import { DEFAULT_PARENT_AREA_BY_KIND } from "../../types/areas";
@@ -273,10 +274,14 @@ export const createMapView = ({
   let zipLabels: ZipLabelsController;
   let countyLabels: ZipLabelsController;
   let choroplethLegend: ChoroplethLegendController;
+  let orgLegend: OrgLegendController;
   let legendInset = 16;
   const applyLegendInset = () => {
     if (choroplethLegend?.element) {
       choroplethLegend.element.style.bottom = `${Math.max(0, legendInset)}px`;
+    }
+    if (orgLegend?.element) {
+      orgLegend.element.style.bottom = `${Math.max(0, legendInset)}px`;
     }
   };
   const setLegendInset = (value: number) => {
@@ -638,6 +643,8 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   choroplethLegend = createChoroplethLegend();
   container.appendChild(choroplethLegend.element);
+  orgLegend = createOrgLegend();
+  choroplethLegend.pill.insertBefore(orgLegend.element, choroplethLegend.pill.firstChild);
   secondaryChoroplethLegend = createSecondaryChoroplethLegend();
   container.appendChild(secondaryChoroplethLegend.element);
 
@@ -1812,6 +1819,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       if (orgPinsVisible === visible) return;
       orgPinsVisible = visible;
       updateOrganizationPinsVisibility();
+      orgLegend?.setVisible(visible);
     },
     setCamera: (centerLng: number, centerLat: number, zoom: number) => {
       map.jumpTo({ center: [centerLng, centerLat], zoom });

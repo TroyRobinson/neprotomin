@@ -1,5 +1,6 @@
 export interface ChoroplethLegendController {
   element: HTMLElement;
+  pill: HTMLElement;
   setVisible: (visible: boolean) => void;
   setRange: (min: number, max: number, type?: string) => void;
   setColors: (lowHex: string, highHex: string) => void;
@@ -43,7 +44,7 @@ export const createChoroplethLegend = (): ChoroplethLegendController => {
   const minGroup = document.createElement("div");
   minGroup.className = "flex items-center gap-2";
   const minDot = document.createElement("span");
-  minDot.className = "h-2.5 w-2.5 rounded-full ring-1 ring-black/5 dark:ring-white/10";
+  minDot.className = "h-2.5 w-2.5 flex-shrink-0 rounded-full ring-1 ring-black/5 dark:ring-white/10";
   const minLabel = document.createElement("span");
   minLabel.className = "tabular-nums";
   minGroup.appendChild(minDot);
@@ -56,7 +57,7 @@ export const createChoroplethLegend = (): ChoroplethLegendController => {
   const maxGroup = document.createElement("div");
   maxGroup.className = "flex items-center gap-2";
   const maxDot = document.createElement("span");
-  maxDot.className = "h-2.5 w-2.5 rounded-full ring-1 ring-black/5 dark:ring-white/10";
+  maxDot.className = "h-2.5 w-2.5 flex-shrink-0 rounded-full ring-1 ring-black/5 dark:ring-white/10";
   const maxLabel = document.createElement("span");
   maxLabel.className = "tabular-nums";
   maxGroup.appendChild(maxDot);
@@ -87,7 +88,7 @@ export const createChoroplethLegend = (): ChoroplethLegendController => {
 
   setVisible(false);
 
-  return { element: wrapper, setVisible, setRange, setColors, destroy };
+  return { element: wrapper, pill, setVisible, setRange, setColors, destroy };
 };
 
 
