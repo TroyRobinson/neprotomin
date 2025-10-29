@@ -500,7 +500,7 @@ export const StatViz = ({
   activeAreaKind = null,
   onHoverArea,
 }: StatVizProps) => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [hoveredLineLabel, setHoveredLineLabel] = useState<string | null>(null);
 
   const areaEntries = useMemo<AreaSeriesEntry[]>(() => {
