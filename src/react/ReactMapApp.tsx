@@ -28,7 +28,7 @@ const COUNTY_MODE_DISABLE_ZOOM = 9.6;
 
 const FALLBACK_ZIP_SCOPE = normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma") ?? "Oklahoma";
 const DEFAULT_PRIMARY_STAT_ID = "8383685c-2741-40a2-96ff-759c42ddd586";
-const TOP_BAR_HEIGHT = 64;
+const DEFAULT_TOP_BAR_HEIGHT = 64;
 const MOBILE_MAX_WIDTH_QUERY = "(max-width: 767px)";
 const MOBILE_SHEET_PEEK_HEIGHT = 104;
 const MOBILE_SHEET_DRAG_THRESHOLD = 72;
@@ -99,6 +99,7 @@ export const ReactMapApp = () => {
   const [zipScope, setZipScope] = useState<string>(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
   const [zipNeighborScopes, setZipNeighborScopes] = useState<string[]>([]);
   const isMobile = useMediaQuery(MOBILE_MAX_WIDTH_QUERY);
+  const [topBarHeight, setTopBarHeight] = useState(DEFAULT_TOP_BAR_HEIGHT);
   const [sheetState, setSheetState] = useState<"peek" | "expanded">("peek");
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
   const [isDraggingSheet, setIsDraggingSheet] = useState(false);
@@ -107,8 +108,29 @@ export const ReactMapApp = () => {
   const sheetDragStateRef = useRef<{ startY: number; startState: "peek" | "expanded" } | null>(null);
   const pendingContentDragRef = useRef<{ pointerId: number; startY: number } | null>(null);
   const sheetContentRef = useRef<HTMLDivElement | null>(null);
-  const sheetAvailableHeight = Math.max(viewportHeight - TOP_BAR_HEIGHT, 0);
+  const sheetAvailableHeight = Math.max(viewportHeight - topBarHeight, 0);
   const sheetPeekOffset = Math.max(sheetAvailableHeight - MOBILE_SHEET_PEEK_HEIGHT, 0);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const header = document.querySelector<HTMLElement>("[data-role='topbar']");
+    if (!header) return;
+
+    const updateHeight = () => {
+      const next = Math.max(Math.round(header.getBoundingClientRect().height), 0) || DEFAULT_TOP_BAR_HEIGHT;
+      setTopBarHeight(next);
+    };
+
+    updateHeight();
+    const resizeObserver = new ResizeObserver(() => updateHeight());
+    resizeObserver.observe(header);
+    window.addEventListener("resize", updateHeight);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateHeight);
+    };
+  }, []);
 
   const zipSelection = areaSelections.ZIP;
   const countySelection = areaSelections.COUNTY;
@@ -1275,7 +1297,7 @@ export const ReactMapApp = () => {
           boundaryControlMode={boundaryControlMode}
           selections={toolbarSelections}
           hoveredArea={hoveredArea}
-          stickyTopClass="top-16"
+          stickyTopClass="top-0"
           onBoundaryModeChange={handleBoundaryModeManualSelect}
           onBoundaryControlModeChange={handleBoundaryControlModeChange}
           onHoverArea={setHoveredAreaState}
@@ -1350,7 +1372,10 @@ export const ReactMapApp = () => {
           )}
         </main>
         {showMobileSheet && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 top-16 z-20 md:hidden">
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 md:hidden"
+            style={{ top: topBarHeight }}
+          >
             <div className="pointer-events-auto flex h-full w-full flex-col">
               <div
                 className="flex h-full w-full flex-col rounded-t-3xl border border-slate-200 bg-white shadow-xl transition-transform duration-200 ease-out dark:border-slate-800 dark:bg-slate-900"
@@ -1410,8 +1435,8 @@ export const ReactMapApp = () => {
       {/* Report overlay (hidden via aria/visibility to ensure map stays laid out) */}
       <div
         aria-hidden={activeScreen !== "report"}
-        style={{ visibility: activeScreen === "report" ? "visible" : "hidden" }}
-        className="absolute left-0 right-0 bottom-0 top-16 z-30"
+        style={{ visibility: activeScreen === "report" ? "visible" : "hidden", top: topBarHeight }}
+        className="absolute left-0 right-0 bottom-0 z-30"
       >
         <div className="flex h-full w-full overflow-hidden bg-white dark:bg-slate-900 pt-10">
           {/* Toolbar in report overlay */}
@@ -1422,6 +1447,7 @@ export const ReactMapApp = () => {
               selections={toolbarSelections}
               hoveredArea={hoveredArea}
               stickyTopClass="top-0"
+              stickyOffset={0}
               onBoundaryModeChange={handleBoundaryModeManualSelect}
               onBoundaryControlModeChange={handleBoundaryControlModeChange}
               onHoverArea={setHoveredAreaState}
@@ -1452,8 +1478,8 @@ export const ReactMapApp = () => {
       {/* Data overlay */}
       <div
         aria-hidden={activeScreen !== "data"}
-        style={{ visibility: activeScreen === "data" ? "visible" : "hidden" }}
-        className="absolute left-0 right-0 bottom-0 top-16 z-30"
+        style={{ visibility: activeScreen === "data" ? "visible" : "hidden", top: topBarHeight }}
+        className="absolute left-0 right-0 bottom-0 z-30"
       >
         {activeScreen === "data" && (
           <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-slate-500">Loading data…</div>}>

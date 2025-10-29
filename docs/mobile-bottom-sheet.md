@@ -15,7 +15,7 @@
   - States: `"peek"` (drag handle + count) and `"expanded"` (full-height, scrollable list/tabs).
   - Dragging the handle or sheet content (when scrolled to top) interpolates `translateY` between the two states.
   - Map `dragstart` collapses the sheet by invoking the new `onMapDragStart` callback exposed from the imperative MapLibre controller.
-- **Boundary Toolbar**: gains a `hideAreaSelect` prop to keep the Areas dropdown hidden on mobile while retaining search/pin controls. Applied to both the map view and report overlay.
+- **Boundary Toolbar**: gains a `hideAreaSelect` prop to keep the Areas dropdown hidden on mobile while retaining search/pin controls. The main map view pins it directly beneath the top menu (sticky `top-0`), while overlays still reuse the measured top-bar height to anchor correctly.
 - **Shared Sidebar Data**: organization partitioning moved out of JSX so both desktop + mobile variants share the same derived lists and counts.
 
 ## Testing Checklist

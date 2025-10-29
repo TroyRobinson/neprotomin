@@ -20,6 +20,7 @@ interface BoundaryToolbarProps {
   hoveredArea?: AreaId | null;
   // Controls the sticky top offset class (e.g., "top-16" for below topbar, "top-0" inside overlays)
   stickyTopClass?: string;
+  stickyOffset?: number;
   onBoundaryModeChange?: (mode: BoundaryMode) => void;
   onBoundaryControlModeChange?: (mode: BoundaryControlMode) => void;
   onHoverArea?: (area: AreaId | null) => void;
@@ -66,6 +67,7 @@ export const BoundaryToolbar = ({
   selections,
   hoveredArea = null,
   stickyTopClass = "top-16",
+  stickyOffset,
   onBoundaryModeChange,
   onBoundaryControlModeChange,
   onHoverArea,
@@ -224,8 +226,13 @@ export const BoundaryToolbar = ({
   const countyUnpinned = selectedCounties.filter((id) => !pinnedCountySet.has(id)).sort();
   const sortedCounties = [...countyPinned, ...countyUnpinned];
 
+  const stickyStyle = stickyOffset != null ? { top: stickyOffset } : undefined;
+
   return (
-    <div className={`sticky ${stickyTopClass} z-10 flex h-10 w-full items-center gap-3 border-b border-slate-200 bg-slate-100/70 px-4 text-sm text-slate-600 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300`}>
+    <div
+      className={`sticky ${stickyTopClass} z-10 flex h-10 w-full items-center gap-3 border-b border-slate-200 bg-slate-100/70 px-4 text-sm text-slate-600 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300`}
+      style={stickyStyle}
+    >
       {/* Chips and Add Button */}
       <div className="flex flex-1 items-center gap-2 overflow-x-auto self-center py-1 pl-0 pr-1">
         {/* Chips Container */}
