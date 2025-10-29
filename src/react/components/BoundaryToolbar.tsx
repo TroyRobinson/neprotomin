@@ -26,6 +26,7 @@ interface BoundaryToolbarProps {
   onExport?: () => void;
   onUpdateSelection: (kind: AreaKind, selection: { selected: string[]; pinned: string[] }) => void;
   hideAreaSelect?: boolean;
+  isMobile?: boolean;
 }
 
 const LINE_COLORS = ["#375bff", "#8f20f8", "#a76d44", "#b4a360"];
@@ -72,6 +73,7 @@ export const BoundaryToolbar = ({
   onExport,
   onUpdateSelection,
   hideAreaSelect = false,
+  isMobile = false,
 }: BoundaryToolbarProps) => {
   const [inputOpen, setInputOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
@@ -229,7 +231,12 @@ export const BoundaryToolbar = ({
       className={`sticky ${stickyTopClass} z-10 flex h-10 w-full items-center gap-3 border-b border-slate-200 bg-slate-100/70 px-4 text-sm text-slate-600 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300`}
     >
       {/* Chips and Add Button */}
-      <div className="flex flex-1 items-center gap-2 overflow-x-auto self-center py-1 pl-0 pr-1">
+      <div
+        className={`flex flex-1 items-center gap-2 overflow-x-auto self-center py-1 pl-0 pr-1 ${
+          isMobile ? "no-scrollbar" : ""
+        }`}
+        style={isMobile ? { scrollbarWidth: "none" } : undefined}
+      >
         {/* Chips Container */}
         <div className="flex items-center gap-2">
           {isActiveZip &&
@@ -402,7 +409,7 @@ export const BoundaryToolbar = ({
       {/* Right Side: Export and Boundary Selector */}
       <div className="ml-auto flex items-center gap-2">
         {/* Export Button */}
-        {activeHasSelections && onExport && (
+        {activeHasSelections && onExport && !isMobile && (
           <button
             type="button"
             onClick={onExport}

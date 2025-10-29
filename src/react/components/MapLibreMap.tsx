@@ -44,6 +44,8 @@ interface MapLibreMapProps {
   onCameraChange?: (state: { center: [number, number]; zoom: number }) => void;
   autoBoundarySwitch?: boolean;
   onMapDragStart?: () => void;
+  isMobile?: boolean;
+  legendInset?: number;
 }
 
 /**
@@ -84,6 +86,8 @@ export const MapLibreMap = ({
   onCameraChange,
   autoBoundarySwitch = true,
   onMapDragStart,
+  isMobile = false,
+  legendInset,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
@@ -107,6 +111,7 @@ export const MapLibreMap = ({
   const onCameraChangeRef = useRef(onCameraChange);
   const shouldAutoSwitchRef = useRef<boolean>(autoBoundarySwitch);
   const onMapDragStartRef = useRef(onMapDragStart);
+  const setLegendInsetRef = useRef<(pixels: number) => void>(() => {});
 
   useEffect(() => { onZipSelectionChangeRef.current = onZipSelectionChange; }, [onZipSelectionChange]);
   useEffect(() => { onHoverRef.current = onHover; }, [onHover]);
@@ -124,6 +129,23 @@ export const MapLibreMap = ({
   useEffect(() => { onCameraChangeRef.current = onCameraChange; }, [onCameraChange]);
   useEffect(() => { shouldAutoSwitchRef.current = autoBoundarySwitch; }, [autoBoundarySwitch]);
   useEffect(() => { onMapDragStartRef.current = onMapDragStart; }, [onMapDragStart]);
+  useEffect(() => {
+    const controller = mapControllerRef.current;
+    if (controller) {
+      setLegendInsetRef.current = controller.setLegendInset;
+      if (typeof legendInset === "number") {
+        controller.setLegendInset(legendInset);
+      } else {
+        controller.setLegendInset(16);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof legendInset === "number") {
+      setLegendInsetRef.current?.(legendInset);
+    }
+  }, [legendInset]);
 
   // Initialize map once on mount
   useEffect(() => {
@@ -168,10 +190,17 @@ export const MapLibreMap = ({
       onZipScopeChange: (scope, neighbors) => onZipScopeChangeRef.current?.(scope, neighbors),
       shouldAutoBoundarySwitch: () => shouldAutoSwitchRef.current,
       onMapDragStart: () => onMapDragStartRef.current?.(),
+      isMobile,
     });
 
     containerRef.current.appendChild(mapController.element);
     mapControllerRef.current = mapController;
+    setLegendInsetRef.current = mapController.setLegendInset;
+    if (typeof legendInset === "number") {
+      mapController.setLegendInset(legendInset);
+    } else {
+      mapController.setLegendInset(16);
+    }
 
     const unsubscribeCamera = mapController.onCameraChange((lng, lat, zoom) => {
       onCameraChangeRef.current?.({ center: [lng, lat], zoom });
@@ -181,6 +210,7 @@ export const MapLibreMap = ({
       unsubscribeCamera?.();
       mapController.destroy();
       mapControllerRef.current = null;
+      setLegendInsetRef.current = () => {};
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -11,6 +11,12 @@ const CATEGORY_CHIP_SELECTED_CLASSES =
 const STAT_CHIP_SELECTED_CLASSES =
   "border-transparent bg-brand-100 text-brand-700 shadow-floating hover:bg-brand-100 dark:bg-brand-400/20 dark:text-white";
 
+const MOBILE_STAT_CHIP_SELECTED_CLASSES =
+  "border-transparent bg-brand-100 text-brand-700 shadow-floating hover:bg-brand-100 dark:bg-brand-400/20 dark:text-white px-3 py-1 text-xs";
+
+const MOBILE_STAT_CHIP_BASE_CLASSES =
+  "inline-flex items-center gap-2 rounded-full border bg-white/90 text-brand-700 shadow-sm transition-all duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400";
+
 // Teal styling for secondary stat chip to match map overlay
 const SECONDARY_STAT_CHIP_CLASSES =
   "border-transparent bg-teal-100 text-teal-700 shadow-floating hover:bg-teal-100 dark:bg-teal-400/20 dark:text-teal-200";
@@ -53,6 +59,7 @@ interface CategoryChipsOptions {
   onChange?: (categoryId: string | null) => void;
   onStatChange?: (statId: string | null) => void;
   onSecondaryStatChange?: (statId: string | null) => void;
+  isMobile?: boolean;
 }
 
 // Type for chip entry elements with their handlers
@@ -90,6 +97,7 @@ const toggleCloseIcon = (closeIcon: HTMLSpanElement, show: boolean) => {
 };
 
 export const createCategoryChips = (options: CategoryChipsOptions = {}): CategoryChipsController => {
+  const isMobile = options.isMobile ?? false;
   const wrapper = document.createElement("div");
   wrapper.className =
     "pointer-events-none absolute left-4 top-4 z-10 flex flex-nowrap items-start gap-2";
@@ -115,40 +123,42 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   let allStats: Stat[] = [];
   let unsubscribeStats: (() => void) | null = null;
 
-  const entries = categories.map((category) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES}`;
-    button.setAttribute("data-category", category.id);
-    button.setAttribute("aria-pressed", "false");
+  const entries = isMobile
+    ? []
+    : categories.map((category) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES}`;
+        button.setAttribute("data-category", category.id);
+        button.setAttribute("aria-pressed", "false");
 
-    const label = document.createElement("span");
-    label.textContent = category.label;
-    label.className = "whitespace-nowrap";
+        const label = document.createElement("span");
+        label.textContent = category.label;
+        label.className = "whitespace-nowrap";
 
-    const closeIcon = document.createElement("span");
-    closeIcon.innerHTML = CLOSE_ICON;
-    closeIcon.className = "-mr-1 hidden";
+        const closeIcon = document.createElement("span");
+        closeIcon.innerHTML = CLOSE_ICON;
+        closeIcon.className = "-mr-1 hidden";
 
-    button.appendChild(label);
-    button.appendChild(closeIcon);
+        button.appendChild(label);
+        button.appendChild(closeIcon);
 
-    const handleClick = () => {
-      const nextId = selectedId === category.id ? null : category.id;
-      selectedId = nextId;
-      // Reset stat selection when switching category or clearing category
-      selectedStatId = null;
-      update();
-      if (options.onChange) options.onChange(selectedId);
-      if (options.onStatChange) options.onStatChange(selectedStatId);
-    };
+        const handleClick = () => {
+          const nextId = selectedId === category.id ? null : category.id;
+          selectedId = nextId;
+          // Reset stat selection when switching category or clearing category
+          selectedStatId = null;
+          update();
+          if (options.onChange) options.onChange(selectedId);
+          if (options.onStatChange) options.onStatChange(selectedStatId);
+        };
 
-    button.addEventListener("click", handleClick);
+        button.addEventListener("click", handleClick);
 
-    list.appendChild(button);
+        list.appendChild(button);
 
-    return { button, closeIcon, handleClick, categoryId: category.id };
-  });
+        return { button, closeIcon, handleClick, categoryId: category.id };
+      });
 
   const update = () => {
     // Reorder buttons so selected chip comes first
@@ -233,16 +243,20 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   const buildStatButton = (stat: Stat) => {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES}`;
+    btn.className = isMobile
+      ? `${MOBILE_STAT_CHIP_BASE_CLASSES} border-slate-200`
+      : `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES}`;
     btn.setAttribute("data-stat-id", stat.id);
     btn.setAttribute("title", stat.name);
     const label = document.createElement("span");
-    label.textContent = formatStatChipLabel(stat.name);
-    label.className = "whitespace-nowrap";
+    label.textContent = isMobile ? stat.name : formatStatChipLabel(stat.name);
+    label.className = isMobile
+      ? "chip-fade-right whitespace-nowrap max-w-[240px] overflow-hidden text-ellipsis"
+      : "whitespace-nowrap";
 
     const closeIcon = document.createElement("span");
     closeIcon.innerHTML = CLOSE_ICON;
-    closeIcon.className = "-mr-1 hidden";
+    closeIcon.className = isMobile ? "-mr-0.5 hidden" : "-mr-1 hidden";
 
     btn.appendChild(label);
     btn.appendChild(closeIcon);
@@ -274,14 +288,17 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     statWrapper.classList.remove("hidden");
 
     // Determine which stats to show:
-    // - If category is selected and matches the selected stat's category: show all stats from that category
-    // - If only a stat is selected (no category or non-matching category): show only the selected stat
+    // - Desktop: show category stats when a category is selected, otherwise show the selected stat
+    // - Mobile: always show only the selected stat
     let stats: Stat[] = [];
-    if (selectedId) {
-      // Category is selected, show all stats from that category
+    if (isMobile) {
+      if (selectedStatId) {
+        const selectedStat = allStats.find((s) => s.id === selectedStatId);
+        stats = selectedStat ? [selectedStat] : [];
+      }
+    } else if (selectedId) {
       stats = allStats.filter((s) => s.category === selectedId);
     } else if (selectedStatId) {
-      // Only a stat is selected, show just that stat
       const selectedStat = allStats.find((s) => s.id === selectedStatId);
       stats = selectedStat ? [selectedStat] : [];
     }
@@ -313,15 +330,23 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     }
     statEntries.forEach(({ btn, id, name, labelEl, closeIcon }) => {
       const isSelected = selectedStatId === id;
-      btn.className = `${CATEGORY_CHIP_CLASSES} ${
-        isSelected ? STAT_CHIP_SELECTED_CLASSES : CATEGORY_CHIP_NEUTRAL_CLASSES
-      }`;
-      // Selected stat shows full name; others truncated
-      labelEl.textContent = isSelected ? name : formatStatChipLabel(name);
+      if (isMobile) {
+        const base = `${MOBILE_STAT_CHIP_BASE_CLASSES} border-slate-200`;
+        btn.className = isSelected
+          ? `${MOBILE_STAT_CHIP_BASE_CLASSES} border-transparent ${MOBILE_STAT_CHIP_SELECTED_CLASSES}`
+          : base;
+        labelEl.textContent = name;
+      } else {
+        btn.className = `${CATEGORY_CHIP_CLASSES} ${
+          isSelected ? STAT_CHIP_SELECTED_CLASSES : CATEGORY_CHIP_NEUTRAL_CLASSES
+        }`;
+        // Selected stat shows full name; others truncated
+        labelEl.textContent = isSelected ? name : formatStatChipLabel(name);
+      }
       // Show close icon only when stat is selected
       toggleCloseIcon(closeIcon, isSelected);
-      // Hide unselected stats when another stat is selected
-      const shouldShow = !selectedStatId || selectedStatId === id;
+      // Hide unselected stats when another stat is selected (desktop) or whenever not selected (mobile)
+      const shouldShow = isMobile ? isSelected : !selectedStatId || selectedStatId === id;
       applyChipVisibility(btn, shouldShow);
     });
   };
@@ -366,7 +391,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       secondaryChipEntry = null;
     }
 
-    if (!secondaryStatId) {
+    if (!secondaryStatId || isMobile) {
       return;
     }
 
@@ -382,7 +407,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   };
 
   const setSecondaryStat = (statId: string | null) => {
-    secondaryStatId = statId;
+    secondaryStatId = isMobile ? null : statId;
     renderSecondaryStatChip();
   };
 
@@ -408,5 +433,3 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   return { element: wrapper, setSelected, setSelectedStat, setSecondaryStat, destroy };
 };
-
-

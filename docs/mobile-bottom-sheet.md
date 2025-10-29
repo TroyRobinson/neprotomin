@@ -16,8 +16,10 @@
   - Dragging the handle or sheet content (when scrolled to top) interpolates `translateY` between the two states.
   - Map `dragstart` collapses the sheet by invoking the new `onMapDragStart` callback exposed from the imperative MapLibre controller.
   - The wrapper keeps `pointer-events: none` while the sheet itself re-enables events, so touches outside the sheet continue to reach the map.
+  - Tapping the handle toggles between peek and expanded states for quicker collapsing on mobile.
 - **Boundary Toolbar**: gains a `hideAreaSelect` prop to keep the Areas dropdown hidden on mobile while retaining search/pin controls. The main map view pins it directly beneath the top menu (sticky `top-0`), while overlays still reuse the measured top-bar height to anchor correctly.
 - **Shared Sidebar Data**: organization partitioning moved out of JSX so both desktop + mobile variants share the same derived lists and counts.
+- **Mobile overlays**: the map legend now accepts a dynamic inset from React so it clears the peeked sheet, and the stat/category chip bar collapses to a single compact stat chip with a fade-out label.
 
 ## Testing Checklist
 1. Narrow the browser to `<768px` (or use device emulation) and refresh to confirm:

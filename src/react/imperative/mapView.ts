@@ -71,6 +71,7 @@ interface MapViewOptions {
   onZipScopeChange?: (scopeLabel: string, neighbors: string[]) => void;
   shouldAutoBoundarySwitch?: () => boolean;
   onMapDragStart?: () => void;
+  isMobile?: boolean;
 }
 
 export interface MapViewController {
@@ -93,6 +94,7 @@ export interface MapViewController {
   setOrganizationPinsVisible: (visible: boolean) => void;
   setCamera: (centerLng: number, centerLat: number, zoom: number) => void;
   onCameraChange: (fn: (centerLng: number, centerLat: number, zoom: number) => void) => () => void;
+  setLegendInset: (pixels: number) => void;
   resize: () => void;
   destroy: () => void;
 }
@@ -227,6 +229,7 @@ export const createMapView = ({
   onZipScopeChange,
   shouldAutoBoundarySwitch,
   onMapDragStart,
+  isMobile = false,
 }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
   container.className = "relative flex flex-1";
@@ -237,6 +240,7 @@ export const createMapView = ({
 
   let selectedCategory: string | null = null;
   const categoryChips = createCategoryChips({
+    isMobile,
     onChange: (categoryId) => {
       selectedCategory = categoryId;
       applyData();
@@ -269,6 +273,16 @@ export const createMapView = ({
   let zipLabels: ZipLabelsController;
   let countyLabels: ZipLabelsController;
   let choroplethLegend: ChoroplethLegendController;
+  let legendInset = 16;
+  const applyLegendInset = () => {
+    if (choroplethLegend?.element) {
+      choroplethLegend.element.style.bottom = `${Math.max(0, legendInset)}px`;
+    }
+  };
+  const setLegendInset = (value: number) => {
+    legendInset = value;
+    applyLegendInset();
+  };
   let secondaryChoroplethLegend: SecondaryChoroplethLegendController;
 
   let currentTheme = themeController.getTheme();
@@ -624,6 +638,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   choroplethLegend = createChoroplethLegend();
   container.appendChild(choroplethLegend.element);
+  setLegendInset(isMobile ? 128 : 16);
   secondaryChoroplethLegend = createSecondaryChoroplethLegend();
   container.appendChild(secondaryChoroplethLegend.element);
 
@@ -1809,6 +1824,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         if (idx >= 0) cameraListeners.splice(idx, 1);
       };
     },
+    setLegendInset,
     resize: () => {
       map.resize();
     },

@@ -30,7 +30,7 @@ const FALLBACK_ZIP_SCOPE = normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?
 const DEFAULT_PRIMARY_STAT_ID = "8383685c-2741-40a2-96ff-759c42ddd586";
 const DEFAULT_TOP_BAR_HEIGHT = 64;
 const MOBILE_MAX_WIDTH_QUERY = "(max-width: 767px)";
-const MOBILE_SHEET_PEEK_HEIGHT = 104;
+const MOBILE_SHEET_PEEK_HEIGHT = 120;
 const MOBILE_SHEET_DRAG_THRESHOLD = 72;
 
 interface AreaSelectionState {
@@ -237,8 +237,10 @@ export const ReactMapApp = () => {
     if (!isMobile) return;
     if (sheetState === "peek") {
       setSheetState("expanded");
+    } else {
+      collapseSheet();
     }
-  }, [isMobile, sheetState]);
+  }, [collapseSheet, isMobile, sheetState]);
 
   const handleContentPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -358,6 +360,11 @@ export const ReactMapApp = () => {
   }, [isMobile, sheetState, sheetDragOffset, sheetPeekOffset]);
 
   const showMobileSheet = isMobile && activeScreen === "map";
+
+  const legendInset = useMemo(() => {
+    if (!isMobile) return 16;
+    return sheetState === "peek" ? MOBILE_SHEET_PEEK_HEIGHT + 24 : 16;
+  }, [isMobile, sheetState]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -1304,46 +1311,49 @@ export const ReactMapApp = () => {
           onExport={handleExport}
           onUpdateSelection={handleUpdateAreaSelection}
           hideAreaSelect={isMobile}
+          isMobile={isMobile}
         />
         <main className="relative flex flex-1 flex-col overflow-hidden md:flex-row">
           <div className="relative flex flex-1 flex-col overflow-hidden">
-            <MapLibreMap
-              organizations={activeOrganizations}
-              orgPinsVisible={orgPinsVisible}
-              zoomOutRequestNonce={zoomOutNonce}
-              clearMapCategoryNonce={clearMapCategoryNonce}
-              boundaryMode={boundaryMode}
-              autoBoundarySwitch={autoBoundarySwitch}
-              selectedZips={selectedZips}
-              pinnedZips={pinnedZips}
-              hoveredZip={hoveredZip}
-              selectedCounties={selectedCounties}
-              pinnedCounties={pinnedCounties}
-              hoveredCounty={hoveredCounty}
-              activeOrganizationId={activeOrganizationId}
-              onHover={handleHover}
-              selectedStatId={selectedStatId}
-              secondaryStatId={secondaryStatId}
-              categoryFilter={categoryFilter}
-              onAreaSelectionChange={handleAreaSelectionChange}
-              onAreaHoverChange={handleAreaHoverChange}
-              onStatSelectionChange={setSelectedStatId}
-              onSecondaryStatChange={setSecondaryStatId}
-              onCategorySelectionChange={setCategoryFilter}
-              onVisibleIdsChange={(ids, _totalInSource, allSourceIds) => {
-                setOrgsVisibleIds(ids);
-                setOrgsAllSourceIds(allSourceIds);
-              }}
-              onBoundaryModeChange={handleMapBoundaryModeChange}
-              onZipScopeChange={(scope, neighbors) => {
-                setZipScope(scope);
-                setZipNeighborScopes(neighbors);
-              }}
-              onCameraChange={setCameraState}
-              onMapDragStart={() => {
-                if (isMobile) collapseSheet();
-              }}
-            />
+              <MapLibreMap
+                organizations={activeOrganizations}
+                orgPinsVisible={orgPinsVisible}
+                zoomOutRequestNonce={zoomOutNonce}
+                clearMapCategoryNonce={clearMapCategoryNonce}
+                boundaryMode={boundaryMode}
+                autoBoundarySwitch={autoBoundarySwitch}
+                selectedZips={selectedZips}
+                pinnedZips={pinnedZips}
+                hoveredZip={hoveredZip}
+                selectedCounties={selectedCounties}
+                pinnedCounties={pinnedCounties}
+                hoveredCounty={hoveredCounty}
+                activeOrganizationId={activeOrganizationId}
+                onHover={handleHover}
+                selectedStatId={selectedStatId}
+                secondaryStatId={secondaryStatId}
+                categoryFilter={categoryFilter}
+                onAreaSelectionChange={handleAreaSelectionChange}
+                onAreaHoverChange={handleAreaHoverChange}
+                onStatSelectionChange={setSelectedStatId}
+                onSecondaryStatChange={setSecondaryStatId}
+                onCategorySelectionChange={setCategoryFilter}
+                onVisibleIdsChange={(ids, _totalInSource, allSourceIds) => {
+                  setOrgsVisibleIds(ids);
+                  setOrgsAllSourceIds(allSourceIds);
+                }}
+                onBoundaryModeChange={handleMapBoundaryModeChange}
+                onZipScopeChange={(scope, neighbors) => {
+                  setZipScope(scope);
+                  setZipNeighborScopes(neighbors);
+                }}
+                onCameraChange={setCameraState}
+                onMapDragStart={() => {
+                  if (isMobile) collapseSheet();
+                }}
+                isMobile={isMobile}
+                legendInset={legendInset}
+              />
           </div>
           {!isMobile && (
             <Sidebar
@@ -1383,7 +1393,7 @@ export const ReactMapApp = () => {
               >
                 <button
                   type="button"
-                  className="group flex flex-col items-center gap-2 rounded-t-3xl border-b border-slate-200 bg-transparent px-4 pt-3 pb-3 text-sm font-semibold text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-slate-700 dark:text-slate-200"
+                  className="group flex flex-col items-center gap-2 rounded-t-3xl border-b border-slate-200 bg-transparent px-4 py-3.5 text-sm font-semibold text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-slate-700 dark:text-slate-200"
                   onClick={handleHandleClick}
                   onPointerDown={handleHandlePointerDown}
                   aria-expanded={sheetState === "expanded"}
@@ -1453,6 +1463,7 @@ export const ReactMapApp = () => {
               onExport={handleExport}
               onUpdateSelection={handleUpdateAreaSelection}
               hideAreaSelect={isMobile}
+              isMobile={isMobile}
             />
           </div>
           {activeScreen === "report" && (
