@@ -16,7 +16,7 @@ import { normalizeScopeLabel, formatCountyScopeLabel } from '../../src/lib/scope
 const OK_STATE_FIPS = '40';
 const DEFAULT_DATASET = 'acs/acs5';
 const DEFAULT_SURVEY = 'acs5';
-const DEFAULT_CATEGORY = 'health';
+const DEFAULT_CATEGORY = 'food';
 const DEFAULT_PARENT_AREA = 'Oklahoma';
 const DEFAULT_YEARS = 3;
 

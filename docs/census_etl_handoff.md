@@ -15,7 +15,7 @@
   - ACS-specific fields: `censusVariable` (e.g. `B22003_001E`), `censusSurvey` (e.g. `acs5`), optional `marginOfError`.
   - Additional optional metadata: `censusUniverse` text and `censusTableUrl` for UI tooltips/documentation.
 - **Categories & years**:
-  - All Census SNAP stats land in InstantDB category `health`.
+- All Census SNAP stats land in InstantDB category `food`.
   - StatData `date` reflects the ACS release year (calendar year encoded by the ACS dataset).
 - **Legacy data**: backfill `source`/`statNameHint`/etc. for NE records only if effort is small; otherwise defer.
 
@@ -55,7 +55,7 @@
    - Document usage and reseed workflow (`npm run seed`, ETL reruns) in `ETL_USER_GUIDE.md`.
 7. **Series + derived stats**
    - Extend Census loader to synthesize yearly `series` rows (ZIP + COUNTY) alongside `statData`. (Pending.)
-   - Derived percentage stat (`Households Receiving SNAP (Percent)`) now persists for each year; counts remain in `health`. Confirm UI consumption once series rows are generated.
+   - Derived percentage stat (`Households Receiving SNAP (Percent)`) now persists for each year; counts remain in `food`. Confirm UI consumption once series rows are generated.
    - Optionally aggregate ZIP totals to counties if the Census API ever omits county rows (guardrail).
 
 ## Open Questions / Watch Items
@@ -97,7 +97,7 @@
 - When adding new geographies, extend `scopeLabels` instead of copying normalization code.
 
 ### SNAP Stat Strategy
-- **Counts**: `B22003_002E` (“Households Receiving SNAP”) and companion metrics live in the `health` category with friendly labels.
+- **Counts**: `B22003_002E` (“Households Receiving SNAP”) and companion metrics live in the `food` category with friendly labels.
 - **Derived percentage**: Loader emits `Households Receiving SNAP (Percent)` using `B22003_002E / B22003_001E` per geography/year.
 - **Series generation (pending)**: still need to synthesize yearly `series` rows (ZIP + COUNTY) so charts plot multi-year trends.
 - **County aggregation safety net**: if a future ACS pull lacks county rows, aggregate ZIP totals before persisting derived stats to maintain parity across boundary modes.
