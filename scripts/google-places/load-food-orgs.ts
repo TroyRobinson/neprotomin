@@ -23,9 +23,42 @@ import {
 } from "../_shared/etlUtils.js";
 
 const DRY_RUN = args.dry === "1" || args.dry === true;
+const PLACE_ID_QUERY_CHUNK = 100;
+const EXISTING_PAGE_SIZE = 200;
 
 function normalizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  if (size <= 0) return [items];
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size));
+  }
+  return out;
+}
+
+function makeNameCityKey(name?: string | null, city?: string | null): string | null {
+  if (!name || normalizeName(name).length === 0) return null;
+  return `${normalizeName(name)}::${(city ?? "").toLowerCase().trim()}`;
+}
+
+function formatCoordinate(value: unknown): string | null {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(5) : null;
+}
+
+function makeLocationSignature(params: {
+  name?: string | null;
+  city?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+}): string | null {
+  const nameKey = makeNameCityKey(params.name ?? null, params.city ?? null);
+  const latKey = formatCoordinate(params.latitude);
+  const lngKey = formatCoordinate(params.longitude);
+  if (!nameKey || !latKey || !lngKey) return null;
+  return `${nameKey}::${latKey}::${lngKey}`;
 }
 
 async function resolveFileFromArgs(): Promise<string> {
@@ -61,51 +94,143 @@ type OrgRow = {
   city?: string | null;
   state?: string | null;
   category?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
+  postalCode?: string | null;
+  phone?: string | null;
+  lastSyncedAt?: number | null;
 };
+
+function toOrgRow(row: any): OrgRow | null {
+  if (!row || typeof row.id !== "string") return null;
+  return {
+    id: row.id,
+    placeId: typeof row.placeId === "string" ? row.placeId : null,
+    name: typeof row.name === "string" ? row.name : "",
+    city: typeof row.city === "string" ? row.city : null,
+    state: typeof row.state === "string" ? row.state : null,
+    category: typeof row.category === "string" ? row.category : null,
+    latitude: typeof row.latitude === "number" ? row.latitude : null,
+    longitude: typeof row.longitude === "number" ? row.longitude : null,
+    address: typeof row.address === "string" ? row.address : null,
+    postalCode: typeof row.postalCode === "string" ? row.postalCode : null,
+    phone: typeof row.phone === "string" ? row.phone : null,
+    lastSyncedAt: typeof row.lastSyncedAt === "number" ? row.lastSyncedAt : null,
+  };
+}
+
+function recordInMaps(
+  maps: {
+    byPlaceId: Map<string, OrgRow>;
+    byNameCity: Map<string, OrgRow>;
+    byLocation: Map<string, OrgRow>;
+  },
+  row: OrgRow,
+  options: { override?: boolean } = {},
+): void {
+  const { override = false } = options;
+  const placeKey = row.placeId && row.placeId.length > 0 ? row.placeId : null;
+  if (placeKey) maps.byPlaceId.set(placeKey, row);
+
+  const nameCityKey = makeNameCityKey(row.name, row.city);
+  if (nameCityKey && (override || !maps.byNameCity.has(nameCityKey))) {
+    maps.byNameCity.set(nameCityKey, row);
+  }
+
+  const locationKey = makeLocationSignature({
+    name: row.name,
+    city: row.city,
+    latitude: row.latitude,
+    longitude: row.longitude,
+  });
+  if (locationKey && (override || !maps.byLocation.has(locationKey))) {
+    maps.byLocation.set(locationKey, row);
+  }
+}
+
+function createPlaceholderRow(idValue: string, place: NormalizedPlace, now: number): OrgRow {
+  return {
+    id: idValue,
+    placeId: place.placeId ?? null,
+    name: place.name,
+    city: place.city ?? null,
+    state: place.state ?? null,
+    category: "food",
+    latitude: place.latitude,
+    longitude: place.longitude,
+    address: place.formattedAddress ?? place.shortAddress ?? null,
+    postalCode: place.postalCode ?? null,
+    phone: place.phone ?? null,
+    lastSyncedAt: now,
+  };
+}
 
 async function fetchExisting(db: ReturnType<typeof initInstantAdmin>, placeIds: string[]) {
   const existingByPlaceId = new Map<string, OrgRow>();
   const existingByNameCity = new Map<string, OrgRow>();
+  const existingByLocation = new Map<string, OrgRow>();
+  const seenIds = new Set<string>();
+
+  const maps = { byPlaceId: existingByPlaceId, byNameCity: existingByNameCity, byLocation: existingByLocation };
+
+  const addRows = (rows: any[]) => {
+    for (const raw of rows) {
+      const row = toOrgRow(raw);
+      if (!row || seenIds.has(row.id)) continue;
+      seenIds.add(row.id);
+      recordInMaps(maps, row);
+    }
+  };
 
   const placeIdSubset = placeIds.filter((id) => id && id.length > 0);
   if (placeIdSubset.length > 0) {
-    const resp = await db.query({
-      organizations: {
-        $: {
-          where: { placeId: { $in: placeIdSubset } },
+    for (const chunk of chunkArray(placeIdSubset, PLACE_ID_QUERY_CHUNK)) {
+      const resp = await db.query({
+        organizations: {
+          $: {
+            where: { placeId: { $in: chunk } },
+            limit: Math.max(chunk.length, 1),
+          },
         },
-      },
-    });
-    for (const row of resp?.data?.organizations ?? []) {
-      if (!row?.id) continue;
-      if (typeof row.placeId === "string") {
-        existingByPlaceId.set(row.placeId, row as OrgRow);
-      }
-      const key = `${normalizeName(row.name ?? "")}::${(row.city ?? "").toLowerCase()}`;
-      existingByNameCity.set(key, row as OrgRow);
+      });
+      const rows = resp?.data?.organizations ?? resp.organizations ?? [];
+      addRows(rows);
     }
   }
 
   // Fallback: load existing food orgs for name/city matching
-  const respAll = await db.query({
-    organizations: {
-      $: {
-        where: { category: "food" },
+  let offset = 0;
+  for (;;) {
+    const respAll = await db.query({
+      organizations: {
+        $: {
+          where: { category: "food" },
+          limit: EXISTING_PAGE_SIZE,
+          offset,
+          order: { name: "asc" },
+        },
       },
-    },
-  });
-  for (const row of respAll?.data?.organizations ?? []) {
-    if (!row?.id) continue;
-    if (typeof row.placeId === "string" && !existingByPlaceId.has(row.placeId)) {
-      existingByPlaceId.set(row.placeId, row as OrgRow);
-    }
-    const key = `${normalizeName(row.name ?? "")}::${(row.city ?? "").toLowerCase()}`;
-    if (!existingByNameCity.has(key)) {
-      existingByNameCity.set(key, row as OrgRow);
-    }
+    });
+    const rows = respAll?.data?.organizations ?? respAll.organizations ?? [];
+    if (rows.length === 0) break;
+    addRows(rows);
+    if (rows.length < EXISTING_PAGE_SIZE) break;
+    offset += rows.length;
   }
 
-  return { existingByPlaceId, existingByNameCity };
+  return { existingByPlaceId, existingByNameCity, existingByLocation };
+}
+
+function updateMapsWithPlace(
+  maps: {
+    byPlaceId: Map<string, OrgRow>;
+    byNameCity: Map<string, OrgRow>;
+    byLocation: Map<string, OrgRow>;
+  },
+  row: OrgRow,
+) {
+  recordInMaps(maps, row, { override: true });
 }
 
 function buildPayloadFromPlace(place: NormalizedPlace, now: number) {
@@ -165,7 +290,12 @@ async function main() {
   const db = initInstantAdmin(initAdmin);
 
   const placeIds = payload.places.map((p) => p.placeId).filter(Boolean);
-  const { existingByPlaceId, existingByNameCity } = await fetchExisting(db, placeIds);
+  const { existingByPlaceId, existingByNameCity, existingByLocation } = await fetchExisting(db, placeIds);
+  const existingMaps = {
+    byPlaceId: existingByPlaceId,
+    byNameCity: existingByNameCity,
+    byLocation: existingByLocation,
+  };
 
   const txs: any[] = [];
   const created: NormalizedPlace[] = [];
@@ -180,9 +310,17 @@ async function main() {
       continue;
     }
     const payloadForDb = buildPayloadFromPlace(place, now);
+    const nameCityKey = makeNameCityKey(place.name, place.city);
+    const locationKey = makeLocationSignature({
+      name: place.name,
+      city: place.city,
+      latitude: place.latitude,
+      longitude: place.longitude,
+    });
     const existing =
       existingByPlaceId.get(place.placeId) ??
-      existingByNameCity.get(`${normalizeName(place.name)}::${(place.city ?? "").toLowerCase()}`);
+      (locationKey ? existingByLocation.get(locationKey) : undefined) ??
+      (nameCityKey ? existingByNameCity.get(nameCityKey) : undefined);
 
     if (existing) {
       updated.push(place);
@@ -191,10 +329,27 @@ async function main() {
           ...payloadForDb,
         }),
       );
+      const updatedRow: OrgRow = {
+        ...existing,
+        placeId: payloadForDb.placeId ?? existing.placeId ?? null,
+        name: payloadForDb.name ?? existing.name,
+        city: payloadForDb.city ?? existing.city ?? null,
+        state: payloadForDb.state ?? existing.state ?? null,
+        category: payloadForDb.category ?? existing.category,
+        latitude: payloadForDb.latitude ?? existing.latitude ?? null,
+        longitude: payloadForDb.longitude ?? existing.longitude ?? null,
+        address: payloadForDb.address ?? existing.address ?? null,
+        postalCode: payloadForDb.postalCode ?? existing.postalCode ?? null,
+        phone: payloadForDb.phone ?? existing.phone ?? null,
+        lastSyncedAt: payloadForDb.lastSyncedAt ?? existing.lastSyncedAt ?? now,
+      };
+      updateMapsWithPlace(existingMaps, updatedRow);
     } else {
       created.push(place);
       const newId = id();
       txs.push(tx.organizations[newId].update(payloadForDb));
+      const placeholder = createPlaceholderRow(newId, place, now);
+      updateMapsWithPlace(existingMaps, placeholder);
     }
   }
 
