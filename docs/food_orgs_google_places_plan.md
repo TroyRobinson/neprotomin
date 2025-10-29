@@ -81,6 +81,14 @@ Gaps / Naïveté:
    - Track metrics: total fetched, new, updated, filtered out. Persist a summary markdown/csv in `docs/data-audits/`.
    - Plan for monthly refresh cadence with optional manual trigger.
 
+## Script Usage
+- `tsx scripts/google-places/collect-food-places.ts [--keywords=...] [--radius=40000] [--step=0.6] [--out=tmp/food_places_*.json]`
+  - Produces normalized JSON with hours, status, keywords, and raw Google payload; respects local cache unless `--no-cache`/`--cache=refresh`.
+- `tsx scripts/google-places/preview-food-orgs.ts [--file=tmp/food_places_*.json]`
+  - Summarizes totals by status/city/keyword before loading.
+- `tsx scripts/google-places/load-food-orgs.ts [--file=...] [--dry=1]`
+  - Upserts into InstantDB (category fixed to `"food"`, status tags propagate to UI). Use `--dry=1` for a no-write verification pass.
+
 ## Implementation Plan
 1. **Preparation**
    - Obtain/confirm Google Places quota and add `.env` entries.
@@ -89,7 +97,9 @@ Gaps / Naïveté:
    - Update Instant schema, regenerate types if needed, adjust `Organization` model and UI consumers for optional fields.
    - Backfill existing records with placeholder data (`source = "seed"`, `lastSyncedAt = Date.now()`).
 3. **ETL Scripts**
-   - Implement collectors and loaders per strategy, with unit tests around normalization helpers (hours parsing, address formatting).
+   - ✅ `scripts/google-places/collect-food-places.ts` orchestrates statewide keyword search + detail enrichment, persists normalized JSON in `tmp/`.
+   - ✅ `scripts/google-places/preview-food-orgs.ts` surfaces status/city/keyword counts for a collected dataset.
+   - ✅ `scripts/google-places/load-food-orgs.ts` upserts normalized payloads into InstantDB via admin SDK (`--dry=1` supported).
    - Add documentation to `ETL_USER_GUIDE.md` referencing new commands.
 4. **QA & Launch**
    - Run dry-run to inspect sample output.
@@ -97,12 +107,15 @@ Gaps / Naïveté:
    - Establish monitoring (log stash or simple JSON summary) and document retry process.
 
 ## Status Tracking
-- **Completed**: Reviewed codebase organization model; analyzed existing Google Places prototype notes; drafted ingestion & schema strategy.
+- **Completed**:
+  - Reviewed codebase organization model; analyzed existing Google Places prototype notes; drafted ingestion & schema strategy.
+  - Applied InstantDB schema + React UI updates (new fields surface once Google data is loaded; seed orgs still show legacy shape).
+  - Added Google Places ETL toolchain (`collect`, `preview`, `load`) with SNAP exclusion and moved/closed status handling.
 - **Upcoming**:
-  1. Align on schema changes (single `website` field replacing `url`, new status/keyword attributes).
-  2. Implement InstantDB schema migration + type updates, including map filtering for `status`.
-  3. Build Google Places ETL collectors, detail enrichment, and loader scripts with SNAP-exclusion logic.
-  4. Run initial statewide import and QA results.
+  1. Document new scripts in `ETL_USER_GUIDE.md` and add runbooks for cache refresh + retry procedures.
+  2. Execute first end-to-end import (collect → preview → load) once API key/quota confirmed.
+  3. QA food org visibility post-import (map pins, sidebar badges, report counts) and adjust filtering thresholds if needed.
+  4. Decide on retention/merging strategy for legacy seed orgs vs. Google-derived listings.
 - **Open Questions**:
   - Should we preserve historical manual organizations or replace entirely? Need merge rules.
   - Do we require multi-category support (e.g., org spans food + health)? If so, schema needs relational mapping.
