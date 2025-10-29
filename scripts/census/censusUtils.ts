@@ -42,6 +42,16 @@ const ZIP_PREFIXES_OK = [
   '749',
 ];
 
+const normalizeCountyFips = (countyId: string | null | undefined): string | null => {
+  if (!countyId) return null;
+  const trimmed = countyId.trim();
+  if (!trimmed) return null;
+  if (trimmed.length === 5) return trimmed;
+  if (trimmed.length === 3) return `${OK_STATE_FIPS}${trimmed}`;
+  if (trimmed.length < 5) return `${OK_STATE_FIPS}${trimmed.padStart(3, '0')}`;
+  return trimmed;
+};
+
 export const CENSUS_TABLE_DOC_URL = (year: number, dataset: string, group: string): string =>
   `https://api.census.gov/data/${year}/${dataset}/groups/${group}.html`;
 
@@ -357,7 +367,7 @@ const loadZipMetadata = async (): Promise<{
   for (const zip of getAllZipCodes()) {
     if (!isOklahomaZip(zip)) continue;
     okZips.add(zip);
-    const countyId = getZipCountyId(zip);
+    const countyId = normalizeCountyFips(getZipCountyId(zip));
     const countyName = getZipCountyName(zip);
     if (countyId) zipToCountyId.set(zip, countyId);
     if (countyName) {
@@ -370,17 +380,19 @@ const loadZipMetadata = async (): Promise<{
 };
 
 const loadCountyMetadata = (): { ids: string[]; idToName: Map<string, string> } => {
-  const ids = getAllCountyIds();
+  const ids = getAllCountyIds().map((id) => normalizeCountyFips(id) ?? id);
   const idToName = new Map<string, string>();
-  for (const id of ids) {
-    const name = getCountyName(id);
+  for (const rawId of ids) {
+    const normalizedId = normalizeCountyFips(rawId);
+    if (!normalizedId) continue;
+    const name = getCountyName(normalizedId);
     if (name) {
       const formatted = formatCountyScopeLabel(name);
       const normalized = normalizeScopeLabel(formatted) ?? formatted;
-      idToName.set(id, normalized);
+      idToName.set(normalizedId, normalized);
     }
   }
-  return { ids, idToName };
+  return { ids: ids.filter((id): id is string => typeof id === 'string'), idToName };
 };
 
 export const fetchZipData = async (
@@ -493,9 +505,10 @@ export const buildDataMaps = (
   const countyMap = new Map<string, number>();
   const countyMoeMap = new Map<string, number>();
   for (const record of countyPayload.records) {
-    const countyId = record.county;
+    const countyId = normalizeCountyFips(record.county);
     const state = record.state;
     if (state !== OK_STATE_FIPS) continue;
+    if (!countyId) continue;
     const estimate = toNumberOrNull(record[estimateKey]);
     if (estimate != null) {
       countyMap.set(countyId, estimate);

@@ -29,6 +29,7 @@
 - Backfilled duplicate B22003 stats from earlier runs and reran the loader to ensure a clean dataset.
 - Added admin reset script (`npm run admin:reset`) with dry-run/force modes to wipe Census or NE datasets safely.
 - Census loader now emits friendly stat names, writes full statewide + county ZIP buckets, and creates a derived percentage stat (`Households Receiving SNAP (Percent)`).
+- County level stat payloads now store canonical 5-digit FIPS IDs (e.g., `40143`) so selection + choropleth layers resolve county totals correctly.
 - Shared `scopeLabels` helper across ETL + React map so county-level ZIP scopes line up (“Tulsa County” etc.), restoring Tulsa ZIP StatViz + header behaviour.
 - Added legacy alias matching so existing NE stats keyed to “Tulsa”/“Rogers” still hydrate scope-aware UI copy after standardising on “<County> County”.
 - Census loader now renames ACS tables to friendly stats (`Population`, `Median Age`) and synthesises `Married Percent` while treating intermediate B12001 columns as derived-only so they don’t clutter the picker.
@@ -40,6 +41,7 @@
 2. **Census data run**
    - Execute `npm run census:preview` / `census:load:dry` to validate payloads with a real API key.
    - When ready, run `census:load` for B22003 (last 3 releases) and spot-check InstantDB.
+   - After the county FIPS normalization, rerun the loader (or run `npm run census:load --years=<year>` for affected years) so existing `statData` rows pick up the corrected county identifiers.
 3. **UI verification**
    - Confirm new stats appear in the app (map overlays, time series, demographics rollups).
    - After series generation lands (see follow-up tasks), verify ZIP-level StatViz plots render.
