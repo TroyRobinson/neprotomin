@@ -43,3 +43,10 @@ export const TULSA_CENTER = {
   latitude: 36.1539,
   longitude: -95.9928,
 };
+
+export const OKLAHOMA_CENTER = {
+  latitude: 35.4676,
+  longitude: -97.5164,
+};
+
+export const OKLAHOMA_DEFAULT_ZOOM = 6.2;

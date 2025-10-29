@@ -6,7 +6,7 @@ import { getZipCountyName, getZipCountyId } from "../../lib/zipBoundaries";
 import type { BoundsArray } from "../../lib/zipBoundaries";
 import type { BoundaryMode } from "../../types/boundaries";
 import type { Organization } from "../../types/organization";
-import { TULSA_CENTER } from "../../types/organization";
+import { OKLAHOMA_CENTER, OKLAHOMA_DEFAULT_ZOOM } from "../../types/organization";
 import { themeController } from "./theme";
 // palettes/hover are used inside boundary layer helpers now
 import { createCategoryChips } from "./categoryChips";
@@ -407,8 +407,8 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   const map = new maplibregl.Map({
     container: mapNode,
     style: getMapStyle(currentTheme),
-    center: [TULSA_CENTER.longitude, TULSA_CENTER.latitude],
-    zoom: 10.5,
+    center: [OKLAHOMA_CENTER.longitude, OKLAHOMA_CENTER.latitude],
+    zoom: OKLAHOMA_DEFAULT_ZOOM,
     attributionControl: false,
     fadeDuration: 0,
     boxZoom: false,
@@ -1129,8 +1129,8 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
 
   map.once("load", () => {
     map.jumpTo({
-      center: [TULSA_CENTER.longitude, TULSA_CENTER.latitude],
-      zoom: 11,
+      center: [OKLAHOMA_CENTER.longitude, OKLAHOMA_CENTER.latitude],
+      zoom: OKLAHOMA_DEFAULT_ZOOM,
     });
 
     map.getCanvas().style.outline = "none";

@@ -114,21 +114,23 @@ export const TopBar = ({ onBrandClick, onNavigate, active = "map", onOpenAuth }:
           >
             Report
           </a>
-          <a
-            href="#data"
-            onClick={(e) => {
-              e.preventDefault();
-              onNavigate?.("data");
-            }}
-            className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-              active === "data"
-                ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-            }`}
-            aria-current={active === "data" ? "page" : undefined}
-          >
-            Data
-          </a>
+          {!isLoading && user && !user.isGuest && (
+            <a
+              href="#data"
+              onClick={(e) => {
+                e.preventDefault();
+                onNavigate?.("data");
+              }}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                active === "data"
+                  ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                  : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+              }`}
+              aria-current={active === "data" ? "page" : undefined}
+            >
+              Data
+            </a>
+          )}
         </nav>
       </div>
 

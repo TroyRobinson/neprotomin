@@ -26,6 +26,7 @@ const COUNTY_MODE_ENABLE_ZOOM = 9;
 const COUNTY_MODE_DISABLE_ZOOM = 9.6;
 
 const FALLBACK_ZIP_SCOPE = normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma") ?? "Oklahoma";
+const DEFAULT_PRIMARY_STAT_ID = "8383685c-2741-40a2-96ff-759c42ddd586";
 
 interface AreaSelectionState {
   selected: string[];
@@ -85,6 +86,8 @@ export const ReactMapApp = () => {
   const [selectedStatId, setSelectedStatId] = useState<string | null>(null);
   const [secondaryStatId, setSecondaryStatId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [hasAppliedDefaultStat, setHasAppliedDefaultStat] = useState(false);
+  const [hasSyncedDefaultCategory, setHasSyncedDefaultCategory] = useState(false);
   const [activeScreen, setActiveScreen] = useState<"map" | "report" | "data">("map");
   const [authOpen, setAuthOpen] = useState(false);
   const [cameraState, setCameraState] = useState<{ center: [number, number]; zoom: number } | null>(null);
@@ -319,7 +322,13 @@ export const ReactMapApp = () => {
     zipScope,
   });
 
-  const { statsById, seriesByStatIdByKind, seriesByStatIdByParent, statDataByParent } = useStats();
+  const {
+    statsById,
+    seriesByStatIdByKind,
+    seriesByStatIdByParent,
+    statDataByParent,
+    isLoading: areStatsLoading,
+  } = useStats();
   const { organizations } = useOrganizations();
 
   const areaNameLookup = useMemo(
@@ -598,8 +607,42 @@ export const ReactMapApp = () => {
     return map;
   }, [seriesByStatIdByParent, relevantScopes, countyScopes]);
 
+  useEffect(() => {
+    if (hasAppliedDefaultStat) return;
+    if (!DEFAULT_PRIMARY_STAT_ID) {
+      setHasAppliedDefaultStat(true);
+      return;
+    }
 
-  const [orgPinsVisible, setOrgPinsVisible] = useState(false);
+    const defaultStat = statsById.get(DEFAULT_PRIMARY_STAT_ID);
+
+    if (defaultStat) {
+      setSelectedStatId(DEFAULT_PRIMARY_STAT_ID);
+      setHasAppliedDefaultStat(true);
+      return;
+    }
+
+    if (!areStatsLoading) {
+      setHasAppliedDefaultStat(true);
+    }
+  }, [areStatsLoading, hasAppliedDefaultStat, statsById]);
+
+  useEffect(() => {
+    if (hasSyncedDefaultCategory) return;
+    if (categoryFilter) {
+      setHasSyncedDefaultCategory(true);
+      return;
+    }
+    if (!selectedStatId) return;
+    const stat = statsById.get(selectedStatId);
+    if (stat?.category) {
+      setCategoryFilter(stat.category);
+      setHasSyncedDefaultCategory(true);
+    }
+  }, [categoryFilter, hasSyncedDefaultCategory, selectedStatId, statsById]);
+
+
+  const [orgPinsVisible, setOrgPinsVisible] = useState(true);
   const [orgsVisibleIds, setOrgsVisibleIds] = useState<string[]>([]);
   const [orgsAllSourceIds, setOrgsAllSourceIds] = useState<string[]>([]);
   const [zoomOutNonce, setZoomOutNonce] = useState(0);

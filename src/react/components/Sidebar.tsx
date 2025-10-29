@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DemographicsBar } from "./DemographicsBar";
 import { StatViz } from "./StatViz";
 import { StatList } from "./StatList";
@@ -67,8 +67,8 @@ export const Sidebar = ({
   onStatSelect,
   onOrgPinsVisibleChange,
 }: SidebarProps) => {
-  const [activeTab, setActiveTab] = useState<TabType>("stats");
-  const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>("orgs");
+  const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(true);
   const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
 
   const { inSelection = [], all = [], totalSourceCount = 0 } = organizations;
@@ -83,18 +83,18 @@ export const Sidebar = ({
   const countForTab = totalSelectedCount > 0 ? inSelection.length : totalCount;
   const missingCount = Math.max(totalCount - visibleCount, 0);
 
+  useEffect(() => {
+    const visible = keepOrgsOnMap || activeTab === "orgs";
+    onOrgPinsVisibleChange?.(visible);
+  }, [activeTab, keepOrgsOnMap, onOrgPinsVisibleChange]);
+
   const handleToggleKeepOrgs = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
-    const newValue = !keepOrgsOnMap;
-    setKeepOrgsOnMap(newValue);
-    const visible = newValue || activeTab === "orgs";
-    onOrgPinsVisibleChange?.(visible);
+    setKeepOrgsOnMap((prev) => !prev);
   };
 
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
-    const visible = keepOrgsOnMap || tab === "orgs";
-    onOrgPinsVisibleChange?.(visible);
   };
 
   const tabClasses = (isActive: boolean) =>
@@ -128,13 +128,6 @@ export const Sidebar = ({
         <div className="flex items-center gap-4">
           <button
             type="button"
-            className={tabClasses(activeTab === "stats")}
-            onClick={() => handleTabChange("stats")}
-          >
-            <span>Statistics</span>
-          </button>
-          <button
-            type="button"
             className={tabClasses(activeTab === "orgs")}
             onClick={() => handleTabChange("orgs")}
           >
@@ -165,6 +158,13 @@ export const Sidebar = ({
                 style={{ transform: keepOrgsOnMap ? "translateX(14px)" : "translateX(2px)" }}
               />
             </span>
+          </button>
+          <button
+            type="button"
+            className={tabClasses(activeTab === "stats")}
+            onClick={() => handleTabChange("stats")}
+          >
+            <span>Statistics</span>
           </button>
         </div>
       </div>
