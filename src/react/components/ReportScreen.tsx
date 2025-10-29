@@ -330,18 +330,25 @@ export const ReportScreen = ({
                   {orgsInSelection.map((org) => (
                     <li key={org.id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/40">
                       <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{org.name}</p>
-                      <div className="mt-1 flex items-center justify-between">
+                      <div className="mt-1 flex items-center justify-between gap-2">
                         <span className="rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-200">
                           {org.category}
                         </span>
-                        <a
-                          href={org.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-medium text-slate-500 hover:text-brand-700 dark:text-slate-400"
-                        >
-                          Visit site
-                        </a>
+                        {org.status && org.status !== "active" && (
+                          <span className="rounded-full bg-amber-100 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-400/20 dark:text-amber-200">
+                            {org.status}
+                          </span>
+                        )}
+                        {org.website && (
+                          <a
+                            href={org.website}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-medium text-slate-500 hover:text-brand-700 dark:text-slate-400"
+                          >
+                            Visit site
+                          </a>
+                        )}
                       </div>
                     </li>
                   ))}

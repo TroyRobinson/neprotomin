@@ -35,33 +35,36 @@ export const ensureOrganizationsSeeded = async (): Promise<void> => {
       const txs: any[] = [];
       for (const seed of organizationSeedData) {
         const existing = existingByName.get(seed.name);
+        const payload = {
+          name: seed.name,
+          website: seed.website ?? null,
+          latitude: seed.latitude,
+          longitude: seed.longitude,
+          category: seed.category,
+          status: seed.status ?? "active",
+          source: "seed",
+          address: seed.address ?? null,
+          city: seed.city ?? null,
+          state: seed.state ?? null,
+          postalCode: seed.postalCode ?? null,
+        };
         if (existing && existing.id) {
           const needsUpdate =
-            existing.url !== seed.url ||
-            existing.latitude !== seed.latitude ||
-            existing.longitude !== seed.longitude ||
-            existing.category !== seed.category;
+            existing.website !== payload.website ||
+            existing.latitude !== payload.latitude ||
+            existing.longitude !== payload.longitude ||
+            existing.category !== payload.category ||
+            (existing.status ?? "active") !== payload.status ||
+            (existing.source ?? null) !== payload.source ||
+            (existing.address ?? null) !== payload.address ||
+            (existing.city ?? null) !== payload.city ||
+            (existing.state ?? null) !== payload.state ||
+            (existing.postalCode ?? null) !== payload.postalCode;
           if (needsUpdate) {
-            txs.push(
-              db.tx.organizations[existing.id].update({
-                name: seed.name,
-                url: seed.url,
-                latitude: seed.latitude,
-                longitude: seed.longitude,
-                category: seed.category,
-              }),
-            );
+            txs.push(db.tx.organizations[existing.id].update(payload));
           }
         } else {
-          txs.push(
-            db.tx.organizations[id()].update({
-              name: seed.name,
-              url: seed.url,
-              latitude: seed.latitude,
-              longitude: seed.longitude,
-              category: seed.category,
-            }),
-          );
+          txs.push(db.tx.organizations[id()].update(payload));
         }
       }
 

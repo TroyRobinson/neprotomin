@@ -297,18 +297,46 @@ const OrganizationListItem = ({
       onMouseLeave={handleMouseLeave}
       onBlur={handleMouseLeave}
     >
-      <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{org.name}</p>
-      <a
-        href={org.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-400 transition-colors hover:text-brand-900 dark:text-slate-300 dark:hover:text-slate-100"
-      >
-        Visit site
-        <span aria-hidden="true" className="text-[1em] leading-none">
-          ↗
-        </span>
-      </a>
+      <div className="flex items-start gap-2">
+        <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{org.name}</p>
+        {org.status && org.status !== "active" && (
+          <span className="rounded-full bg-amber-100 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-400/20 dark:text-amber-200">
+            {org.status}
+          </span>
+        )}
+      </div>
+      {(org.address || org.city || org.state || org.postalCode) && (
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {[
+            org.address,
+            [org.city, org.state].filter(Boolean).join(", ") || null,
+            org.postalCode ?? null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      )}
+      {org.phone && (
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          <span className="font-medium text-slate-600 dark:text-slate-300">Phone:</span>{" "}
+          <a href={`tel:${org.phone}`} className="hover:underline">
+            {org.phone}
+          </a>
+        </p>
+      )}
+      {org.website && (
+        <a
+          href={org.website}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-400 transition-colors hover:text-brand-900 dark:text-slate-300 dark:hover:text-slate-100"
+        >
+          Visit site
+          <span aria-hidden="true" className="text-[1em] leading-none">
+            ↗
+          </span>
+        </a>
+      )}
       <span
         role="button"
         tabIndex={0}

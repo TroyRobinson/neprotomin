@@ -1,6 +1,9 @@
 import type maplibregl from "maplibre-gl";
 
-type OrgFC = GeoJSON.FeatureCollection<GeoJSON.Point, { id: string; name: string; url: string }>;
+type OrgFC = GeoJSON.FeatureCollection<
+  GeoJSON.Point,
+  { id: string; name: string; website?: string | null; status?: string | null }
+>;
 
 export type VisibleIdsCallback = (ids: string[], totalInSource: number, allSourceIds: string[]) => void;
 
@@ -42,5 +45,4 @@ export function wireVisibleIds(
     map.off("zoomend", onZoomEnd);
   };
 }
-
 

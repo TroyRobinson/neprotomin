@@ -515,6 +515,16 @@ export const ReactMapApp = () => {
     return map;
   }, [organizations]);
 
+  const activeOrganizations = useMemo(
+    () => organizations.filter((org) => !org.status || org.status === "active"),
+    [organizations],
+  );
+
+  const inactiveOrganizations = useMemo(
+    () => organizations.filter((org) => org.status && org.status !== "active"),
+    [organizations],
+  );
+
   const seriesByStatIdScoped = useMemo(() => {
     const map = new Map<string, SeriesByKind>();
 
@@ -707,7 +717,9 @@ export const ReactMapApp = () => {
       headers.push(orgCountHeader);
 
       const idsFilter = new Set(orgsAllSourceIds);
-      const fromSource = organizations.filter((org) => idsFilter.size === 0 || idsFilter.has(org.id));
+      const fromSource = activeOrganizations.filter(
+        (org) => idsFilter.size === 0 || idsFilter.has(org.id),
+      );
       const catOrgs = fromSource.filter((org) => org.category === selectedCategory);
       for (const org of catOrgs) {
         const zip = orgZipById.get(org.id);
@@ -952,8 +964,12 @@ export const ReactMapApp = () => {
                 // Compute groups for orgs tab using current visible ids and selection
                 const sourceIds = new Set(orgsAllSourceIds);
                 const visibleIds = new Set(orgsVisibleIds);
-                const fromSource = organizations.filter((o) => sourceIds.size === 0 || sourceIds.has(o.id));
-                const visible = fromSource.filter((o) => visibleIds.size === 0 || visibleIds.has(o.id));
+                const fromSource = activeOrganizations.filter(
+                  (o) => sourceIds.size === 0 || sourceIds.has(o.id),
+                );
+                const visible = fromSource.filter(
+                  (o) => visibleIds.size === 0 || visibleIds.has(o.id),
+                );
                 const zipSel = new Set(selectedZips);
                 const countySel = new Set(selectedCounties);
                 let inSelection: Organization[] = [];
@@ -1018,8 +1034,12 @@ export const ReactMapApp = () => {
                     rest = rest.slice().sort(cmp);
                   }
                 }
-                const totalSourceCount = sourceIds.size || fromSource.length;
-                return { inSelection, all: rest, totalSourceCount };
+                const inactiveSorted = inactiveOrganizations
+                  .slice()
+                  .sort((a, b) => a.name.localeCompare(b.name));
+                const totalSourceCount =
+                  (sourceIds.size || fromSource.length) + inactiveOrganizations.length;
+                return { inSelection, all: [...rest, ...inactiveSorted], totalSourceCount };
               })()}
               activeOrganizationId={activeOrganizationId}
               highlightedOrganizationIds={highlightedOrganizationIds ?? undefined}
@@ -1045,7 +1065,7 @@ export const ReactMapApp = () => {
             {/* Map */}
             <div className="flex flex-1 flex-col overflow-hidden">
               <MapLibreMap
-                organizations={organizations}
+                organizations={activeOrganizations}
                 orgPinsVisible={orgPinsVisible}
                 zoomOutRequestNonce={zoomOutNonce}
                 clearMapCategoryNonce={clearMapCategoryNonce}

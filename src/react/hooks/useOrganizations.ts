@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { db } from "../../lib/reactDb";
-import type { Organization } from "../../types/organization";
+import type { Organization, OrganizationStatus } from "../../types/organization";
 
 export const useOrganizations = () => {
   const { isLoading: isAuthLoading } = db.useAuth();
@@ -21,22 +21,73 @@ export const useOrganizations = () => {
   const organizations = useMemo<Organization[]>(() => {
     const rows = data?.organizations ?? [];
     const list: Organization[] = [];
+    const allowedCategories = new Set<Organization["category"]>([
+      "health",
+      "education",
+      "justice",
+      "economy",
+      "food",
+    ]);
+    const allowedStatuses: OrganizationStatus[] = ["active", "moved", "closed"];
+
     for (const row of rows) {
       if (
         row?.id &&
         typeof row.name === "string" &&
-        typeof row.url === "string" &&
         typeof row.latitude === "number" &&
         typeof row.longitude === "number" &&
         typeof (row as any).category === "string"
       ) {
+        const categoryValue = (row as any).category as string;
+        if (!allowedCategories.has(categoryValue as Organization["category"])) {
+          continue;
+        }
+
+        const rawStatus =
+          typeof (row as any).status === "string"
+            ? ((row as any).status as string).toLowerCase()
+            : null;
+        const statusValue =
+          rawStatus && allowedStatuses.includes(rawStatus as OrganizationStatus)
+            ? (rawStatus as OrganizationStatus)
+            : null;
+
+        const rawValue =
+          typeof (row as any).raw === "object" && (row as any).raw !== null
+            ? ((row as any).raw as Record<string, unknown>)
+            : null;
+
         list.push({
           id: row.id,
           name: row.name,
-          url: row.url,
           latitude: row.latitude,
           longitude: row.longitude,
-          category: (row as any).category,
+          category: categoryValue as Organization["category"],
+          website:
+            typeof (row as any).website === "string" ? ((row as any).website as string) : null,
+          address: typeof (row as any).address === "string" ? ((row as any).address as string) : null,
+          city: typeof (row as any).city === "string" ? ((row as any).city as string) : null,
+          state: typeof (row as any).state === "string" ? ((row as any).state as string) : null,
+          postalCode:
+            typeof (row as any).postalCode === "string" ? ((row as any).postalCode as string) : null,
+          phone: typeof (row as any).phone === "string" ? ((row as any).phone as string) : null,
+          hours: (row as any).hours ?? null,
+          placeId: typeof (row as any).placeId === "string" ? ((row as any).placeId as string) : null,
+          source: typeof (row as any).source === "string" ? ((row as any).source as string) : null,
+          googleCategory:
+            typeof (row as any).googleCategory === "string"
+              ? ((row as any).googleCategory as string)
+              : null,
+          keywordFound:
+            typeof (row as any).keywordFound === "string"
+              ? ((row as any).keywordFound as string)
+              : null,
+          status: statusValue,
+          lastSyncedAt:
+            typeof (row as any).lastSyncedAt === "number"
+              ? ((row as any).lastSyncedAt as number)
+              : null,
+          raw: rawValue,
         });
       }
     }
@@ -45,5 +96,3 @@ export const useOrganizations = () => {
 
   return { organizations, isLoading, error };
 };
-
-

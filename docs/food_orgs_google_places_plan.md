@@ -25,19 +25,23 @@ Gaps / Naïveté:
   - `source` (string, indexed, default `"google_places"`).
   - `address` (string) for formatted full address.
   - `city` / `state` / `postalCode` (strings, indexed where used for filtering/grouping).
+  - `website` (string, optional) — replaces current required `url`.
   - `phone` (string, optional).
-  - `hours` (json) storing normalized weekly schedule (e.g., array of `{ day, open, close, isOvernight }`).
-  - `website` (string, optional) — replace current required `url` or make `url` optional alias.
+  - `hours` (json) storing normalized weekly schedule, including unverified periods when returned.
+  - `googleCategory` (string, indexed) capturing Google primary/most-specific type.
+  - `keywordFound` (string, optional) to record the first matching search phrase.
+  - `status` (string, indexed) with enum such as `"active" | "moved" | "closed"` to drive map visibility.
   - `lastSyncedAt` (number, indexed) for freshness tracking.
-  - `raw` (json, optional) to preserve source metadata (types, attribution, etc.) for debugging.
+  - `raw` (json, optional) to preserve source metadata (types, attributes, movedPlace info, etc.) for debugging.
 - Update seed routines, hooks, and map controllers to accept optional fields gracefully.
 
 ## Google Places Ingestion Strategy
 1. **Discovery (Search)**
-   - Use Places API (New) `places:searchText` with targeted phrases (`"food bank"`, `"food pantry"`, `"hunger relief"`, etc.) and enforce `locationBias` circles centered on a statewide H3 grid (e.g., resolution 6) to cover all of Oklahoma, including rural regions.
+   - Use Places API (New) `places:searchText` with keyword set focused on non-federal community food support (e.g., `"community food bank"`, `"church food pantry"`, `"emergency food help"`, `"free meal program"`, `"community pantry"`, `"mutual aid food"`), prioritizing phrases that resonate with residents losing SNAP benefits.
    - Supplement with `places:searchNearby` for specific Place Types (`FOOD_BANK`, `MEAL_DELIVERY`, `MEAL_TAKEAWAY`, `MEAL_PREP`, `NON_PROFIT`) where text search underperforms.
    - Configure result limits (20 per call) and paginate until exhaustion. Record request metadata (center, phrase, page) to ensure deterministic reruns.
    - Maintain an on-disk cache (JSON) keyed by (searchType, lat, lon, radius, keyword) to support dry runs and replay while respecting quota.
+   - Filter out results whose Google categories or attributes imply federal/SNAP-only services (e.g., `government_office`, `social_services_organization` tied solely to SNAP). Tag filtered place IDs so we can revisit later if policy changes.
 
 2. **Enrichment (Details)**
    - For each unique `place_id`, call `places:lookup` (or `placeDetails` for legacy) requesting `displayName`, `formattedAddress`, `addressComponents`, `nationalPhoneNumber`, `internationalPhoneNumber`, `websiteUri`, `regularOpeningHours`, `types`, `businessStatus`, and `location` (lat/lng).
@@ -46,26 +50,31 @@ Gaps / Naïveté:
      - Prefer `regularOpeningHours.periods` → convert to per-day schedule.
      - Derive `city`, `state`, `postalCode` from address components.
      - Validate coordinates fall within Oklahoma; discard or flag otherwise.
+     - Capture `primaryType` or best matching type as `googleCategory`.
+     - Detect `movedPlaceId` or `businessStatus` values indicating closures/relocations; store in `status` and `raw`.
 
 3. **Transform**
    - Map all qualifying entries to our canonical shape:
      - `category = "food"`.
      - `website` fallback to empty string when absent; `phone` to E.164 if possible.
-     - Set `hours` JSON to `{ periods: [...], weekday_text: [...] }` for easy rendering.
+     - Set `hours` JSON to `{ periods: [...], weekdayText: [...], status: "unverified" | "verified" }` for easy rendering.
+     - Capture the initial search phrase as `keywordFound`.
      - Add `sourceTags` (keywords/types that surfaced the place) in `raw` for auditing.
    - Apply filters:
      - Exclude closed (`businessStatus === "CLOSED_PERMANENTLY"`) or generic grocery-only hits unless flagged as assistance.
+     - Exclude organizations whose services are clearly tied to federal SNAP administration rather than direct community food aid.
      - Optional manual inclusion allow-list for known pantries missing from Google (future enhancement).
 
 4. **Load (ETL)**
    - Write scripts under `scripts/google-places/` following existing ETL conventions:
-     1. `collect-food-places.ts` — discovery + enrichment, outputs `tmp/food_places_{timestamp}.json`.
-     2. `preview-food-orgs.ts` — summarize counts/coverage, list new vs existing InstantDB records (dry run).
-     3. `load-food-orgs.ts` — upsert into InstantDB using admin SDK:
+      1. `collect-food-places.ts` — discovery + enrichment, outputs `tmp/food_places_{timestamp}.json`.
+      2. `preview-food-orgs.ts` — summarize counts/coverage, list new vs existing InstantDB records (dry run).
+      3. `load-food-orgs.ts` — upsert into InstantDB using admin SDK:
         - Lookup by `placeId` first, fallback to `(normalizedName, city)` for legacy/manual entries.
-        - Update changed fields, set `lastSyncedAt = Date.now()`.
-        - Deactivate (set `isActive = false` or add `inactiveReason`) for orgs no longer returned (requires new field if we choose to track this).
-   - Ensure scripts are idempotent, support `--since` / `--dry-run` args, and write audit logs.
+        - Update changed fields, set `lastSyncedAt = Date.now()`, `googleCategory`, and `keywordFound` on first discovery.
+        - Set `status = "moved"` when `movedPlaceId` is supplied, and `status = "closed"` for `CLOSED_PERMANENTLY` or `OUT_OF_BUSINESS` results; flag these so the map layer hides them while list views can optionally show with a badge.
+        - Maintain an `active` boolean derived from `status === "active"` to simplify map filtering.
+    - Ensure scripts are idempotent, support `--since` / `--dry-run` args, and write audit logs.
 
 5. **Scheduling & Monitoring**
    - Store API keys in environment (`GOOGLE_PLACES_API_KEY`). Allow configurable quotas (max requests per run) to avoid overruns.
@@ -90,12 +99,11 @@ Gaps / Naïveté:
 ## Status Tracking
 - **Completed**: Reviewed codebase organization model; analyzed existing Google Places prototype notes; drafted ingestion & schema strategy.
 - **Upcoming**:
-  1. Align on schema changes and optional/deprecation strategy for `url` → `website`.
-  2. Implement InstantDB schema migration + type updates.
-  3. Build Google Places ETL collectors, detail enrichment, and loader scripts.
+  1. Align on schema changes (single `website` field replacing `url`, new status/keyword attributes).
+  2. Implement InstantDB schema migration + type updates, including map filtering for `status`.
+  3. Build Google Places ETL collectors, detail enrichment, and loader scripts with SNAP-exclusion logic.
   4. Run initial statewide import and QA results.
 - **Open Questions**:
   - Should we preserve historical manual organizations or replace entirely? Need merge rules.
   - Do we require multi-category support (e.g., org spans food + health)? If so, schema needs relational mapping.
-  - Preferred representation for hours (structured vs formatted strings) for UI components.
   - Required refresh frequency and alerting; align with ops.

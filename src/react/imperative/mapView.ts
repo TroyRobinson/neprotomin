@@ -143,7 +143,7 @@ import {
 
 type FC = GeoJSON.FeatureCollection<
   GeoJSON.Point,
-  { id: string; name: string; url: string }
+  { id: string; name: string; website?: string | null; status?: string | null }
 >;
 
 type BoundaryTypeKey = "ZIP" | "COUNTY";
@@ -1561,15 +1561,24 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   }
 
   const applyData = () => {
+    const visible = allOrganizations.filter(
+      (o) => !o.status || o.status === "active",
+    );
+
     const filtered = selectedCategory
-      ? allOrganizations.filter((o) => o.category === selectedCategory)
-      : allOrganizations;
+      ? visible.filter((o) => o.category === selectedCategory)
+      : visible;
 
     const fc: FC = {
       type: "FeatureCollection",
       features: filtered.map((o) => ({
         type: "Feature",
-        properties: { id: o.id, name: o.name, url: o.url },
+        properties: {
+          id: o.id,
+          name: o.name,
+          website: o.website ?? null,
+          status: o.status ?? null,
+        },
         geometry: { type: "Point", coordinates: [o.longitude, o.latitude] },
       })),
     };

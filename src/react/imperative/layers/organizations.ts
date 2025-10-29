@@ -12,7 +12,10 @@ export interface OrgLayerIds {
 export const ensureOrganizationLayers = (
   map: maplibregl.Map,
   ids: OrgLayerIds,
-  lastData: GeoJSON.FeatureCollection<GeoJSON.Point, { id: string; name: string; url: string }>,
+  lastData: GeoJSON.FeatureCollection<
+    GeoJSON.Point,
+    { id: string; name: string; website?: string | null; status?: string | null }
+  >,
 ): void => {
   const {
     SOURCE_ID,
@@ -124,5 +127,4 @@ export const ensureOrganizationLayers = (
     });
   }
 };
-
 

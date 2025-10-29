@@ -11,10 +11,34 @@ const _schema = i.schema({
     // (users/auth removed)
     organizations: i.entity({
       name: i.string().indexed(),
-      url: i.string(),
+      website: i.string().optional(),
       latitude: i.number(),
       longitude: i.number(),
       category: i.string().indexed(),
+      placeId: i.string().unique().indexed().optional(),
+      source: i.string().indexed().optional(),
+      address: i.string().optional(),
+      city: i.string().indexed().optional(),
+      state: i.string().indexed().optional(),
+      postalCode: i.string().indexed().optional(),
+      phone: i.string().optional(),
+      hours: i.json<{
+        periods?: Array<{
+          day: number;
+          openTime?: string | null;
+          closeTime?: string | null;
+          isOvernight?: boolean;
+          status?: string | null;
+        }>;
+        weekdayText?: string[];
+        status?: string;
+        isUnverified?: boolean;
+      }>().optional(),
+      googleCategory: i.string().indexed().optional(),
+      keywordFound: i.string().optional(),
+      status: i.string().indexed().optional(),
+      lastSyncedAt: i.number().indexed().optional(),
+      raw: i.json<Record<string, unknown>>().optional(),
     }),
     areas: i.entity({
       code: i.string().unique().indexed(), // e.g., ZIP / county FIPS
