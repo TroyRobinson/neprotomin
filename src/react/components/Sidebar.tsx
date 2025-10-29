@@ -19,6 +19,7 @@ interface SidebarProps {
     inSelection: Organization[];
     all: Organization[];
     totalSourceCount?: number;
+    visibleInViewport?: number;
   };
   activeOrganizationId?: string | null;
   highlightedOrganizationIds?: string[] | null;
@@ -77,16 +78,17 @@ export const Sidebar = ({
   const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(true);
   const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
 
-  const { inSelection = [], all = [], totalSourceCount = 0 } = organizations;
+  const { inSelection = [], all = [], totalSourceCount = 0, visibleInViewport } = organizations;
   const highlightedIds = new Set(highlightedOrganizationIds ?? []);
 
   const selectedZips = selectedAreas?.ZIP ?? [];
   const selectedCounties = selectedAreas?.COUNTY ?? [];
   const totalSelectedCount = selectedZips.length + selectedCounties.length;
 
-  const visibleCount = inSelection.length + all.length;
+  const visibleCount =
+    typeof visibleInViewport === "number" ? visibleInViewport : inSelection.length + all.length;
   const totalCount = typeof totalSourceCount === "number" ? totalSourceCount : visibleCount;
-  const countForTab = totalSelectedCount > 0 ? inSelection.length : totalCount;
+  const countForTab = totalSelectedCount > 0 ? inSelection.length : visibleCount;
   const missingCount = Math.max(totalCount - visibleCount, 0);
 
   useEffect(() => {

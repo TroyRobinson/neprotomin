@@ -280,6 +280,7 @@ export const createMapView = ({
     }
   };
   const setLegendInset = (value: number) => {
+    console.log('[mapView] setLegendInset called with:', value);
     legendInset = value;
     applyLegendInset();
   };
@@ -638,7 +639,6 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   choroplethLegend = createChoroplethLegend();
   container.appendChild(choroplethLegend.element);
-  setLegendInset(isMobile ? 128 : 16);
   secondaryChoroplethLegend = createSecondaryChoroplethLegend();
   container.appendChild(secondaryChoroplethLegend.element);
 

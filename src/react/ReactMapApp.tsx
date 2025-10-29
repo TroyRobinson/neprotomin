@@ -99,6 +99,7 @@ export const ReactMapApp = () => {
   const [zipScope, setZipScope] = useState<string>(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
   const [zipNeighborScopes, setZipNeighborScopes] = useState<string[]>([]);
   const isMobile = useMediaQuery(MOBILE_MAX_WIDTH_QUERY);
+  console.log('🔍 isMobile:', isMobile, 'window.innerWidth:', typeof window !== 'undefined' ? window.innerWidth : 'SSR');
   const [topBarHeight, setTopBarHeight] = useState(DEFAULT_TOP_BAR_HEIGHT);
   const [sheetState, setSheetState] = useState<"peek" | "expanded">("peek");
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
@@ -363,7 +364,9 @@ export const ReactMapApp = () => {
 
   const legendInset = useMemo(() => {
     if (!isMobile) return 16;
-    return sheetState === "peek" ? MOBILE_SHEET_PEEK_HEIGHT + 24 : 16;
+    const inset = sheetState === "peek" ? MOBILE_SHEET_PEEK_HEIGHT + 12 : 16;
+    console.log('[ReactMapApp] legendInset:', inset, 'isMobile:', isMobile, 'sheetState:', sheetState);
+    return inset;
   }, [isMobile, sheetState]);
 
   useEffect(() => {
@@ -1286,14 +1289,18 @@ export const ReactMapApp = () => {
     }
     const inactiveSorted = inactiveOrganizations.slice().sort((a, b) => a.name.localeCompare(b.name));
     const totalSourceCount = (sourceIds.size || fromSource.length) + inactiveOrganizations.length;
-    return { inSelection, all: [...rest, ...inactiveSorted], totalSourceCount };
+    const visibleInViewport = inSelection.length + rest.length;
+    return { inSelection, all: [...rest, ...inactiveSorted], totalSourceCount, visibleInViewport };
   })();
 
   const totalSelectedCount = selectedZips.length + selectedCounties.length;
-  const visibleCount = sidebarOrganizations.inSelection.length + sidebarOrganizations.all.length;
-  const totalCount =
-    typeof sidebarOrganizations.totalSourceCount === "number" ? sidebarOrganizations.totalSourceCount : visibleCount;
-  const mobileOrganizationsCount = totalSelectedCount > 0 ? sidebarOrganizations.inSelection.length : totalCount;
+  const visibleCount =
+    typeof sidebarOrganizations.visibleInViewport === "number"
+      ? sidebarOrganizations.visibleInViewport
+      : sidebarOrganizations.inSelection.length + sidebarOrganizations.all.length;
+  const mobileOrganizationsCount = totalSelectedCount > 0
+    ? sidebarOrganizations.inSelection.length
+    : visibleCount;
 
   return (
     <div className="relative flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">

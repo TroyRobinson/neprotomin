@@ -251,7 +251,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     const label = document.createElement("span");
     label.textContent = isMobile ? stat.name : formatStatChipLabel(stat.name);
     label.className = isMobile
-      ? "chip-fade-right whitespace-nowrap max-w-[240px] overflow-hidden text-ellipsis"
+      ? "whitespace-nowrap overflow-hidden text-ellipsis"
       : "whitespace-nowrap";
 
     const closeIcon = document.createElement("span");
@@ -272,6 +272,24 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   };
 
   let statEntries: ChipEntry[] = [];
+
+  const applyMobileLabelWidths = () => {
+    if (!isMobile) return;
+    const viewportWidth = document.documentElement.clientWidth;
+    const rightBuffer = 24;
+    
+    const setMax = (labelEl: HTMLElement) => {
+      const btn = labelEl.parentElement as HTMLButtonElement;
+      const rect = btn.getBoundingClientRect();
+      const styles = getComputedStyle(btn);
+      const padX = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+      const available = Math.max(140, viewportWidth - rect.left - rightBuffer - padX);
+      labelEl.style.maxWidth = `${available}px`;
+    };
+    
+    statEntries.forEach(({ labelEl }) => setMax(labelEl));
+    if (secondaryChipEntry) setMax(secondaryChipEntry.labelEl);
+  };
 
   const renderStatChips = () => {
     // Show stat chips if either:
@@ -313,6 +331,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     });
 
     updateStatSelectionStyles();
+    applyMobileLabelWidths();
   };
 
   const updateStatSelectionStyles = () => {
@@ -349,6 +368,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       const shouldShow = isMobile ? isSelected : !selectedStatId || selectedStatId === id;
       applyChipVisibility(btn, shouldShow);
     });
+    applyMobileLabelWidths();
   };
 
   const buildSecondaryStatChip = (stat: Stat) => {
@@ -360,7 +380,9 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
     const label = document.createElement("span");
     label.textContent = stat.name;
-    label.className = "whitespace-nowrap";
+    label.className = isMobile
+      ? "whitespace-nowrap overflow-hidden text-ellipsis"
+      : "whitespace-nowrap";
 
     const closeIcon = document.createElement("span");
     closeIcon.innerHTML = CLOSE_ICON;
@@ -376,10 +398,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     };
 
     btn.addEventListener("click", handleClick);
-    return { btn, handleClick };
+    return { btn, labelEl: label, handleClick };
   };
 
-  let secondaryChipEntry: { btn: HTMLButtonElement; handleClick: () => void } | null = null;
+  let secondaryChipEntry: { btn: HTMLButtonElement; labelEl: HTMLElement; handleClick: () => void } | null = null;
 
   const renderSecondaryStatChip = () => {
     // Clean up existing
@@ -420,6 +442,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       secondaryChipEntry.btn.removeEventListener("click", secondaryChipEntry.handleClick);
     }
     if (unsubscribeStats) unsubscribeStats();
+    if (isMobile) window.removeEventListener("resize", handleResize);
   };
 
   update();
@@ -430,6 +453,15 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     renderStatChips();
     renderSecondaryStatChip();
   });
+
+  const handleResize = () => {
+    applyMobileLabelWidths();
+  };
+
+  if (isMobile) {
+    applyMobileLabelWidths();
+    window.addEventListener("resize", handleResize);
+  }
 
   return { element: wrapper, setSelected, setSelectedStat, setSecondaryStat, destroy };
 };
