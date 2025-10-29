@@ -364,10 +364,10 @@ export const ReactMapApp = () => {
 
   const legendInset = useMemo(() => {
     if (!isMobile) return 16;
-    const inset = sheetState === "peek" ? MOBILE_SHEET_PEEK_HEIGHT + 12 : 16;
-    console.log('[ReactMapApp] legendInset:', inset, 'isMobile:', isMobile, 'sheetState:', sheetState);
+    // Position legend in lower-middle of screen (12% from bottom)
+    const inset = Math.floor(viewportHeight * 0.12);
     return inset;
-  }, [isMobile, sheetState]);
+  }, [isMobile, viewportHeight]);
 
   useEffect(() => {
     if (!isMobile) return;

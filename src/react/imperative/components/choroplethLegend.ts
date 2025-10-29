@@ -17,8 +17,9 @@ const formatValue = (value: number, type?: string): string => {
     return `$${k}k`;
   }
   if (t === "percent") {
-    const hasFrac = Math.abs(value % 1) > 1e-6;
-    return `${hasFrac ? wrap(value, 1) : Math.round(value)}%`;
+    const pct = value * 100;
+    const hasFrac = Math.abs(pct % 1) > 1e-6;
+    return `${hasFrac ? wrap(pct, 1) : Math.round(pct)}%`;
   }
   if (t === "years" || t === "rate") {
     const hasFrac = Math.abs(value % 1) > 1e-6;

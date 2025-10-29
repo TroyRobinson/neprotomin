@@ -280,7 +280,6 @@ export const createMapView = ({
     }
   };
   const setLegendInset = (value: number) => {
-    console.log('[mapView] setLegendInset called with:', value);
     legendInset = value;
     applyLegendInset();
   };
