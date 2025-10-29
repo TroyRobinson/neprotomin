@@ -37,11 +37,13 @@ Gaps / Naïveté:
 
 ## Google Places Ingestion Strategy
 1. **Discovery (Search)**
-   - Use Places API (New) `places:searchText` with keyword set focused on non-federal community food support (e.g., `"community food bank"`, `"church food pantry"`, `"emergency food help"`, `"free meal program"`, `"community pantry"`, `"mutual aid food"`), prioritizing phrases that resonate with residents losing SNAP benefits.
-   - Supplement with `places:searchNearby` for specific Place Types (`FOOD_BANK`, `MEAL_DELIVERY`, `MEAL_TAKEAWAY`, `MEAL_PREP`, `NON_PROFIT`) where text search underperforms.
+   - Use Places API (New) `places:searchText` with a curated keyword set focused on community food support (e.g., `"food bank"`, `"food pantry"`, `"community food bank"`, `"church food pantry"`, `"food distribution center"`, `"soup kitchen"`).
+   - Supplement with `places:searchNearby` for niche lookups if we spot county gaps.
    - Configure result limits (20 per call) and paginate until exhaustion. Record request metadata (center, phrase, page) to ensure deterministic reruns.
    - Maintain an on-disk cache (JSON) keyed by (searchType, lat, lon, radius, keyword) to support dry runs and replay while respecting quota.
-   - Filter out results whose Google categories or attributes imply federal/SNAP-only services (e.g., `government_office`, `social_services_organization` tied solely to SNAP). Tag filtered place IDs so we can revisit later if policy changes.
+   - Bound searches per county with `--bounds=minLat,minLng,maxLat,maxLng` so we can QA region-by-region before scaling.
+   - Auto-seed discovery with manual include Place IDs (e.g., Beaver Street Baptist, Victory Christian) so critical orgs persist even if Google reclassifies them.
+   - Apply type/name allowlists (food bank, non-profit, religious center, etc.) and deny lists (restaurant, hospital, meal prep, retail). Positive name heuristics rescue legit pantries when Google returns generic `food` types.
 
 2. **Enrichment (Details)**
    - For each unique `place_id`, call `places:lookup` (or `placeDetails` for legacy) requesting `displayName`, `formattedAddress`, `addressComponents`, `nationalPhoneNumber`, `internationalPhoneNumber`, `websiteUri`, `regularOpeningHours`, `types`, `businessStatus`, and `location` (lat/lng).
@@ -59,11 +61,11 @@ Gaps / Naïveté:
      - `website` fallback to empty string when absent; `phone` to E.164 if possible.
      - Set `hours` JSON to `{ periods: [...], weekdayText: [...], status: "unverified" | "verified" }` for easy rendering.
      - Capture the initial search phrase as `keywordFound`.
-     - Add `sourceTags` (keywords/types that surfaced the place) in `raw` for auditing.
+    - Add `sourceTags` (keywords/types that surfaced the place) in `raw` for auditing, plus `filterDecision` metadata (include/exclude reason, matched types).
    - Apply filters:
      - Exclude closed (`businessStatus === "CLOSED_PERMANENTLY"`) or generic grocery-only hits unless flagged as assistance.
      - Exclude organizations whose services are clearly tied to federal SNAP administration rather than direct community food aid.
-     - Optional manual inclusion allow-list for known pantries missing from Google (future enhancement).
+     - Drop commercial venues by deny-type/keyword lists (`restaurant`, `hospital`, `meal prep`, etc.) unless a manual allow rule overrides.
 
 4. **Load (ETL)**
    - Write scripts under `scripts/google-places/` following existing ETL conventions:
@@ -84,10 +86,13 @@ Gaps / Naïveté:
 ## Script Usage
 - `tsx scripts/google-places/collect-food-places.ts [--keywords=...] [--radius=40000] [--step=0.6] [--out=tmp/food_places_*.json]`
   - Produces normalized JSON with hours, status, keywords, and raw Google payload; respects local cache unless `--no-cache`/`--cache=refresh`.
+  - Optional `--bounds=minLat,minLng,maxLat,maxLng` keeps search centers (and final data) inside a geographic box (used for county-by-county imports).
 - `tsx scripts/google-places/preview-food-orgs.ts [--file=tmp/food_places_*.json]`
   - Summarizes totals by status/city/keyword before loading.
 - `tsx scripts/google-places/load-food-orgs.ts [--file=...] [--dry=1]`
   - Upserts into InstantDB (category fixed to `"food"`, status tags propagate to UI). Use `--dry=1` for a no-write verification pass.
+- `tsx scripts/google-places/run-counties.ts`
+  - Drives county-by-county collection → preview → load, using dynamic bounds/radius heuristics and manual include fallback for high-priority food banks.
 
 ## Implementation Plan
 1. **Preparation**
@@ -110,10 +115,11 @@ Gaps / Naïveté:
 - **Completed**:
   - Reviewed codebase organization model; analyzed existing Google Places prototype notes; drafted ingestion & schema strategy.
   - Applied InstantDB schema + React UI updates (new fields surface once Google data is loaded; seed orgs still show legacy shape).
-  - Added Google Places ETL toolchain (`collect`, `preview`, `load`) with SNAP exclusion and moved/closed status handling.
+  - Added Google Places ETL toolchain (`collect`, `preview`, `load`) with allow/deny filtering, manual include rules, SNAP exclusion, moved/closed status handling, geographic bounds filter, and UI side-panel hours accordion.
+  - Imported first Tulsa County tranche (106 orgs) via refined `--bounds` workflow; sample set (20) used for smoke testing.
 - **Upcoming**:
   1. Document new scripts in `ETL_USER_GUIDE.md` and add runbooks for cache refresh + retry procedures.
-  2. Execute first end-to-end import (collect → preview → load) once API key/quota confirmed.
+  2. Roll county-by-county imports using refined filters (collect → preview → load) and log exclusion breakdowns for audit.
   3. QA food org visibility post-import (map pins, sidebar badges, report counts) and adjust filtering thresholds if needed.
   4. Decide on retention/merging strategy for legacy seed orgs vs. Google-derived listings.
 - **Open Questions**:

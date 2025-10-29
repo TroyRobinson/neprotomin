@@ -2,7 +2,7 @@ import { useState } from "react";
 import { DemographicsBar } from "./DemographicsBar";
 import { StatViz } from "./StatViz";
 import { StatList } from "./StatList";
-import type { Organization } from "../../types/organization";
+import type { Organization, OrganizationHours } from "../../types/organization";
 import type { Stat } from "../../types/stat";
 import { getCategoryLabel } from "../../types/categories";
 import type { CombinedDemographicsSnapshot } from "../hooks/useDemographics";
@@ -69,6 +69,7 @@ export const Sidebar = ({
 }: SidebarProps) => {
   const [activeTab, setActiveTab] = useState<TabType>("stats");
   const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(false);
+  const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
 
   const { inSelection = [], all = [], totalSourceCount = 0 } = organizations;
   const highlightedIds = new Set(highlightedOrganizationIds ?? []);
@@ -216,8 +217,12 @@ export const Sidebar = ({
                           isActive={
                             org.id === activeOrganizationId || highlightedIds.has(org.id)
                           }
+                          isExpanded={expandedOrgId === org.id}
                           onHover={onHover}
                           onCategoryClick={onCategoryClick}
+                          onToggleExpand={(id) =>
+                            setExpandedOrgId((prev) => (prev === id ? null : id))
+                          }
                         />
                       ))}
                     </ul>
@@ -236,6 +241,10 @@ export const Sidebar = ({
                       isActive={org.id === activeOrganizationId || highlightedIds.has(org.id)}
                       onHover={onHover}
                       onCategoryClick={onCategoryClick}
+                      isExpanded={expandedOrgId === org.id}
+                      onToggleExpand={(id) =>
+                        setExpandedOrgId((prev) => (prev === id ? null : id))
+                      }
                     />
                   ))}
 
@@ -264,23 +273,112 @@ export const Sidebar = ({
 interface OrganizationListItemProps {
   org: Organization;
   isActive: boolean;
+  isExpanded: boolean;
   onHover?: (idOrIds: string | string[] | null) => void;
   onCategoryClick?: (categoryId: string) => void;
+  onToggleExpand?: (id: string) => void;
 }
+
+const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+
+const formatHoursLines = (hours: OrganizationHours | null | undefined): string[] => {
+  if (!hours) return [];
+  if (Array.isArray(hours.weekdayText) && hours.weekdayText.length > 0) {
+    return hours.weekdayText;
+  }
+
+  if (!Array.isArray(hours.periods) || hours.periods.length === 0) {
+    return [];
+  }
+
+  const map = new Map<number, string[]>();
+  for (const period of hours.periods) {
+    if (typeof period?.day !== "number") continue;
+    const dayIndex = Math.min(Math.max(period.day, 0), DAY_LABELS.length - 1);
+    const segments: string[] = [];
+    const open = period.openTime ?? null;
+    const close = period.closeTime ?? null;
+    if (open && close) {
+      segments.push(`${open} – ${close}${period.isOvernight ? " (+1)" : ""}`);
+    } else if (open) {
+      segments.push(`Opens ${open}`);
+    } else if (close) {
+      segments.push(`Closes ${close}`);
+    } else {
+      segments.push("Closed");
+    }
+
+    const existing = map.get(dayIndex) ?? [];
+    existing.push(...segments);
+    map.set(dayIndex, existing);
+  }
+
+  const lines: string[] = [];
+  for (const [dayIndex, segments] of map.entries()) {
+    const label = DAY_LABELS[dayIndex] ?? `Day ${dayIndex}`;
+    lines.push(`${label}: ${segments.join(", ")}`);
+  }
+  return lines;
+};
+
+const renderHours = (hours: OrganizationHours | null | undefined) => {
+  const lines = formatHoursLines(hours);
+  if (lines.length === 0) return null;
+  const isUnverified = hours?.isUnverified;
+  const statusLabel =
+    typeof hours?.status === "string" && hours.status.trim().length > 0
+      ? hours.status
+      : null;
+
+  return (
+    <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+      <div className="mb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+        <span>Hours</span>
+        <div className="flex items-center gap-2">
+          {statusLabel ? <span className="capitalize text-slate-400">{statusLabel.toLowerCase()}</span> : null}
+          {isUnverified ? (
+            <span className="rounded bg-amber-100 px-2 py-[1px] text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:bg-amber-400/20 dark:text-amber-200">
+              Unverified
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <ul className="space-y-1">
+        {lines.map((line, idx) => (
+          <li key={`${line}-${idx}`} className="leading-snug">
+            {line}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
 
 const OrganizationListItem = ({
   org,
   isActive,
+  isExpanded,
   onHover,
   onCategoryClick,
+  onToggleExpand,
 }: OrganizationListItemProps) => {
   const handleMouseEnter = () => onHover?.(org.id);
   const handleMouseLeave = () => onHover?.(null);
 
-  const handleCategoryClick = () => {
+  const handleCategoryClick = (event?: React.MouseEvent | React.KeyboardEvent) => {
+    event?.stopPropagation();
     const cat = (org as any).category as string | undefined;
     if (cat) {
       onCategoryClick?.(cat);
+    }
+  };
+
+  const handleToggle = () => onToggleExpand?.(org.id);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLLIElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleToggle();
     }
   };
 
@@ -290,12 +388,19 @@ const OrganizationListItem = ({
       className={`group relative rounded-xl border px-4 py-3 transition duration-200 ease-out ${
         isActive
           ? "border-brand-300 ring-2 ring-brand-200/80 bg-brand-50/70 dark:bg-slate-800"
+          : isExpanded
+          ? "border-brand-200 bg-brand-50/60 dark:border-slate-700 dark:bg-slate-800/50"
           : "border-transparent bg-slate-100/40 hover:border-brand-200 hover:bg-brand-50 dark:bg-slate-800/20 dark:hover:border-slate-700 dark:hover:bg-slate-800/70"
       }`}
       onMouseEnter={handleMouseEnter}
       onFocus={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onBlur={handleMouseLeave}
+      onClick={handleToggle}
+      role="button"
+      tabIndex={0}
+      aria-expanded={isExpanded}
+      onKeyDown={handleKeyDown}
     >
       <div className="flex items-start gap-2">
         <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{org.name}</p>
@@ -319,7 +424,11 @@ const OrganizationListItem = ({
       {org.phone && (
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           <span className="font-medium text-slate-600 dark:text-slate-300">Phone:</span>{" "}
-          <a href={`tel:${org.phone}`} className="hover:underline">
+          <a
+            href={`tel:${org.phone}`}
+            className="hover:underline"
+            onClick={(event) => event.stopPropagation()}
+          >
             {org.phone}
           </a>
         </p>
@@ -330,6 +439,7 @@ const OrganizationListItem = ({
           target="_blank"
           rel="noopener noreferrer"
           className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-400 transition-colors hover:text-brand-900 dark:text-slate-300 dark:hover:text-slate-100"
+          onClick={(event) => event.stopPropagation()}
         >
           Visit site
           <span aria-hidden="true" className="text-[1em] leading-none">
@@ -341,16 +451,17 @@ const OrganizationListItem = ({
         role="button"
         tabIndex={0}
         className="mt-1 ml-2 inline-flex items-center rounded-full bg-slate-50 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-800/70 dark:text-slate-300 cursor-pointer"
-        onClick={handleCategoryClick}
+        onClick={(event) => handleCategoryClick(event)}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            handleCategoryClick();
+            handleCategoryClick(e);
           }
         }}
       >
         {getCategoryLabel(org.category)}
       </span>
+      {isExpanded ? renderHours(org.hours) : null}
     </li>
   );
 };

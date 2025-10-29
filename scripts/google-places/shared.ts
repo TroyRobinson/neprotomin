@@ -6,13 +6,21 @@ import "dotenv/config";
 import type { OrganizationHours, OrganizationHoursPeriod, OrganizationStatus } from "../../src/types/organization";
 import { parseArgs } from "../_shared/etlUtils.js";
 import {
+  ALLOWED_PRIMARY_TYPES,
+  ALLOWED_TYPES,
   CACHE_DIR_NAME,
   CACHE_VERSION,
+  COMMERCIAL_KEYWORD_PATTERNS,
   DEFAULT_GRID_STEP_DEGREES,
+  DENY_PRIMARY_TYPES,
+  DENY_TYPES,
+  MANUAL_INCLUDE_NAME_PATTERNS,
+  MANUAL_INCLUDE_PLACE_IDS,
   OKLAHOMA_BOUNDS,
-  TMP_DIR,
+  POSITIVE_NAME_PATTERNS,
   SNAP_EXCLUDED_TYPES,
   SNAP_NAME_PATTERNS,
+  TMP_DIR,
 } from "./constants.ts";
 
 export interface SearchCenter {
@@ -151,6 +159,13 @@ export interface CollectionPayload {
   excludedPlaceIds: string[];
 }
 
+export interface InclusionDecision {
+  include: boolean;
+  reason: string;
+  tags: string[];
+  matchedTypes?: string[];
+}
+
 export const args = parseArgs();
 
 export const DEBUG = args.debug === "1" || args.debug === true || Boolean(process.env.DEBUG);
@@ -275,26 +290,6 @@ export function extractAddressParts(details: PlaceDetails) {
   return { city, state, postalCode };
 }
 
-export function shouldExcludePlace(details: PlaceDetails, keyword: string): boolean {
-  const name = (details.displayName?.text ?? "").trim();
-  if (!name) return true;
-  for (const pattern of SNAP_NAME_PATTERNS) {
-    if (pattern.test(name)) return true;
-  }
-  const keywordNorm = keyword.toLowerCase();
-  if (keywordNorm.includes("snap")) return true;
-  const types = new Set<string>([
-    ...(details.types ?? []),
-    ...(details.placeTypes ?? []),
-    details.primaryType ? [details.primaryType] : [],
-  ].flat().filter(Boolean) as string[]);
-  for (const t of types) {
-    const normalized = t.toLowerCase();
-    if (SNAP_EXCLUDED_TYPES.has(normalized)) return true;
-  }
-  return false;
-}
-
 export function determineStatus(details: PlaceDetails): OrganizationStatus {
   const businessStatus = (details.businessStatus || "").toUpperCase();
   if (details.movedPlaceId) return "moved";
@@ -302,6 +297,119 @@ export function determineStatus(details: PlaceDetails): OrganizationStatus {
     return "closed";
   }
   return "active";
+}
+
+const normalizeType = (value?: string | null): string | null => {
+  if (!value) return null;
+  return value.toLowerCase();
+};
+
+const collectTypes = (details: PlaceDetails): string[] => {
+  const types = new Set<string>();
+  const push = (value?: string | null) => {
+    const normalized = normalizeType(value);
+    if (normalized) types.add(normalized);
+  };
+  push(details.primaryType);
+  push(details.primaryTypeLocalized as string | undefined);
+  push(details.primaryTypeStructured as string | undefined);
+  for (const type of details.types ?? []) push(type);
+  for (const type of details.placeTypes ?? []) push(type);
+  return Array.from(types);
+};
+
+export function evaluatePlaceEligibility(details: PlaceDetails, keyword: string): InclusionDecision {
+  const tags: string[] = [];
+  const types = collectTypes(details);
+  const typeSet = new Set(types);
+  const primaryType = normalizeType(details.primaryType);
+  const name = (details.displayName?.text ?? "").trim();
+  const lowerName = name.toLowerCase();
+  const lowerKeyword = keyword.toLowerCase();
+
+  if (details.id && MANUAL_INCLUDE_PLACE_IDS.has(details.id)) {
+    return { include: true, reason: "manual-include-id", tags: ["manual-include-id"], matchedTypes: types };
+  }
+
+  if (SNAP_NAME_PATTERNS.some((regex) => regex.test(name))) {
+    return { include: false, reason: "snap-name", tags: ["snap-name"], matchedTypes: types };
+  }
+
+  const snapTypeMatches = types.filter((type) => SNAP_EXCLUDED_TYPES.has(type));
+  if (snapTypeMatches.length > 0) {
+    return { include: false, reason: `snap-type:${snapTypeMatches.join(",")}`, tags: ["snap-type"], matchedTypes: types };
+  }
+
+  const deniedTypeMatches = types.filter((type) => DENY_TYPES.has(type));
+  if (primaryType && DENY_PRIMARY_TYPES.has(primaryType)) {
+    deniedTypeMatches.push(primaryType);
+  }
+  if (deniedTypeMatches.length > 0) {
+    return {
+      include: false,
+      reason: `deny-type:${deniedTypeMatches.join(",")}`,
+      tags: ["deny-type"],
+      matchedTypes: types,
+    };
+  }
+
+  const positiveNameMatch = POSITIVE_NAME_PATTERNS.some((regex) => regex.test(name));
+  const positiveKeywordMatch = POSITIVE_NAME_PATTERNS.some((regex) => regex.test(lowerKeyword));
+  const manualNameInclude = MANUAL_INCLUDE_NAME_PATTERNS.some((regex) => regex.test(name));
+
+  const allowedTypeMatches = types.filter((type) => ALLOWED_TYPES.has(type));
+  const strongAllowedTypeMatches = allowedTypeMatches.filter((type) =>
+    ["food_bank", "food_pantry", "food"].includes(type),
+  );
+
+  const commercialKeywordMatch = COMMERCIAL_KEYWORD_PATTERNS.some((regex) => regex.test(name));
+
+  const include =
+    manualNameInclude ||
+    strongAllowedTypeMatches.length > 0 ||
+    positiveNameMatch ||
+    positiveKeywordMatch ||
+    (allowedTypeMatches.length > 0 && !commercialKeywordMatch && lowerName.includes("food"));
+
+  if (!include) {
+    return {
+      include: false,
+      reason: "no-positive-signal",
+      tags: ["no-positive-signal"],
+      matchedTypes: types,
+    };
+  }
+
+  if (commercialKeywordMatch && !manualNameInclude && strongAllowedTypeMatches.length === 0 && !positiveNameMatch) {
+    return {
+      include: false,
+      reason: "commercial-keyword",
+      tags: ["commercial-keyword"],
+      matchedTypes: types,
+    };
+  }
+
+  const includeTags = ["include"];
+  if (manualNameInclude) includeTags.push("manual-name");
+  if (strongAllowedTypeMatches.length > 0) includeTags.push("strong-type");
+  if (positiveNameMatch) includeTags.push("positive-name");
+  if (positiveKeywordMatch) includeTags.push("positive-keyword");
+  if (allowedTypeMatches.length > 0) includeTags.push("allowed-type");
+
+  return {
+    include: true,
+    reason: manualNameInclude
+      ? "manual-name"
+      : strongAllowedTypeMatches.length > 0
+      ? "strong-type"
+      : positiveNameMatch
+      ? "positive-name"
+      : positiveKeywordMatch
+      ? "keyword-match"
+      : "allowed-type",
+    tags: includeTags,
+    matchedTypes: types,
+  };
 }
 
 export function normalizePlace(
@@ -462,28 +570,9 @@ export async function lookupPlace(
     "googleMapsUri",
     "googleMapsLinks",
     "movedPlaceId",
-    "primaryTypeStructured",
-    "primaryTypeDisplayName",
-    "placeTypes",
-    "editorialSummary",
     "rating",
     "userRatingCount",
     "utcOffsetMinutes",
-    "takeout",
-    "delivery",
-    "dineIn",
-    "curbsidePickup",
-    "servesBreakfast",
-    "servesLunch",
-    "servesDinner",
-    "servesBeer",
-    "servesWine",
-    "wheelchairAccessibleEntrance",
-    "wheelchairAccessibleSeating",
-    "wheelchairAccessibleRestroom",
-    "regularSecondaryOpeningHours",
-    "businessStatusDescription",
-    "priceLevel",
   ].join(",");
 
   const exec = () =>

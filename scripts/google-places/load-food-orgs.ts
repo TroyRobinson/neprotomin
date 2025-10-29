@@ -109,17 +109,33 @@ async function fetchExisting(db: ReturnType<typeof initInstantAdmin>, placeIds: 
 }
 
 function buildPayloadFromPlace(place: NormalizedPlace, now: number) {
+  const fallbackAddressParts = [place.city, place.state, place.postalCode]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .join(", ");
+  const fallbackAddress = fallbackAddressParts.length > 0 ? fallbackAddressParts : null;
   const address =
     place.formattedAddress ??
     place.shortAddress ??
-    [place.city, place.state, place.postalCode].filter(Boolean).join(", ") ||
-    null;
+    fallbackAddress;
+  const googleMapsUri =
+    typeof place.raw?.googleMapsUri === "string"
+      ? (place.raw.googleMapsUri as string)
+      : typeof place.raw?.googleMapsLinks === "object" &&
+          place.raw.googleMapsLinks &&
+          typeof (place.raw.googleMapsLinks as any).placeUri === "string"
+        ? ((place.raw.googleMapsLinks as any).placeUri as string)
+        : null;
+  const websiteOrFallback =
+    place.website ??
+    googleMapsUri ??
+    `https://www.google.com/maps/search/?api=1&query=${place.latitude},${place.longitude}`;
   return {
     name: place.name,
     latitude: place.latitude,
     longitude: place.longitude,
     category: "food",
-    website: place.website ?? null,
+    website: websiteOrFallback,
+    url: websiteOrFallback,
     placeId: place.placeId,
     source: "google_places",
     address,
