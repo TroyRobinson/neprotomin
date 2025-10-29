@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DemographicsBar } from "./DemographicsBar";
 import { StatViz } from "./StatViz";
 import { StatList } from "./StatList";
@@ -40,6 +40,9 @@ interface SidebarProps {
   onHoverArea?: (area: AreaId | null) => void;
   onStatSelect?: (statId: string | null, meta?: { shiftKey?: boolean; clear?: boolean }) => void;
   onOrgPinsVisibleChange?: (visible: boolean) => void;
+  variant?: "desktop" | "mobile";
+  showInsights?: boolean;
+  className?: string;
 }
 
 type TabType = "stats" | "orgs";
@@ -66,6 +69,9 @@ export const Sidebar = ({
   onHoverArea,
   onStatSelect,
   onOrgPinsVisibleChange,
+  variant = "desktop",
+  showInsights = true,
+  className = "",
 }: SidebarProps) => {
   const [activeTab, setActiveTab] = useState<TabType>("orgs");
   const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(true);
@@ -104,27 +110,49 @@ export const Sidebar = ({
         : "border-transparent text-slate-500 hover:text-brand-700 dark:text-slate-500"
     }`;
 
-  return (
-    <aside className="relative flex w-full max-w-sm flex-col border-r border-slate-200 bg-white/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60">
-      {/* Demographics Bar */}
-      <DemographicsBar snapshot={demographicsSnapshot ?? null} />
+  const containerClassName = useMemo(() => {
+    if (variant === "mobile") {
+      return [
+        "relative flex h-full w-full flex-col bg-white dark:bg-slate-900",
+        // Allow callers to add custom styling
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+    return [
+      "relative flex w-full max-w-sm flex-col border-r border-slate-200 bg-white/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60",
+      className,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }, [variant, className]);
 
-      {/* Stat Visualization */}
-      <StatViz
-        statsById={statsById}
-        seriesByStatIdByKind={seriesByStatIdByKind}
-        statDataById={statDataById}
-        selectedAreas={selectedAreas}
-        pinnedAreas={pinnedAreas}
-        selectedStatId={selectedStatId}
-        hoveredArea={hoveredArea}
-        onHoverArea={onHoverArea}
-        areaNameLookup={areaNameLookup}
-        activeAreaKind={activeAreaKind}
-      />
+  return (
+    <aside className={containerClassName}>
+      {showInsights && (
+        <>
+          {/* Demographics Bar */}
+          <DemographicsBar snapshot={demographicsSnapshot ?? null} />
+
+          {/* Stat Visualization */}
+          <StatViz
+            statsById={statsById}
+            seriesByStatIdByKind={seriesByStatIdByKind}
+            statDataById={statDataById}
+            selectedAreas={selectedAreas}
+            pinnedAreas={pinnedAreas}
+            selectedStatId={selectedStatId}
+            hoveredArea={hoveredArea}
+            onHoverArea={onHoverArea}
+            areaNameLookup={areaNameLookup}
+            activeAreaKind={activeAreaKind}
+          />
+        </>
+      )}
 
       {/* Tabs Header */}
-      <div className="flex items-center justify-between px-4 pt-3 mb-2">
+      <div className="mb-2 flex items-center justify-between px-4 pt-3">
         <div className="flex items-center gap-4">
           <button
             type="button"
@@ -174,6 +202,7 @@ export const Sidebar = ({
         {/* Statistics Tab */}
         {activeTab === "stats" && (
           <StatList
+            variant={variant}
             statsById={statsById}
             statDataById={statDataById}
             selectedAreas={selectedAreas}

@@ -43,6 +43,7 @@ interface MapLibreMapProps {
   onZipScopeChange?: (scope: string, neighbors: string[]) => void;
   onCameraChange?: (state: { center: [number, number]; zoom: number }) => void;
   autoBoundarySwitch?: boolean;
+  onMapDragStart?: () => void;
 }
 
 /**
@@ -82,6 +83,7 @@ export const MapLibreMap = ({
   onZipScopeChange,
   onCameraChange,
   autoBoundarySwitch = true,
+  onMapDragStart,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
@@ -104,6 +106,7 @@ export const MapLibreMap = ({
   const onZipScopeChangeRef = useRef(onZipScopeChange);
   const onCameraChangeRef = useRef(onCameraChange);
   const shouldAutoSwitchRef = useRef<boolean>(autoBoundarySwitch);
+  const onMapDragStartRef = useRef(onMapDragStart);
 
   useEffect(() => { onZipSelectionChangeRef.current = onZipSelectionChange; }, [onZipSelectionChange]);
   useEffect(() => { onHoverRef.current = onHover; }, [onHover]);
@@ -120,6 +123,7 @@ export const MapLibreMap = ({
   useEffect(() => { onZipScopeChangeRef.current = onZipScopeChange; }, [onZipScopeChange]);
   useEffect(() => { onCameraChangeRef.current = onCameraChange; }, [onCameraChange]);
   useEffect(() => { shouldAutoSwitchRef.current = autoBoundarySwitch; }, [autoBoundarySwitch]);
+  useEffect(() => { onMapDragStartRef.current = onMapDragStart; }, [onMapDragStart]);
 
   // Initialize map once on mount
   useEffect(() => {
@@ -163,6 +167,7 @@ export const MapLibreMap = ({
       },
       onZipScopeChange: (scope, neighbors) => onZipScopeChangeRef.current?.(scope, neighbors),
       shouldAutoBoundarySwitch: () => shouldAutoSwitchRef.current,
+      onMapDragStart: () => onMapDragStartRef.current?.(),
     });
 
     containerRef.current.appendChild(mapController.element);

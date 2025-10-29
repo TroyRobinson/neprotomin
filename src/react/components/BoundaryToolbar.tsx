@@ -25,6 +25,7 @@ interface BoundaryToolbarProps {
   onHoverArea?: (area: AreaId | null) => void;
   onExport?: () => void;
   onUpdateSelection: (kind: AreaKind, selection: { selected: string[]; pinned: string[] }) => void;
+  hideAreaSelect?: boolean;
 }
 
 const LINE_COLORS = ["#375bff", "#8f20f8", "#a76d44", "#b4a360"];
@@ -70,6 +71,7 @@ export const BoundaryToolbar = ({
   onHoverArea,
   onExport,
   onUpdateSelection,
+  hideAreaSelect = false,
 }: BoundaryToolbarProps) => {
   const [inputOpen, setInputOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
@@ -411,28 +413,30 @@ export const BoundaryToolbar = ({
         )}
 
         {/* Areas Selector */}
-        <label className="flex items-center gap-2 font-medium" htmlFor="boundary-select">
-          Areas
-          <CustomSelect
-            id="boundary-select"
-            value={boundaryControlMode === "auto" ? "auto" : boundaryMode}
-            options={[
-              { value: "zips", label: "ZIPs" },
-              { value: "counties", label: "Counties" },
-              { value: "auto", label: "Control by zoom" },
-              { value: "none", label: "None" }
-            ]}
-            onChange={(value) => {
-              if (value === "auto") {
-                onBoundaryControlModeChange?.("auto");
-                return;
-              }
-              const cast = value as BoundaryMode;
-              onBoundaryControlModeChange?.("manual");
-              onBoundaryModeChange?.(cast);
-            }}
-          />
-        </label>
+        {!hideAreaSelect && (
+          <label className="flex items-center gap-2 font-medium" htmlFor="boundary-select">
+            Areas
+            <CustomSelect
+              id="boundary-select"
+              value={boundaryControlMode === "auto" ? "auto" : boundaryMode}
+              options={[
+                { value: "zips", label: "ZIPs" },
+                { value: "counties", label: "Counties" },
+                { value: "auto", label: "Control by zoom" },
+                { value: "none", label: "None" }
+              ]}
+              onChange={(value) => {
+                if (value === "auto") {
+                  onBoundaryControlModeChange?.("auto");
+                  return;
+                }
+                const cast = value as BoundaryMode;
+                onBoundaryControlModeChange?.("manual");
+                onBoundaryModeChange?.(cast);
+              }}
+            />
+          </label>
+        )}
       </div>
     </div>
   );

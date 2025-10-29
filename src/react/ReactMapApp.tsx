@@ -1,4 +1,5 @@
-import { useState, lazy, Suspense, useEffect } from "react";
+import { useState, lazy, Suspense, useEffect, useMemo, useRef, useCallback } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { TopBar } from "./components/TopBar";
 import { BoundaryToolbar } from "./components/BoundaryToolbar";
 import { MapLibreMap } from "./components/MapLibreMap";
@@ -11,13 +12,13 @@ import { useAreas } from "./hooks/useAreas";
 import type { Organization } from "../types/organization";
 import { findZipForLocation } from "../lib/zipBoundaries";
 import { findCountyForLocation } from "../lib/countyBoundaries";
-import { useMemo } from "react";
 import type { BoundaryMode } from "../types/boundaries";
 import { AuthModal } from "./components/AuthModal";
 import { db } from "../lib/reactDb";
 import type { AreaId, AreaKind, PersistedAreaSelection } from "../types/areas";
 import { DEFAULT_PARENT_AREA_BY_KIND } from "../types/areas";
 import { normalizeScopeLabel, buildScopeLabelAliases } from "../lib/scopeLabels";
+import { useMediaQuery } from "./hooks/useMediaQuery";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
@@ -27,6 +28,10 @@ const COUNTY_MODE_DISABLE_ZOOM = 9.6;
 
 const FALLBACK_ZIP_SCOPE = normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma") ?? "Oklahoma";
 const DEFAULT_PRIMARY_STAT_ID = "8383685c-2741-40a2-96ff-759c42ddd586";
+const TOP_BAR_HEIGHT = 64;
+const MOBILE_MAX_WIDTH_QUERY = "(max-width: 767px)";
+const MOBILE_SHEET_PEEK_HEIGHT = 104;
+const MOBILE_SHEET_DRAG_THRESHOLD = 72;
 
 interface AreaSelectionState {
   selected: string[];
@@ -93,6 +98,17 @@ export const ReactMapApp = () => {
   const [cameraState, setCameraState] = useState<{ center: [number, number]; zoom: number } | null>(null);
   const [zipScope, setZipScope] = useState<string>(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
   const [zipNeighborScopes, setZipNeighborScopes] = useState<string[]>([]);
+  const isMobile = useMediaQuery(MOBILE_MAX_WIDTH_QUERY);
+  const [sheetState, setSheetState] = useState<"peek" | "expanded">("peek");
+  const [sheetDragOffset, setSheetDragOffset] = useState(0);
+  const [isDraggingSheet, setIsDraggingSheet] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState(() => (typeof window === "undefined" ? 0 : window.innerHeight));
+  const sheetPointerIdRef = useRef<number | null>(null);
+  const sheetDragStateRef = useRef<{ startY: number; startState: "peek" | "expanded" } | null>(null);
+  const pendingContentDragRef = useRef<{ pointerId: number; startY: number } | null>(null);
+  const sheetContentRef = useRef<HTMLDivElement | null>(null);
+  const sheetAvailableHeight = Math.max(viewportHeight - TOP_BAR_HEIGHT, 0);
+  const sheetPeekOffset = Math.max(sheetAvailableHeight - MOBILE_SHEET_PEEK_HEIGHT, 0);
 
   const zipSelection = areaSelections.ZIP;
   const countySelection = areaSelections.COUNTY;
@@ -140,6 +156,82 @@ export const ReactMapApp = () => {
       return area;
     });
   };
+
+  const collapseSheet = useCallback(() => {
+    setSheetState("peek");
+    setSheetDragOffset(0);
+    setIsDraggingSheet(false);
+    sheetPointerIdRef.current = null;
+    sheetDragStateRef.current = null;
+    pendingContentDragRef.current = null;
+  }, []);
+
+  const startSheetDrag = useCallback(
+    (pointerId: number, clientY: number, startState: "peek" | "expanded") => {
+      if (sheetPeekOffset <= 0) {
+        setSheetState("expanded");
+        setSheetDragOffset(0);
+        return;
+      }
+      sheetPointerIdRef.current = pointerId;
+      sheetDragStateRef.current = { startY: clientY, startState };
+      setIsDraggingSheet(true);
+    },
+    [sheetPeekOffset],
+  );
+
+  const finishSheetDrag = useCallback(
+    (clientY: number | null) => {
+      const dragState = sheetDragStateRef.current;
+      sheetDragStateRef.current = null;
+      sheetPointerIdRef.current = null;
+      setIsDraggingSheet(false);
+      setSheetDragOffset(0);
+      if (!dragState || clientY === null || sheetPeekOffset <= 0) {
+        if (sheetPeekOffset <= 0) setSheetState("expanded");
+        return;
+      }
+      const delta = clientY - dragState.startY;
+      if (dragState.startState === "expanded") {
+        setSheetState(delta > MOBILE_SHEET_DRAG_THRESHOLD ? "peek" : "expanded");
+      } else {
+        setSheetState(delta < -MOBILE_SHEET_DRAG_THRESHOLD ? "expanded" : "peek");
+      }
+    },
+    [sheetPeekOffset],
+  );
+
+  const handleHandlePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!isMobile) return;
+      event.preventDefault();
+      startSheetDrag(event.pointerId, event.clientY, sheetState);
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    },
+    [isMobile, sheetState, startSheetDrag],
+  );
+
+  const handleHandleClick = useCallback(() => {
+    if (!isMobile) return;
+    if (sheetState === "peek") {
+      setSheetState("expanded");
+    }
+  }, [isMobile, sheetState]);
+
+  const handleContentPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (!isMobile || sheetState !== "expanded") return;
+      if (event.pointerType === "mouse" && event.buttons !== 1) return;
+      const content = sheetContentRef.current;
+      if (!content) return;
+      if (content.scrollTop > 0) {
+        pendingContentDragRef.current = null;
+        return;
+      }
+      pendingContentDragRef.current = { pointerId: event.pointerId, startY: event.clientY };
+    },
+    [isMobile, sheetState],
+  );
 
   const hydrateFromPersistedSelection = (sel: PersistedAreaSelection | null | undefined) => {
     if (!sel || typeof sel !== "object") return;
@@ -189,6 +281,111 @@ export const ReactMapApp = () => {
       });
     }
   }, [isAuthLoading, user]);
+
+  useEffect(() => {
+    if (!isMobile) {
+      if (typeof window !== "undefined") {
+        setViewportHeight(window.innerHeight);
+      }
+      return;
+    }
+    const handleResize = () => {
+      setViewportHeight(window.innerHeight);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
+    };
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setSheetState("peek");
+      setSheetDragOffset(0);
+      setIsDraggingSheet(false);
+      sheetPointerIdRef.current = null;
+      sheetDragStateRef.current = null;
+      pendingContentDragRef.current = null;
+    }
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (sheetState === "peek" && sheetContentRef.current) {
+      sheetContentRef.current.scrollTop = 0;
+    }
+  }, [sheetState]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    if (sheetPeekOffset <= 0 && sheetState === "peek") {
+      setSheetState("expanded");
+    }
+  }, [isMobile, sheetPeekOffset, sheetState]);
+
+  const sheetTranslateY = useMemo(() => {
+    if (!isMobile) return 0;
+    if (sheetPeekOffset <= 0) return 0;
+    if (sheetState === "expanded") {
+      return Math.min(Math.max(sheetDragOffset, 0), sheetPeekOffset);
+    }
+    const adjustment = Math.max(-sheetPeekOffset, Math.min(sheetDragOffset, 0));
+    return sheetPeekOffset + adjustment;
+  }, [isMobile, sheetState, sheetDragOffset, sheetPeekOffset]);
+
+  const showMobileSheet = isMobile && activeScreen === "map";
+
+  useEffect(() => {
+    if (!isMobile) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (pendingContentDragRef.current && event.pointerId === pendingContentDragRef.current.pointerId) {
+        const delta = event.clientY - pendingContentDragRef.current.startY;
+        if (delta > 6 && (sheetContentRef.current?.scrollTop ?? 0) <= 0) {
+          const content = sheetContentRef.current;
+          pendingContentDragRef.current = null;
+          startSheetDrag(event.pointerId, event.clientY, "expanded");
+          content?.setPointerCapture?.(event.pointerId);
+        } else if (delta < -6) {
+          pendingContentDragRef.current = null;
+        }
+      }
+
+      if (!isDraggingSheet) return;
+      if (sheetPointerIdRef.current !== null && event.pointerId !== sheetPointerIdRef.current) return;
+      const dragState = sheetDragStateRef.current;
+      if (!dragState) return;
+      const delta = event.clientY - dragState.startY;
+      if (dragState.startState === "expanded") {
+        const clamped = Math.max(0, Math.min(delta, sheetPeekOffset));
+        setSheetDragOffset(clamped);
+      } else {
+        const clamped = Math.max(-sheetPeekOffset, Math.min(delta, 0));
+        setSheetDragOffset(clamped);
+      }
+      event.preventDefault();
+    };
+
+    const handlePointerEnd = (event: PointerEvent) => {
+      if (pendingContentDragRef.current && event.pointerId === pendingContentDragRef.current.pointerId) {
+        pendingContentDragRef.current = null;
+      }
+      if (!isDraggingSheet) return;
+      if (sheetPointerIdRef.current !== null && event.pointerId !== sheetPointerIdRef.current) return;
+      finishSheetDrag(event.clientY);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", handlePointerEnd);
+    window.addEventListener("pointercancel", handlePointerEnd);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerEnd);
+      window.removeEventListener("pointercancel", handlePointerEnd);
+    };
+  }, [isMobile, isDraggingSheet, finishSheetDrag, sheetPeekOffset, startSheetDrag]);
 
   // Persisted UI state: load on auth ready
   useEffect(() => {
@@ -994,106 +1191,141 @@ export const ReactMapApp = () => {
     }
   };
 
+  const sidebarOrganizations = (() => {
+    const sourceIds = new Set(orgsAllSourceIds);
+    const visibleIds = new Set(orgsVisibleIds);
+    const fromSource = activeOrganizations.filter((o) => sourceIds.size === 0 || sourceIds.has(o.id));
+    const visible = fromSource.filter((o) => visibleIds.size === 0 || visibleIds.has(o.id));
+    const zipSel = new Set(selectedZips);
+    const countySel = new Set(selectedCounties);
+    let inSelection: Organization[] = [];
+    if (activeAreaKind === "ZIP" && zipSel.size > 0) {
+      inSelection = visible.filter((o) => {
+        const zip = orgZipById.get(o.id);
+        return !!zip && zipSel.has(zip);
+      });
+    } else if (activeAreaKind === "COUNTY" && countySel.size > 0) {
+      inSelection = visible.filter((o) => {
+        const county = orgCountyById.get(o.id);
+        return !!county && countySel.has(county);
+      });
+    } else if (zipSel.size > 0) {
+      inSelection = visible.filter((o) => {
+        const zip = orgZipById.get(o.id);
+        return !!zip && zipSel.has(zip);
+      });
+    } else if (countySel.size > 0) {
+      inSelection = visible.filter((o) => {
+        const county = orgCountyById.get(o.id);
+        return !!county && countySel.has(county);
+      });
+    }
+    const inSelectionIds = new Set(inSelection.map((o) => o.id));
+    let rest = visible.filter((o) => !inSelectionIds.has(o.id));
+
+    if (selectedStatId) {
+      const entryMap = statDataByStatId.get(selectedStatId);
+      if (entryMap) {
+        const zipEntry = entryMap.ZIP;
+        const countyEntry = entryMap.COUNTY;
+        const scoreFor = (org: Organization): number => {
+          if (zipEntry) {
+            const zip = orgZipById.get(org.id);
+            if (zip) {
+              const v = zipEntry.data?.[zip];
+              if (typeof v === "number" && Number.isFinite(v)) return v;
+            }
+          }
+          if (countyEntry) {
+            const county = orgCountyById.get(org.id);
+            if (county) {
+              const v = countyEntry.data?.[county];
+              if (typeof v === "number" && Number.isFinite(v)) return v;
+            }
+          }
+          return Number.NEGATIVE_INFINITY;
+        };
+        const cmp = (a: Organization, b: Organization) => {
+          const sa = scoreFor(a);
+          const sb = scoreFor(b);
+          if (sb !== sa) return sb - sa;
+          return a.name.localeCompare(b.name);
+        };
+        inSelection = inSelection.slice().sort(cmp);
+        rest = rest.slice().sort(cmp);
+      }
+    }
+    const inactiveSorted = inactiveOrganizations.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const totalSourceCount = (sourceIds.size || fromSource.length) + inactiveOrganizations.length;
+    return { inSelection, all: [...rest, ...inactiveSorted], totalSourceCount };
+  })();
+
+  const totalSelectedCount = selectedZips.length + selectedCounties.length;
+  const visibleCount = sidebarOrganizations.inSelection.length + sidebarOrganizations.all.length;
+  const totalCount =
+    typeof sidebarOrganizations.totalSourceCount === "number" ? sidebarOrganizations.totalSourceCount : visibleCount;
+  const mobileOrganizationsCount = totalSelectedCount > 0 ? sidebarOrganizations.inSelection.length : totalCount;
+
   return (
     <div className="relative flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
       <TopBar onBrandClick={handleBrandClick} onNavigate={setActiveScreen} active={activeScreen} onOpenAuth={() => setAuthOpen(true)} />
-      {/* Map section (always mounted) */}
-          <BoundaryToolbar
-            boundaryMode={boundaryMode}
-            boundaryControlMode={boundaryControlMode}
-            selections={toolbarSelections}
-            hoveredArea={hoveredArea}
-            stickyTopClass="top-16"
-            onBoundaryModeChange={handleBoundaryModeManualSelect}
-            onBoundaryControlModeChange={handleBoundaryControlModeChange}
-            onHoverArea={setHoveredAreaState}
-            onExport={handleExport}
-            onUpdateSelection={handleUpdateAreaSelection}
-          />
-          <main className="flex flex-1 overflow-hidden">
-            {/* Sidebar */}
+      <div className="relative flex flex-1 flex-col overflow-hidden">
+        <BoundaryToolbar
+          boundaryMode={boundaryMode}
+          boundaryControlMode={boundaryControlMode}
+          selections={toolbarSelections}
+          hoveredArea={hoveredArea}
+          stickyTopClass="top-16"
+          onBoundaryModeChange={handleBoundaryModeManualSelect}
+          onBoundaryControlModeChange={handleBoundaryControlModeChange}
+          onHoverArea={setHoveredAreaState}
+          onExport={handleExport}
+          onUpdateSelection={handleUpdateAreaSelection}
+          hideAreaSelect={isMobile}
+        />
+        <main className="relative flex flex-1 flex-col overflow-hidden md:flex-row">
+          <div className="relative flex flex-1 flex-col overflow-hidden">
+            <MapLibreMap
+              organizations={activeOrganizations}
+              orgPinsVisible={orgPinsVisible}
+              zoomOutRequestNonce={zoomOutNonce}
+              clearMapCategoryNonce={clearMapCategoryNonce}
+              boundaryMode={boundaryMode}
+              autoBoundarySwitch={autoBoundarySwitch}
+              selectedZips={selectedZips}
+              pinnedZips={pinnedZips}
+              hoveredZip={hoveredZip}
+              selectedCounties={selectedCounties}
+              pinnedCounties={pinnedCounties}
+              hoveredCounty={hoveredCounty}
+              activeOrganizationId={activeOrganizationId}
+              onHover={handleHover}
+              selectedStatId={selectedStatId}
+              secondaryStatId={secondaryStatId}
+              categoryFilter={categoryFilter}
+              onAreaSelectionChange={handleAreaSelectionChange}
+              onAreaHoverChange={handleAreaHoverChange}
+              onStatSelectionChange={setSelectedStatId}
+              onSecondaryStatChange={setSecondaryStatId}
+              onCategorySelectionChange={setCategoryFilter}
+              onVisibleIdsChange={(ids, _totalInSource, allSourceIds) => {
+                setOrgsVisibleIds(ids);
+                setOrgsAllSourceIds(allSourceIds);
+              }}
+              onBoundaryModeChange={handleMapBoundaryModeChange}
+              onZipScopeChange={(scope, neighbors) => {
+                setZipScope(scope);
+                setZipNeighborScopes(neighbors);
+              }}
+              onCameraChange={setCameraState}
+              onMapDragStart={() => {
+                if (isMobile) collapseSheet();
+              }}
+            />
+          </div>
+          {!isMobile && (
             <Sidebar
-              organizations={(() => {
-                // Compute groups for orgs tab using current visible ids and selection
-                const sourceIds = new Set(orgsAllSourceIds);
-                const visibleIds = new Set(orgsVisibleIds);
-                const fromSource = activeOrganizations.filter(
-                  (o) => sourceIds.size === 0 || sourceIds.has(o.id),
-                );
-                const visible = fromSource.filter(
-                  (o) => visibleIds.size === 0 || visibleIds.has(o.id),
-                );
-                const zipSel = new Set(selectedZips);
-                const countySel = new Set(selectedCounties);
-                let inSelection: Organization[] = [];
-                if (activeAreaKind === "ZIP" && zipSel.size > 0) {
-                  inSelection = visible.filter((o) => {
-                    const zip = orgZipById.get(o.id);
-                    return !!zip && zipSel.has(zip);
-                  });
-                } else if (activeAreaKind === "COUNTY" && countySel.size > 0) {
-                  inSelection = visible.filter((o) => {
-                    const county = orgCountyById.get(o.id);
-                    return !!county && countySel.has(county);
-                  });
-                } else if (zipSel.size > 0) {
-                  inSelection = visible.filter((o) => {
-                    const zip = orgZipById.get(o.id);
-                    return !!zip && zipSel.has(zip);
-                  });
-                } else if (countySel.size > 0) {
-                  inSelection = visible.filter((o) => {
-                    const county = orgCountyById.get(o.id);
-                    return !!county && countySel.has(county);
-                  });
-                }
-                const inSelectionIds = new Set(inSelection.map((o) => o.id));
-                let rest = visible.filter((o) => !inSelectionIds.has(o.id));
-
-                // If a stat is selected, sort organizations by the stat value of their ZIP (desc)
-                if (selectedStatId) {
-                  const entryMap = statDataByStatId.get(selectedStatId);
-                  if (entryMap) {
-                    const zipEntry = entryMap.ZIP;
-                    const countyEntry = entryMap.COUNTY;
-                    const scoreFor = (org: Organization): number => {
-                      if (zipEntry) {
-                        const zip = orgZipById.get(org.id);
-                        if (zip) {
-                          const v = zipEntry.data?.[zip];
-                          if (typeof v === "number" && Number.isFinite(v)) {
-                            return v;
-                          }
-                        }
-                      }
-                      if (countyEntry) {
-                        const county = orgCountyById.get(org.id);
-                        if (county) {
-                          const v = countyEntry.data?.[county];
-                          if (typeof v === "number" && Number.isFinite(v)) {
-                            return v;
-                          }
-                        }
-                      }
-                      return Number.NEGATIVE_INFINITY;
-                    };
-                    const cmp = (a: Organization, b: Organization) => {
-                      const sa = scoreFor(a);
-                      const sb = scoreFor(b);
-                      if (sb !== sa) return sb - sa;
-                      return a.name.localeCompare(b.name);
-                    };
-                    inSelection = inSelection.slice().sort(cmp);
-                    rest = rest.slice().sort(cmp);
-                  }
-                }
-                const inactiveSorted = inactiveOrganizations
-                  .slice()
-                  .sort((a, b) => a.name.localeCompare(b.name));
-                const totalSourceCount =
-                  (sourceIds.size || fromSource.length) + inactiveOrganizations.length;
-                return { inSelection, all: [...rest, ...inactiveSorted], totalSourceCount };
-              })()}
+              organizations={sidebarOrganizations}
               activeOrganizationId={activeOrganizationId}
               highlightedOrganizationIds={highlightedOrganizationIds ?? undefined}
               statsById={statsById}
@@ -1113,46 +1345,68 @@ export const ReactMapApp = () => {
               onZoomOutAll={handleZoomOutAll}
               onStatSelect={handleStatSelect}
               onOrgPinsVisibleChange={setOrgPinsVisible}
+              variant="desktop"
             />
-
-            {/* Map */}
-            <div className="flex flex-1 flex-col overflow-hidden">
-              <MapLibreMap
-                organizations={activeOrganizations}
-                orgPinsVisible={orgPinsVisible}
-                zoomOutRequestNonce={zoomOutNonce}
-                clearMapCategoryNonce={clearMapCategoryNonce}
-                boundaryMode={boundaryMode}
-                autoBoundarySwitch={autoBoundarySwitch}
-                selectedZips={selectedZips}
-                pinnedZips={pinnedZips}
-                hoveredZip={hoveredZip}
-                selectedCounties={selectedCounties}
-                pinnedCounties={pinnedCounties}
-                hoveredCounty={hoveredCounty}
-                activeOrganizationId={activeOrganizationId}
-                onHover={handleHover}
-                selectedStatId={selectedStatId}
-                secondaryStatId={secondaryStatId}
-                categoryFilter={categoryFilter}
-                onAreaSelectionChange={handleAreaSelectionChange}
-                onAreaHoverChange={handleAreaHoverChange}
-                onStatSelectionChange={setSelectedStatId}
-                onSecondaryStatChange={setSecondaryStatId}
-                onCategorySelectionChange={setCategoryFilter}
-                onVisibleIdsChange={(ids, _totalInSource, allSourceIds) => {
-                  setOrgsVisibleIds(ids);
-                  setOrgsAllSourceIds(allSourceIds);
-                }}
-                onBoundaryModeChange={handleMapBoundaryModeChange}
-                onZipScopeChange={(scope, neighbors) => {
-                  setZipScope(scope);
-                  setZipNeighborScopes(neighbors);
-                }}
-                onCameraChange={setCameraState}
-              />
+          )}
+        </main>
+        {showMobileSheet && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 top-16 z-20 md:hidden">
+            <div className="pointer-events-auto flex h-full w-full flex-col">
+              <div
+                className="flex h-full w-full flex-col rounded-t-3xl border border-slate-200 bg-white shadow-xl transition-transform duration-200 ease-out dark:border-slate-800 dark:bg-slate-900"
+                style={{ transform: `translate3d(0, ${sheetTranslateY}px, 0)` }}
+              >
+                <button
+                  type="button"
+                  className="group flex flex-col items-center gap-2 rounded-t-3xl border-b border-slate-200 bg-transparent px-4 pt-3 pb-3 text-sm font-semibold text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-slate-700 dark:text-slate-200"
+                  onClick={handleHandleClick}
+                  onPointerDown={handleHandlePointerDown}
+                  aria-expanded={sheetState === "expanded"}
+                >
+                  <span className="h-1.5 w-12 rounded-full bg-slate-300 transition-colors group-active:bg-slate-400 dark:bg-slate-600 dark:group-active:bg-slate-500" />
+                  <span>{mobileOrganizationsCount} Organizations</span>
+                </button>
+                <div
+                  ref={sheetContentRef}
+                  onPointerDown={handleContentPointerDown}
+                  className="flex-1 overflow-y-auto"
+                  style={{
+                    visibility: sheetState === "peek" ? "hidden" : "visible",
+                    pointerEvents: sheetState === "peek" ? "none" : "auto",
+                  }}
+                  aria-hidden={sheetState === "peek"}
+                >
+                  <Sidebar
+                    organizations={sidebarOrganizations}
+                    activeOrganizationId={activeOrganizationId}
+                    highlightedOrganizationIds={highlightedOrganizationIds ?? undefined}
+                    statsById={statsById}
+                    seriesByStatIdByKind={seriesByStatIdScoped}
+                    statDataById={statDataByStatId}
+                    demographicsSnapshot={activeDemographicsSnapshot ?? combinedSnapshot}
+                    selectedAreas={selectedAreasMap}
+                    pinnedAreas={pinnedAreasMap}
+                    activeAreaKind={activeAreaKind}
+                    areaNameLookup={areaNameLookup}
+                    hoveredArea={hoveredArea}
+                    selectedStatId={selectedStatId}
+                    secondaryStatId={secondaryStatId}
+                    categoryFilter={categoryFilter}
+                    onHover={handleHover}
+                    onHoverArea={handleAreaHoverChange}
+                    onZoomOutAll={handleZoomOutAll}
+                    onStatSelect={handleStatSelect}
+                    onOrgPinsVisibleChange={setOrgPinsVisible}
+                    variant="mobile"
+                    showInsights={false}
+                    className="h-full"
+                  />
+                </div>
+              </div>
             </div>
-          </main>
+          </div>
+        )}
+      </div>
       {/* Report overlay (hidden via aria/visibility to ensure map stays laid out) */}
       <div
         aria-hidden={activeScreen !== "report"}
@@ -1173,6 +1427,7 @@ export const ReactMapApp = () => {
               onHoverArea={setHoveredAreaState}
               onExport={handleExport}
               onUpdateSelection={handleUpdateAreaSelection}
+              hideAreaSelect={isMobile}
             />
           </div>
           {activeScreen === "report" && (

@@ -70,6 +70,7 @@ interface MapViewOptions {
   onBoundaryModeChange?: (mode: BoundaryMode) => void;
   onZipScopeChange?: (scopeLabel: string, neighbors: string[]) => void;
   shouldAutoBoundarySwitch?: () => boolean;
+  onMapDragStart?: () => void;
 }
 
 export interface MapViewController {
@@ -225,6 +226,7 @@ export const createMapView = ({
   onBoundaryModeChange,
   onZipScopeChange,
   shouldAutoBoundarySwitch,
+  onMapDragStart,
 }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
   container.className = "relative flex flex-1";
@@ -1372,6 +1374,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       };
       const handleMapDragStart = () => {
         resetCountyPressState();
+        onMapDragStart?.();
       };
       countyInteractionLayers.forEach((layerId) => {
         map.on("mousedown", layerId, handleCountyPointerDown);

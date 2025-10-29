@@ -33,6 +33,7 @@ interface StatListProps {
   secondaryStatId?: string | null;
   selectedStatId?: string | null;
   onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
+  variant?: "desktop" | "mobile";
 }
 
 const SUPPORTED_KINDS: SupportedAreaKind[] = ["ZIP", "COUNTY"];
@@ -68,6 +69,7 @@ export const StatList = ({
   secondaryStatId = null,
   selectedStatId = null,
   onStatSelect,
+  variant: _variant = "desktop",
 }: StatListProps) => {
   const areaEntries = useMemo(() => buildAreaEntries(selectedAreas), [selectedAreas]);
 
