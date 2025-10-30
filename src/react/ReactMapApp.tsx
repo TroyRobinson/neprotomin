@@ -1179,7 +1179,7 @@ export const ReactMapApp = () => {
       : userLocationError
       ? userLocationError
       : userLocation
-      ? "Active"
+      ? "Zoom"
       : "My Location";
     if (isRequestingLocation) {
       const spinner = document.createElement("span");
