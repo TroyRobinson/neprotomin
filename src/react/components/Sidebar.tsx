@@ -254,9 +254,11 @@ export const Sidebar = ({
                 )}
 
                 {/* All Section */}
-                <h3 className="px-8 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                  ALL
-                </h3>
+                {totalSelectedCount > 0 && (
+                  <h3 className="px-8 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    ALL
+                  </h3>
+                )}
                 <ul className="space-y-2 px-4 pb-6">
                   {all.map((org) => (
                     <OrganizationListItem
