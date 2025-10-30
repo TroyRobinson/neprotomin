@@ -24,6 +24,7 @@ export const updateStatDataChoropleth = (
   boundaryMode: "zips" | "counties" | string,
   selectedStatId: string | null,
   statDataByStatId: Map<string, BoundaryEntry>,
+  shouldHideChoropleth: boolean = false,
 ) => {
   const { BOUNDARY_STATDATA_FILL_LAYER_ID, COUNTY_STATDATA_FILL_LAYER_ID } = ids;
 
@@ -34,7 +35,7 @@ export const updateStatDataChoropleth = (
     active: boolean,
   ) => {
     if (!map.getLayer(layerId)) return;
-    if (!active || !entry) {
+    if (!active || !entry || shouldHideChoropleth) {
       map.setPaintProperty(layerId, "fill-opacity", 0);
       return;
     }

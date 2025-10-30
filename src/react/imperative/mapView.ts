@@ -1880,6 +1880,13 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
 
   function updateChoroplethLegend() {
     if (!selectedStatId) { choroplethLegend.setVisible(false); return; }
+    // Hide legend when choropleth is hidden due to close zoom
+    const visibleCount = countVisibleBoundaries();
+    const shouldHideChoropleth = visibleCount > 0 && visibleCount <= 3;
+    if (shouldHideChoropleth) {
+      choroplethLegend.setVisible(false);
+      return;
+    }
     extUpdateLegend(choroplethLegend, selectedStatId, boundaryMode, scopedStatDataByBoundary);
   }
 
@@ -1958,7 +1965,40 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     applyData();
   };
 
+  // Count visible boundaries in the current viewport
+  const countVisibleBoundaries = (): number => {
+    try {
+      const layers = boundaryMode === "zips" ? zipLayerOrder : countyLayerOrder;
+      const featureProperty = boundaryMode === "zips" ? zipFeatureProperty : countyFeatureProperty;
+      
+      // Query all rendered features in the viewport using bounding box
+      const canvas = map.getCanvas();
+      const bbox: [[number, number], [number, number]] = [
+        [0, 0],
+        [canvas.width, canvas.height],
+      ];
+      
+      const features = map.queryRenderedFeatures(bbox, { layers });
+      const uniqueIds = new Set<string>();
+      
+      for (const feature of features) {
+        const id = feature?.properties?.[featureProperty];
+        if (typeof id === "string" && id.length > 0) {
+          uniqueIds.add(id);
+        }
+      }
+      
+      return uniqueIds.size;
+    } catch {
+      return 0;
+    }
+  };
+
   function updateStatDataChoropleth() {
+    // Hide choropleth when zoomed in close (only 1-3 boundaries visible)
+    const visibleCount = countVisibleBoundaries();
+    const shouldHideChoropleth = visibleCount > 0 && visibleCount <= 3;
+    
     extUpdatePrimaryChoropleth(map, {
       BOUNDARY_STATDATA_FILL_LAYER_ID,
       COUNTY_STATDATA_FILL_LAYER_ID,
@@ -1966,7 +2006,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       COUNTY_SECONDARY_LAYER_ID,
       SECONDARY_STAT_HOVER_LAYER_ID,
       COUNTY_SECONDARY_HOVER_LAYER_ID,
-    }, currentTheme, boundaryMode, selectedStatId, scopedStatDataByBoundary);
+    }, currentTheme, boundaryMode, selectedStatId, scopedStatDataByBoundary, shouldHideChoropleth);
   }
 
   const applyData = () => {
