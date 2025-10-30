@@ -65,18 +65,7 @@ const CloseIcon = () => (
   </svg>
 );
 
-const LocateIcon = () => (
-  <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
-    <path
-      fill="currentColor"
-      d="M10 2.5a.75.75 0 01.75.75v1.54a5.25 5.25 0 014.46 4.46H16.5a.75.75 0 010 1.5h-1.29a5.25 5.25 0 01-4.46 4.46v1.54a.75.75 0 01-1.5 0v-1.54a5.25 5.25 0 01-4.46-4.46H3.5a.75.75 0 010-1.5h1.29a5.25 5.25 0 014.46-4.46V3.25A.75.75 0 0110 2.5zm0 4a4 4 0 100 8 4 4 0 000-8z"
-    />
-    <path
-      fill="currentColor"
-      d="M10 8.25a1.75 1.75 0 110 3.5 1.75 1.75 0 010-3.5z"
-    />
-  </svg>
-);
+// Locate icon is now rendered in the map overlay button
 
 const MOBILE_SEARCH_AUTO_EXPAND_THRESHOLD = 380;
 
@@ -87,11 +76,6 @@ interface TopBarProps {
   onOpenAuth?: () => void;
   isMobile?: boolean;
   onMobileLocationSearch?: (query: string) => void;
-  hasUserLocation?: boolean;
-  isRequestingUserLocation?: boolean;
-  onRequestUserLocation?: () => void;
-  onFocusUserLocation?: () => void;
-  userLocationError?: string | null;
 }
 
 export const TopBar = ({
@@ -101,11 +85,6 @@ export const TopBar = ({
   onOpenAuth,
   isMobile = false,
   onMobileLocationSearch,
-  hasUserLocation = false,
-  isRequestingUserLocation = false,
-  onRequestUserLocation,
-  onFocusUserLocation,
-  userLocationError,
 }: TopBarProps) => {
   const [theme, setTheme] = useState<ThemeName>("light");
   const { isLoading, user } = db.useAuth();
@@ -210,20 +189,7 @@ export const TopBar = ({
     onNavigate?.(screen);
   };
 
-  const handleLocationAction = () => {
-    if (isRequestingUserLocation) return;
-    if (hasUserLocation) {
-      onFocusUserLocation?.();
-    } else {
-      onRequestUserLocation?.();
-    }
-  };
-
-  const locationButtonLabel = () => {
-    if (isRequestingUserLocation) return "Locating...";
-    if (hasUserLocation) return "My location";
-    return "Use my location";
-  };
+  // Location actions are now handled by the map overlay button
 
   const handleMobileSearchExpand = () => {
     setIsMobileSearchExpanded(true);
@@ -420,11 +386,7 @@ export const TopBar = ({
           </button>
         </div>
       </header>
-      {userLocationError && (
-        <p className="px-4 pb-3 text-sm text-rose-600 dark:text-rose-400 sm:px-6" role="alert">
-          {userLocationError}
-        </p>
-      )}
+      {/* Location errors are now rendered inline within the map overlay button */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-50 bg-white/95 backdrop-blur-md dark:bg-slate-950/95">
           <div className="flex h-full flex-col">
