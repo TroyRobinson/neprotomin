@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { FormEvent, MouseEvent as ReactMouseEvent } from "react";
 import { db } from "../../lib/reactDb";
 import { themeController } from "../imperative/theme";
@@ -78,6 +78,8 @@ const LocateIcon = () => (
   </svg>
 );
 
+const MOBILE_SEARCH_AUTO_EXPAND_THRESHOLD = 380;
+
 interface TopBarProps {
   onBrandClick?: () => void;
   onNavigate?: (screen: "map" | "report" | "data") => void;
@@ -109,6 +111,11 @@ export const TopBar = ({
   const { isLoading, user } = db.useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [mobileSearchValue, setMobileSearchValue] = useState("");
+  const [isCompactMobileSearch, setIsCompactMobileSearch] = useState(false);
+  const [isMobileSearchExpanded, setIsMobileSearchExpanded] = useState(true);
+  const mobileActionsRef = useRef<HTMLDivElement | null>(null);
+  const mobileSearchFormRef = useRef<HTMLFormElement | null>(null);
+  const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const unsubscribe = themeController.subscribe((current) => {
@@ -133,6 +140,47 @@ export const TopBar = ({
     };
   }, [isMobileMenuOpen]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const node = mobileActionsRef.current;
+    if (!node) return;
+    if (typeof ResizeObserver === "undefined") return;
+
+    const updateCompactState = () => {
+      // Collapse the search UI into an icon when the mobile row gets narrow.
+      const width = node.getBoundingClientRect().width;
+      setIsCompactMobileSearch((prev) => {
+        const next = width < MOBILE_SEARCH_AUTO_EXPAND_THRESHOLD;
+        if (prev !== next) {
+          setIsMobileSearchExpanded(!next);
+        }
+        return next;
+      });
+    };
+
+    updateCompactState();
+    const observer = new ResizeObserver(() => updateCompactState());
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!isCompactMobileSearch || !isMobileSearchExpanded) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const form = mobileSearchFormRef.current;
+      if (form && event.target instanceof Node && form.contains(event.target)) {
+        return;
+      }
+      mobileSearchInputRef.current?.blur();
+      setIsMobileSearchExpanded(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [isCompactMobileSearch, isMobileSearchExpanded]);
+
   const handleThemeToggle = () => {
     themeController.toggle();
   };
@@ -147,6 +195,10 @@ export const TopBar = ({
     const trimmed = mobileSearchValue.trim();
     if (!trimmed) return;
     onMobileLocationSearch?.(trimmed);
+    if (isCompactMobileSearch) {
+      mobileSearchInputRef.current?.blur();
+      setIsMobileSearchExpanded(false);
+    }
   };
 
   const handleMobileMenuToggle = () => {
@@ -171,6 +223,15 @@ export const TopBar = ({
     if (isRequestingUserLocation) return "Locating...";
     if (hasUserLocation) return "My location";
     return "Use my location";
+  };
+
+  const handleMobileSearchExpand = () => {
+    setIsMobileSearchExpanded(true);
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        mobileSearchInputRef.current?.focus();
+      });
+    }
   };
 
   const handleLogin = () => {
@@ -306,7 +367,11 @@ export const TopBar = ({
             </button>
           </div>
         </div>
-        <div className="flex w-full items-center gap-3 py-3 sm:hidden" style={{ minHeight: "72px" }}>
+        <div
+          className="flex w-full items-center gap-3 py-3 sm:hidden"
+          style={{ minHeight: "72px" }}
+          ref={mobileActionsRef}
+        >
           <button
             type="button"
             onClick={() => onBrandClick?.()}
@@ -315,41 +380,62 @@ export const TopBar = ({
           >
             NE
           </button>
-          <form onSubmit={handleMobileSearchSubmit} className="flex-1">
-            <label className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 shadow-sm transition focus-within:border-brand-300 focus-within:ring-2 focus-within:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:focus-within:border-slate-500">
-              <SearchIcon />
-              <input
-                type="search"
-                value={mobileSearchValue}
-                onChange={(e) => setMobileSearchValue(e.target.value)}
-                placeholder="enter ZIP"
-                className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
-                enterKeyHint="search"
-              />
-            </label>
-          </form>
-          <button
-            type="button"
-            onClick={handleLocationAction}
-            disabled={isRequestingUserLocation || (!onRequestUserLocation && !onFocusUserLocation)}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-            aria-label={locationButtonLabel()}
-          >
-            {isRequestingUserLocation ? (
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent dark:border-slate-500" />
+          <div className="flex flex-1 items-center gap-3">
+            {isCompactMobileSearch && !isMobileSearchExpanded ? (
+              <button
+                type="button"
+                onClick={handleMobileSearchExpand}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+                aria-label="Open search"
+                aria-expanded={false}
+              >
+                <SearchIcon />
+              </button>
             ) : (
-              <LocateIcon />
+              <form
+                ref={mobileSearchFormRef}
+                onSubmit={handleMobileSearchSubmit}
+                className="flex flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 shadow-sm transition focus-within:border-brand-300 focus-within:ring-2 focus-within:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:focus-within:border-slate-500"
+              >
+                <SearchIcon />
+                <input
+                  ref={mobileSearchInputRef}
+                  type="search"
+                  value={mobileSearchValue}
+                  onChange={(e) => setMobileSearchValue(e.target.value)}
+                  placeholder="enter ZIP"
+                  className="w-full min-w-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
+                  enterKeyHint="search"
+                />
+              </form>
             )}
-          </button>
-          <button
-            type="button"
-            onClick={handleThemeToggle}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-            aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-            aria-pressed={theme === "dark"}
-          >
-            {theme === "dark" ? <MoonIcon /> : <SunIcon />}
-          </button>
+            {(!isCompactMobileSearch || !isMobileSearchExpanded) && (
+              <button
+                type="button"
+                onClick={handleLocationAction}
+                disabled={isRequestingUserLocation || (!onRequestUserLocation && !onFocusUserLocation)}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+                aria-label={locationButtonLabel()}
+              >
+                {isRequestingUserLocation ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent dark:border-slate-500" />
+                ) : (
+                  <LocateIcon />
+                )}
+              </button>
+            )}
+            {(!isCompactMobileSearch || !isMobileSearchExpanded) && (
+              <button
+                type="button"
+                onClick={handleThemeToggle}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+                aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+                aria-pressed={theme === "dark"}
+              >
+                {theme === "dark" ? <MoonIcon /> : <SunIcon />}
+              </button>
+            )}
+          </div>
           <button
             type="button"
             onClick={handleMobileMenuToggle}
