@@ -51,7 +51,8 @@ Remember: Large data files are now managed outside Git. See `data/raw/README.md`
   - Assume the dev server is already running by the user and *don't* attempt to start it.
 
 - Styles:
-  - Note that we're using Tailwind (see setup)
+  - Using Tailwind for styling (see setup)
+  - Using Hero Icons for UI icons - import from `@heroicons/react/24/outline` or `@heroicons/react/24/solid`
 
 - Map markers
   - Prefer MapLibre-rendered layers over DOM markers to avoid zoom drift. Use a GeoJSON `source` + `circle` layers for pins and a separate highlight layer filtered by id. See `src/ui/mapView.ts:96`.

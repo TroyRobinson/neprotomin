@@ -64,6 +64,7 @@
     "vitest": "^2.1.4"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "@instantdb/admin": "^0.22.5",
     "@instantdb/core": "^0.22.5",
     "@instantdb/react": "^0.22.5",
