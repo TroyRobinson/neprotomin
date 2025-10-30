@@ -37,6 +37,7 @@ export const createSecondaryChoroplethLegend = (): SecondaryChoroplethLegendCont
     "inline-flex items-center gap-3 rounded-lg border px-3 py-1.5 text-xs font-medium",
     "bg-white/90 text-slate-600 border-teal-300 shadow-sm backdrop-blur-sm",
     "dark:bg-slate-900/80 dark:text-slate-300 dark:border-teal-700",
+    "sm:py-1.5 py-2.5", // More vertical padding on mobile
   ].join(" ");
 
   const minGroup = document.createElement("div");
