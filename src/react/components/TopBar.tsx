@@ -269,7 +269,7 @@ export const TopBar = ({
                 type="search"
                 value={mobileSearchValue}
                 onChange={(e) => setMobileSearchValue(e.target.value)}
-                placeholder="enter location"
+                placeholder="enter ZIP"
                 className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
                 enterKeyHint="search"
               />
@@ -296,7 +296,7 @@ export const TopBar = ({
         </div>
       </header>
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-30 bg-white/95 backdrop-blur-md dark:bg-slate-950/95">
+        <div className="fixed inset-0 z-50 bg-white/95 backdrop-blur-md dark:bg-slate-950/95">
           <div className="flex h-full flex-col">
             <div className="flex items-center justify-between px-6 pt-6">
               <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-brand-500 font-display text-lg font-semibold text-white shadow-floating">
