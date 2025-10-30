@@ -223,13 +223,13 @@ export const ReactMapApp = () => {
   }, []);
 
   const buildBoundsAroundPoint = useCallback((lng: number, lat: number) => {
-    const lngDelta = 0.18;
-    const latDelta = 0.12;
+    const lngDelta = isMobile ? 0.1 : 0.18;
+    const latDelta = isMobile ? 0.065 : 0.12;
     return [
       [lng - lngDelta, lat - latDelta] as [number, number],
       [lng + lngDelta, lat + latDelta] as [number, number],
     ] as [[number, number], [number, number]];
-  }, []);
+  }, [isMobile]);
 
   const requestUserLocation = useCallback(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -267,9 +267,10 @@ export const ReactMapApp = () => {
     const controller = mapControllerRef.current;
     if (controller) {
       const bounds = buildBoundsAroundPoint(userLocation.lng, userLocation.lat);
-      controller.fitBounds(bounds, { padding: 72, maxZoom: 11 });
+      controller.fitBounds(bounds, { padding: isMobile ? 48 : 72, maxZoom: isMobile ? 12.5 : 11 });
     } else if (mapControllerRef.current?.setCamera) {
-      mapControllerRef.current.setCamera(userLocation.lng, userLocation.lat, 10.5);
+      const targetZoom = isMobile ? 12 : 10.5;
+      mapControllerRef.current.setCamera(userLocation.lng, userLocation.lat, targetZoom);
     }
     if (isMobile) {
       collapseSheet();
