@@ -4,6 +4,7 @@ import { db } from "../lib/db";
 const STATS_QUERY = {
   stats: {
     $: {
+      where: { featured: true },
       order: { name: "asc" as const },
     },
   },

@@ -56,6 +56,9 @@ const _schema = i.schema({
       neId: i.string().unique().indexed().optional(),
       source: i.string().indexed().optional(), // e.g., "NE" | "Census"
       goodIfUp: i.boolean().optional(),
+      // Used to control which stats appear as selectable chips in the map UI
+      // Indexed because we filter by this field in queries
+      featured: i.boolean().indexed().optional(),
       createdOn: i.number().indexed().optional(),
       lastUpdated: i.number().indexed().optional(),
     }),
