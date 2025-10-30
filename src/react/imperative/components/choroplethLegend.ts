@@ -37,7 +37,7 @@ export const createChoroplethLegend = (): ChoroplethLegendController => {
 
   const pill = document.createElement("div");
   pill.className = [
-    "inline-flex items-center gap-3 rounded-lg border px-3 py-1.5 text-xs font-medium",
+    "pointer-events-auto inline-flex items-center gap-3 rounded-lg border px-3 py-1.5 text-xs font-medium cursor-pointer",
     "bg-white/90 text-slate-600 border-slate-200 shadow-sm backdrop-blur-sm",
     "dark:bg-slate-900/80 dark:text-slate-300 dark:border-slate-700",
     "sm:py-1.5 py-2.5", // more vertical padding for mobile

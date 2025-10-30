@@ -363,18 +363,18 @@ export const TopBar = ({
               </form>
             )}
             {/* Mobile location button removed; now rendered on map */}
-            {(!isCompactMobileSearch || !isMobileSearchExpanded) && (
-              <button
-                type="button"
-                onClick={handleThemeToggle}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-                aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-                aria-pressed={theme === "dark"}
-              >
-                {theme === "dark" ? <MoonIcon /> : <SunIcon />}
-              </button>
-            )}
           </div>
+          {(!isCompactMobileSearch || !isMobileSearchExpanded) && (
+            <button
+              type="button"
+              onClick={handleThemeToggle}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              aria-pressed={theme === "dark"}
+            >
+              {theme === "dark" ? <MoonIcon /> : <SunIcon />}
+            </button>
+          )}
           <button
             type="button"
             onClick={handleMobileMenuToggle}

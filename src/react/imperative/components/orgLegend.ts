@@ -14,7 +14,7 @@ export const createOrgLegend = (): OrgLegendController => {
 
   const label = document.createElement("span");
   label.className = "tabular-nums";
-  label.textContent = "Orgs";
+  label.textContent = "Org";
 
   // A subtle vertical divider to separate the orgs group from the rest of the legend
   const divider = document.createElement("span");

@@ -1,5 +1,6 @@
 export interface SecondaryChoroplethLegendController {
   element: HTMLElement;
+  pill: HTMLElement;
   setVisible: (visible: boolean) => void;
   setRange: (min: number, max: number, type?: string) => void;
   setColors: (lowHex: string, highHex: string) => void;
@@ -35,7 +36,7 @@ export const createSecondaryChoroplethLegend = (): SecondaryChoroplethLegendCont
 
   const pill = document.createElement("div");
   pill.className = [
-    "inline-flex items-center gap-3 rounded-lg border px-3 py-1.5 text-xs font-medium",
+    "pointer-events-auto inline-flex items-center gap-3 rounded-lg border px-3 py-1.5 text-xs font-medium cursor-pointer",
     "bg-white/90 text-slate-600 border-teal-300 shadow-sm backdrop-blur-sm",
     "dark:bg-slate-900/80 dark:text-slate-300 dark:border-teal-700",
     "sm:py-1.5 py-2.5", // More vertical padding on mobile
@@ -88,5 +89,5 @@ export const createSecondaryChoroplethLegend = (): SecondaryChoroplethLegendCont
 
   setVisible(false);
 
-  return { element: wrapper, setVisible, setRange, setColors, destroy };
+  return { element: wrapper, pill, setVisible, setRange, setColors, destroy };
 };

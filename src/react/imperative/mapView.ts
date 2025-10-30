@@ -16,6 +16,7 @@ import { createZipFloatingTitle, type ZipFloatingTitleController } from "./compo
 import { createZipLabels, type ZipLabelsController } from "./components/zipLabels";
 import { createChoroplethLegend, type ChoroplethLegendController } from "./components/choroplethLegend";
 import { createSecondaryChoroplethLegend, type SecondaryChoroplethLegendController } from "./components/secondaryChoroplethLegend";
+import { statsStore } from "../../state/stats";
 import { createOrgLegend, type OrgLegendController } from "./components/orgLegend";
 import { getCountyCentroidsMap, getCountyName } from "../../lib/countyCentroids";
 import type { AreaId, AreaKind } from "../../types/areas";
@@ -672,6 +673,84 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   }
   secondaryChoroplethLegend = createSecondaryChoroplethLegend();
   legendRowEl.appendChild(secondaryChoroplethLegend.element);
+
+  // Wire up momentary stat name display on legend tap/click
+  // Maintain a lookup of stat id -> name from the stats store
+  const statNameById = new Map<string, string>();
+  const unsubscribeStats = statsStore.subscribe((stats) => {
+    statNameById.clear();
+    for (const s of stats) statNameById.set(s.id, s.name);
+  });
+  destroyFns.push(() => {
+    try { unsubscribeStats?.(); } catch {}
+  });
+
+  // Helper to attach a small overlay label inside a pill
+  const attachLegendMessage = (pillEl: HTMLElement) => {
+    pillEl.style.position = pillEl.style.position || "relative";
+    const msg = document.createElement("div");
+    msg.className = [
+      "pointer-events-none absolute inset-0 flex items-center justify-center px-2",
+      "text-[10px] leading-tight text-brand-700 dark:text-brand-300 text-center",
+    ].join(" ");
+    msg.style.display = "none";
+    pillEl.appendChild(msg);
+    let hideTimer: number | null = null;
+    const setSiblingsVisibility = (visible: boolean) => {
+      const children = Array.from(pillEl.children) as HTMLElement[];
+      for (const child of children) {
+        if (child === msg) continue;
+        child.style.visibility = visible ? "visible" : "hidden";
+      }
+    };
+    const hideMessage = () => {
+      msg.style.display = "none";
+      setSiblingsVisibility(true);
+    };
+    const showMessage = (text: string, autoHide: boolean = true) => {
+      msg.textContent = text;
+      msg.style.display = "flex";
+      setSiblingsVisibility(false);
+      if (hideTimer) { window.clearTimeout(hideTimer); hideTimer = null; }
+      if (autoHide) {
+        hideTimer = window.setTimeout(() => { hideMessage(); }, 1500);
+      }
+    };
+    return { showMessage, hideMessage };
+  };
+
+  const primaryMsg = attachLegendMessage(choroplethLegend.pill);
+  const secondaryMsg = attachLegendMessage(secondaryChoroplethLegend.pill);
+
+  if (isMobile) {
+    choroplethLegend.pill.addEventListener("click", () => {
+      if (!selectedStatId) return;
+      const name = statNameById.get(selectedStatId) || "Stat";
+      primaryMsg.showMessage(name, true);
+    });
+    secondaryChoroplethLegend.pill.addEventListener("click", () => {
+      if (!secondaryStatId) return;
+      const name = statNameById.get(secondaryStatId) || "Stat";
+      secondaryMsg.showMessage(name, true);
+    });
+  } else {
+    choroplethLegend.pill.addEventListener("mouseenter", () => {
+      if (!selectedStatId) return;
+      const name = statNameById.get(selectedStatId) || "Stat";
+      primaryMsg.showMessage(name, false);
+    });
+    choroplethLegend.pill.addEventListener("mouseleave", () => {
+      primaryMsg.hideMessage();
+    });
+    secondaryChoroplethLegend.pill.addEventListener("mouseenter", () => {
+      if (!secondaryStatId) return;
+      const name = statNameById.get(secondaryStatId) || "Stat";
+      secondaryMsg.showMessage(name, false);
+    });
+    secondaryChoroplethLegend.pill.addEventListener("mouseleave", () => {
+      secondaryMsg.hideMessage();
+    });
+  }
 
   type SelectionApplyOptions = { shouldZoom?: boolean; notify?: boolean };
 
