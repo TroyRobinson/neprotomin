@@ -459,10 +459,10 @@ export const ReactMapApp = () => {
 
   const legendInset = useMemo(() => {
     if (!isMobile) return 16;
-    // Position legend in lower-middle of screen (12% from bottom)
-    const inset = Math.floor(viewportHeight * 0.12);
-    return inset;
-  }, [isMobile, viewportHeight]);
+    // Attach just above the mobile sheet in peek, with a small gap
+    const GAP = 8;
+    return MOBILE_SHEET_PEEK_HEIGHT + GAP;
+  }, [isMobile]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -1616,47 +1616,58 @@ export const ReactMapApp = () => {
                 legendInset={legendInset}
                 onControllerReady={handleMapControllerReady}
                 userLocation={userLocation}
+                legendRowVisible={Boolean(isMobile && activeScreen === "map" && sheetState === "peek" && !isDraggingSheet)}
+                onMobileMyLocationClick={() => {
+                  if (isRequestingLocation) return;
+                  if (userLocation) {
+                    focusUserLocation();
+                  } else {
+                    requestUserLocation();
+                  }
+                }}
+                mobileMyLocationUi={{
+                  isRequesting: isRequestingLocation,
+                  error: userLocationError,
+                  hasLocation: Boolean(userLocation),
+                }}
               />
-              {/* Floating location button overlay on map (desktop + mobile) */}
-              <div
-                className={[
-                  "pointer-events-none absolute right-4",
-                  // Ensure the button sits behind the mobile sheet when expanded
-                  isMobile && sheetState === "expanded" ? "z-10" : "z-30",
-                ].join(" ")}
-                style={{ bottom: isMobile ? legendInset : 16 }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isRequestingLocation) return;
-                    if (userLocation) {
-                      focusUserLocation();
-                    } else {
-                      requestUserLocation();
-                    }
-                  }}
-                  disabled={isRequestingLocation}
-                  className={[
-                    "pointer-events-auto inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
-                    userLocationError
-                      ? "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
-                      : "border border-slate-200 bg-white text-slate-700 hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white",
-                  ].join(" ")}
-                  aria-label={isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Active" : "My Location"}
+              {/* Floating location button overlay on map (desktop only) */}
+              {!isMobile && (
+                <div
+                  className={["pointer-events-none absolute right-4 z-30"].join(" ")}
+                  style={{ bottom: 16 }}
                 >
-                  {isRequestingLocation ? (
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent dark:border-slate-500" />
-                  ) : (
-                    // Simple locate glyph to avoid importing icon here
-                    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
-                      <path fill="currentColor" d="M10 2.5a.75.75 0 01.75.75v1.54a5.25 5.25 0 014.46 4.46H16.5a.75.75 0 010 1.5h-1.29a5.25 5.25 0 01-4.46 4.46v1.54a.75.75 0 01-1.5 0v-1.54a5.25 5.25 0 01-4.46-4.46H3.5a.75.75 0 010-1.5h1.29a5.25 5.25 0 014.46-4.46V3.25A.75.75 0 0110 2.5zm0 4a4 4 0 100 8 4 4 0 000-8z" />
-                      <path fill="currentColor" d="M10 8.25a1.75 1.75 0 110 3.5 1.75 1.75 0 010-3.5z" />
-                    </svg>
-                  )}
-                  <span>{isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Active" : "My Location"}</span>
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isRequestingLocation) return;
+                      if (userLocation) {
+                        focusUserLocation();
+                      } else {
+                        requestUserLocation();
+                      }
+                    }}
+                    disabled={isRequestingLocation}
+                    className={[
+                      "pointer-events-auto inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
+                      userLocationError
+                        ? "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
+                        : "border border-slate-200 bg-white text-slate-700 hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white",
+                    ].join(" ")}
+                    aria-label={isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Active" : "My Location"}
+                  >
+                    {isRequestingLocation ? (
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent dark:border-slate-500" />
+                    ) : (
+                      <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
+                        <path fill="currentColor" d="M10 2.5a.75.75 0 01.75.75v1.54a5.25 5.25 0 014.46 4.46H16.5a.75.75 0 010 1.5h-1.29a5.25 5.25 0 01-4.46 4.46v1.54a.75.75 0 01-1.5 0v-1.54a5.25 5.25 0 01-4.46-4.46H3.5a.75.75 0 010-1.5h1.29a5.25 5.25 0 014.46-4.46V3.25A.75.75 0 0110 2.5zm0 4a4 4 0 100 8 4 4 0 000-8z" />
+                        <path fill="currentColor" d="M10 8.25a1.75 1.75 0 110 3.5 1.75 1.75 0 010-3.5z" />
+                      </svg>
+                    )}
+                    <span>{isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Active" : "My Location"}</span>
+                  </button>
+                </div>
+              )}
           </div>
           {!isMobile && (
             <Sidebar

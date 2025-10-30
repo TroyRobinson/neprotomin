@@ -55,6 +55,10 @@ interface MapLibreMapProps {
   legendInset?: number;
   onControllerReady?: (controller: MapViewController | null) => void;
   userLocation?: { lng: number; lat: number } | null;
+  // Mobile legend row controls
+  legendRowVisible?: boolean;
+  onMobileMyLocationClick?: () => void;
+  mobileMyLocationUi?: { isRequesting: boolean; error: string | null; hasLocation: boolean };
 }
 
 /**
@@ -102,6 +106,9 @@ export const MapLibreMap = ({
   legendInset,
   onControllerReady,
   userLocation = null,
+  legendRowVisible,
+  onMobileMyLocationClick,
+  mobileMyLocationUi,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
@@ -128,6 +135,11 @@ export const MapLibreMap = ({
   const shouldAutoSwitchRef = useRef<boolean>(autoBoundarySwitch);
   const onMapDragStartRef = useRef(onMapDragStart);
   const setLegendInsetRef = useRef<(pixels: number) => void>(() => {});
+  const setLegendVisibleRef = useRef<(visible: boolean) => void>(() => {});
+  const setMyLocationUiRef = useRef<
+    (ui: { isRequesting: boolean; error: string | null; hasLocation: boolean }) => void
+  >(() => {});
+  const onMobileMyLocationClickRef = useRef(onMobileMyLocationClick);
 
   useEffect(() => { onZipSelectionChangeRef.current = onZipSelectionChange; }, [onZipSelectionChange]);
   useEffect(() => { onHoverRef.current = onHover; }, [onHover]);
@@ -147,10 +159,13 @@ export const MapLibreMap = ({
   useEffect(() => { onCameraChangeRef.current = onCameraChange; }, [onCameraChange]);
   useEffect(() => { shouldAutoSwitchRef.current = autoBoundarySwitch; }, [autoBoundarySwitch]);
   useEffect(() => { onMapDragStartRef.current = onMapDragStart; }, [onMapDragStart]);
+  useEffect(() => { onMobileMyLocationClickRef.current = onMobileMyLocationClick; }, [onMobileMyLocationClick]);
   useEffect(() => {
     const controller = mapControllerRef.current;
     if (controller) {
       setLegendInsetRef.current = controller.setLegendInset;
+      setLegendVisibleRef.current = controller.setLegendRowVisible ?? (() => {});
+      setMyLocationUiRef.current = controller.setMobileMyLocationUi ?? (() => {});
       if (typeof legendInset === "number") {
         controller.setLegendInset(legendInset);
       } else {
@@ -212,6 +227,9 @@ export const MapLibreMap = ({
       onOrganizationClick: (id, meta) => onOrganizationClickRef.current?.(id, meta),
       onClusterClick: (ids, meta) => onClusterClickRef.current?.(ids, meta),
       isMobile,
+      onMobileMyLocationClick: () => {
+        try { onMobileMyLocationClickRef.current?.(); } catch {}
+      },
       onRequestHideOrgs: () => {
         try { onRequestHideOrgs?.(); } catch {}
       },
@@ -220,6 +238,8 @@ export const MapLibreMap = ({
     containerRef.current.appendChild(mapController.element);
     mapControllerRef.current = mapController;
     setLegendInsetRef.current = mapController.setLegendInset;
+    setLegendVisibleRef.current = mapController.setLegendRowVisible ?? (() => {});
+    setMyLocationUiRef.current = mapController.setMobileMyLocationUi ?? (() => {});
     if (typeof legendInset === "number") {
       mapController.setLegendInset(legendInset);
     } else {
@@ -259,6 +279,20 @@ export const MapLibreMap = ({
       mapControllerRef.current.setUserLocation(userLocation ?? null);
     }
   }, [userLocation]);
+
+  // Drive mobile legend row visibility
+  useEffect(() => {
+    if (typeof legendRowVisible === "boolean" && mapControllerRef.current) {
+      setLegendVisibleRef.current?.(legendRowVisible);
+    }
+  }, [legendRowVisible]);
+
+  // Drive mobile my location UI state
+  useEffect(() => {
+    if (mobileMyLocationUi && mapControllerRef.current) {
+      setMyLocationUiRef.current?.(mobileMyLocationUi);
+    }
+  }, [mobileMyLocationUi]);
 
   // Handle zoom out all trigger
   useEffect(() => {

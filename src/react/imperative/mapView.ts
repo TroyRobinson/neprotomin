@@ -80,6 +80,7 @@ interface MapViewOptions {
     meta: { count: number; longitude: number; latitude: number },
   ) => void;
   isMobile?: boolean;
+  onMobileMyLocationClick?: () => void;
   onRequestHideOrgs?: () => void;
 }
 
@@ -105,7 +106,9 @@ export interface MapViewController {
   setCamera: (centerLng: number, centerLat: number, zoom: number) => void;
   onCameraChange: (fn: (centerLng: number, centerLat: number, zoom: number) => void) => () => void;
   setLegendInset: (pixels: number) => void;
+  setLegendRowVisible?: (visible: boolean) => void;
   setUserLocation: (location: { lng: number; lat: number } | null) => void;
+  setMobileMyLocationUi?: (ui: { isRequesting: boolean; error: string | null; hasLocation: boolean }) => void;
   resize: () => void;
   destroy: () => void;
 }
@@ -294,6 +297,9 @@ export const createMapView = ({
   let orgLegend: OrgLegendController;
   let secondaryChoroplethLegend: SecondaryChoroplethLegendController;
   let legendRowEl: HTMLDivElement | null = null;
+  let legendLeftGroupEl: HTMLDivElement | null = null;
+  let legendRightGroupEl: HTMLDivElement | null = null;
+  let mobileMyLocationButton: HTMLButtonElement | null = null;
   let legendInset = 16;
   const applyLegendInset = () => {
     if (legendRowEl) {
@@ -660,19 +666,75 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   // Create a single bottom-row for legends so they share space evenly with right-side controls
   legendRowEl = document.createElement("div");
-  legendRowEl.className = "pointer-events-none absolute left-4 right-36 z-10 flex items-center gap-3";
+  legendRowEl.className = "pointer-events-none absolute left-4 right-4 z-10 flex items-center";
   legendRowEl.style.bottom = `${legendInset}px`;
+  // Inner row to space-between left legends and right controls
+  const legendInnerRow = document.createElement("div");
+  legendInnerRow.className = "pointer-events-none flex w-full items-center justify-between gap-3";
+  legendLeftGroupEl = document.createElement("div");
+  legendLeftGroupEl.className = "pointer-events-none flex items-center gap-3";
+  legendRightGroupEl = document.createElement("div");
+  legendRightGroupEl.className = "pointer-events-none flex items-center gap-3";
+  legendInnerRow.appendChild(legendLeftGroupEl);
+  legendInnerRow.appendChild(legendRightGroupEl);
+  legendRowEl.appendChild(legendInnerRow);
   container.appendChild(legendRowEl);
 
   choroplethLegend = createChoroplethLegend();
-  legendRowEl.appendChild(choroplethLegend.element);
+  legendLeftGroupEl.appendChild(choroplethLegend.element);
   // Only render the org legend on non-mobile to reduce visual noise
   if (!isMobile) {
     orgLegend = createOrgLegend();
     choroplethLegend.pill.insertBefore(orgLegend.element, choroplethLegend.pill.firstChild);
   }
   secondaryChoroplethLegend = createSecondaryChoroplethLegend();
-  legendRowEl.appendChild(secondaryChoroplethLegend.element);
+  legendLeftGroupEl.appendChild(secondaryChoroplethLegend.element);
+
+  // Mobile: add My Location button on the right side, sharing the row
+  if (isMobile) {
+    mobileMyLocationButton = document.createElement("button");
+    mobileMyLocationButton.type = "button";
+    mobileMyLocationButton.className = [
+      "pointer-events-auto inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
+      "border border-slate-200 bg-white text-slate-700 hover:border-brand-200 hover:text-brand-700",
+      "dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white",
+    ].join(" ");
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("viewBox", "0 0 20 20");
+    icon.setAttribute("aria-hidden", "true");
+    icon.classList.add("h-4", "w-4");
+    const p1 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p1.setAttribute("fill", "currentColor");
+    p1.setAttribute("d", "M10 2.5a.75.75 0 01.75.75v1.54a5.25 5.25 0 014.46 4.46H16.5a.75.75 0 010 1.5h-1.29a5.25 5.25 0 01-4.46 4.46v1.54a.75.75 0 01-1.5 0v-1.54a5.25 5.25 0 01-4.46-4.46H3.5a.75.75 0 010-1.5h1.29a5.25 5.25 0 014.46-4.46V3.25A.75.75 0 0110 2.5zm0 4a4 4 0 100 8 4 4 0 000-8z");
+    const p2 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p2.setAttribute("fill", "currentColor");
+    p2.setAttribute("d", "M10 8.25a1.75 1.75 0 110 3.5 1.75 1.75 0 010-3.5z");
+    icon.appendChild(p1);
+    icon.appendChild(p2);
+    const label = document.createElement("span");
+    const setButtonText = (text: string) => { label.textContent = text; };
+    const setBusy = (busy: boolean) => {
+      mobileMyLocationButton!.disabled = busy;
+    };
+    mobileMyLocationButton.appendChild(icon);
+    mobileMyLocationButton.appendChild(label);
+    mobileMyLocationButton.addEventListener("click", () => {
+      try { options.onMobileMyLocationClick?.(); } catch {}
+    });
+    legendRightGroupEl.appendChild(mobileMyLocationButton);
+
+    // initialize default text
+    setButtonText("My Location");
+
+    // expose updater to controller
+    (mobileMyLocationButton as any)._setUi = (ui: { isRequesting: boolean; error: string | null; hasLocation: boolean }) => {
+      setBusy(ui.isRequesting);
+      if (ui.isRequesting) setButtonText("Locating...");
+      else if (ui.error) setButtonText(ui.error);
+      else if (ui.hasLocation) setButtonText("Active");
+      else setButtonText("My Location");
+    };
+  }
 
   // Wire up momentary stat name display on legend tap/click
   // Maintain a lookup of stat id -> name from the stats store
@@ -2052,8 +2114,17 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       };
     },
     setLegendInset,
+    setLegendRowVisible: (visible: boolean) => {
+      try { legendRowEl?.classList.toggle("hidden", !visible); } catch {}
+    },
     resize: () => {
       map.resize();
+    },
+    setMobileMyLocationUi: (ui: { isRequesting: boolean; error: string | null; hasLocation: boolean }) => {
+      const setter = (mobileMyLocationButton as any)?._setUi as
+        | ((u: { isRequesting: boolean; error: string | null; hasLocation: boolean }) => void)
+        | undefined;
+      if (setter) setter(ui);
     },
     destroy: () => {
       try { unwireVisibleIds(); } catch {}
