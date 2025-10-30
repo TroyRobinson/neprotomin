@@ -1131,6 +1131,21 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   const ensureSourcesAndLayers = () => {
     if (!map.isStyleLoaded()) return;
 
+    // Ensure a slightly gray map background in light mode to contrast the UI
+    try {
+      if (currentTheme === "light") {
+        const style = map.getStyle() as any;
+        const bgLayer = style?.layers?.find((l: any) => l?.type === "background");
+        const backgroundLayerId = bgLayer?.id || "app-background";
+        if (!bgLayer && !map.getLayer(backgroundLayerId)) {
+          map.addLayer({ id: backgroundLayerId, type: "background", paint: {} });
+        }
+        if (map.getLayer(backgroundLayerId)) {
+          map.setPaintProperty(backgroundLayerId, "background-color", "#f2f3f5");
+        }
+      }
+    } catch {}
+
     ensureBoundaryLayers(map, {
       BOUNDARY_SOURCE_ID,
       BOUNDARY_FILL_LAYER_ID,

@@ -1634,7 +1634,7 @@ export const ReactMapApp = () => {
                       ? "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
                       : "border border-slate-200 bg-white text-slate-700 hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white",
                   ].join(" ")}
-                  aria-label={isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "My location" : "Use my location"}
+                  aria-label={isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Active" : "My Location"}
                 >
                   {isRequestingLocation ? (
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent dark:border-slate-500" />
@@ -1645,7 +1645,7 @@ export const ReactMapApp = () => {
                       <path fill="currentColor" d="M10 8.25a1.75 1.75 0 110 3.5 1.75 1.75 0 010-3.5z" />
                     </svg>
                   )}
-                  <span>{isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "My location" : "Use my location"}</span>
+                  <span>{isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Active" : "My Location"}</span>
                 </button>
               </div>
           </div>
