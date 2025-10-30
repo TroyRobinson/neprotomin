@@ -23,6 +23,9 @@ import type { MapViewController } from "./imperative/mapView";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
+const AddOrganizationScreen = lazy(() =>
+  import("./components/AddOrganizationScreen").then((m) => ({ default: m.AddOrganizationScreen })),
+);
 
 const COUNTY_MODE_ENABLE_ZOOM = 9;
 const COUNTY_MODE_DISABLE_ZOOM = 9.6;
@@ -110,7 +113,7 @@ export const ReactMapApp = () => {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [hasAppliedDefaultStat, setHasAppliedDefaultStat] = useState(false);
   const [hasSyncedDefaultCategory, setHasSyncedDefaultCategory] = useState(false);
-  const [activeScreen, setActiveScreen] = useState<"map" | "report" | "data">("map");
+  const [activeScreen, setActiveScreen] = useState<"map" | "report" | "data" | "addOrg">("map");
   const [authOpen, setAuthOpen] = useState(false);
   const [cameraState, setCameraState] = useState<{ center: [number, number]; zoom: number } | null>(null);
   const [zipScope, setZipScope] = useState<string>(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
@@ -1037,6 +1040,40 @@ export const ReactMapApp = () => {
     }
   };
 
+  const handleOpenAddOrganization = useCallback(() => {
+    setActiveScreen("addOrg");
+    if (isMobile) {
+      collapseSheet();
+    }
+  }, [collapseSheet, isMobile]);
+
+  const handleOrganizationCreated = useCallback(
+    (organization: { id: string; latitude: number; longitude: number }) => {
+      setActiveScreen("map");
+      setActiveOrganizationId(organization.id);
+      setHighlightedOrganizationIds([organization.id]);
+      setOrgPinsVisible(true);
+      const controller = mapControllerRef.current;
+      if (controller) {
+        const zoomLevel = isMobile ? 13.2 : 14.6;
+        const latOffset = isMobile ? 0.01 : 0.006;
+        controller.setCamera(
+          organization.longitude,
+          organization.latitude + latOffset,
+          zoomLevel,
+        );
+      }
+      if (isMobile) {
+        expandSheet();
+      }
+    },
+    [expandSheet, isMobile],
+  );
+
+  const handleCloseAddOrganization = useCallback(() => {
+    setActiveScreen("map");
+  }, []);
+
   const handleHover = useCallback((idOrIds: string | string[] | null) => {
     if (Array.isArray(idOrIds)) {
       setHighlightedOrganizationIds(idOrIds);
@@ -1677,10 +1714,11 @@ export const ReactMapApp = () => {
       <TopBar
         onBrandClick={handleBrandClick}
         onNavigate={setActiveScreen}
-        active={activeScreen}
+        active={activeScreen === "report" ? "report" : activeScreen === "data" ? "data" : "map"}
         onOpenAuth={() => setAuthOpen(true)}
         isMobile={isMobile}
         onMobileLocationSearch={handleMobileLocationSearch}
+        onAddOrganization={handleOpenAddOrganization}
       />
       <div className="relative flex flex-1 flex-col overflow-hidden">
         {!isMobile && (
@@ -1950,6 +1988,24 @@ export const ReactMapApp = () => {
           <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-slate-500">Loading data…</div>}>
             <div className="flex h-full w-full overflow-auto bg-white pb-safe dark:bg-slate-900">
               <DataScreen />
+            </div>
+          </Suspense>
+        )}
+      </div>
+
+      {/* Add organization overlay */}
+      <div
+        aria-hidden={activeScreen !== "addOrg"}
+        style={{ visibility: activeScreen === "addOrg" ? "visible" : "hidden", top: topBarHeight }}
+        className="absolute left-0 right-0 bottom-0 z-40"
+      >
+        {activeScreen === "addOrg" && (
+          <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-slate-500">Loading form…</div>}>
+            <div className="flex h-full w-full overflow-hidden bg-white pb-safe dark:bg-slate-950">
+              <AddOrganizationScreen
+                onCancel={handleCloseAddOrganization}
+                onCreated={handleOrganizationCreated}
+              />
             </div>
           </Suspense>
         )}

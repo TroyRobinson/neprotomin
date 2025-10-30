@@ -65,6 +65,15 @@ const CloseIcon = () => (
   </svg>
 );
 
+const PlusIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6">
+    <path
+      fill="currentColor"
+      d="M12 5a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H6a1 1 0 110-2h5V6a1 1 0 011-1z"
+    />
+  </svg>
+);
+
 // Locate icon is now rendered in the map overlay button
 
 const MOBILE_SEARCH_AUTO_EXPAND_THRESHOLD = 380;
@@ -76,6 +85,7 @@ interface TopBarProps {
   onOpenAuth?: () => void;
   isMobile?: boolean;
   onMobileLocationSearch?: (query: string) => void;
+  onAddOrganization?: () => void;
 }
 
 export const TopBar = ({
@@ -85,6 +95,7 @@ export const TopBar = ({
   onOpenAuth,
   isMobile = false,
   onMobileLocationSearch,
+  onAddOrganization,
 }: TopBarProps) => {
   const [theme, setTheme] = useState<ThemeName>("light");
   const { isLoading, user } = db.useAuth();
@@ -187,6 +198,11 @@ export const TopBar = ({
   const handleNavigate = (screen: "map" | "report" | "data") => {
     setIsMobileMenuOpen(false);
     onNavigate?.(screen);
+  };
+
+  const handleAddOrganization = () => {
+    setIsMobileMenuOpen(false);
+    onAddOrganization?.();
   };
 
   // Location actions are now handled by the map overlay button
@@ -318,6 +334,16 @@ export const TopBar = ({
             >
               {theme === "dark" ? <MoonIcon /> : <SunIcon />}
             </button>
+            {onAddOrganization && (
+              <button
+                type="button"
+                onClick={handleAddOrganization}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-500 text-white shadow-floating transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                aria-label="Add organization"
+              >
+                <PlusIcon />
+              </button>
+            )}
           </div>
         </div>
         <div
@@ -364,6 +390,15 @@ export const TopBar = ({
             )}
             {/* Mobile location button removed; now rendered on map */}
           </div>
+          <button
+            type="button"
+            onClick={handleMobileMenuToggle}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+            aria-label="Open menu"
+            aria-expanded={isMobileMenuOpen}
+          >
+            <HamburgerIcon />
+          </button>
           {(!isCompactMobileSearch || !isMobileSearchExpanded) && (
             <button
               type="button"
@@ -375,15 +410,16 @@ export const TopBar = ({
               {theme === "dark" ? <MoonIcon /> : <SunIcon />}
             </button>
           )}
-          <button
-            type="button"
-            onClick={handleMobileMenuToggle}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-            aria-label="Open menu"
-            aria-expanded={isMobileMenuOpen}
-          >
-            <HamburgerIcon />
-          </button>
+          {onAddOrganization && (
+            <button
+              type="button"
+              onClick={handleAddOrganization}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-brand-500 text-white shadow-floating transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+              aria-label="Add organization"
+            >
+              <PlusIcon />
+            </button>
+          )}
         </div>
       </header>
       {/* Location errors are now rendered inline within the map overlay button */}
@@ -404,6 +440,18 @@ export const TopBar = ({
               </button>
             </div>
             <nav className="mt-10 flex flex-1 flex-col gap-4 px-6 pb-10">
+              {onAddOrganization && (
+                <button
+                  type="button"
+                  onClick={handleAddOrganization}
+                  className="flex w-full items-center justify-between rounded-2xl border border-brand-200 bg-brand-50 px-5 py-4 text-left text-lg font-semibold text-brand-700 shadow-sm transition hover:border-brand-300 hover:bg-brand-100 dark:border-brand-500/50 dark:bg-brand-500/10 dark:text-brand-200 dark:hover:border-brand-400 dark:hover:bg-brand-500/20"
+                >
+                  <span>Add an organization</span>
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-white">
+                    <PlusIcon />
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => handleNavigate("map")}

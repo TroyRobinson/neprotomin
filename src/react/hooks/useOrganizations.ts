@@ -60,6 +60,10 @@ export const useOrganizations = () => {
         list.push({
           id: row.id,
           name: row.name,
+          ownerEmail:
+            typeof (row as any).ownerEmail === "string"
+              ? ((row as any).ownerEmail as string)
+              : null,
           latitude: row.latitude,
           longitude: row.longitude,
           category: categoryValue as Organization["category"],

@@ -20,6 +20,7 @@ export interface OrganizationHours {
 export interface Organization {
   id: string;
   name: string;
+  ownerEmail?: string | null;
   latitude: number;
   longitude: number;
   category: Category;

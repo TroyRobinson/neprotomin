@@ -11,6 +11,7 @@ const _schema = i.schema({
     // (users/auth removed)
     organizations: i.entity({
       name: i.string().indexed(),
+      ownerEmail: i.string().indexed().optional(),
       website: i.string().optional(),
       latitude: i.number(),
       longitude: i.number(),
