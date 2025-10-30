@@ -80,6 +80,13 @@
   }
 }
 
+@media (max-width: 640px) {
+  /* Hide MapLibre's +/- navigation/zoom controls on mobile only */
+  .maplibregl-ctrl-top-right .maplibregl-ctrl-group {
+    display: none !important;
+  }
+}
+
 @layer components {
   .divider {
     @apply h-4 w-px bg-slate-200 dark:bg-slate-700;
