@@ -51,3 +51,23 @@ data/raw/oklahoma-zcta-final.geojson
 .env
 .zip
 .vercel
+
+# --- Project-specific large/local ignores (appended) ---
+# Entire local datasets (keep README if needed)
+data/**
+!data/raw/README.md
+
+# Local temp + caches
+tmp/**
+google-places-cache/**
+
+# Large geodata blobs scoped to data/
+data/**/*.geojson
+data/**/*.shp
+data/**/*.dbf
+data/**/*.zip
+
+# Env variants commonly created locally
+.env.local
+.env.production.local
+.env.development.local
