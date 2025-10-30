@@ -41,10 +41,11 @@ const LogoutIcon = () => (
 );
 
 const SearchIcon = () => (
-  <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 text-slate-400 dark:text-slate-500">
+  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px] text-slate-400 dark:text-slate-500">
     <path
-      fill="currentColor"
-      d="M13.9 12.5l4.2 4.2a1 1 0 01-1.4 1.4l-4.2-4.2a6 6 0 111.4-1.4zm-5.9 1a4 4 0 100-8 4 4 0 000 8z"
+      fillRule="evenodd"
+      d="M9 3.5a5.5 5.5 0 013.894 9.394l3.703 3.703a.75.75 0 11-1.06 1.06l-3.703-3.703A5.5 5.5 0 119 3.5zm0 1.5a4 4 0 100 8 4 4 0 000-8z"
+      clipRule="evenodd"
     />
   </svg>
 );
