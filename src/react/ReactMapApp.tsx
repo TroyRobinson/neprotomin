@@ -31,7 +31,7 @@ const FALLBACK_ZIP_SCOPE = normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?
 const DEFAULT_PRIMARY_STAT_ID = "8383685c-2741-40a2-96ff-759c42ddd586";
 const DEFAULT_TOP_BAR_HEIGHT = 64;
 const MOBILE_MAX_WIDTH_QUERY = "(max-width: 767px)";
-const MOBILE_SHEET_PEEK_HEIGHT = 120;
+const MOBILE_SHEET_PEEK_HEIGHT = 136;
 const MOBILE_SHEET_DRAG_THRESHOLD = 72;
 
 interface AreaSelectionState {
@@ -125,6 +125,9 @@ export const ReactMapApp = () => {
     const viewport = window.visualViewport;
     return Math.round(viewport?.height ?? window.innerHeight);
   });
+  const [userLocation, setUserLocation] = useState<{ lng: number; lat: number } | null>(null);
+  const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+  const [userLocationError, setUserLocationError] = useState<string | null>(null);
   const sheetPointerIdRef = useRef<number | null>(null);
   const sheetDragStateRef = useRef<{ startY: number; startState: "peek" | "expanded" } | null>(null);
   const pendingContentDragRef = useRef<{ pointerId: number; startY: number } | null>(null);
@@ -218,6 +221,60 @@ export const ReactMapApp = () => {
     sheetDragStateRef.current = null;
     pendingContentDragRef.current = null;
   }, []);
+
+  const buildBoundsAroundPoint = useCallback((lng: number, lat: number) => {
+    const lngDelta = 0.18;
+    const latDelta = 0.12;
+    return [
+      [lng - lngDelta, lat - latDelta] as [number, number],
+      [lng + lngDelta, lat + latDelta] as [number, number],
+    ] as [[number, number], [number, number]];
+  }, []);
+
+  const requestUserLocation = useCallback(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setUserLocationError("Geolocation is not supported in this browser.");
+      return;
+    }
+    if (isRequestingLocation) return;
+    setIsRequestingLocation(true);
+    setUserLocationError(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setIsRequestingLocation(false);
+        const { longitude, latitude } = position.coords;
+        setUserLocation({ lng: longitude, lat: latitude });
+        setActiveScreen("map");
+      },
+      (error) => {
+        setIsRequestingLocation(false);
+        setUserLocationError(error.message || "Unable to access your location.");
+      },
+      {
+        enableHighAccuracy: false,
+        maximumAge: 60_000,
+        timeout: 10_000,
+      },
+    );
+  }, [isRequestingLocation]);
+
+  const focusUserLocation = useCallback(() => {
+    if (!userLocation) {
+      requestUserLocation();
+      return;
+    }
+    setActiveScreen("map");
+    const controller = mapControllerRef.current;
+    if (controller) {
+      const bounds = buildBoundsAroundPoint(userLocation.lng, userLocation.lat);
+      controller.fitBounds(bounds, { padding: 72, maxZoom: 11 });
+    } else if (mapControllerRef.current?.setCamera) {
+      mapControllerRef.current.setCamera(userLocation.lng, userLocation.lat, 10.5);
+    }
+    if (isMobile) {
+      collapseSheet();
+    }
+  }, [buildBoundsAroundPoint, collapseSheet, isMobile, requestUserLocation, userLocation]);
 
   const startSheetDrag = useCallback(
     (pointerId: number, clientY: number, startState: "peek" | "expanded") => {
@@ -1486,6 +1543,10 @@ export const ReactMapApp = () => {
         onOpenAuth={() => setAuthOpen(true)}
         isMobile={isMobile}
         onMobileLocationSearch={handleMobileLocationSearch}
+        hasUserLocation={Boolean(userLocation)}
+        isRequestingUserLocation={isRequestingLocation}
+        onRequestUserLocation={requestUserLocation}
+        onFocusUserLocation={focusUserLocation}
       />
       <div className="relative flex flex-1 flex-col overflow-hidden">
         {!isMobile && (
@@ -1585,13 +1646,15 @@ export const ReactMapApp = () => {
               >
                 <button
                   type="button"
-                  className="group flex flex-col items-center gap-2 rounded-t-3xl border-b border-slate-200 bg-transparent px-4 py-3.5 text-sm font-semibold text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-slate-700 dark:text-slate-200"
+                  className="group flex flex-col items-center gap-2 rounded-t-3xl border-b border-slate-200 bg-transparent px-4 pt-3 pb-5 text-sm font-semibold text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-slate-700 dark:text-slate-200"
                   onClick={handleHandleClick}
                   onPointerDown={handleHandlePointerDown}
                   aria-expanded={sheetState === "expanded"}
                 >
                   <span className="h-1.5 w-12 rounded-full bg-slate-300 transition-colors group-active:bg-slate-400 dark:bg-slate-600 dark:group-active:bg-slate-500" />
-                  <span>{mobileOrganizationsCount} Organizations</span>
+                  {sheetState === "peek" ? (
+                    <span>{mobileOrganizationsCount} Organizations</span>
+                  ) : null}
                 </button>
                 <div
                   ref={sheetContentRef}

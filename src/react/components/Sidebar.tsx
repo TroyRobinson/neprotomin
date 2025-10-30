@@ -226,13 +226,6 @@ export const Sidebar = ({
               </p>
             ) : (
               <div className="flex-1">
-                {selectedStatId && (
-                  <div className="px-1 pt-1 pb-0 flex items-center justify-between">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 ml-7">
-                      Orgs active in most significant areas
-                    </p>
-                  </div>
-                )}
 
                 {/* In Selection Section */}
                 {inSelection.length > 0 && (
