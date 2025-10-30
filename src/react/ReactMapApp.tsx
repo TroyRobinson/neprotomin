@@ -312,7 +312,7 @@ export const ReactMapApp = () => {
   );
 
   const handleHandlePointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
+    (event: ReactPointerEvent<HTMLElement>) => {
       if (!isMobile) return;
       event.preventDefault();
       startSheetDrag(event.pointerId, event.clientY, sheetState);
@@ -1455,6 +1455,11 @@ export const ReactMapApp = () => {
     } else {
       // Normal click: set primary stat
       setSelectedStatId(statId);
+      // On mobile, collapse the bottom sheet to reveal the map with the stat overlay
+      if (isMobile) {
+        setActiveScreen("map");
+        collapseSheet();
+      }
     }
   };
 
@@ -1614,7 +1619,11 @@ export const ReactMapApp = () => {
               />
               {/* Floating location button overlay on map (desktop + mobile) */}
               <div
-                className="pointer-events-none absolute right-4 z-30"
+                className={[
+                  "pointer-events-none absolute right-4",
+                  // Ensure the button sits behind the mobile sheet when expanded
+                  isMobile && sheetState === "expanded" ? "z-10" : "z-30",
+                ].join(" ")}
                 style={{ bottom: isMobile ? legendInset : 16 }}
               >
                 <button
@@ -1686,13 +1695,31 @@ export const ReactMapApp = () => {
                 className="pointer-events-auto flex h-full w-full flex-col rounded-t-3xl border border-slate-200 bg-white pb-safe shadow-xl transition-transform duration-200 ease-out dark:border-slate-800 dark:bg-slate-900"
                 style={{ transform: `translate3d(0, ${sheetTranslateY}px, 0)` }}
               >
-                <button
-                  type="button"
-                  className="group flex flex-col items-center gap-2 rounded-t-3xl border-b border-slate-200 bg-transparent px-4 pt-3 pb-5 text-sm font-semibold text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-slate-700 dark:text-slate-200"
+                <div
+                  role="button"
+                  className="group relative flex flex-col items-center gap-2 rounded-t-3xl border-b border-slate-200 bg-transparent px-4 pt-3 pb-5 text-sm font-semibold text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-slate-700 dark:text-slate-200"
                   onClick={handleHandleClick}
                   onPointerDown={handleHandlePointerDown}
                   aria-expanded={sheetState === "expanded"}
                 >
+                  {/* Back control on full-height sheet */}
+                  {sheetState === "expanded" && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        collapseSheet();
+                      }}
+                      className="pointer-events-auto absolute left-3 top-2 rounded px-2 py-1 text-xs font-medium text-slate-400 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        <svg viewBox="0 0 20 20" aria-hidden="true" className="h-3.5 w-3.5">
+                          <path fill="currentColor" d="M12.78 15.53a.75.75 0 01-1.06 0l-4.25-4.25a.75.75 0 010-1.06l4.25-4.25a.75.75 0 111.06 1.06L8.56 10l4.22 4.22a.75.75 0 010 1.06z"/>
+                        </svg>
+                        <span>Back</span>
+                      </span>
+                    </button>
+                  )}
                   <span className="h-1.5 w-12 rounded-full bg-slate-300 transition-colors group-active:bg-slate-400 dark:bg-slate-600 dark:group-active:bg-slate-500" />
                   {sheetState === "peek" ? (
                     <span className="flex items-center gap-2">
@@ -1703,7 +1730,7 @@ export const ReactMapApp = () => {
                       <span>{mobileOrganizationsCount} Food Providers</span>
                     </span>
                   ) : null}
-                </button>
+                </div>
                 <div
                   ref={sheetContentRef}
                   onPointerDown={handleContentPointerDown}
