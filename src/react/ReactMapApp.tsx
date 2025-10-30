@@ -268,23 +268,16 @@ export const ReactMapApp = () => {
     // Find and select the ZIP code for the user's location
     const zipCode = findZipForLocation(userLocation.lng, userLocation.lat);
     if (zipCode) {
-      const currentSelection = getAreaSelection("ZIP");
-      const isAlreadySelected = currentSelection.selected.includes(zipCode);
-      const isAlreadyPinned = currentSelection.pinned.includes(zipCode);
+      // Clear existing selections before selecting the new ZIP
+      applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
+      applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
 
-      if (!isAlreadySelected || !isAlreadyPinned) {
-        const updatedSelected = isAlreadySelected
-          ? currentSelection.selected
-          : [...currentSelection.selected, zipCode];
-        const updatedPinned = isAlreadyPinned
-          ? currentSelection.pinned
-          : [...currentSelection.pinned, zipCode];
-        applyAreaSelection("ZIP", {
-          selected: updatedSelected,
-          pinned: updatedPinned,
-          transient: currentSelection.transient,
-        });
-      }
+      // Select the ZIP containing the user's location
+      applyAreaSelection("ZIP", {
+        selected: [zipCode],
+        pinned: [zipCode],
+        transient: [],
+      });
       
       // Switch to ZIP mode if needed
       setBoundaryMode("zips");
@@ -301,7 +294,7 @@ export const ReactMapApp = () => {
     if (isMobile) {
       collapseSheet();
     }
-  }, [buildBoundsAroundPoint, collapseSheet, isMobile, requestUserLocation, userLocation, applyAreaSelection, getAreaSelection, setBoundaryMode]);
+  }, [buildBoundsAroundPoint, collapseSheet, isMobile, requestUserLocation, userLocation, applyAreaSelection, setBoundaryMode]);
 
   const startSheetDrag = useCallback(
     (pointerId: number, clientY: number, startState: "peek" | "expanded") => {
@@ -1258,25 +1251,17 @@ export const ReactMapApp = () => {
         return;
       }
 
-      // Select the searched area by adding it to selected and pinned arrays
-      const currentSelection = getAreaSelection(targetKind);
-      const targetCode = targetRecord.code;
-      const isAlreadySelected = currentSelection.selected.includes(targetCode);
-      const isAlreadyPinned = currentSelection.pinned.includes(targetCode);
+      // Clear existing selections before selecting the searched area
+      applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
+      applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
 
-      if (!isAlreadySelected || !isAlreadyPinned) {
-        const updatedSelected = isAlreadySelected
-          ? currentSelection.selected
-          : [...currentSelection.selected, targetCode];
-        const updatedPinned = isAlreadyPinned
-          ? currentSelection.pinned
-          : [...currentSelection.pinned, targetCode];
-        applyAreaSelection(targetKind, {
-          selected: updatedSelected,
-          pinned: updatedPinned,
-          transient: currentSelection.transient,
-        });
-      }
+      // Select the searched area by adding it to selected and pinned arrays
+      const targetCode = targetRecord.code;
+      applyAreaSelection(targetKind, {
+        selected: [targetCode],
+        pinned: [targetCode],
+        transient: [],
+      });
 
       const bounds =
         targetRecord.bounds ??
@@ -1313,7 +1298,7 @@ export const ReactMapApp = () => {
       isMobile,
       sheetState,
       applyAreaSelection,
-      getAreaSelection,
+      setBoundaryMode,
     ],
   );
 
