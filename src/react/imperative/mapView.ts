@@ -288,20 +288,18 @@ export const createMapView = ({
   let countyLabels: ZipLabelsController;
   let choroplethLegend: ChoroplethLegendController;
   let orgLegend: OrgLegendController;
+  let secondaryChoroplethLegend: SecondaryChoroplethLegendController;
+  let legendRowEl: HTMLDivElement | null = null;
   let legendInset = 16;
   const applyLegendInset = () => {
-    if (choroplethLegend?.element) {
-      choroplethLegend.element.style.bottom = `${Math.max(0, legendInset)}px`;
-    }
-    if (orgLegend?.element) {
-      orgLegend.element.style.bottom = `${Math.max(0, legendInset)}px`;
+    if (legendRowEl) {
+      legendRowEl.style.bottom = `${Math.max(0, legendInset)}px`;
     }
   };
   const setLegendInset = (value: number) => {
     legendInset = value;
     applyLegendInset();
   };
-  let secondaryChoroplethLegend: SecondaryChoroplethLegendController;
 
   let currentTheme = themeController.getTheme();
   let boundaryMode: BoundaryMode = "zips";
@@ -656,15 +654,21 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   
   map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+  // Create a single bottom-row for legends so they share space evenly with right-side controls
+  legendRowEl = document.createElement("div");
+  legendRowEl.className = "pointer-events-none absolute left-4 right-36 z-10 flex items-center gap-3";
+  legendRowEl.style.bottom = `${legendInset}px`;
+  container.appendChild(legendRowEl);
+
   choroplethLegend = createChoroplethLegend();
-  container.appendChild(choroplethLegend.element);
+  legendRowEl.appendChild(choroplethLegend.element);
   // Only render the org legend on non-mobile to reduce visual noise
   if (!isMobile) {
     orgLegend = createOrgLegend();
     choroplethLegend.pill.insertBefore(orgLegend.element, choroplethLegend.pill.firstChild);
   }
   secondaryChoroplethLegend = createSecondaryChoroplethLegend();
-  container.appendChild(secondaryChoroplethLegend.element);
+  legendRowEl.appendChild(secondaryChoroplethLegend.element);
 
   type SelectionApplyOptions = { shouldZoom?: boolean; notify?: boolean };
 

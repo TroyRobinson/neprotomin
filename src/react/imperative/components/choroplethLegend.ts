@@ -32,7 +32,8 @@ const formatValue = (value: number, type?: string): string => {
 
 export const createChoroplethLegend = (): ChoroplethLegendController => {
   const wrapper = document.createElement("div");
-  wrapper.className = "pointer-events-none absolute bottom-4 right-4 z-10";
+  // Wrapper is positioned by parent legend row
+  wrapper.className = "pointer-events-none";
 
   const pill = document.createElement("div");
   pill.className = [

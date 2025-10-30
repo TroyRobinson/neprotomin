@@ -342,20 +342,7 @@ export const TopBar = ({
                 </span>
               </button>
             )}
-            <button
-              type="button"
-              onClick={handleLocationAction}
-              disabled={isRequestingUserLocation || (!onRequestUserLocation && !onFocusUserLocation)}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-brand-200 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-              aria-label={locationButtonLabel()}
-            >
-              {isRequestingUserLocation ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent dark:border-slate-500" />
-              ) : (
-                <LocateIcon />
-              )}
-              <span>{locationButtonLabel()}</span>
-            </button>
+            {/* Location button moved onto map overlay */}
             <button
               type="button"
               onClick={handleThemeToggle}
@@ -409,21 +396,7 @@ export const TopBar = ({
                 />
               </form>
             )}
-            {(!isCompactMobileSearch || !isMobileSearchExpanded) && (
-              <button
-                type="button"
-                onClick={handleLocationAction}
-                disabled={isRequestingUserLocation || (!onRequestUserLocation && !onFocusUserLocation)}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-                aria-label={locationButtonLabel()}
-              >
-                {isRequestingUserLocation ? (
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent dark:border-slate-500" />
-                ) : (
-                  <LocateIcon />
-                )}
-              </button>
-            )}
+            {/* Mobile location button removed; now rendered on map */}
             {(!isCompactMobileSearch || !isMobileSearchExpanded) && (
               <button
                 type="button"
