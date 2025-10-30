@@ -20,6 +20,7 @@ import { DEFAULT_PARENT_AREA_BY_KIND } from "../types/areas";
 import { normalizeScopeLabel, buildScopeLabelAliases } from "../lib/scopeLabels";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import type { MapViewController } from "./imperative/mapView";
+import { CHOROPLETH_COLORS } from "../lib/choropleth";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
@@ -463,6 +464,66 @@ export const ReactMapApp = () => {
     const inset = Math.floor(viewportHeight * 0.12);
     return inset;
   }, [isMobile, viewportHeight]);
+
+  // Mobile external legend+location row visibility
+  const mobileLegendRowVisible = useMemo(() => {
+    if (!isMobile || activeScreen !== "map") return false;
+    if (sheetState !== "peek") return false;
+    if (isDraggingSheet) return false;
+    return true;
+  }, [isMobile, activeScreen, sheetState, isDraggingSheet]);
+
+  const formatLegendValue = useCallback((value: number, type?: string): string => {
+    const t = (type || "").toLowerCase();
+    if (t === "currency") {
+      const k = Math.round(value / 1000);
+      return `$${k}k`;
+    }
+    if (t === "percent") {
+      const pct = value * 100;
+      const hasFrac = Math.abs(pct % 1) > 1e-6;
+      return `${hasFrac ? (Math.round(pct * 10) / 10) : Math.round(pct)}%`;
+    }
+    if (t === "years" || t === "rate") {
+      const hasFrac = Math.abs(value % 1) > 1e-6;
+      return hasFrac ? String(Math.round(value * 10) / 10) : String(Math.round(value));
+    }
+    if (Math.abs(value) >= 1000) return `${Math.round(value / 1000)}k`;
+    return String(Math.round(value));
+  }, []);
+
+  const MobileLegendPill = ({
+    boundaryMode,
+    selectedStatId,
+    statDataByStatId,
+  }: {
+    boundaryMode: BoundaryMode;
+    selectedStatId: string | null;
+    statDataByStatId: Map<string, Partial<Record<"ZIP" | "COUNTY", { type: string; data: Record<string, number>; min: number; max: number }>>>;
+  }) => {
+    if (!selectedStatId) return null;
+    const entry = statDataByStatId.get(selectedStatId);
+    const dataEntry = boundaryMode === "counties" ? entry?.COUNTY : entry?.ZIP;
+    const keys = Object.keys(dataEntry?.data || {});
+    if (!dataEntry || keys.length === 0) return null;
+    const low = CHOROPLETH_COLORS[0];
+    const high = CHOROPLETH_COLORS[CHOROPLETH_COLORS.length - 1];
+    return (
+      <div className="pointer-events-none">
+        <div className="pointer-events-auto inline-flex items-center gap-3 rounded-lg border px-3 py-2 text-xs font-medium bg-white/90 text-slate-600 border-slate-200 shadow-sm backdrop-blur-sm dark:bg-slate-900/80 dark:text-slate-300 dark:border-slate-700">
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full ring-1 ring-black/5 dark:ring-white/10" style={{ backgroundColor: low }} />
+            <span className="tabular-nums">{formatLegendValue(dataEntry.min, dataEntry.type)}</span>
+          </div>
+          <span className="opacity-60">–</span>
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full ring-1 ring-black/5 dark:ring-white/10" style={{ backgroundColor: high }} />
+            <span className="tabular-nums">{formatLegendValue(dataEntry.max, dataEntry.type)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   useEffect(() => {
     if (!isMobile) return;
@@ -1614,10 +1675,12 @@ export const ReactMapApp = () => {
                 }}
                 isMobile={isMobile}
                 legendInset={legendInset}
+                mobileLegendRowVisible={mobileLegendRowVisible}
                 onControllerReady={handleMapControllerReady}
                 userLocation={userLocation}
               />
-              {/* Floating location button overlay on map (desktop + mobile) */}
+              {/* Floating location button overlay on map (desktop only, or mobile when external row hidden) */}
+              {(!isMobile || !mobileLegendRowVisible) && (
               <div
                 className={[
                   "pointer-events-none absolute right-4",
@@ -1657,6 +1720,49 @@ export const ReactMapApp = () => {
                   <span>{isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Active" : "My Location"}</span>
                 </button>
               </div>
+              )}
+
+              {mobileLegendRowVisible && (
+                <div
+                  className="pointer-events-none absolute inset-x-0 z-30 flex items-center justify-between px-4"
+                  style={{ bottom: sheetPeekOffset + 8 }}
+                >
+                  <MobileLegendPill
+                    boundaryMode={boundaryMode}
+                    selectedStatId={selectedStatId}
+                    statDataByStatId={statDataByStatId}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isRequestingLocation) return;
+                      if (userLocation) {
+                        focusUserLocation();
+                      } else {
+                        requestUserLocation();
+                      }
+                    }}
+                    disabled={isRequestingLocation}
+                    className={[
+                      "pointer-events-auto inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
+                      userLocationError
+                        ? "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
+                        : "border border-slate-200 bg-white text-slate-700 hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white",
+                    ].join(" ")}
+                    aria-label={isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Active" : "My Location"}
+                  >
+                    {isRequestingLocation ? (
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent dark:border-slate-500" />
+                    ) : (
+                      <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
+                        <path fill="currentColor" d="M10 2.5a.75.75 0 01.75.75v1.54a5.25 5.25 0 014.46 4.46H16.5a.75.75 0 010 1.5h-1.29a5.25 5.25 0 01-4.46 4.46v1.54a.75.75 0 01-1.5 0v-1.54a5.25 5.25 0 01-4.46-4.46H3.5a.75.75 0 010-1.5h1.29a5.25 5.25 0 014.46-4.46V3.25A.75.75 0 0110 2.5zm0 4a4 4 0 100 8 4 4 0 000-8z" />
+                        <path fill="currentColor" d="M10 8.25a1.75 1.75 0 110 3.5 1.75 1.75 0 010-3.5z" />
+                      </svg>
+                    )}
+                    <span>{isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Active" : "My Location"}</span>
+                  </button>
+                </div>
+              )}
           </div>
           {!isMobile && (
             <Sidebar

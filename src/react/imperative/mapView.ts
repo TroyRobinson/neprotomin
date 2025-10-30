@@ -105,6 +105,7 @@ export interface MapViewController {
   setCamera: (centerLng: number, centerLat: number, zoom: number) => void;
   onCameraChange: (fn: (centerLng: number, centerLat: number, zoom: number) => void) => () => void;
   setLegendInset: (pixels: number) => void;
+  setLegendVisible: (visible: boolean) => void;
   setUserLocation: (location: { lng: number; lat: number } | null) => void;
   resize: () => void;
   destroy: () => void;
@@ -303,6 +304,10 @@ export const createMapView = ({
   const setLegendInset = (value: number) => {
     legendInset = value;
     applyLegendInset();
+  };
+  const setLegendVisible = (visible: boolean) => {
+    if (!legendRowEl) return;
+    legendRowEl.style.display = visible ? "" : "none";
   };
 
   let currentTheme = themeController.getTheme();
@@ -2052,6 +2057,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       };
     },
     setLegendInset,
+    setLegendVisible,
     resize: () => {
       map.resize();
     },

@@ -55,6 +55,9 @@ interface MapLibreMapProps {
   legendInset?: number;
   onControllerReady?: (controller: MapViewController | null) => void;
   userLocation?: { lng: number; lat: number } | null;
+  // Mobile-only: when true, an external legend row is shown in React,
+  // so we hide the internal map legend for a single source of truth.
+  mobileLegendRowVisible?: boolean;
 }
 
 /**
@@ -102,6 +105,7 @@ export const MapLibreMap = ({
   legendInset,
   onControllerReady,
   userLocation = null,
+  mobileLegendRowVisible,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
@@ -164,6 +168,15 @@ export const MapLibreMap = ({
       setLegendInsetRef.current?.(legendInset);
     }
   }, [legendInset]);
+
+  // Toggle internal legend visibility based on external mobile row state
+  useEffect(() => {
+    if (!isMobile || !mapControllerRef.current) return;
+    if (typeof mobileLegendRowVisible === 'boolean') {
+      // hide internal legend when external row is visible
+      mapControllerRef.current.setLegendVisible(!mobileLegendRowVisible);
+    }
+  }, [isMobile, mobileLegendRowVisible]);
 
   // Initialize map once on mount
   useEffect(() => {
