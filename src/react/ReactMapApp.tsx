@@ -223,8 +223,8 @@ export const ReactMapApp = () => {
   }, []);
 
   const buildBoundsAroundPoint = useCallback((lng: number, lat: number) => {
-    const lngDelta = isMobile ? 0.1 : 0.18;
-    const latDelta = isMobile ? 0.065 : 0.12;
+    const lngDelta = isMobile ? 0.075 : 0.18;
+    const latDelta = isMobile ? 0.045 : 0.12;
     return [
       [lng - lngDelta, lat - latDelta] as [number, number],
       [lng + lngDelta, lat + latDelta] as [number, number],
@@ -267,9 +267,9 @@ export const ReactMapApp = () => {
     const controller = mapControllerRef.current;
     if (controller) {
       const bounds = buildBoundsAroundPoint(userLocation.lng, userLocation.lat);
-      controller.fitBounds(bounds, { padding: isMobile ? 48 : 72, maxZoom: isMobile ? 12.5 : 11 });
+      controller.fitBounds(bounds, { padding: isMobile ? 40 : 72, maxZoom: isMobile ? 13 : 11 });
     } else if (mapControllerRef.current?.setCamera) {
-      const targetZoom = isMobile ? 12 : 10.5;
+      const targetZoom = isMobile ? 12.6 : 10.5;
       mapControllerRef.current.setCamera(userLocation.lng, userLocation.lat, targetZoom);
     }
     if (isMobile) {
