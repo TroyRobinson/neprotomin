@@ -104,7 +104,11 @@ export const ReactMapApp = () => {
   const [sheetState, setSheetState] = useState<"peek" | "expanded">("peek");
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
   const [isDraggingSheet, setIsDraggingSheet] = useState(false);
-  const [viewportHeight, setViewportHeight] = useState(() => (typeof window === "undefined" ? 0 : window.innerHeight));
+  const [viewportHeight, setViewportHeight] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    const viewport = window.visualViewport;
+    return Math.round(viewport?.height ?? window.innerHeight);
+  });
   const sheetPointerIdRef = useRef<number | null>(null);
   const sheetDragStateRef = useRef<{ startY: number; startState: "peek" | "expanded" } | null>(null);
   const pendingContentDragRef = useRef<{ pointerId: number; startY: number } | null>(null);
@@ -308,21 +312,29 @@ export const ReactMapApp = () => {
   }, [isAuthLoading, user]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const readViewportHeight = () => {
+      const viewport = window.visualViewport;
+      return Math.round(viewport?.height ?? window.innerHeight);
+    };
+    const applyHeight = () => {
+      setViewportHeight(readViewportHeight());
+    };
     if (!isMobile) {
-      if (typeof window !== "undefined") {
-        setViewportHeight(window.innerHeight);
-      }
+      applyHeight();
       return;
     }
-    const handleResize = () => {
-      setViewportHeight(window.innerHeight);
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    window.addEventListener("orientationchange", handleResize);
+    applyHeight();
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", applyHeight);
+    viewport?.addEventListener("scroll", applyHeight);
+    window.addEventListener("orientationchange", applyHeight);
+    window.addEventListener("resize", applyHeight);
     return () => {
-      window.removeEventListener("resize", handleResize);
-      window.removeEventListener("orientationchange", handleResize);
+      viewport?.removeEventListener("resize", applyHeight);
+      viewport?.removeEventListener("scroll", applyHeight);
+      window.removeEventListener("orientationchange", applyHeight);
+      window.removeEventListener("resize", applyHeight);
     };
   }, [isMobile]);
 
@@ -1303,7 +1315,7 @@ export const ReactMapApp = () => {
     : visibleCount;
 
   return (
-    <div className="relative flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
+    <div className="app-shell relative flex flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
       <TopBar onBrandClick={handleBrandClick} onNavigate={setActiveScreen} active={activeScreen} onOpenAuth={() => setAuthOpen(true)} />
       <div className="relative flex flex-1 flex-col overflow-hidden">
         <BoundaryToolbar
@@ -1395,7 +1407,7 @@ export const ReactMapApp = () => {
           >
             <div className="flex h-full w-full flex-col">
               <div
-                className="pointer-events-auto flex h-full w-full flex-col rounded-t-3xl border border-slate-200 bg-white shadow-xl transition-transform duration-200 ease-out dark:border-slate-800 dark:bg-slate-900"
+                className="pointer-events-auto flex h-full w-full flex-col rounded-t-3xl border border-slate-200 bg-white pb-safe shadow-xl transition-transform duration-200 ease-out dark:border-slate-800 dark:bg-slate-900"
                 style={{ transform: `translate3d(0, ${sheetTranslateY}px, 0)` }}
               >
                 <button
@@ -1455,7 +1467,7 @@ export const ReactMapApp = () => {
         style={{ visibility: activeScreen === "report" ? "visible" : "hidden", top: topBarHeight }}
         className="absolute left-0 right-0 bottom-0 z-30"
       >
-        <div className="flex h-full w-full overflow-hidden bg-white dark:bg-slate-900 pt-10">
+        <div className="flex h-full w-full overflow-hidden bg-white pt-10 pb-safe dark:bg-slate-900">
           {/* Toolbar in report overlay */}
           <div className="absolute left-0 right-0 top-0 z-10">
             <BoundaryToolbar
@@ -1500,7 +1512,7 @@ export const ReactMapApp = () => {
       >
         {activeScreen === "data" && (
           <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-slate-500">Loading data…</div>}>
-            <div className="flex h-full w-full overflow-auto bg-white dark:bg-slate-900">
+            <div className="flex h-full w-full overflow-auto bg-white pb-safe dark:bg-slate-900">
               <DataScreen />
             </div>
           </Suspense>

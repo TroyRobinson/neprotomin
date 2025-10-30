@@ -50,3 +50,4 @@ data/raw/oklahoma-zcta-final.geojson
 *.sw?
 .env
 .zip
+.vercel

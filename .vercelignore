@@ -1,0 +1,30 @@
+# Vercel upload pruning for this project
+# Keep app source in `src/`, configs, and everything under `public/`.
+# Exclude local datasets, docs, and dev/etl scripts not needed for the web build.
+
+# Large/local data (outside app src)
+data/**
+
+# Temporary and local artifacts
+tmp/
+tmp/**
+*.log
+
+# Built output (when building on Vercel). If using `--prebuilt`, remove these lines.
+dist/
+
+# Documentation and notes (not needed for building the app)
+docs/**
+misc_docs/**
+dev_todos/**
+commit_history.txt
+large-files.txt
+
+# Development/ETL/ops scripts (not used by the frontend build)
+scripts/**
+
+# VCS & OS cruft
+.git/
+.gitignore
+.DS_Store
+*.swp

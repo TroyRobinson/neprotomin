@@ -19,10 +19,20 @@ root.render(
   </ErrorBoundary>
 );
 
+if (typeof window !== "undefined") {
+  const nudgeMobileViewport = () => {
+    window.scrollTo(0, 1);
+  };
+  if (window.matchMedia?.("(max-width: 767px)").matches) {
+    window.requestAnimationFrame(() => {
+      setTimeout(nudgeMobileViewport, 400);
+    });
+  }
+}
+
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     root.unmount();
   });
 }
-
 

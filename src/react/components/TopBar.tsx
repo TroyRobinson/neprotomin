@@ -72,7 +72,7 @@ export const TopBar = ({ onBrandClick, onNavigate, active = "map", onOpenAuth }:
   return (
     <header
       data-role="topbar"
-      className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white/80 px-6 backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/80"
+      className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white/80 px-6 pt-safe backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/80"
     >
       <div className="flex items-center gap-4">
         <a
