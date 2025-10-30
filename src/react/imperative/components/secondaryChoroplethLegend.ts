@@ -11,17 +11,24 @@ const wrap = (n: number, digits = 1): string => {
   return (Math.round(n * Math.pow(10, digits)) / Math.pow(10, digits)).toString();
 };
 
-const formatValue = (value: number, type?: string): string => {
+const formatValue = (value: number, type?: string, isMobile?: boolean): string => {
   const t = (type || "").toLowerCase();
   if (t === "currency") {
     const k = Math.round(value / 1000);
     return `$${k}k`;
   }
   if (t === "percent") {
-    const hasFrac = Math.abs(value % 1) > 1e-6;
-    return `${hasFrac ? wrap(value, 1) : Math.round(value)}%`;
+    const pct = value * 100;
+    if (isMobile) {
+      return `${Math.round(pct)}%`;
+    }
+    const hasFrac = Math.abs(pct % 1) > 1e-6;
+    return `${hasFrac ? wrap(pct, 1) : Math.round(pct)}%`;
   }
   if (t === "years" || t === "rate") {
+    if (isMobile) {
+      return String(Math.round(value));
+    }
     const hasFrac = Math.abs(value % 1) > 1e-6;
     return hasFrac ? wrap(value, 1) : String(Math.round(value));
   }
@@ -29,7 +36,7 @@ const formatValue = (value: number, type?: string): string => {
   return String(Math.round(value));
 };
 
-export const createSecondaryChoroplethLegend = (): SecondaryChoroplethLegendController => {
+export const createSecondaryChoroplethLegend = (isMobile?: boolean): SecondaryChoroplethLegendController => {
   const wrapper = document.createElement("div");
   // Wrapper is positioned by parent legend row
   wrapper.className = "pointer-events-none";
@@ -74,8 +81,8 @@ export const createSecondaryChoroplethLegend = (): SecondaryChoroplethLegendCont
   };
 
   const setRange = (min: number, max: number, type?: string) => {
-    minLabel.textContent = formatValue(min, type);
-    maxLabel.textContent = formatValue(max, type);
+    minLabel.textContent = formatValue(min, type, isMobile);
+    maxLabel.textContent = formatValue(max, type, isMobile);
   };
 
   const setColors = (lowHex: string, highHex: string) => {

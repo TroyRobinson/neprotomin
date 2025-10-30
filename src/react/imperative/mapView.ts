@@ -685,14 +685,14 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   legendRowEl.style.bottom = `${legendInset}px`;
   container.appendChild(legendRowEl);
 
-  choroplethLegend = createChoroplethLegend();
+  choroplethLegend = createChoroplethLegend(isMobile);
   legendRowEl.appendChild(choroplethLegend.element);
   // Only render the org legend on non-mobile to reduce visual noise
   if (!isMobile) {
     orgLegend = createOrgLegend();
     choroplethLegend.pill.insertBefore(orgLegend.element, choroplethLegend.pill.firstChild);
   }
-  secondaryChoroplethLegend = createSecondaryChoroplethLegend();
+  secondaryChoroplethLegend = createSecondaryChoroplethLegend(isMobile);
   legendRowEl.appendChild(secondaryChoroplethLegend.element);
 
   // Right-side slot for consumer-provided controls (e.g., My Location)
@@ -712,16 +712,63 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   });
 
   // Helper to attach a small overlay label inside a pill
-  const attachLegendMessage = (pillEl: HTMLElement) => {
+  const attachLegendMessage = (pillEl: HTMLElement, onClear?: () => void) => {
     pillEl.style.position = pillEl.style.position || "relative";
     const msg = document.createElement("div");
     msg.className = [
-      "pointer-events-none absolute inset-0 flex items-center justify-center px-2",
-      "text-[10px] leading-tight text-brand-700 dark:text-brand-300 text-center",
+      "pointer-events-none absolute inset-0 flex items-center",
+      isMobile && onClear ? "pl-1 pr-1" : "px-2",
+      "text-[10px] leading-tight text-brand-700 dark:text-brand-300",
+      isMobile && onClear ? "justify-end gap-1" : "justify-center text-center",
     ].join(" ");
     msg.style.display = "none";
-    pillEl.appendChild(msg);
+    
+    const textEl = document.createElement("span");
+    if (isMobile && onClear) {
+      textEl.className = "pointer-events-none text-right flex-1 min-w-0";
+      textEl.style.display = "-webkit-box";
+      textEl.style.webkitLineClamp = "2";
+      textEl.style.webkitBoxOrient = "vertical";
+      textEl.style.overflow = "hidden";
+      textEl.style.textOverflow = "ellipsis";
+    } else {
+      textEl.className = "pointer-events-none";
+    }
+    msg.appendChild(textEl);
+    
     let hideTimer: number | null = null;
+    let closeBtn: HTMLButtonElement | null = null;
+    if (isMobile && onClear) {
+      closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.className = [
+        "pointer-events-auto flex-shrink-0 rounded p-2",
+        "text-brand-700 hover:bg-brand-100 dark:text-brand-300 dark:hover:bg-brand-900/50",
+        "transition-colors touch-manipulation",
+      ].join(" ");
+      closeBtn.setAttribute("aria-label", "Clear stat");
+      closeBtn.innerHTML = `
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      `;
+      closeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (hideTimer) { 
+          window.clearTimeout(hideTimer); 
+          hideTimer = null; 
+        }
+        onClear();
+        hideMessage();
+      });
+      msg.appendChild(closeBtn);
+    }
+    
+    pillEl.appendChild(msg);
+    
+    // Store original min-width to restore later
+    const originalMinWidth = pillEl.style.minWidth || "";
+    
     const setSiblingsVisibility = (visible: boolean) => {
       const children = Array.from(pillEl.children) as HTMLElement[];
       for (const child of children) {
@@ -732,11 +779,32 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     const hideMessage = () => {
       msg.style.display = "none";
       setSiblingsVisibility(true);
+      // Restore original min-width
+      if (isMobile && onClear) {
+        pillEl.style.transition = "min-width 0.2s ease-out";
+      }
+      if (originalMinWidth) {
+        pillEl.style.minWidth = originalMinWidth;
+      } else {
+        pillEl.style.minWidth = "";
+      }
     };
     const showMessage = (text: string, autoHide: boolean = true) => {
-      msg.textContent = text;
+      textEl.textContent = text;
       msg.style.display = "flex";
       setSiblingsVisibility(false);
+      
+      // Expand pill to fit title on two lines
+      if (isMobile && onClear) {
+        // Calculate a reasonable min-width based on text length
+        // At 10px font size, ~10-12 chars per line on 2 lines = ~20-24 chars total
+        // Each char is roughly 6-7px wide, so ~140-170px for text + padding + close button
+        // Use a more generous width to ensure titles fit comfortably
+        const estimatedWidth = Math.max(140, Math.min(text.length * 6 + 50, 180));
+        pillEl.style.minWidth = `${estimatedWidth}px`;
+        pillEl.style.transition = "min-width 0.2s ease-out";
+      }
+      
       if (hideTimer) { window.clearTimeout(hideTimer); hideTimer = null; }
       if (autoHide) {
         hideTimer = window.setTimeout(() => { hideMessage(); }, 1500);
@@ -745,8 +813,29 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     return { showMessage, hideMessage };
   };
 
-  const primaryMsg = attachLegendMessage(choroplethLegend.pill);
-  const secondaryMsg = attachLegendMessage(secondaryChoroplethLegend.pill);
+  // Create clear callbacks for mobile legend close buttons
+  const clearPrimaryStat = () => {
+    selectedStatId = null;
+    categoryChips.setSelectedStat(null);
+    secondaryStatId = null;
+    categoryChips.setSecondaryStat(null);
+    refreshStatVisuals();
+    if (typeof onStatSelectionChange === 'function') {
+      onStatSelectionChange(null);
+    }
+  };
+  
+  const clearSecondaryStat = () => {
+    secondaryStatId = null;
+    categoryChips.setSecondaryStat(null);
+    refreshStatVisuals();
+    if (typeof onSecondaryStatChange === 'function') {
+      onSecondaryStatChange(null);
+    }
+  };
+
+  const primaryMsg = attachLegendMessage(choroplethLegend.pill, isMobile ? clearPrimaryStat : undefined);
+  const secondaryMsg = attachLegendMessage(secondaryChoroplethLegend.pill, isMobile ? clearSecondaryStat : undefined);
 
   if (isMobile) {
     choroplethLegend.pill.addEventListener("click", () => {
