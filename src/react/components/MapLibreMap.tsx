@@ -17,6 +17,8 @@ interface MapLibreMapProps {
   zoomOutRequestNonce?: number;
   // When incremented, explicitly clear the map's category chips
   clearMapCategoryNonce?: number;
+  // Request from map to hide orgs and switch sidebar to stats
+  onRequestHideOrgs?: () => void;
   boundaryMode?: BoundaryMode;
   selectedZips?: string[];
   pinnedZips?: string[];
@@ -66,6 +68,7 @@ export const MapLibreMap = ({
   orgPinsVisible = false,
   zoomOutRequestNonce,
   clearMapCategoryNonce,
+  onRequestHideOrgs,
   boundaryMode = "zips",
   selectedZips = [],
   pinnedZips = [],
@@ -209,6 +212,9 @@ export const MapLibreMap = ({
       onOrganizationClick: (id, meta) => onOrganizationClickRef.current?.(id, meta),
       onClusterClick: (ids, meta) => onClusterClickRef.current?.(ids, meta),
       isMobile,
+      onRequestHideOrgs: () => {
+        try { onRequestHideOrgs?.(); } catch {}
+      },
     });
 
     containerRef.current.appendChild(mapController.element);

@@ -52,6 +52,7 @@ export interface CategoryChipsController {
   setSelected: (categoryId: string | null) => void;
   setSelectedStat: (statId: string | null) => void;
   setSecondaryStat: (statId: string | null) => void;
+  setOrgsVisible: (visible: boolean) => void;
   destroy: () => void;
 }
 
@@ -60,6 +61,7 @@ interface CategoryChipsOptions {
   onStatChange?: (statId: string | null) => void;
   onSecondaryStatChange?: (statId: string | null) => void;
   isMobile?: boolean;
+  onOrgsChipClose?: () => void;
 }
 
 // Type for chip entry elements with their handlers
@@ -112,6 +114,26 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   // Note: statWrapper lives inside the same flex row so it aligns immediately
   // to the right of the selected category chip.
   list.appendChild(statWrapper);
+
+  // Orgs chip lives between selected category and stat chips (desktop only)
+  // When no category selected, it appears at the end of category chips
+  const orgsChipBtn = document.createElement("button");
+  orgsChipBtn.type = "button";
+  // Match org cluster color: #fed7aa (orange-200)
+  orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} border-transparent bg-orange-200 text-orange-900 shadow-floating hover:bg-orange-200 dark:bg-orange-400/30 dark:text-orange-100`;
+  const orgsLabel = document.createElement("span");
+  orgsLabel.textContent = "Providers";
+  orgsLabel.className = "whitespace-nowrap";
+  const orgsClose = document.createElement("span");
+  orgsClose.innerHTML = CLOSE_ICON;
+  orgsClose.className = "-mr-1 flex items-center";
+  orgsChipBtn.appendChild(orgsLabel);
+  orgsChipBtn.appendChild(orgsClose);
+  orgsChipBtn.style.display = "none"; // hidden by default
+  orgsChipBtn.addEventListener("click", () => {
+    options.onOrgsChipClose?.();
+  });
+  list.appendChild(orgsChipBtn);
 
   let selectedId: string | null = null;
   let selectedStatId: string | null = null;
@@ -168,12 +190,40 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
         list.insertBefore(selectedEntry.button, list.firstChild);
         // Ensure stats wrapper renders immediately after the selected chip
         if (statWrapper.parentElement !== list) list.appendChild(statWrapper);
+        // Order: selected category -> orgs chip (if visible) -> stat chips
         list.insertBefore(statWrapper, selectedEntry.button.nextSibling);
+        if (orgsChipBtn.style.display !== "none") {
+          list.insertBefore(orgsChipBtn, statWrapper);
+        }
       }
     } else if (selectedStatId) {
       // If stat is selected but no category, move stat wrapper to the beginning
       if (statWrapper.parentElement !== list) list.appendChild(statWrapper);
       list.insertBefore(statWrapper, list.firstChild);
+      if (orgsChipBtn.style.display !== "none") {
+        list.insertBefore(orgsChipBtn, statWrapper);
+      }
+    } else {
+      // No category and no stat selected: orgs chip goes at the end of category chips
+      if (orgsChipBtn.style.display !== "none") {
+        if (orgsChipBtn.parentElement !== list) list.appendChild(orgsChipBtn);
+        // Find the last category chip and insert after it
+        // If there are no visible category chips, just append to the end
+        let lastCategoryButton: HTMLElement | null = null;
+        for (let i = list.children.length - 1; i >= 0; i--) {
+          const child = list.children[i];
+          if (child !== orgsChipBtn && child !== statWrapper && entries.some(e => e.button === child)) {
+            lastCategoryButton = child as HTMLElement;
+            break;
+          }
+        }
+        if (lastCategoryButton) {
+          list.insertBefore(orgsChipBtn, lastCategoryButton.nextSibling);
+        } else {
+          // No visible category chips, just ensure it's at the end
+          list.appendChild(orgsChipBtn);
+        }
+      }
     }
 
     entries.forEach(({ button, closeIcon, categoryId }) => {
@@ -477,5 +527,20 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     window.addEventListener("resize", handleResize);
   }
 
-  return { element: wrapper, setSelected, setSelectedStat, setSecondaryStat, destroy };
+  return {
+    element: wrapper,
+    setSelected,
+    setSelectedStat,
+    setSecondaryStat,
+    setOrgsVisible: (visible: boolean) => {
+      if (isMobile) {
+        orgsChipBtn.style.display = "none";
+        return;
+      }
+      orgsChipBtn.style.display = visible ? "" : "none";
+      // Re-run ordering so it stays between category and stats
+      update();
+    },
+    destroy,
+  };
 };

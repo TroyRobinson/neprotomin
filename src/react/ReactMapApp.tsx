@@ -982,6 +982,8 @@ export const ReactMapApp = () => {
   const [zoomOutNonce, setZoomOutNonce] = useState(0);
   // Nonce to explicitly clear map category chips when clearing stat from sidebar
   const [clearMapCategoryNonce, setClearMapCategoryNonce] = useState(0);
+  // Nonce to force Sidebar switch to Statistics and hide orgs toggle
+  const [forceHideOrgsNonce, setForceHideOrgsNonce] = useState(0);
 
   const handleBrandClick = () => {
     applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
@@ -1568,6 +1570,10 @@ export const ReactMapApp = () => {
                 orgPinsVisible={orgPinsVisible}
                 zoomOutRequestNonce={zoomOutNonce}
                 clearMapCategoryNonce={clearMapCategoryNonce}
+                onRequestHideOrgs={() => {
+                  setOrgPinsVisible(false);
+                  setForceHideOrgsNonce((n) => n + 1);
+                }}
                 boundaryMode={boundaryMode}
                 autoBoundarySwitch={autoBoundarySwitch}
                 selectedZips={selectedZips}
@@ -1665,6 +1671,7 @@ export const ReactMapApp = () => {
               onZoomOutAll={handleZoomOutAll}
               onStatSelect={handleStatSelect}
               onOrgPinsVisibleChange={setOrgPinsVisible}
+              forceHideOrgsNonce={forceHideOrgsNonce}
               variant="desktop"
             />
           )}
@@ -1728,6 +1735,7 @@ export const ReactMapApp = () => {
                     onZoomOutAll={handleZoomOutAll}
                     onStatSelect={handleStatSelect}
                     onOrgPinsVisibleChange={setOrgPinsVisible}
+                    forceHideOrgsNonce={forceHideOrgsNonce}
                     variant="mobile"
                     showInsights={false}
                     className="h-full"

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DemographicsBar } from "./DemographicsBar";
 import { StatViz } from "./StatViz";
 import { StatList } from "./StatList";
@@ -44,6 +44,8 @@ interface SidebarProps {
   variant?: "desktop" | "mobile";
   showInsights?: boolean;
   className?: string;
+  // When incremented, force switch to Statistics tab and hide orgs toggle
+  forceHideOrgsNonce?: number;
 }
 
 type TabType = "stats" | "orgs";
@@ -73,6 +75,7 @@ export const Sidebar = ({
   variant = "desktop",
   showInsights = true,
   className = "",
+  forceHideOrgsNonce,
 }: SidebarProps) => {
   const [activeTab, setActiveTab] = useState<TabType>("orgs");
   const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(true);
@@ -95,6 +98,24 @@ export const Sidebar = ({
     const visible = keepOrgsOnMap || activeTab === "orgs";
     onOrgPinsVisibleChange?.(visible);
   }, [activeTab, keepOrgsOnMap, onOrgPinsVisibleChange]);
+
+  // Respond to external force-hide requests (e.g., closing the Orgs chip on the map)
+  const lastForceHideNonceRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (typeof forceHideOrgsNonce !== "number") {
+      return;
+    }
+    if (lastForceHideNonceRef.current === forceHideOrgsNonce) {
+      return;
+    }
+    if (lastForceHideNonceRef.current !== undefined) {
+      setKeepOrgsOnMap(false);
+      setActiveTab("stats");
+    }
+    lastForceHideNonceRef.current = forceHideOrgsNonce;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceHideOrgsNonce]);
 
   const handleToggleKeepOrgs = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();

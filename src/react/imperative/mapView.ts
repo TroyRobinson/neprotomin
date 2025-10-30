@@ -79,6 +79,7 @@ interface MapViewOptions {
     meta: { count: number; longitude: number; latitude: number },
   ) => void;
   isMobile?: boolean;
+  onRequestHideOrgs?: () => void;
 }
 
 export interface MapViewController {
@@ -244,6 +245,7 @@ export const createMapView = ({
   onOrganizationClick,
   onClusterClick,
   isMobile = false,
+  onRequestHideOrgs,
 }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
   container.className = "relative flex flex-1";
@@ -280,6 +282,7 @@ export const createMapView = ({
         onSecondaryStatChange(secondaryStatId);
       }
     },
+    onOrgsChipClose: () => { try { onRequestHideOrgs?.(); } catch {} },
   });
   container.appendChild(categoryChips.element);
 
@@ -1923,6 +1926,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       orgPinsVisible = visible;
       updateOrganizationPinsVisibility();
       orgLegend?.setVisible(visible);
+      try { categoryChips.setOrgsVisible(visible); } catch {}
     },
     setUserLocation: (location: { lng: number; lat: number } | null) => {
       userLocation = location;

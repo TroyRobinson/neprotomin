@@ -16,8 +16,13 @@ export const createOrgLegend = (): OrgLegendController => {
   label.className = "tabular-nums";
   label.textContent = "Orgs";
 
+  // A subtle vertical divider to separate the orgs group from the rest of the legend
+  const divider = document.createElement("span");
+  divider.className = "mx-1 h-4 w-px self-stretch bg-slate-200 dark:bg-slate-700/70";
+
   wrapper.appendChild(dot);
   wrapper.appendChild(label);
+  wrapper.appendChild(divider);
 
   const setVisible = (visible: boolean) => {
     wrapper.classList.toggle("hidden", !visible);
