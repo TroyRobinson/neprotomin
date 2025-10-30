@@ -1608,6 +1608,7 @@ export const ReactMapApp = () => {
                 isMobile={isMobile}
                 legendInset={legendInset}
                 onControllerReady={handleMapControllerReady}
+                userLocation={userLocation}
               />
           </div>
           {!isMobile && (

@@ -52,6 +52,7 @@ interface MapLibreMapProps {
   isMobile?: boolean;
   legendInset?: number;
   onControllerReady?: (controller: MapViewController | null) => void;
+  userLocation?: { lng: number; lat: number } | null;
 }
 
 /**
@@ -97,6 +98,7 @@ export const MapLibreMap = ({
   isMobile = false,
   legendInset,
   onControllerReady,
+  userLocation = null,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
@@ -165,6 +167,7 @@ export const MapLibreMap = ({
     if (!containerRef.current) return;
 
     const mapController = createMapView({
+      initialUserLocation: userLocation,
       onHover: (v) => onHoverRef.current?.(v),
       onVisibleIdsChange: (ids, total, all) => onVisibleIdsChangeRef.current?.(ids, total, all),
       onZipSelectionChange: (zips, meta) => {
@@ -244,6 +247,12 @@ export const MapLibreMap = ({
       mapControllerRef.current.setOrganizationPinsVisible(Boolean(orgPinsVisible));
     }
   }, [orgPinsVisible]);
+
+  useEffect(() => {
+    if (mapControllerRef.current) {
+      mapControllerRef.current.setUserLocation(userLocation ?? null);
+    }
+  }, [userLocation]);
 
   // Handle zoom out all trigger
   useEffect(() => {

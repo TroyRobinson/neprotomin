@@ -57,6 +57,7 @@ interface AreaSelectionChange {
 }
 
 interface MapViewOptions {
+  initialUserLocation?: { lng: number; lat: number } | null;
   onHover: (idOrIds: string | string[] | null) => void;
   onVisibleIdsChange?: (ids: string[], totalInSource: number, allSourceIds: string[]) => void;
   onZipSelectionChange?: (selectedZips: string[], meta?: { pinned: string[]; transient: string[] }) => void;
@@ -102,6 +103,7 @@ export interface MapViewController {
   setCamera: (centerLng: number, centerLat: number, zoom: number) => void;
   onCameraChange: (fn: (centerLng: number, centerLat: number, zoom: number) => void) => () => void;
   setLegendInset: (pixels: number) => void;
+  setUserLocation: (location: { lng: number; lat: number } | null) => void;
   resize: () => void;
   destroy: () => void;
 }
@@ -121,6 +123,8 @@ import {
   LAYER_POINTS_ID,
   LAYER_HIGHLIGHT_ID,
   LAYER_CLUSTER_HIGHLIGHT_ID,
+  USER_LOCATION_SOURCE_ID,
+  USER_LOCATION_LAYER_ID,
   BOUNDARY_SOURCE_ID,
   BOUNDARY_FILL_LAYER_ID,
   BOUNDARY_LINE_LAYER_ID,
@@ -221,6 +225,7 @@ const getZipAreaBounds = zipAreaEntry.getBounds;
 const getCountyAreaBounds = countyAreaEntry.getBounds;
 
 export const createMapView = ({
+  initialUserLocation = null,
   onHover,
   onVisibleIdsChange,
   onZipSelectionChange,
@@ -308,6 +313,8 @@ export const createMapView = ({
   let transientCounties = new Set<string>();
   let hoveredCountyFromToolbar: string | null = null;
   let hoveredCountyFromMap: string | null = null;
+  let userLocation: { lng: number; lat: number } | null = initialUserLocation;
+  let pendingUserLocationUpdate = Boolean(initialUserLocation);
   // Track pointer press state so quick taps zoom and sustained presses select.
   let countyPressCandidate: string | null = null;
   let countyLongPressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1081,6 +1088,36 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     map.off("zoomend", handleViewportSettled);
   });
 
+  const updateUserLocationSource = () => {
+    const source = map.getSource(USER_LOCATION_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (!source) {
+      pendingUserLocationUpdate = Boolean(userLocation);
+      return;
+    }
+
+    pendingUserLocationUpdate = false;
+    const data: GeoJSON.FeatureCollection<GeoJSON.Point> = userLocation
+      ? {
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates: [userLocation.lng, userLocation.lat],
+              },
+              properties: {},
+            },
+          ],
+        }
+      : {
+          type: "FeatureCollection",
+          features: [],
+        };
+
+    source.setData(data);
+  };
+
   const ensureSourcesAndLayers = () => {
     if (!map.isStyleLoaded()) return;
 
@@ -1144,6 +1181,32 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       LAYER_CLUSTER_HIGHLIGHT_ID,
     }, lastData);
 
+    if (!map.getSource(USER_LOCATION_SOURCE_ID)) {
+      map.addSource(USER_LOCATION_SOURCE_ID, {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [],
+        },
+      });
+    }
+    if (!map.getLayer(USER_LOCATION_LAYER_ID)) {
+      map.addLayer(
+        {
+          id: USER_LOCATION_LAYER_ID,
+          type: "circle",
+          source: USER_LOCATION_SOURCE_ID,
+          paint: {
+            "circle-radius": 9,
+            "circle-color": "#d946ef",
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff",
+            "circle-opacity": 0.95,
+          },
+        },
+      );
+    }
+
     updateHighlight();
     updateBoundaryPaint();
     updateBoundaryVisibility();
@@ -1156,6 +1219,9 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     // Toggle label visibility according to boundary mode
     try { zipLabels?.setVisible?.(boundaryMode === 'zips'); } catch {}
     try { countyLabels?.setVisible?.(boundaryMode === 'counties'); } catch {}
+    if (pendingUserLocationUpdate || userLocation) {
+      updateUserLocationSource();
+    }
   };
 
   map.once("load", () => {
@@ -1850,6 +1916,18 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       orgPinsVisible = visible;
       updateOrganizationPinsVisibility();
       orgLegend?.setVisible(visible);
+    },
+    setUserLocation: (location: { lng: number; lat: number } | null) => {
+      userLocation = location;
+      pendingUserLocationUpdate = Boolean(location);
+      if (!map.isStyleLoaded()) {
+        return;
+      }
+      if (!map.getSource(USER_LOCATION_SOURCE_ID)) {
+        ensureSourcesAndLayers();
+      } else {
+        updateUserLocationSource();
+      }
     },
     fitBounds: (bounds: BoundsArray, options?: { padding?: number; maxZoom?: number; duration?: number }) => {
       map.fitBounds(bounds, {

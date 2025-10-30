@@ -4,6 +4,8 @@ export const LAYER_CLUSTER_COUNT_ID = "organizations-cluster-count";
 export const LAYER_POINTS_ID = "organizations-points";
 export const LAYER_HIGHLIGHT_ID = "organizations-highlight";
 export const LAYER_CLUSTER_HIGHLIGHT_ID = "organizations-cluster-highlight";
+export const USER_LOCATION_SOURCE_ID = "user-location";
+export const USER_LOCATION_LAYER_ID = "user-location-layer";
 
 export const BOUNDARY_SOURCE_ID = "tulsa-zip-boundaries";
 export const BOUNDARY_FILL_LAYER_ID = "tulsa-zip-boundaries-fill";
