@@ -459,10 +459,29 @@ export const ReactMapApp = () => {
 
   const legendInset = useMemo(() => {
     if (!isMobile) return 16;
-    // Position legend in lower-middle of screen (12% from bottom)
-    const inset = Math.floor(viewportHeight * 0.12);
-    return inset;
-  }, [isMobile, viewportHeight]);
+    // Attach just above the sheet in peek state with a small gap
+    if (sheetState === "peek" && !isDraggingSheet) {
+      // The sheet wrapper is at topBarHeight, and the sheet itself has translateY
+      // So the top of the sheet is at: topBarHeight + sheetTranslateY
+      // Position legend row's bottom edge exactly at the sheet's top edge
+      // Bottom position from bottom = viewportHeight - sheetTop
+      const sheetTop = topBarHeight + sheetTranslateY;
+      const legendBottom = viewportHeight - sheetTop;
+      // Subtract a small amount to account for any CSS spacing/borders
+      // This positions the legend row slightly overlapping or touching the sheet
+      return Math.max(8, legendBottom - 60);
+    }
+    // Otherwise, keep safely near bottom; it will be hidden when dragging/expanded
+    return 16;
+  }, [isMobile, sheetState, isDraggingSheet, sheetTranslateY, viewportHeight, topBarHeight]);
+
+  // Update legend position - use bottom positioning (simpler and accounts for legend row height)
+  useEffect(() => {
+    const controller = mapControllerRef.current;
+    if (!controller) return;
+    // Always use bottom positioning - it's simpler and accounts for legend row height naturally
+    try { controller.setLegendInset(legendInset); } catch {}
+  }, [legendInset]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -1077,6 +1096,84 @@ export const ReactMapApp = () => {
     mapControllerRef.current = controller;
   }, []);
 
+  // Keep the combined legend row visible - always on desktop, only in peek on mobile
+  useEffect(() => {
+    const controller = mapControllerRef.current;
+    if (!controller) return;
+    // Show on desktop always, or on mobile when sheet is in peek and not dragging
+    const shouldShow = !isMobile || (sheetState === "peek" && !isDraggingSheet);
+    try { controller.setLegendVisible(shouldShow); } catch {}
+  }, [isMobile, sheetState, isDraggingSheet]);
+
+  // Inject/update the My Location button into the legend row (right side) - mobile only
+  useEffect(() => {
+    const controller = mapControllerRef.current;
+    if (!controller || !isMobile) {
+      // On desktop, clear the injected button (desktop has its own overlay)
+      if (controller && !isMobile) {
+        try { controller.setLegendRightContent(null); } catch {}
+      }
+      return;
+    }
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = [
+      "flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
+      "min-w-[2.5rem] flex-1 w-full", // Fill available space but maintain minimum width for icon
+      userLocationError
+        ? "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
+        : "border border-slate-200 bg-white text-slate-700 hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white",
+    ].join(" ");
+    btn.disabled = isRequestingLocation;
+    btn.setAttribute(
+      "aria-label",
+      isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Zoom" : "My Location",
+    );
+    btn.addEventListener("click", () => {
+      if (isRequestingLocation) return;
+      if (userLocation) {
+        focusUserLocation();
+      } else {
+        requestUserLocation();
+      }
+    });
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("viewBox", "0 0 20 20");
+    icon.setAttribute("aria-hidden", "true");
+    icon.setAttribute("class", "h-4 w-4 flex-shrink-0"); // Icon should never shrink
+    const p1 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p1.setAttribute("fill", "currentColor");
+    p1.setAttribute(
+      "d",
+      "M10 2.5a.75.75 0 01.75.75v1.54a5.25 5.25 0 014.46 4.46H16.5a.75.75 0 010 1.5h-1.29a5.25 5.25 0 01-4.46 4.46v1.54a.75.75 0 01-1.5 0v-1.54a5.25 5.25 0 01-4.46-4.46H3.5a.75.75 0 010-1.5h1.29a5.25 5.25 0 014.46-4.46V3.25A.75.75 0 0110 2.5zm0 4a4 4 0 100 8 4 4 0 000-8z",
+    );
+    const p2 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p2.setAttribute("fill", "currentColor");
+    p2.setAttribute("d", "M10 8.25a1.75 1.75 0 110 3.5 1.75 1.75 0 010-3.5z");
+    icon.appendChild(p1);
+    icon.appendChild(p2);
+    const label = document.createElement("span");
+    label.className = "truncate min-w-0"; // Allow text to truncate
+    label.textContent = isRequestingLocation
+      ? "Locating..."
+      : userLocationError
+      ? userLocationError
+      : userLocation
+      ? "Active"
+      : "My Location";
+    if (isRequestingLocation) {
+      const spinner = document.createElement("span");
+      spinner.className = "h-4 w-4 flex-shrink-0 animate-spin rounded-full border-2 border-slate-400 border-t-transparent dark:border-slate-500";
+      btn.appendChild(spinner);
+    } else {
+      btn.appendChild(icon);
+    }
+    btn.appendChild(label);
+
+    try { controller.setLegendRightContent(btn); } catch {}
+  }, [isMobile, isRequestingLocation, userLocation, userLocationError, focusUserLocation, requestUserLocation]);
+
   const handleMobileLocationSearch = useCallback(
     (rawQuery: string) => {
       const query = rawQuery.trim();
@@ -1617,46 +1714,40 @@ export const ReactMapApp = () => {
                 onControllerReady={handleMapControllerReady}
                 userLocation={userLocation}
               />
-              {/* Floating location button overlay on map (desktop + mobile) */}
-              <div
-                className={[
-                  "pointer-events-none absolute right-4",
-                  // Ensure the button sits behind the mobile sheet when expanded
-                  isMobile && sheetState === "expanded" ? "z-10" : "z-30",
-                ].join(" ")}
-                style={{ bottom: isMobile ? legendInset : 16 }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isRequestingLocation) return;
-                    if (userLocation) {
-                      focusUserLocation();
-                    } else {
-                      requestUserLocation();
-                    }
-                  }}
-                  disabled={isRequestingLocation}
-                  className={[
-                    "pointer-events-auto inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
-                    userLocationError
-                      ? "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
-                      : "border border-slate-200 bg-white text-slate-700 hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white",
-                  ].join(" ")}
-                  aria-label={isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Active" : "My Location"}
-                >
-                  {isRequestingLocation ? (
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent dark:border-slate-500" />
-                  ) : (
-                    // Simple locate glyph to avoid importing icon here
-                    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
-                      <path fill="currentColor" d="M10 2.5a.75.75 0 01.75.75v1.54a5.25 5.25 0 014.46 4.46H16.5a.75.75 0 010 1.5h-1.29a5.25 5.25 0 01-4.46 4.46v1.54a.75.75 0 01-1.5 0v-1.54a5.25 5.25 0 01-4.46-4.46H3.5a.75.75 0 010-1.5h1.29a5.25 5.25 0 014.46-4.46V3.25A.75.75 0 0110 2.5zm0 4a4 4 0 100 8 4 4 0 000-8z" />
-                      <path fill="currentColor" d="M10 8.25a1.75 1.75 0 110 3.5 1.75 1.75 0 010-3.5z" />
-                    </svg>
-                  )}
-                  <span>{isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Active" : "My Location"}</span>
-                </button>
-              </div>
+              {/* Desktop-only overlay still shows the location button inline */}
+              {!isMobile && (
+                <div className={["pointer-events-none absolute right-4 z-30"].join(" ")} style={{ bottom: 16 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isRequestingLocation) return;
+                      if (userLocation) {
+                        focusUserLocation();
+                      } else {
+                        requestUserLocation();
+                      }
+                    }}
+                    disabled={isRequestingLocation}
+                    className={[
+                      "pointer-events-auto inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
+                      userLocationError
+                        ? "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
+                        : "border border-slate-200 bg-white text-slate-700 hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white",
+                    ].join(" ")}
+                    aria-label={isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Zoom" : "My Location"}
+                  >
+                    {isRequestingLocation ? (
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent dark:border-slate-500" />
+                    ) : (
+                      <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
+                        <path fill="currentColor" d="M10 2.5a.75.75 0 01.75.75v1.54a5.25 5.25 0 014.46 4.46H16.5a.75.75 0 010 1.5h-1.29a5.25 5.25 0 01-4.46 4.46v1.54a.75.75 0 01-1.5 0v-1.54a5.25 5.25 0 01-4.46-4.46H3.5a.75.75 0 010-1.5h1.29a5.25 5.25 0 014.46-4.46V3.25A.75.75 0 0110 2.5zm0 4a4 4 0 100 8 4 4 0 000-8z" />
+                        <path fill="currentColor" d="M10 8.25a1.75 1.75 0 110 3.5 1.75 1.75 0 010-3.5z" />
+                      </svg>
+                    )}
+                    <span>{isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Zoom" : "My Location"}</span>
+                  </button>
+                </div>
+              )}
           </div>
           {!isMobile && (
             <Sidebar

@@ -105,6 +105,9 @@ export interface MapViewController {
   setCamera: (centerLng: number, centerLat: number, zoom: number) => void;
   onCameraChange: (fn: (centerLng: number, centerLat: number, zoom: number) => void) => () => void;
   setLegendInset: (pixels: number) => void;
+  setLegendTop: (topPx: number) => void;
+  setLegendVisible: (visible: boolean) => void;
+  setLegendRightContent: (el: HTMLElement | null) => void;
   setUserLocation: (location: { lng: number; lat: number } | null) => void;
   resize: () => void;
   destroy: () => void;
@@ -294,15 +297,33 @@ export const createMapView = ({
   let orgLegend: OrgLegendController;
   let secondaryChoroplethLegend: SecondaryChoroplethLegendController;
   let legendRowEl: HTMLDivElement | null = null;
+  let legendRightSlotEl: HTMLDivElement | null = null;
   let legendInset = 16;
   const applyLegendInset = () => {
     if (legendRowEl) {
+      // Position by bottom edge for desktop, but we'll use top for mobile when attached to sheet
       legendRowEl.style.bottom = `${Math.max(0, legendInset)}px`;
+      legendRowEl.style.top = "";
+    }
+  };
+  const setLegendTop = (topPx: number) => {
+    if (legendRowEl) {
+      legendRowEl.style.bottom = "";
+      legendRowEl.style.top = `${Math.max(0, topPx)}px`;
     }
   };
   const setLegendInset = (value: number) => {
     legendInset = value;
     applyLegendInset();
+  };
+  const setLegendVisible = (visible: boolean) => {
+    if (!legendRowEl) return;
+    legendRowEl.style.display = visible ? "flex" : "none";
+  };
+  const setLegendRightContent = (el: HTMLElement | null) => {
+    if (!legendRowEl || !legendRightSlotEl) return;
+    legendRightSlotEl.replaceChildren();
+    if (el) legendRightSlotEl.appendChild(el);
   };
 
   let currentTheme = themeController.getTheme();
@@ -660,7 +681,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   // Create a single bottom-row for legends so they share space evenly with right-side controls
   legendRowEl = document.createElement("div");
-  legendRowEl.className = "pointer-events-none absolute left-4 right-36 z-10 flex items-center gap-3";
+  legendRowEl.className = "pointer-events-none absolute left-4 right-4 z-10 flex items-center gap-3 justify-between";
   legendRowEl.style.bottom = `${legendInset}px`;
   container.appendChild(legendRowEl);
 
@@ -673,6 +694,11 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   }
   secondaryChoroplethLegend = createSecondaryChoroplethLegend();
   legendRowEl.appendChild(secondaryChoroplethLegend.element);
+
+  // Right-side slot for consumer-provided controls (e.g., My Location)
+  legendRightSlotEl = document.createElement("div");
+  legendRightSlotEl.className = "pointer-events-auto ml-3 flex min-w-0"; // Allow flex to fill space, but can shrink
+  legendRowEl.appendChild(legendRightSlotEl);
 
   // Wire up momentary stat name display on legend tap/click
   // Maintain a lookup of stat id -> name from the stats store
@@ -2052,6 +2078,9 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       };
     },
     setLegendInset,
+    setLegendTop,
+    setLegendVisible,
+    setLegendRightContent,
     resize: () => {
       map.resize();
     },
