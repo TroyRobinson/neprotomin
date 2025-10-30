@@ -14,7 +14,7 @@ export const createOrgLegend = (): OrgLegendController => {
 
   const label = document.createElement("span");
   label.className = "tabular-nums";
-  label.textContent = "Food Orgs";
+  label.textContent = "Orgs";
 
   wrapper.appendChild(dot);
   wrapper.appendChild(label);

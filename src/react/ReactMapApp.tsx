@@ -1656,7 +1656,7 @@ export const ReactMapApp = () => {
                 >
                   <span className="h-1.5 w-12 rounded-full bg-slate-300 transition-colors group-active:bg-slate-400 dark:bg-slate-600 dark:group-active:bg-slate-500" />
                   {sheetState === "peek" ? (
-                    <span>{mobileOrganizationsCount} Organizations</span>
+                    <span>{mobileOrganizationsCount} Food Providers</span>
                   ) : null}
                 </button>
                 <div
