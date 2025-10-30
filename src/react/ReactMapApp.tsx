@@ -1547,6 +1547,7 @@ export const ReactMapApp = () => {
         isRequestingUserLocation={isRequestingLocation}
         onRequestUserLocation={requestUserLocation}
         onFocusUserLocation={focusUserLocation}
+        userLocationError={userLocationError}
       />
       <div className="relative flex flex-1 flex-col overflow-hidden">
         {!isMobile && (
