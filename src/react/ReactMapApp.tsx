@@ -1576,7 +1576,7 @@ export const ReactMapApp = () => {
         {showMobileSheet && (
           <div
             className="pointer-events-none absolute inset-x-0 bottom-0 z-20 md:hidden"
-            style={{ top: topBarHeight }}
+            style={{ top: sheetState === "expanded" ? 0 : topBarHeight }}
           >
             <div className="flex h-full w-full flex-col">
               <div

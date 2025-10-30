@@ -12,7 +12,7 @@ const STAT_CHIP_SELECTED_CLASSES =
   "border-transparent bg-brand-100 text-brand-700 shadow-floating hover:bg-brand-100 dark:bg-brand-400/20 dark:text-white";
 
 const MOBILE_STAT_CHIP_SELECTED_CLASSES =
-  "border-transparent bg-brand-100 text-brand-700 shadow-floating hover:bg-brand-100 dark:bg-brand-400/20 dark:text-white px-3 py-1 text-xs";
+  "border-transparent bg-brand-100 text-brand-700 shadow-floating hover:bg-brand-100 dark:bg-brand-400/80 dark:text-white px-3 py-1 text-xs";
 
 const MOBILE_STAT_CHIP_BASE_CLASSES =
   "inline-flex items-center gap-2 rounded-full border bg-white/90 text-brand-700 shadow-sm transition-all duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400";
