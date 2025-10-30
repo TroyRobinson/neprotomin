@@ -1568,6 +1568,7 @@ export const ReactMapApp = () => {
         <main className="relative flex flex-1 flex-col overflow-hidden md:flex-row">
           <div className="relative flex flex-1 flex-col overflow-hidden">
               <MapLibreMap
+                key={isMobile ? "mobile" : "desktop"}
                 organizations={activeOrganizations}
                 orgPinsVisible={orgPinsVisible}
                 zoomOutRequestNonce={zoomOutNonce}
@@ -1656,7 +1657,13 @@ export const ReactMapApp = () => {
                 >
                   <span className="h-1.5 w-12 rounded-full bg-slate-300 transition-colors group-active:bg-slate-400 dark:bg-slate-600 dark:group-active:bg-slate-500" />
                   {sheetState === "peek" ? (
-                    <span>{mobileOrganizationsCount} Food Providers</span>
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full ring-1 ring-black/5 dark:ring-white/10"
+                        style={{ backgroundColor: "#fdba74" }}
+                      />
+                      <span>{mobileOrganizationsCount} Food Providers</span>
+                    </span>
                   ) : null}
                 </button>
                 <div

@@ -292,6 +292,15 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   };
 
   const renderStatChips = () => {
+    // On mobile, we no longer show the active-stat chip at all
+    if (isMobile) {
+      statWrapper.classList.add("hidden");
+      // Clean up any previously-added entries just in case
+      statEntries.forEach((e) => e.btn.removeEventListener("click", e.handleClick));
+      statWrapper.replaceChildren();
+      statEntries = [];
+      return;
+    }
     // Show stat chips if either:
     // 1. A category is selected (show all stats in that category)
     // 2. A stat is selected (show just that stat, even if no category or non-matching category)
@@ -335,6 +344,11 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   };
 
   const updateStatSelectionStyles = () => {
+    // On mobile, we suppress the stat chip entirely
+    if (isMobile) {
+      statWrapper.classList.add("hidden");
+      return;
+    }
     // Don't hide if we have a selected stat (even without a category)
     if (!selectedId && !selectedStatId) {
       statWrapper.classList.add("hidden");

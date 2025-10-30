@@ -658,8 +658,11 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   choroplethLegend = createChoroplethLegend();
   container.appendChild(choroplethLegend.element);
-  orgLegend = createOrgLegend();
-  choroplethLegend.pill.insertBefore(orgLegend.element, choroplethLegend.pill.firstChild);
+  // Only render the org legend on non-mobile to reduce visual noise
+  if (!isMobile) {
+    orgLegend = createOrgLegend();
+    choroplethLegend.pill.insertBefore(orgLegend.element, choroplethLegend.pill.firstChild);
+  }
   secondaryChoroplethLegend = createSecondaryChoroplethLegend();
   container.appendChild(secondaryChoroplethLegend.element);
 
