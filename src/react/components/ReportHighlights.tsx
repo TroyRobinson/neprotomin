@@ -284,7 +284,8 @@ const LineMiniChart = ({
       return;
     }
 
-    const width = Math.max(320, Math.floor(el.clientWidth || 320));
+    const measuredWidth = Math.floor(el.clientWidth || 0);
+    const width = measuredWidth > 0 ? measuredWidth : 320;
     const height = 140;
     const margin = { top: 6, right: 8, bottom: 22, left: 0 };
     const innerW = width - margin.left - margin.right;
