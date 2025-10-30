@@ -1593,6 +1593,13 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
 
     const unwireBoundaries = (() => {
       const handleBoundaryClick = (e: maplibregl.MapLayerMouseEvent) => {
+        // Disable ZIP area selection on mobile when org pins are visible
+        // (County clicks are handled separately to allow zooming)
+        if (boundaryMode === "zips" && isMobile && orgPinsVisible) {
+          resetCountyPressState();
+          return;
+        }
+
         if (boundaryMode === "zips") {
           const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
           if (orgFeatures.length > 0) {
@@ -1625,6 +1632,17 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
             resetCountyPressState();
             return;
           }
+          // On mobile with org pins visible, allow zoom but disable selection
+          if (isMobile && orgPinsVisible) {
+            cancelCountyPendingZoom();
+            countyPendingZoomTimer = setTimeout(() => {
+              if (boundaryMode !== "counties") return;
+              zoomToCounty(county);
+              countyPendingZoomTimer = null;
+            }, COUNTY_CLICK_ZOOM_DELAY_MS);
+            resetCountyPressState({ cancelZoom: false });
+            return;
+          }
           const originalEvent = e.originalEvent as MouseEvent | PointerEvent | undefined;
           const shiftKey = Boolean(originalEvent?.shiftKey);
           const hasExistingSelection = countySelection.getUnion().length > 0;
@@ -1650,6 +1668,11 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         resetCountyPressState();
       };
       const handleBoundaryDoubleClick = (e: maplibregl.MapLayerMouseEvent) => {
+        // Disable area selection on mobile when org pins are visible
+        if (isMobile && orgPinsVisible) {
+          return;
+        }
+
         if (boundaryMode === "zips") {
           e.preventDefault();
           const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
@@ -1718,7 +1741,11 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       });
       map.on("mouseup", handleMapMouseUp);
       map.on("dragstart", handleMapDragStart);
-      const onBoundaryMouseEnter = () => { if (boundaryMode === "zips") map.getCanvas().style.cursor = "pointer"; };
+      const onBoundaryMouseEnter = () => { 
+        if (boundaryMode === "zips" && !(isMobile && orgPinsVisible)) {
+          map.getCanvas().style.cursor = "pointer";
+        }
+      };
       const onBoundaryMouseLeave = () => {
         map.getCanvas().style.cursor = "pointer";
         if (boundaryMode === "zips") {
@@ -1730,6 +1757,8 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       };
       const onZipMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
         if (boundaryMode !== "zips") return;
+        // Disable hover on mobile when org pins are visible
+        if (isMobile && orgPinsVisible) return;
         const features = map.queryRenderedFeatures(e.point, { layers: zipLayerOrder });
         const zip = features[0]?.properties?.[zipFeatureProperty] as string | undefined;
         if (!zip || zip === hoveredZipFromMap) return;
@@ -1747,7 +1776,11 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       map.on("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
       map.on("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
 
-      const onCountyMouseEnter = () => { if (boundaryMode === "counties") map.getCanvas().style.cursor = "pointer"; };
+      const onCountyMouseEnter = () => { 
+        if (boundaryMode === "counties" && !(isMobile && orgPinsVisible)) {
+          map.getCanvas().style.cursor = "pointer";
+        }
+      };
       const onCountyMouseLeave = () => {
         map.getCanvas().style.cursor = "pointer";
         hoveredCountyFromMap = null;
@@ -1758,6 +1791,8 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       };
       const onCountyMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
         if (boundaryMode !== "counties") return;
+        // Disable hover on mobile when org pins are visible
+        if (isMobile && orgPinsVisible) return;
         const features = map.queryRenderedFeatures(e.point, { layers: countyLayerOrder });
         const county = features[0]?.properties?.[countyFeatureProperty] as string | undefined;
         if (!county || county === hoveredCountyFromMap) return;
