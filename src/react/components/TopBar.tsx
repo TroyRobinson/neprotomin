@@ -344,15 +344,6 @@ export const TopBar = ({
             )}
             <button
               type="button"
-              onClick={handleThemeToggle}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-              aria-pressed={theme === "dark"}
-            >
-              {theme === "dark" ? <MoonIcon /> : <SunIcon />}
-            </button>
-            <button
-              type="button"
               onClick={handleLocationAction}
               disabled={isRequestingUserLocation || (!onRequestUserLocation && !onFocusUserLocation)}
               className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-brand-200 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
@@ -364,6 +355,15 @@ export const TopBar = ({
                 <LocateIcon />
               )}
               <span>{locationButtonLabel()}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleThemeToggle}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              aria-pressed={theme === "dark"}
+            >
+              {theme === "dark" ? <MoonIcon /> : <SunIcon />}
             </button>
           </div>
         </div>
