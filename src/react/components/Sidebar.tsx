@@ -457,34 +457,51 @@ const OrganizationListItem = ({
           </a>
         </p>
       )}
-      {org.website && (
-        <a
-          href={org.website}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-400 transition-colors hover:text-brand-900 dark:text-slate-300 dark:hover:text-slate-100"
-          onClick={(event) => event.stopPropagation()}
-        >
-          Visit site
-          <span aria-hidden="true" className="text-[1em] leading-none">
-            ↗
+      {/* Actions row: Visit site + Category on left, Hours tag on right */}
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <div className="min-w-0 flex items-center gap-2">
+          {org.website && (
+            <a
+              href={org.website}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs font-medium text-slate-400 transition-colors hover:text-brand-900 dark:text-slate-300 dark:hover:text-slate-100"
+              onClick={(event) => event.stopPropagation()}
+            >
+              Visit site
+              <span aria-hidden="true" className="text-[1em] leading-none">
+                ↗
+              </span>
+            </a>
+          )}
+          <span
+            role="button"
+            tabIndex={0}
+            className="ml-2 inline-flex items-center rounded-full bg-slate-50 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-800/70 dark:text-slate-300 cursor-pointer"
+            onClick={(event) => handleCategoryClick(event)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleCategoryClick(e);
+              }
+            }}
+          >
+            {getCategoryLabel(org.category)}
           </span>
-        </a>
-      )}
-      <span
-        role="button"
-        tabIndex={0}
-        className="mt-1 ml-2 inline-flex items-center rounded-full bg-slate-50 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-800/70 dark:text-slate-300 cursor-pointer"
-        onClick={(event) => handleCategoryClick(event)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            handleCategoryClick(e);
-          }
-        }}
-      >
-        {getCategoryLabel(org.category)}
-      </span>
+        </div>
+        {formatHoursLines(org.hours).length > 0 ? (
+          <button
+            type="button"
+            className="inline-flex items-center rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-500 transition-colors group-hover:bg-brand-100 group-hover:text-brand-900 dark:bg-slate-800/60 dark:text-slate-300 dark:group-hover:bg-slate-700 dark:group-hover:text-slate-100"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleToggle();
+            }}
+          >
+            Hours
+          </button>
+        ) : null}
+      </div>
       {isExpanded ? renderHours(org.hours) : null}
     </li>
   );
