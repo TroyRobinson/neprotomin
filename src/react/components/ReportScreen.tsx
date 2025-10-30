@@ -72,10 +72,7 @@ export const ReportScreen = ({
 
   const header = useMemo(() => {
     if (!primaryKind || primaryCodes.length === 0) {
-      const sub = hasMixedSelection
-        ? "Reports support ZIP or county selections. Add one to generate details."
-        : "Select one or more ZIPs or counties to generate a report.";
-      return { title: "Report", sub, list: null as string | null };
+      return { title: "Report", sub: "", list: null as string | null };
     }
     const labels = primaryCodes.map((code) => areaNameLookup(primaryKind, code) || code);
     const labelSuffix = primaryKind === "ZIP" ? "ZIPs" : "counties";

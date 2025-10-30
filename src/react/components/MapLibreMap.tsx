@@ -29,6 +29,11 @@ interface MapLibreMapProps {
   selectedStatId?: string | null;
   secondaryStatId?: string | null;
   onHover?: (idOrIds: string | string[] | null) => void;
+  onOrganizationClick?: (organizationId: string, meta?: { source: "point" | "centroid" }) => void;
+  onClusterClick?: (
+    organizationIds: string[],
+    meta: { count: number; longitude: number; latitude: number },
+  ) => void;
   onVisibleIdsChange?: (ids: string[], totalInSource: number, allSourceIds: string[]) => void;
   onZipSelectionChange?: (selectedZips: string[], meta?: { pinned: string[]; transient: string[] }) => void;
   onZipHoverChange?: (zip: string | null) => void;
@@ -87,6 +92,8 @@ export const MapLibreMap = ({
   onCameraChange,
   autoBoundarySwitch = true,
   onMapDragStart,
+  onOrganizationClick,
+  onClusterClick,
   isMobile = false,
   legendInset,
   onControllerReady,
@@ -99,6 +106,8 @@ export const MapLibreMap = ({
   // Use refs for callbacks so we can update them in the wrapper
   const onZipSelectionChangeRef = useRef(onZipSelectionChange);
   const onHoverRef = useRef(onHover);
+  const onOrganizationClickRef = useRef(onOrganizationClick);
+  const onClusterClickRef = useRef(onClusterClick);
   const onVisibleIdsChangeRef = useRef(onVisibleIdsChange);
   const onZipHoverChangeRef = useRef(onZipHoverChange);
   const onCountySelectionChangeRef = useRef(onCountySelectionChange);
@@ -117,6 +126,8 @@ export const MapLibreMap = ({
 
   useEffect(() => { onZipSelectionChangeRef.current = onZipSelectionChange; }, [onZipSelectionChange]);
   useEffect(() => { onHoverRef.current = onHover; }, [onHover]);
+  useEffect(() => { onOrganizationClickRef.current = onOrganizationClick; }, [onOrganizationClick]);
+  useEffect(() => { onClusterClickRef.current = onClusterClick; }, [onClusterClick]);
   useEffect(() => { onVisibleIdsChangeRef.current = onVisibleIdsChange; }, [onVisibleIdsChange]);
   useEffect(() => { onZipHoverChangeRef.current = onZipHoverChange; }, [onZipHoverChange]);
   useEffect(() => { onCountySelectionChangeRef.current = onCountySelectionChange; }, [onCountySelectionChange]);
@@ -192,6 +203,8 @@ export const MapLibreMap = ({
       onZipScopeChange: (scope, neighbors) => onZipScopeChangeRef.current?.(scope, neighbors),
       shouldAutoBoundarySwitch: () => shouldAutoSwitchRef.current,
       onMapDragStart: () => onMapDragStartRef.current?.(),
+      onOrganizationClick: (id, meta) => onOrganizationClickRef.current?.(id, meta),
+      onClusterClick: (ids, meta) => onClusterClickRef.current?.(ids, meta),
       isMobile,
     });
 

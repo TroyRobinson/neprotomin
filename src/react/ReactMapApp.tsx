@@ -9,7 +9,7 @@ import { useStats } from "./hooks/useStats";
 import type { StatBoundaryEntry, SeriesByKind, SeriesEntry } from "./hooks/useStats";
 import { useOrganizations } from "./hooks/useOrganizations";
 import { useAreas } from "./hooks/useAreas";
-import type { Organization } from "../types/organization";
+import { type Organization, OKLAHOMA_CENTER, OKLAHOMA_DEFAULT_ZOOM } from "../types/organization";
 import { findZipForLocation, getZipBounds } from "../lib/zipBoundaries";
 import { findCountyForLocation, getCountyBounds } from "../lib/countyBoundaries";
 import type { BoundaryMode } from "../types/boundaries";
@@ -210,18 +210,26 @@ export const ReactMapApp = () => {
     pendingContentDragRef.current = null;
   }, []);
 
+  const expandSheet = useCallback(() => {
+    setSheetState("expanded");
+    setSheetDragOffset(0);
+    setIsDraggingSheet(false);
+    sheetPointerIdRef.current = null;
+    sheetDragStateRef.current = null;
+    pendingContentDragRef.current = null;
+  }, []);
+
   const startSheetDrag = useCallback(
     (pointerId: number, clientY: number, startState: "peek" | "expanded") => {
       if (sheetPeekOffset <= 0) {
-        setSheetState("expanded");
-        setSheetDragOffset(0);
+        expandSheet();
         return;
       }
       sheetPointerIdRef.current = pointerId;
       sheetDragStateRef.current = { startY: clientY, startState };
       setIsDraggingSheet(true);
     },
-    [sheetPeekOffset],
+    [expandSheet, sheetPeekOffset],
   );
 
   const finishSheetDrag = useCallback(
@@ -232,7 +240,7 @@ export const ReactMapApp = () => {
       setIsDraggingSheet(false);
       setSheetDragOffset(0);
       if (!dragState || clientY === null || sheetPeekOffset <= 0) {
-        if (sheetPeekOffset <= 0) setSheetState("expanded");
+        if (sheetPeekOffset <= 0) expandSheet();
         return;
       }
       const delta = clientY - dragState.startY;
@@ -242,7 +250,7 @@ export const ReactMapApp = () => {
         setSheetState(delta < -MOBILE_SHEET_DRAG_THRESHOLD ? "expanded" : "peek");
       }
     },
-    [sheetPeekOffset],
+    [expandSheet, sheetPeekOffset],
   );
 
   const handleHandlePointerDown = useCallback(
@@ -258,11 +266,11 @@ export const ReactMapApp = () => {
   const handleHandleClick = useCallback(() => {
     if (!isMobile) return;
     if (sheetState === "peek") {
-      setSheetState("expanded");
+      expandSheet();
     } else {
       collapseSheet();
     }
-  }, [collapseSheet, isMobile, sheetState]);
+  }, [collapseSheet, expandSheet, isMobile, sheetState]);
 
   const handleContentPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -375,9 +383,9 @@ export const ReactMapApp = () => {
   useEffect(() => {
     if (!isMobile) return;
     if (sheetPeekOffset <= 0 && sheetState === "peek") {
-      setSheetState("expanded");
+      expandSheet();
     }
-  }, [isMobile, sheetPeekOffset, sheetState]);
+  }, [expandSheet, isMobile, sheetPeekOffset, sheetState]);
 
   const sheetTranslateY = useMemo(() => {
     if (!isMobile) return 0;
@@ -918,20 +926,59 @@ export const ReactMapApp = () => {
   const [clearMapCategoryNonce, setClearMapCategoryNonce] = useState(0);
 
   const handleBrandClick = () => {
-    console.log("Brand clicked - would reset map view");
     applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
     applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
     setActiveScreen("map");
+    const controller = mapControllerRef.current;
+    if (controller) {
+      controller.setCamera(
+        OKLAHOMA_CENTER.longitude,
+        OKLAHOMA_CENTER.latitude,
+        OKLAHOMA_DEFAULT_ZOOM,
+      );
+    }
   };
 
-  const handleHover = (idOrIds: string | string[] | null) => {
+  const handleHover = useCallback((idOrIds: string | string[] | null) => {
     if (Array.isArray(idOrIds)) {
       setHighlightedOrganizationIds(idOrIds);
       return;
     }
     setHighlightedOrganizationIds(null);
     setActiveOrganizationId(idOrIds);
-  };
+  }, []);
+
+  const handleOrganizationClick = useCallback(
+    (id: string) => {
+      if (!id) return;
+      setActiveScreen("map");
+      setActiveOrganizationId(id);
+      setHighlightedOrganizationIds(null);
+      if (isMobile) {
+        expandSheet();
+      }
+    },
+    [expandSheet, isMobile],
+  );
+
+  const handleClusterClick = useCallback(
+    (ids: string[], _meta: { count: number; longitude: number; latitude: number }) => {
+      if (!Array.isArray(ids) || ids.length === 0) return;
+      const uniqueIds = dedupeIds(ids);
+      setActiveScreen("map");
+      if (uniqueIds.length === 1) {
+        setActiveOrganizationId(uniqueIds[0]);
+        setHighlightedOrganizationIds(null);
+      } else {
+        setActiveOrganizationId(null);
+        setHighlightedOrganizationIds(uniqueIds);
+      }
+      if (isMobile) {
+        expandSheet();
+      }
+    },
+    [expandSheet, isMobile],
+  );
 
   const handleUpdateAreaSelection = (kind: AreaKind, selection: { selected: string[]; pinned: string[] }) => {
     applyAreaSelection(kind, {
@@ -1472,6 +1519,8 @@ export const ReactMapApp = () => {
                 hoveredCounty={hoveredCounty}
                 activeOrganizationId={activeOrganizationId}
                 onHover={handleHover}
+                onOrganizationClick={handleOrganizationClick}
+                onClusterClick={handleClusterClick}
                 selectedStatId={selectedStatId}
                 secondaryStatId={secondaryStatId}
                 categoryFilter={categoryFilter}
@@ -1593,22 +1642,22 @@ export const ReactMapApp = () => {
       >
         <div className="flex h-full w-full overflow-hidden bg-white pt-10 pb-safe dark:bg-slate-900">
           {/* Toolbar in report overlay */}
-          {!isMobile && (
-            <div className="absolute left-0 right-0 top-0 z-10">
-              <BoundaryToolbar
-                boundaryMode={boundaryMode}
-                boundaryControlMode={boundaryControlMode}
-                selections={toolbarSelections}
-                hoveredArea={hoveredArea}
-                stickyTopClass="top-0"
-                onBoundaryModeChange={handleBoundaryModeManualSelect}
-                onBoundaryControlModeChange={handleBoundaryControlModeChange}
-                onHoverArea={setHoveredAreaState}
-                onExport={handleExport}
-                onUpdateSelection={handleUpdateAreaSelection}
-              />
-            </div>
-          )}
+          <div className="absolute left-0 right-0 top-0 z-10">
+            <BoundaryToolbar
+              boundaryMode={boundaryMode}
+              boundaryControlMode={boundaryControlMode}
+              selections={toolbarSelections}
+              hoveredArea={hoveredArea}
+              stickyTopClass="top-0"
+              onBoundaryModeChange={handleBoundaryModeManualSelect}
+              onBoundaryControlModeChange={handleBoundaryControlModeChange}
+              onHoverArea={setHoveredAreaState}
+              onExport={handleExport}
+              onUpdateSelection={handleUpdateAreaSelection}
+              hideAreaSelect={isMobile}
+              isMobile={isMobile}
+            />
+          </div>
           {activeScreen === "report" && (
             <Suspense fallback={<div className="flex flex-1 items-center justify-center text-sm text-slate-500">Loading report…</div>}>
               <ReportScreen

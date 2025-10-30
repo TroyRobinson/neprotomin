@@ -72,6 +72,11 @@ interface MapViewOptions {
   onZipScopeChange?: (scopeLabel: string, neighbors: string[]) => void;
   shouldAutoBoundarySwitch?: () => boolean;
   onMapDragStart?: () => void;
+  onOrganizationClick?: (organizationId: string, meta?: { source: "point" | "centroid" }) => void;
+  onClusterClick?: (
+    organizationIds: string[],
+    meta: { count: number; longitude: number; latitude: number },
+  ) => void;
   isMobile?: boolean;
 }
 
@@ -231,6 +236,8 @@ export const createMapView = ({
   onZipScopeChange,
   shouldAutoBoundarySwitch,
   onMapDragStart,
+  onOrganizationClick,
+  onClusterClick,
   isMobile = false,
 }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
@@ -1219,6 +1226,11 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
           const original = e.originalEvent as Event | undefined;
           original?.stopPropagation?.();
         }
+        const feature = e.features?.[0];
+        const orgId = feature?.properties?.id as string | undefined;
+        if (orgId) {
+          onOrganizationClick?.(orgId, { source: "point" });
+        }
       };
       map.on("mouseenter", LAYER_POINTS_ID, onPointsMouseEnter);
       map.on("mouseleave", LAYER_POINTS_ID, onPointsMouseLeave);
@@ -1229,16 +1241,18 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       const onClustersMouseLeave = () => { map.getCanvas().style.cursor = "pointer"; clearClusterHighlight(); onHover(null); };
       const onClustersMouseMove = async (e: any) => {
         const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS_ID] });
-      const feature = features[0];
-      const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-      const clusterId = feature?.properties?.cluster_id as number | undefined;
-      if (!feature || !source || clusterId === undefined) return;
-      try {
-        setClusterHighlight(clusterId);
-        const leaves = await source.getClusterLeaves(clusterId, 1000, 0);
-          const ids = leaves.map((f: any) => f?.properties?.id).filter((v: any): v is string => typeof v === "string");
-        onHover(ids);
-      } catch {}
+        const feature = features[0];
+        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+        const clusterId = feature?.properties?.cluster_id as number | undefined;
+        if (!feature || !source || clusterId === undefined) return;
+        try {
+          setClusterHighlight(clusterId);
+          const leaves = await source.getClusterLeaves(clusterId, 1000, 0);
+          const ids = leaves
+            .map((f: any) => f?.properties?.id)
+            .filter((v: any): v is string => typeof v === "string");
+          onHover(ids);
+        } catch {}
       };
       const onClustersClick = async (e: any) => {
         const handledSelection = selectZipForOrgInteraction(e.point, e.originalEvent);
@@ -1249,17 +1263,32 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
           original?.stopPropagation?.();
         }
         const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS_ID] });
-      const feature = features[0];
-      if (!feature || feature.geometry?.type !== "Point") return;
-      const clusterId = feature.properties?.cluster_id as number | undefined;
-      const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-      if (!source || clusterId === undefined) return;
-      try {
-        const zoom = await source.getClusterExpansionZoom(clusterId);
-        const point = feature.geometry as GeoJSON.Point;
-        const [lng, lat] = point.coordinates as [number, number];
-        map.easeTo({ center: [lng, lat], zoom });
-      } catch {}
+        const feature = features[0];
+        if (!feature || feature.geometry?.type !== "Point") return;
+        const clusterId = feature.properties?.cluster_id as number | undefined;
+        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+        if (!source || clusterId === undefined) return;
+        try {
+          const zoom = await source.getClusterExpansionZoom(clusterId);
+          const point = feature.geometry as GeoJSON.Point;
+          const [lng, lat] = point.coordinates as [number, number];
+          const countRaw = feature.properties?.point_count;
+          const count = typeof countRaw === "number" ? countRaw : undefined;
+          const leavesPromise =
+            typeof count === "number" && count <= 5
+              ? source.getClusterLeaves(clusterId, Math.max(count, 1), 0)
+              : null;
+          map.easeTo({ center: [lng, lat], zoom });
+          if (leavesPromise) {
+            try {
+              const leaves = await leavesPromise;
+              const ids = leaves
+                .map((leaf: any) => leaf?.properties?.id)
+                .filter((id: unknown): id is string => typeof id === "string" && id.length > 0);
+              onClusterClick?.(ids, { count: count ?? ids.length, longitude: lng, latitude: lat });
+            } catch {}
+          }
+        } catch {}
       };
       map.on("mouseenter", LAYER_CLUSTERS_ID, onClustersMouseEnter);
       map.on("mouseleave", LAYER_CLUSTERS_ID, onClustersMouseLeave);
