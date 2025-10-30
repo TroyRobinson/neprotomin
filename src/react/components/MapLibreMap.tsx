@@ -46,6 +46,7 @@ interface MapLibreMapProps {
   onMapDragStart?: () => void;
   isMobile?: boolean;
   legendInset?: number;
+  onControllerReady?: (controller: MapViewController | null) => void;
 }
 
 /**
@@ -88,6 +89,7 @@ export const MapLibreMap = ({
   onMapDragStart,
   isMobile = false,
   legendInset,
+  onControllerReady,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
@@ -201,6 +203,7 @@ export const MapLibreMap = ({
     } else {
       mapController.setLegendInset(16);
     }
+    onControllerReady?.(mapController);
 
     const unsubscribeCamera = mapController.onCameraChange((lng, lat, zoom) => {
       onCameraChangeRef.current?.({ center: [lng, lat], zoom });
@@ -208,6 +211,7 @@ export const MapLibreMap = ({
 
     return () => {
       unsubscribeCamera?.();
+      onControllerReady?.(null);
       mapController.destroy();
       mapControllerRef.current = null;
       setLegendInsetRef.current = () => {};

@@ -10,8 +10,8 @@ import type { StatBoundaryEntry, SeriesByKind, SeriesEntry } from "./hooks/useSt
 import { useOrganizations } from "./hooks/useOrganizations";
 import { useAreas } from "./hooks/useAreas";
 import type { Organization } from "../types/organization";
-import { findZipForLocation } from "../lib/zipBoundaries";
-import { findCountyForLocation } from "../lib/countyBoundaries";
+import { findZipForLocation, getZipBounds } from "../lib/zipBoundaries";
+import { findCountyForLocation, getCountyBounds } from "../lib/countyBoundaries";
 import type { BoundaryMode } from "../types/boundaries";
 import { AuthModal } from "./components/AuthModal";
 import { db } from "../lib/reactDb";
@@ -19,6 +19,7 @@ import type { AreaId, AreaKind, PersistedAreaSelection } from "../types/areas";
 import { DEFAULT_PARENT_AREA_BY_KIND } from "../types/areas";
 import { normalizeScopeLabel, buildScopeLabelAliases } from "../lib/scopeLabels";
 import { useMediaQuery } from "./hooks/useMediaQuery";
+import type { MapViewController } from "./imperative/mapView";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
@@ -81,6 +82,22 @@ const arraysEqual = (a: string[], b: string[]): boolean => {
   return true;
 };
 
+const expandBounds = (
+  bounds: [[number, number], [number, number]],
+  factor: number,
+): [[number, number], [number, number]] => {
+  // Expand the bounding box slightly so the camera shows neighboring areas.
+  const [[minLng, minLat], [maxLng, maxLat]] = bounds;
+  const width = Math.max(maxLng - minLng, 0);
+  const height = Math.max(maxLat - minLat, 0);
+  const padLng = Math.max(width * factor, 0.02);
+  const padLat = Math.max(height * factor, 0.02);
+  return [
+    [minLng - padLng, minLat - padLat],
+    [maxLng + padLng, maxLat + padLat],
+  ];
+};
+
 export const ReactMapApp = () => {
   const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>("zips");
   const [boundaryControlMode, setBoundaryControlMode] = useState<"auto" | "manual">("auto");
@@ -99,7 +116,6 @@ export const ReactMapApp = () => {
   const [zipScope, setZipScope] = useState<string>(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
   const [zipNeighborScopes, setZipNeighborScopes] = useState<string[]>([]);
   const isMobile = useMediaQuery(MOBILE_MAX_WIDTH_QUERY);
-  console.log('🔍 isMobile:', isMobile, 'window.innerWidth:', typeof window !== 'undefined' ? window.innerWidth : 'SSR');
   const [topBarHeight, setTopBarHeight] = useState(DEFAULT_TOP_BAR_HEIGHT);
   const [sheetState, setSheetState] = useState<"peek" | "expanded">("peek");
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
@@ -113,6 +129,7 @@ export const ReactMapApp = () => {
   const sheetDragStateRef = useRef<{ startY: number; startState: "peek" | "expanded" } | null>(null);
   const pendingContentDragRef = useRef<{ pointerId: number; startY: number } | null>(null);
   const sheetContentRef = useRef<HTMLDivElement | null>(null);
+  const mapControllerRef = useRef<MapViewController | null>(null);
   const sheetAvailableHeight = Math.max(viewportHeight - topBarHeight, 0);
   const sheetPeekOffset = Math.max(sheetAvailableHeight - MOBILE_SHEET_PEEK_HEIGHT, 0);
 
@@ -949,6 +966,105 @@ export const ReactMapApp = () => {
     setBoundaryMode(mode);
   };
 
+  const handleMapControllerReady = useCallback((controller: MapViewController | null) => {
+    mapControllerRef.current = controller;
+  }, []);
+
+  const handleMobileLocationSearch = useCallback(
+    (rawQuery: string) => {
+      const query = rawQuery.trim();
+      if (!query) return;
+
+      const normalized = query.toLowerCase();
+      const zipRecordsMap = areasByKindAndCode.get("ZIP") ?? new Map<string, any>();
+
+      let targetKind: SupportedAreaKind | null = null;
+      let targetRecord: { code: string; bounds?: [[number, number], [number, number]] | null; centroid?: [number, number] | null } | null = null;
+
+      // Try to resolve the query to a ZIP match first, then fall back to county names.
+      if (/^\d{5}$/.test(query)) {
+        const zipRecord = zipRecordsMap.get(query);
+        if (zipRecord) {
+          targetKind = "ZIP";
+          targetRecord = zipRecord;
+        }
+      }
+
+      if (!targetRecord) {
+        const sanitized = normalized.replace(/\s+county$/, "").trim();
+        for (const record of countyRecords) {
+          const name = record.name?.toLowerCase();
+          if (!name) continue;
+          if (name === normalized || name === sanitized) {
+            targetKind = "COUNTY";
+            targetRecord = record;
+            break;
+          }
+        }
+      }
+
+      if (!targetRecord) {
+        const zipByName = zipRecords.find((record) => record.name?.toLowerCase() === normalized);
+        if (zipByName) {
+          targetKind = "ZIP";
+          targetRecord = zipByName;
+        }
+      }
+
+      if (!targetRecord) {
+        const countyFallback = countyRecords.find((record) => {
+          const name = record.name?.toLowerCase();
+          if (!name) return false;
+          return name.includes(normalized);
+        });
+        if (countyFallback) {
+          targetKind = "COUNTY";
+          targetRecord = countyFallback;
+        }
+      }
+
+      if (!targetKind || !targetRecord) {
+        console.warn("No area match for search query:", query);
+        return;
+      }
+
+      const bounds =
+        targetRecord.bounds ??
+        (targetKind === "ZIP" ? getZipBounds(targetRecord.code) : getCountyBounds(targetRecord.code));
+
+      const mapController = mapControllerRef.current;
+      if (mapController && bounds) {
+        const expanded =
+          targetKind === "ZIP" ? expandBounds(bounds, 0.25) : expandBounds(bounds, 0.15);
+        mapController.fitBounds(expanded, {
+          padding: targetKind === "ZIP" ? 80 : 96,
+          maxZoom: targetKind === "ZIP" ? 10.9 : 8.9,
+        });
+      } else if (mapController && targetRecord.centroid) {
+        const [lng, lat] = targetRecord.centroid;
+        mapController.setCamera(
+          lng,
+          lat,
+          targetKind === "ZIP" ? 10.5 : 8.2,
+        );
+      }
+
+      setBoundaryMode(targetKind === "ZIP" ? "zips" : "counties");
+      setActiveScreen("map");
+      if (isMobile && sheetState === "expanded") {
+        collapseSheet();
+      }
+    },
+    [
+      areasByKindAndCode,
+      countyRecords,
+      zipRecords,
+      collapseSheet,
+      isMobile,
+      sheetState,
+    ],
+  );
+
   const handleExport = () => {
     const primaryKind = activeAreaKind;
     if (!primaryKind) return;
@@ -1316,22 +1432,29 @@ export const ReactMapApp = () => {
 
   return (
     <div className="app-shell relative flex flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
-      <TopBar onBrandClick={handleBrandClick} onNavigate={setActiveScreen} active={activeScreen} onOpenAuth={() => setAuthOpen(true)} />
+      <TopBar
+        onBrandClick={handleBrandClick}
+        onNavigate={setActiveScreen}
+        active={activeScreen}
+        onOpenAuth={() => setAuthOpen(true)}
+        isMobile={isMobile}
+        onMobileLocationSearch={handleMobileLocationSearch}
+      />
       <div className="relative flex flex-1 flex-col overflow-hidden">
-        <BoundaryToolbar
-          boundaryMode={boundaryMode}
-          boundaryControlMode={boundaryControlMode}
-          selections={toolbarSelections}
-          hoveredArea={hoveredArea}
-          stickyTopClass="top-0"
-          onBoundaryModeChange={handleBoundaryModeManualSelect}
-          onBoundaryControlModeChange={handleBoundaryControlModeChange}
-          onHoverArea={setHoveredAreaState}
-          onExport={handleExport}
-          onUpdateSelection={handleUpdateAreaSelection}
-          hideAreaSelect={isMobile}
-          isMobile={isMobile}
-        />
+        {!isMobile && (
+          <BoundaryToolbar
+            boundaryMode={boundaryMode}
+            boundaryControlMode={boundaryControlMode}
+            selections={toolbarSelections}
+            hoveredArea={hoveredArea}
+            stickyTopClass="top-0"
+            onBoundaryModeChange={handleBoundaryModeManualSelect}
+            onBoundaryControlModeChange={handleBoundaryControlModeChange}
+            onHoverArea={setHoveredAreaState}
+            onExport={handleExport}
+            onUpdateSelection={handleUpdateAreaSelection}
+          />
+        )}
         <main className="relative flex flex-1 flex-col overflow-hidden md:flex-row">
           <div className="relative flex flex-1 flex-col overflow-hidden">
               <MapLibreMap
@@ -1372,6 +1495,7 @@ export const ReactMapApp = () => {
                 }}
                 isMobile={isMobile}
                 legendInset={legendInset}
+                onControllerReady={handleMapControllerReady}
               />
           </div>
           {!isMobile && (
@@ -1469,22 +1593,22 @@ export const ReactMapApp = () => {
       >
         <div className="flex h-full w-full overflow-hidden bg-white pt-10 pb-safe dark:bg-slate-900">
           {/* Toolbar in report overlay */}
-          <div className="absolute left-0 right-0 top-0 z-10">
-            <BoundaryToolbar
-              boundaryMode={boundaryMode}
-              boundaryControlMode={boundaryControlMode}
-              selections={toolbarSelections}
-              hoveredArea={hoveredArea}
-              stickyTopClass="top-0"
-              onBoundaryModeChange={handleBoundaryModeManualSelect}
-              onBoundaryControlModeChange={handleBoundaryControlModeChange}
-              onHoverArea={setHoveredAreaState}
-              onExport={handleExport}
-              onUpdateSelection={handleUpdateAreaSelection}
-              hideAreaSelect={isMobile}
-              isMobile={isMobile}
-            />
-          </div>
+          {!isMobile && (
+            <div className="absolute left-0 right-0 top-0 z-10">
+              <BoundaryToolbar
+                boundaryMode={boundaryMode}
+                boundaryControlMode={boundaryControlMode}
+                selections={toolbarSelections}
+                hoveredArea={hoveredArea}
+                stickyTopClass="top-0"
+                onBoundaryModeChange={handleBoundaryModeManualSelect}
+                onBoundaryControlModeChange={handleBoundaryControlModeChange}
+                onHoverArea={setHoveredAreaState}
+                onExport={handleExport}
+                onUpdateSelection={handleUpdateAreaSelection}
+              />
+            </div>
+          )}
           {activeScreen === "report" && (
             <Suspense fallback={<div className="flex flex-1 items-center justify-center text-sm text-slate-500">Loading report…</div>}>
               <ReportScreen

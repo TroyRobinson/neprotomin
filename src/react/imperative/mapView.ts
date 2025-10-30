@@ -92,6 +92,7 @@ export interface MapViewController {
   clearCountyTransientSelection: () => void;
   addTransientCounties: (counties: string[]) => void;
   fitAllOrganizations: () => void;
+  fitBounds: (bounds: BoundsArray, options?: { padding?: number; maxZoom?: number; duration?: number }) => void;
   setOrganizationPinsVisible: (visible: boolean) => void;
   setCamera: (centerLng: number, centerLat: number, zoom: number) => void;
   onCameraChange: (fn: (centerLng: number, centerLat: number, zoom: number) => void) => () => void;
@@ -1820,6 +1821,13 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       orgPinsVisible = visible;
       updateOrganizationPinsVisibility();
       orgLegend?.setVisible(visible);
+    },
+    fitBounds: (bounds: BoundsArray, options?: { padding?: number; maxZoom?: number; duration?: number }) => {
+      map.fitBounds(bounds, {
+        padding: options?.padding ?? 72,
+        maxZoom: options?.maxZoom,
+        duration: options?.duration ?? 400,
+      });
     },
     setCamera: (centerLng: number, centerLat: number, zoom: number) => {
       map.jumpTo({ center: [centerLng, centerLat], zoom });

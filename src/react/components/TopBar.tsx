@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import type { FormEvent, MouseEvent as ReactMouseEvent } from "react";
 import { db } from "../../lib/reactDb";
 import { themeController } from "../imperative/theme";
 
@@ -39,137 +40,332 @@ const LogoutIcon = () => (
   </svg>
 );
 
+const SearchIcon = () => (
+  <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 text-slate-400 dark:text-slate-500">
+    <path
+      fill="currentColor"
+      d="M13.9 12.5l4.2 4.2a1 1 0 01-1.4 1.4l-4.2-4.2a6 6 0 111.4-1.4zm-5.9 1a4 4 0 100-8 4 4 0 000 8z"
+    />
+  </svg>
+);
+
+const HamburgerIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+    <path fill="currentColor" d="M4 7a1 1 0 011-1h14a1 1 0 110 2H5a1 1 0 01-1-1zm0 5a1 1 0 011-1h14a1 1 0 110 2H5a1 1 0 01-1-1zm0 5a1 1 0 011-1h14a1 1 0 110 2H5a1 1 0 01-1-1z" />
+  </svg>
+);
+
+const CloseIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+    <path
+      fill="currentColor"
+      d="M6.225 4.811a1 1 0 011.414 0L12 9.172l4.361-4.361a1 1 0 011.415 1.414L13.414 10.6l4.362 4.361a1 1 0 01-1.415 1.415L12 12.014l-4.361 4.362a1 1 0 01-1.414-1.415L10.586 10.6 6.225 6.239a1 1 0 010-1.428z"
+    />
+  </svg>
+);
+
 interface TopBarProps {
   onBrandClick?: () => void;
   onNavigate?: (screen: "map" | "report" | "data") => void;
   active?: "map" | "report" | "data";
   onOpenAuth?: () => void;
+  isMobile?: boolean;
+  onMobileLocationSearch?: (query: string) => void;
 }
 
-export const TopBar = ({ onBrandClick, onNavigate, active = "map", onOpenAuth }: TopBarProps) => {
+export const TopBar = ({
+  onBrandClick,
+  onNavigate,
+  active = "map",
+  onOpenAuth,
+  isMobile = false,
+  onMobileLocationSearch,
+}: TopBarProps) => {
   const [theme, setTheme] = useState<ThemeName>("light");
   const { isLoading, user } = db.useAuth();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [mobileSearchValue, setMobileSearchValue] = useState("");
 
   useEffect(() => {
     const unsubscribe = themeController.subscribe((current) => {
       setTheme(current);
     });
-
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setIsMobileMenuOpen(false);
+    }
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (!isMobileMenuOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [isMobileMenuOpen]);
 
   const handleThemeToggle = () => {
     themeController.toggle();
   };
 
-  
-
-  const handleBrandClick = (e: React.MouseEvent) => {
+  const handleBrandClick = (e: ReactMouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
     onBrandClick?.();
   };
 
-  return (
-    <header
-      data-role="topbar"
-      className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white/80 px-6 pt-safe backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/80"
-    >
-      <div className="flex items-center gap-4">
-        <a
-          href="#"
-          onClick={handleBrandClick}
-          className="flex items-center gap-3 text-sm font-medium text-slate-500 dark:text-slate-400 -ml-2"
-        >
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-500 font-display text-lg font-semibold tracking-wider text-white shadow-floating">
-            NE
-          </span>
-        </a>
-        <nav className="hidden sm:flex items-center gap-2">
-          <a
-            href="#map"
-            onClick={(e) => {
-              e.preventDefault();
-              onNavigate?.("map");
-            }}
-            className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-              active === "map"
-                ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-            }`}
-            aria-current={active === "map" ? "page" : undefined}
-          >
-            Map
-          </a>
-          <a
-            href="#report"
-            onMouseEnter={() => { import("../components/ReportScreen"); }}
-            onFocus={() => { import("../components/ReportScreen"); }}
-            onClick={(e) => {
-              e.preventDefault();
-              onNavigate?.("report");
-            }}
-            className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-              active === "report"
-                ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-            }`}
-            aria-current={active === "report" ? "page" : undefined}
-          >
-            Report
-          </a>
-          {!isLoading && user && !user.isGuest && (
-            <a
-              href="#data"
-              onClick={(e) => {
-                e.preventDefault();
-                onNavigate?.("data");
-              }}
-              className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-                active === "data"
-                  ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                  : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-              }`}
-              aria-current={active === "data" ? "page" : undefined}
-            >
-              Data
-            </a>
-          )}
-        </nav>
-      </div>
+  const handleMobileSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const trimmed = mobileSearchValue.trim();
+    if (!trimmed) return;
+    onMobileLocationSearch?.(trimmed);
+  };
 
-      <div className="flex items-center gap-4">
-        {!isLoading && (!user || user.isGuest) && (
+  const handleMobileMenuToggle = () => {
+    setIsMobileMenuOpen((prev) => !prev);
+  };
+
+  const handleNavigate = (screen: "map" | "report" | "data") => {
+    setIsMobileMenuOpen(false);
+    onNavigate?.(screen);
+  };
+
+  const handleLogin = () => {
+    setIsMobileMenuOpen(false);
+    onOpenAuth?.();
+  };
+
+  const handleSignOut = () => {
+    setIsMobileMenuOpen(false);
+    void db.auth.signOut();
+  };
+
+  const showDataLink = !isLoading && user && !user.isGuest;
+
+  return (
+    <>
+      <header
+        data-role="topbar"
+        className="sticky top-0 z-20 flex flex-col gap-2 border-b border-slate-200 bg-white/80 px-4 pt-safe backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/80 sm:gap-0 sm:px-6"
+      >
+        <div className="hidden h-16 w-full items-center justify-between sm:flex">
+          <div className="flex items-center gap-4">
+            <a
+              href="#"
+              onClick={handleBrandClick}
+              className="flex items-center gap-3 text-sm font-medium text-slate-500 dark:text-slate-400 -ml-2"
+            >
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-500 font-display text-lg font-semibold tracking-wider text-white shadow-floating">
+                NE
+              </span>
+            </a>
+            <nav className="hidden items-center gap-2 sm:flex">
+              <a
+                href="#map"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onNavigate?.("map");
+                }}
+                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                  active === "map"
+                    ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                    : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                }`}
+                aria-current={active === "map" ? "page" : undefined}
+              >
+                Map
+              </a>
+              <a
+                href="#report"
+                onMouseEnter={() => {
+                  import("../components/ReportScreen");
+                }}
+                onFocus={() => {
+                  import("../components/ReportScreen");
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onNavigate?.("report");
+                }}
+                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                  active === "report"
+                    ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                    : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                }`}
+                aria-current={active === "report" ? "page" : undefined}
+              >
+                Report
+              </a>
+              {showDataLink && (
+                <a
+                  href="#data"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigate?.("data");
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                    active === "data"
+                      ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                      : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  }`}
+                  aria-current={active === "data" ? "page" : undefined}
+                >
+                  Data
+                </a>
+              )}
+            </nav>
+          </div>
+          <div className="flex items-center gap-4">
+            {!isLoading && (!user || user.isGuest) && (
+              <button
+                type="button"
+                onClick={onOpenAuth}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+              >
+                Login
+              </button>
+            )}
+            {!isLoading && user && !user.isGuest && (
+              <button
+                type="button"
+                onClick={() => db.auth.signOut()}
+                className="group inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+                title="Sign out"
+              >
+                <span className="max-w-[16ch] truncate">{user.email}</span>
+                <span className="text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-current">
+                  <LogoutIcon />
+                </span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleThemeToggle}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              aria-pressed={theme === "dark"}
+            >
+              {theme === "dark" ? <MoonIcon /> : <SunIcon />}
+            </button>
+          </div>
+        </div>
+        <div className="flex w-full items-center gap-3 py-3 sm:hidden" style={{ minHeight: "72px" }}>
           <button
             type="button"
-            onClick={onOpenAuth}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+            onClick={() => onBrandClick?.()}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-500 font-display text-lg font-semibold tracking-wider text-white shadow-floating"
+            aria-label="Return to home"
           >
-            Login
+            NE
           </button>
-        )}
-        {!isLoading && user && !user.isGuest && (
+          <form onSubmit={handleMobileSearchSubmit} className="flex-1">
+            <label className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 shadow-sm transition focus-within:border-brand-300 focus-within:ring-2 focus-within:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:focus-within:border-slate-500">
+              <SearchIcon />
+              <input
+                type="search"
+                value={mobileSearchValue}
+                onChange={(e) => setMobileSearchValue(e.target.value)}
+                placeholder="enter location"
+                className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
+                enterKeyHint="search"
+              />
+            </label>
+          </form>
           <button
             type="button"
-            onClick={() => db.auth.signOut()}
-            className="group inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-            title="Sign out"
+            onClick={handleThemeToggle}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+            aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            aria-pressed={theme === "dark"}
           >
-            <span className="max-w-[16ch] truncate">{user.email}</span>
-            <span className="opacity-0 transition-opacity group-hover:opacity-100 text-slate-500 group-hover:text-current">
-              <LogoutIcon />
-            </span>
+            {theme === "dark" ? <MoonIcon /> : <SunIcon />}
           </button>
-        )}
-        <button
-          type="button"
-          onClick={handleThemeToggle}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          aria-pressed={theme === "dark"}
-        >
-          {theme === "dark" ? <MoonIcon /> : <SunIcon />}
-        </button>
-      </div>
-    </header>
+          <button
+            type="button"
+            onClick={handleMobileMenuToggle}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+            aria-label="Open menu"
+            aria-expanded={isMobileMenuOpen}
+          >
+            <HamburgerIcon />
+          </button>
+        </div>
+      </header>
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-30 bg-white/95 backdrop-blur-md dark:bg-slate-950/95">
+          <div className="flex h-full flex-col">
+            <div className="flex items-center justify-between px-6 pt-6">
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-brand-500 font-display text-lg font-semibold text-white shadow-floating">
+                NE
+              </span>
+              <button
+                type="button"
+                onClick={handleMobileMenuToggle}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+                aria-label="Close menu"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            <nav className="mt-10 flex flex-1 flex-col gap-4 px-6 pb-10">
+              <button
+                type="button"
+                onClick={() => handleNavigate("map")}
+                className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 ${active === "map" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
+                aria-current={active === "map" ? "page" : undefined}
+              >
+                Map
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNavigate("report")}
+                className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 ${active === "report" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
+                aria-current={active === "report" ? "page" : undefined}
+              >
+                Report
+              </button>
+              {showDataLink && (
+                <button
+                  type="button"
+                  onClick={() => handleNavigate("data")}
+                  className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 ${active === "data" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
+                  aria-current={active === "data" ? "page" : undefined}
+                >
+                  Data
+                </button>
+              )}
+            </nav>
+            <div className="px-6 pb-safe pt-2">
+              {!isLoading && (!user || user.isGuest) ? (
+                <button
+                  type="button"
+                  onClick={handleLogin}
+                  className="w-full rounded-full border border-slate-200 bg-white px-5 py-3 text-base font-semibold text-slate-700 shadow-sm transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                  Login
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="w-full rounded-full border border-slate-200 bg-white px-5 py-3 text-base font-semibold text-slate-700 shadow-sm transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                  Sign out
+                </button>
+              )}
+              {!isLoading && user && !user.isGuest && (
+                <p className="mt-3 text-center text-xs text-slate-500 dark:text-slate-400">
+                  Signed in as {user.email}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
