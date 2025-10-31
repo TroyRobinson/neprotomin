@@ -1492,6 +1492,11 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         const zip = feature?.properties?.[zipFeatureProperty];
         if (typeof zip === "string" && zip.length > 0) {
           const shiftKey = extractShiftKey(originalEvent);
+          // On mobile, clear prior selections before selecting the new ZIP (unless shift-clicking to add)
+          if (isMobile && !shiftKey) {
+            zipSelection.setPinnedIds([], { shouldZoom: false, notify: false });
+            zipSelection.clearTransient({ shouldZoom: false, notify: false });
+          }
           zipSelection.toggle(zip, shiftKey, false);
           return true;
         }
