@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { id } from "@instantdb/react";
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import { db } from "../../lib/reactDb";
 import { isAdminEmail } from "../../lib/admin";
 import type { Category, OrganizationStatus, OrganizationModerationStatus } from "../../types/organization";
@@ -677,20 +677,23 @@ export const AddOrganizationScreen = ({ onCancel, onCreated, onFindNearbyOrg }: 
 
               <label className="flex flex-col gap-2">
                 <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Category</span>
-                <select
-                  name="category"
-                  value={formValues.category}
-                  onChange={(event) =>
-                    handleFieldChange("category")(event.target.value as Category)
-                  }
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
-                >
-                  {categoryOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <select
+                    name="category"
+                    value={formValues.category}
+                    onChange={(event) =>
+                      handleFieldChange("category")(event.target.value as Category)
+                    }
+                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2 pr-10 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
+                  >
+                    {categoryOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                </div>
                 {currentCategoryDescription && (
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     {currentCategoryDescription}
@@ -700,20 +703,23 @@ export const AddOrganizationScreen = ({ onCancel, onCreated, onFindNearbyOrg }: 
 
               <label className="flex flex-col gap-2">
                 <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Status</span>
-                <select
-                  name="status"
-                  value={formValues.status}
-                  onChange={(event) =>
-                    handleFieldChange("status")(event.target.value as OrganizationStatus)
-                  }
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
-                >
-                  {statusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <select
+                    name="status"
+                    value={formValues.status}
+                    onChange={(event) =>
+                      handleFieldChange("status")(event.target.value as OrganizationStatus)
+                    }
+                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2 pr-10 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
+                  >
+                    {statusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                </div>
               </label>
             </div>
           </section>
