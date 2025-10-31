@@ -4,6 +4,8 @@ import { TopBar } from "./components/TopBar";
 import { BoundaryToolbar } from "./components/BoundaryToolbar";
 import { MapLibreMap } from "./components/MapLibreMap";
 import { Sidebar } from "./components/Sidebar";
+import { WelcomeModal } from "./components/WelcomeModal";
+import { ZipSearchModal } from "./components/ZipSearchModal";
 import { useDemographics, type CombinedDemographicsSnapshot } from "./hooks/useDemographics";
 import { useStats } from "./hooks/useStats";
 import type { StatBoundaryEntry, SeriesByKind, SeriesEntry } from "./hooks/useStats";
@@ -33,6 +35,9 @@ const QueueScreen = lazy(() =>
 
 const COUNTY_MODE_ENABLE_ZOOM = 9;
 const COUNTY_MODE_DISABLE_ZOOM = 9.6;
+
+// Feature flag: if true, always show welcome modal on app load (for testing)
+const ALWAYS_SHOW_WELCOME_MODAL = true;
 
 const FALLBACK_ZIP_SCOPE = normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma") ?? "Oklahoma";
 const DEFAULT_PRIMARY_STAT_ID = "8383685c-2741-40a2-96ff-759c42ddd586";
@@ -135,6 +140,9 @@ export const ReactMapApp = () => {
   const [userLocation, setUserLocation] = useState<{ lng: number; lat: number } | null>(null);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [userLocationError, setUserLocationError] = useState<string | null>(null);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [showZipSearchModal, setShowZipSearchModal] = useState(false);
+  const [expandMobileSearch, setExpandMobileSearch] = useState(false);
   const sheetPointerIdRef = useRef<number | null>(null);
   const sheetDragStateRef = useRef<{ startY: number; startState: "peek" | "expanded" } | null>(null);
   const pendingContentDragRef = useRef<{ pointerId: number; startY: number } | null>(null);
@@ -238,31 +246,42 @@ export const ReactMapApp = () => {
     ] as [[number, number], [number, number]];
   }, [isMobile]);
 
-  const requestUserLocation = useCallback(() => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setUserLocationError("Geolocation is not supported in this browser.");
-      return;
-    }
-    if (isRequestingLocation) return;
-    setIsRequestingLocation(true);
-    setUserLocationError(null);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setIsRequestingLocation(false);
-        const { longitude, latitude } = position.coords;
-        setUserLocation({ lng: longitude, lat: latitude });
-        setActiveScreen("map");
-      },
-      (error) => {
-        setIsRequestingLocation(false);
-        setUserLocationError(error.message || "Unable to access your location.");
-      },
-      {
-        enableHighAccuracy: false,
-        maximumAge: 60_000,
-        timeout: 10_000,
-      },
-    );
+  const requestUserLocation = useCallback((): Promise<{ lng: number; lat: number }> => {
+    return new Promise((resolve, reject) => {
+      if (typeof navigator === "undefined" || !navigator.geolocation) {
+        const error = "Geolocation is not supported in this browser.";
+        setUserLocationError(error);
+        reject(new Error(error));
+        return;
+      }
+      if (isRequestingLocation) {
+        reject(new Error("Location request already in progress"));
+        return;
+      }
+      setIsRequestingLocation(true);
+      setUserLocationError(null);
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setIsRequestingLocation(false);
+          const { longitude, latitude } = position.coords;
+          const location = { lng: longitude, lat: latitude };
+          setUserLocation(location);
+          setActiveScreen("map");
+          resolve(location);
+        },
+        (error) => {
+          setIsRequestingLocation(false);
+          const errorMessage = error.message || "Unable to access your location.";
+          setUserLocationError(errorMessage);
+          reject(new Error(errorMessage));
+        },
+        {
+          enableHighAccuracy: false,
+          maximumAge: 60_000,
+          timeout: 10_000,
+        },
+      );
+    });
   }, [isRequestingLocation]);
 
   const focusUserLocation = useCallback(() => {
@@ -572,6 +591,25 @@ export const ReactMapApp = () => {
       window.removeEventListener("pointercancel", handlePointerEnd);
     };
   }, [isMobile, isDraggingSheet, finishSheetDrag, sheetPeekOffset, startSheetDrag]);
+
+  // Check if welcome modal should be shown (not dismissed)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    
+    // Feature flag: always show for testing if enabled
+    if (ALWAYS_SHOW_WELCOME_MODAL) {
+      setShowWelcomeModal(true);
+      return;
+    }
+    
+    // Normal behavior: check localStorage for dismissal
+    try {
+      const dismissed = localStorage.getItem("welcomeModal.dismissed");
+      if (!dismissed) {
+        setShowWelcomeModal(true);
+      }
+    } catch {}
+  }, []);
 
   // Persisted UI state: load on auth ready
   useEffect(() => {
@@ -1740,6 +1778,77 @@ export const ReactMapApp = () => {
     [isAdmin, setActiveScreen],
   );
 
+  const handleCloseWelcomeModal = useCallback(() => {
+    setShowWelcomeModal(false);
+    try {
+      localStorage.setItem("welcomeModal.dismissed", "true");
+    } catch {}
+  }, []);
+
+  const handleNeedFood = useCallback(async () => {
+    handleCloseWelcomeModal();
+    try {
+      const location = await requestUserLocation();
+      // Zoom to location immediately with the resolved location
+      setActiveScreen("map");
+      
+      // Find and select the ZIP code for the user's location
+      const zipCode = findZipForLocation(location.lng, location.lat);
+      if (zipCode) {
+        // Clear existing selections before selecting the new ZIP
+        applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
+        applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
+
+        // Select the ZIP containing the user's location
+        applyAreaSelection("ZIP", {
+          selected: [zipCode],
+          pinned: [zipCode],
+          transient: [],
+        });
+        
+        // Switch to ZIP mode if needed
+        setBoundaryMode("zips");
+      }
+      
+      const controller = mapControllerRef.current;
+      if (controller) {
+        const bounds = buildBoundsAroundPoint(location.lng, location.lat);
+        controller.fitBounds(bounds, { padding: isMobile ? 40 : 72, maxZoom: isMobile ? 13 : 11 });
+      } else if (mapControllerRef.current?.setCamera) {
+        const targetZoom = isMobile ? 12.6 : 10.5;
+        mapControllerRef.current.setCamera(location.lng, location.lat, targetZoom);
+      }
+      if (isMobile) {
+        collapseSheet();
+      }
+    } catch (error) {
+      // Location failed, open zip search
+      if (isMobile) {
+        // Use a small delay to ensure the component is ready
+        setTimeout(() => {
+          setExpandMobileSearch(true);
+          // Reset after a delay to allow TopBar to respond
+          setTimeout(() => setExpandMobileSearch(false), 200);
+        }, 50);
+      } else {
+        setShowZipSearchModal(true);
+      }
+    }
+  }, [handleCloseWelcomeModal, requestUserLocation, isMobile, buildBoundsAroundPoint, collapseSheet, applyAreaSelection, setBoundaryMode]);
+
+  const handleShareFood = useCallback(() => {
+    handleCloseWelcomeModal();
+    handleOpenAddOrganization();
+  }, [handleCloseWelcomeModal, handleOpenAddOrganization]);
+
+  const handleZipSearchSubmit = useCallback(
+    (query: string) => {
+      handleMobileLocationSearch(query);
+      setShowZipSearchModal(false);
+    },
+    [handleMobileLocationSearch],
+  );
+
   return (
     <div className="app-shell relative flex flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
       <TopBar
@@ -1758,6 +1867,7 @@ export const ReactMapApp = () => {
         isMobile={isMobile}
         onMobileLocationSearch={handleMobileLocationSearch}
         onAddOrganization={handleOpenAddOrganization}
+        expandMobileSearch={expandMobileSearch}
       />
       <div className="relative flex flex-1 flex-col overflow-hidden">
         {!isMobile && (
@@ -2069,6 +2179,17 @@ export const ReactMapApp = () => {
         )}
       </div>
       <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
+      <WelcomeModal
+        isOpen={showWelcomeModal}
+        onClose={handleCloseWelcomeModal}
+        onNeedFood={handleNeedFood}
+        onShareFood={handleShareFood}
+      />
+      <ZipSearchModal
+        isOpen={showZipSearchModal}
+        onClose={() => setShowZipSearchModal(false)}
+        onSearch={handleZipSearchSubmit}
+      />
     </div>
   );
 };

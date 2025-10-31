@@ -92,6 +92,7 @@ interface TopBarProps {
   isMobile?: boolean;
   onMobileLocationSearch?: (query: string) => void;
   onAddOrganization?: () => void;
+  expandMobileSearch?: boolean;
 }
 
 export const TopBar = ({
@@ -102,6 +103,7 @@ export const TopBar = ({
   isMobile = false,
   onMobileLocationSearch,
   onAddOrganization,
+  expandMobileSearch = false,
 }: TopBarProps) => {
   const [theme, setTheme] = useState<ThemeName>("light");
   const { isLoading, user } = db.useAuth();
@@ -159,6 +161,54 @@ export const TopBar = ({
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
+
+  // Handle external request to expand mobile search
+  useEffect(() => {
+    if (expandMobileSearch && isMobile) {
+      setIsMobileSearchExpanded(true);
+    }
+  }, [expandMobileSearch, isMobile]);
+
+  // Focus input when mobile search becomes expanded (handles both prop-driven and internal state changes)
+  useEffect(() => {
+    if (!isMobile || !isMobileSearchExpanded) return;
+    
+    // Wait for React to render the input before focusing
+    // Use multiple attempts with increasing delays to ensure it works
+    const attemptFocus = (attempt = 0) => {
+      if (attempt > 5) return; // Max 5 attempts
+      
+      const input = mobileSearchInputRef.current;
+      if (input && document.activeElement !== input) {
+        // Ensure the input is visible
+        if (input.offsetParent !== null) {
+          input.focus();
+          // Also trigger a click to ensure it's in focused state on mobile
+          // This helps with mobile browsers that require user interaction
+          try {
+            input.click();
+          } catch {
+            // Some browsers prevent programmatic clicks, that's okay
+          }
+        } else {
+          // Input not visible yet, try again
+          setTimeout(() => attemptFocus(attempt + 1), 50);
+        }
+      } else if (!input) {
+        // Input not rendered yet, try again
+        setTimeout(() => attemptFocus(attempt + 1), 50);
+      }
+    };
+    
+    // Start attempts after a short delay to allow React to render
+    const timeoutId = setTimeout(() => {
+      requestAnimationFrame(() => {
+        attemptFocus(0);
+      });
+    }, 100);
+    
+    return () => clearTimeout(timeoutId);
+  }, [isMobile, isMobileSearchExpanded]);
 
   useEffect(() => {
     if (!isCompactMobileSearch || !isMobileSearchExpanded) return;
