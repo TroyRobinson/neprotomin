@@ -1720,9 +1720,8 @@ export const ReactMapApp = () => {
     typeof sidebarOrganizations.visibleInViewport === "number"
       ? sidebarOrganizations.visibleInViewport
       : sidebarOrganizations.inSelection.length + sidebarOrganizations.all.length;
-  const mobileOrganizationsCount = totalSelectedCount > 0
-    ? sidebarOrganizations.inSelection.length
-    : visibleCount;
+  // Always show viewport count in mobile peek mode, regardless of area selection
+  const mobileOrganizationsCount = visibleCount;
 
   const handleTopBarNavigate = useCallback(
     (screen: "map" | "report" | "data" | "queue") => {
