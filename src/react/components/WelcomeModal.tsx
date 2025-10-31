@@ -85,7 +85,7 @@ export const WelcomeModal = ({
               onClick={onShareFood}
               className="w-full rounded-full border-2 border-brand-500 bg-white px-6 py-3 text-base font-semibold text-brand-600 shadow-sm transition hover:bg-brand-50 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:border-brand-400 dark:bg-slate-900 dark:text-brand-400 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"
             >
-              We share food
+              I can help
             </button>
           </div>
         </div>
