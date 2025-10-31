@@ -1398,7 +1398,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       LAYER_POINTS_ID,
       LAYER_HIGHLIGHT_ID,
       LAYER_CLUSTER_HIGHLIGHT_ID,
-    }, lastData);
+    }, lastData, isMobile);
 
     if (!map.getSource(USER_LOCATION_SOURCE_ID)) {
       map.addSource(USER_LOCATION_SOURCE_ID, {
