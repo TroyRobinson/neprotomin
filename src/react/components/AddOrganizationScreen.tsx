@@ -290,6 +290,38 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
     setFormValues((prev) => ({ ...prev, [field]: value }));
   };
 
+  // Enhanced input handler that works with both onChange and onInput
+  // This ensures paste events are captured properly
+  const handleInputChange = (field: keyof FormState) => (
+    event: React.ChangeEvent<HTMLInputElement> | React.FormEvent<HTMLInputElement>
+  ) => {
+    const value = event.currentTarget.value;
+    handleFieldChange(field)(value);
+  };
+
+  // Special handler for address field that includes smart parsing
+  const handleAddressChange = (
+    event: React.ChangeEvent<HTMLInputElement> | React.FormEvent<HTMLInputElement>
+  ) => {
+    const value = event.currentTarget.value;
+    // Try to parse as a full address
+    const parsed = parseFullAddress(value);
+    if (parsed) {
+      // Auto-fill all fields if we successfully parsed a full address
+      console.log("Auto-filling address fields:", parsed);
+      setFormValues((prev) => ({
+        ...prev,
+        address: parsed.address || value,
+        city: parsed.city || prev.city,
+        state: parsed.state || prev.state,
+        postalCode: parsed.zip || prev.postalCode,
+      }));
+    } else {
+      // Just update the address field normally
+      handleFieldChange("address")(value);
+    }
+  };
+
   const categoryDescriptions = useMemo(() => {
     const map = new Map<Category, string>();
     for (const option of categoryOptions) {
@@ -497,7 +529,8 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   type="text"
                   required
                   value={formValues.name}
-                  onChange={(event) => handleFieldChange("name")(event.target.value)}
+                  onChange={handleInputChange("name")}
+                  onInput={handleInputChange("name")}
                   autoComplete="organization"
                   placeholder="Community Resource Center"
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
@@ -514,7 +547,8 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                     type="email"
                     required
                     value={formValues.ownerEmail}
-                    onChange={(event) => handleFieldChange("ownerEmail")(event.target.value)}
+                    onChange={handleInputChange("ownerEmail")}
+                    onInput={handleInputChange("ownerEmail")}
                     autoComplete="email"
                     placeholder="you@example.org"
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
@@ -588,25 +622,8 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   type="text"
                   required
                   value={formValues.address}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    // Try to parse as a full address
-                    const parsed = parseFullAddress(value);
-                    if (parsed) {
-                      // Auto-fill all fields if we successfully parsed a full address
-                      console.log("Auto-filling address fields:", parsed);
-                      setFormValues((prev) => ({
-                        ...prev,
-                        address: parsed.address || value,
-                        city: parsed.city || prev.city,
-                        state: parsed.state || prev.state,
-                        postalCode: parsed.zip || prev.postalCode,
-                      }));
-                    } else {
-                      // Just update the address field normally
-                      handleFieldChange("address")(value);
-                    }
-                  }}
+                  onChange={handleAddressChange}
+                  onInput={handleAddressChange}
                   autoComplete="street-address"
                   placeholder="123 Community Ave. (or paste full address)"
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
@@ -621,7 +638,8 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   type="text"
                   required
                   value={formValues.city}
-                  onChange={(event) => handleFieldChange("city")(event.target.value)}
+                  onChange={handleInputChange("city")}
+                  onInput={handleInputChange("city")}
                   autoComplete="address-level2"
                   placeholder="Tulsa"
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
@@ -636,7 +654,8 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   type="text"
                   required
                   value={formValues.state}
-                  onChange={(event) => handleFieldChange("state")(event.target.value)}
+                  onChange={handleInputChange("state")}
+                  onInput={handleInputChange("state")}
                   autoComplete="address-level1"
                   placeholder="OK"
                   className="uppercase rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
@@ -651,7 +670,8 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   type="text"
                   required
                   value={formValues.postalCode}
-                  onChange={(event) => handleFieldChange("postalCode")(event.target.value)}
+                  onChange={handleInputChange("postalCode")}
+                  onInput={handleInputChange("postalCode")}
                   autoComplete="postal-code"
                   placeholder="74103"
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
@@ -673,7 +693,8 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   name="phone"
                   type="tel"
                   value={formValues.phone}
-                  onChange={(event) => handleFieldChange("phone")(event.target.value)}
+                  onChange={handleInputChange("phone")}
+                  onInput={handleInputChange("phone")}
                   autoComplete="tel"
                   placeholder="(918) 555-1234"
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
@@ -699,7 +720,8 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   name="website"
                   type="url"
                   value={formValues.website}
-                  onChange={(event) => handleFieldChange("website")(event.target.value)}
+                  onChange={handleInputChange("website")}
+                  onInput={handleInputChange("website")}
                   autoComplete="url"
                   placeholder="https://example.org"
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
@@ -711,7 +733,8 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   name="source"
                   type="text"
                   value={formValues.source}
-                  onChange={(event) => handleFieldChange("source")(event.target.value)}
+                  onChange={handleInputChange("source")}
+                  onInput={handleInputChange("source")}
                   placeholder="Community submission"
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
@@ -722,7 +745,8 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   name="googleCategory"
                   type="text"
                   value={formValues.googleCategory}
-                  onChange={(event) => handleFieldChange("googleCategory")(event.target.value)}
+                  onChange={handleInputChange("googleCategory")}
+                  onInput={handleInputChange("googleCategory")}
                   placeholder="Community center"
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
