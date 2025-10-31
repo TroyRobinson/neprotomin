@@ -1130,6 +1130,53 @@ export const ReactMapApp = () => {
     setActiveScreen("map");
   }, []);
 
+  const handleFindNearbyOrg = useCallback(async () => {
+    // First try to get user's location
+    try {
+      const location = await requestUserLocation();
+      // If location is successfully obtained, zoom to it
+      setActiveScreen("map");
+      
+      // Find and select the ZIP code for the user's location
+      const zipCode = findZipForLocation(location.lng, location.lat);
+      if (zipCode) {
+        // Clear existing selections before selecting the new ZIP
+        applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
+        applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
+
+        // Select the ZIP containing the user's location
+        applyAreaSelection("ZIP", {
+          selected: [zipCode],
+          pinned: [zipCode],
+          transient: [],
+        });
+        
+        // Switch to ZIP mode if needed
+        setBoundaryMode("zips");
+      }
+      
+      const controller = mapControllerRef.current;
+      if (controller) {
+        const bounds = buildBoundsAroundPoint(location.lng, location.lat);
+        controller.fitBounds(bounds, { padding: isMobile ? 40 : 72, maxZoom: isMobile ? 13 : 11 });
+      } else if (mapControllerRef.current?.setCamera) {
+        const targetZoom = isMobile ? 12.6 : 10.5;
+        mapControllerRef.current.setCamera(location.lng, location.lat, targetZoom);
+      }
+      if (isMobile) {
+        collapseSheet();
+      }
+    } catch (error) {
+      // Location failed, open zip search modal on desktop or expand mobile search on mobile
+      if (isMobile) {
+        setExpandMobileSearch(true);
+        setTimeout(() => setExpandMobileSearch(false), 200);
+      } else {
+        setShowZipSearchModal(true);
+      }
+    }
+  }, [isMobile, requestUserLocation, buildBoundsAroundPoint, collapseSheet, applyAreaSelection, setBoundaryMode]);
+
   const handleHover = useCallback((idOrIds: string | string[] | null) => {
     if (Array.isArray(idOrIds)) {
       setHighlightedOrganizationIds(idOrIds);
@@ -2173,6 +2220,7 @@ export const ReactMapApp = () => {
               <AddOrganizationScreen
                 onCancel={handleCloseAddOrganization}
                 onCreated={handleOrganizationCreated}
+                onFindNearbyOrg={handleFindNearbyOrg}
               />
             </div>
           </Suspense>

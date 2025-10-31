@@ -6,9 +6,20 @@ import { db } from "../../lib/reactDb";
 import { isAdminEmail } from "../../lib/admin";
 import type { Category, OrganizationStatus, OrganizationModerationStatus } from "../../types/organization";
 
+const SearchIcon = () => (
+  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px] text-slate-400 dark:text-slate-500">
+    <path
+      fillRule="evenodd"
+      d="M9 3.5a5.5 5.5 0 013.894 9.394l3.703 3.703a.75.75 0 11-1.06 1.06l-3.703-3.703A5.5 5.5 0 119 3.5zm0 1.5a4 4 0 100 8 4 4 0 000-8z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
+
 interface AddOrganizationScreenProps {
   onCancel: () => void;
   onCreated: (organization: { id: string; latitude: number; longitude: number; name: string }) => void;
+  onFindNearbyOrg?: () => void;
 }
 
 type DayHours = {
@@ -302,7 +313,7 @@ async function geocodeAddress(
   };
 }
 
-export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationScreenProps) => {
+export const AddOrganizationScreen = ({ onCancel, onCreated, onFindNearbyOrg }: AddOrganizationScreenProps) => {
   const { user } = db.useAuth();
   const ownerEmailFromAuth = user && !user.isGuest ? (user.email ?? "") : "";
   const [formValues, setFormValues] = useState<FormState>(() => emptyFormState(ownerEmailFromAuth));
@@ -597,8 +608,19 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
             <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Add an organization</h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-400">
               Share the details of a community organization so neighbors can discover it on the map.
-              Required fields are marked, and you can always return later to update information.
+              If you don't have an organization yet just want to share food, then use the button below...
             </p>
+            <button
+              type="button"
+              onClick={() => {
+                onCancel();
+                onFindNearbyOrg?.();
+              }}
+              className="mt-3 inline-flex w-max items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white"
+            >
+              <SearchIcon />
+              Find a Nearby Organization to Give Food To
+            </button>
           </div>
         </div>
 
