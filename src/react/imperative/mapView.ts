@@ -198,6 +198,8 @@ const COUNTY_SELECTION_MAX_ZOOM = 8.5;
 const COUNTY_ZIP_VIEW_MAX_ZOOM = 10.2;
 const COUNTY_CLICK_ZOOM_DELAY_MS = 220;
 const COUNTY_LONG_PRESS_MS = 350;
+// Minimum map movement (in meters) before we treat a gesture as a drag and collapse the mobile sheet.
+const MOBILE_DRAG_COLLAPSE_DISTANCE_METERS = 8;
 const ZCTA_STATE: ZctaStateCode = "ok";
 const ZCTA_LOAD_MIN_ZOOM = 9;
 const ZCTA_LOAD_PADDING_DEGREES = 0.75;
@@ -345,6 +347,8 @@ export const createMapView = ({
   let countyPendingZoomTimer: ReturnType<typeof setTimeout> | null = null;
   let selectedStatId: string | null = null;
   let secondaryStatId: string | null = null;
+  let dragStartCenter: maplibregl.LngLat | null = null;
+  let dragCollapseTriggered = false;
 
 let statDataStoreMap: StatDataStoreMap = new Map();
 let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
@@ -1738,7 +1742,34 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       };
       const handleMapDragStart = () => {
         resetCountyPressState();
-        onMapDragStart?.();
+        dragStartCenter = map.getCenter();
+        dragCollapseTriggered = false;
+      };
+      const handleMapDrag = () => {
+        if (!dragStartCenter || dragCollapseTriggered) return;
+        const currentCenter = map.getCenter();
+        let distanceMoved = 0;
+        try {
+          const distanceFn = (dragStartCenter as unknown as { distanceTo?: (c: maplibregl.LngLat) => number }).distanceTo;
+          if (typeof distanceFn === "function") {
+            distanceMoved = distanceFn.call(dragStartCenter, currentCenter);
+          } else {
+            const deltaLng = Math.abs(currentCenter.lng - dragStartCenter.lng);
+            const deltaLat = Math.abs(currentCenter.lat - dragStartCenter.lat);
+            // Rough conversion: degrees -> meters at equator (~111_139 meters per degree)
+            distanceMoved = Math.max(deltaLng, deltaLat) * 111_139;
+          }
+        } catch {
+          distanceMoved = 0;
+        }
+        if (distanceMoved >= MOBILE_DRAG_COLLAPSE_DISTANCE_METERS) {
+          dragCollapseTriggered = true;
+          onMapDragStart?.();
+        }
+      };
+      const handleMapDragEnd = () => {
+        dragStartCenter = null;
+        dragCollapseTriggered = false;
       };
       countyInteractionLayers.forEach((layerId) => {
         map.on("mousedown", layerId, handleCountyPointerDown);
@@ -1746,6 +1777,8 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       });
       map.on("mouseup", handleMapMouseUp);
       map.on("dragstart", handleMapDragStart);
+      map.on("drag", handleMapDrag);
+      map.on("dragend", handleMapDragEnd);
       const onBoundaryMouseEnter = () => { 
         if (boundaryMode === "zips" && !(isMobile && orgPinsVisible)) {
           map.getCanvas().style.cursor = "pointer";
@@ -1840,7 +1873,11 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         });
         map.off("mouseup", handleMapMouseUp);
         map.off("dragstart", handleMapDragStart);
+        map.off("drag", handleMapDrag);
+        map.off("dragend", handleMapDragEnd);
         resetCountyPressState();
+        dragStartCenter = null;
+        dragCollapseTriggered = false;
       };
     })();
 
