@@ -419,7 +419,7 @@ export const TopBar = ({
                   About
                 </a>
                 <a
-                  href="https://neighborhoodexplorer.org/?dwft_disable_homepage_redirect=1"
+                  href="https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=1"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="group relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
