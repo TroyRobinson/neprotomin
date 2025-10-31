@@ -9,6 +9,12 @@ interface AddOrganizationScreenProps {
   onCreated: (organization: { id: string; latitude: number; longitude: number; name: string }) => void;
 }
 
+type DayHours = {
+  enabled: boolean;
+  openTime: string;
+  closeTime: string;
+};
+
 type FormState = {
   name: string;
   ownerEmail: string;
@@ -24,6 +30,8 @@ type FormState = {
   postalCode: string;
   source: string;
   googleCategory: string;
+  // Hours: Sunday=0, Monday=1, ... Saturday=6
+  hours: Record<number, DayHours>;
 };
 
 const categoryOptions: Array<{ value: Category; label: string; description: string }> = [
@@ -55,12 +63,38 @@ const emptyFormState = (ownerEmail: string): FormState => ({
   postalCode: "",
   source: "",
   googleCategory: "",
+  hours: {
+    0: { enabled: false, openTime: "09:00", closeTime: "17:00" }, // Sunday
+    1: { enabled: false, openTime: "09:00", closeTime: "17:00" }, // Monday
+    2: { enabled: false, openTime: "09:00", closeTime: "17:00" }, // Tuesday
+    3: { enabled: false, openTime: "09:00", closeTime: "17:00" }, // Wednesday
+    4: { enabled: false, openTime: "09:00", closeTime: "17:00" }, // Thursday
+    5: { enabled: false, openTime: "09:00", closeTime: "17:00" }, // Friday
+    6: { enabled: false, openTime: "09:00", closeTime: "17:00" }, // Saturday
+  },
 });
 
 const toNullableString = (value: string): string | null => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 };
+
+// Convert 24-hour time (HH:MM) to 12-hour format (H:MM AM/PM)
+function formatTime12Hour(time24: string): string {
+  const [hoursStr, minutesStr] = time24.split(":");
+  const hours = parseInt(hoursStr, 10);
+  const minutes = minutesStr;
+
+  if (hours === 0) {
+    return `12:${minutes} AM`;
+  } else if (hours < 12) {
+    return `${hours}:${minutes} AM`;
+  } else if (hours === 12) {
+    return `12:${minutes} PM`;
+  } else {
+    return `${hours - 12}:${minutes} PM`;
+  }
+}
 
 // Parse a full address string into components
 // Handles formats like:
@@ -194,7 +228,7 @@ const parseCoordinate = (
   return { value: parsed };
 };
 
-// Geocode an address using OpenStreetMap's Nominatim API (CORS-friendly)
+// Geocode an address using geocode.maps.co (free, browser-friendly)
 async function geocodeAddress(
   address: string,
   city: string,
@@ -202,27 +236,18 @@ async function geocodeAddress(
   zip: string,
 ): Promise<{ latitude: number; longitude: number } | { error: string }> {
   try {
-    // Construct a full address string for Nominatim
+    // Construct a full address string
     const fullAddress = `${address}, ${city}, ${state} ${zip}, USA`;
 
     const params = new URLSearchParams({
       q: fullAddress,
-      format: "json",
-      addressdetails: "1",
-      limit: "1",
-      countrycodes: "us", // Restrict to United States
     });
 
-    const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`;
+    const url = `https://geocode.maps.co/search?${params.toString()}`;
     console.log("Geocoding request:", { address, city, state, zip });
     console.log("Full address string:", fullAddress);
 
-    const response = await fetch(url, {
-      headers: {
-        // Nominatim requires a User-Agent header per their usage policy
-        "User-Agent": "NEProtoMinimal Community Map",
-      },
-    });
+    const response = await fetch(url);
     console.log("Response status:", response.status, response.statusText);
 
     if (!response.ok) {
@@ -320,6 +345,20 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
       // Just update the address field normally
       handleFieldChange("address")(value);
     }
+  };
+
+  // Handler for updating hours for a specific day
+  const handleHoursChange = (day: number, field: keyof DayHours, value: string | boolean) => {
+    setFormValues((prev) => ({
+      ...prev,
+      hours: {
+        ...prev.hours,
+        [day]: {
+          ...prev.hours[day],
+          [field]: value,
+        },
+      },
+    }));
   };
 
   const categoryDescriptions = useMemo(() => {
@@ -464,6 +503,30 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
       (formData.get("googleCategory") ?? formValues.googleCategory ?? "") as string,
     );
     if (googleCategoryValue) payload.googleCategory = googleCategoryValue;
+
+    // Convert hours to schema format
+    const enabledDays = Object.entries(formValues.hours).filter(([_, hours]) => hours.enabled);
+    if (enabledDays.length > 0) {
+      const periods = enabledDays.map(([dayStr, hours]) => ({
+        day: parseInt(dayStr, 10),
+        openTime: hours.openTime,
+        closeTime: hours.closeTime,
+      }));
+
+      // Generate human-readable weekday text
+      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const weekdayText = enabledDays.map(([dayStr, hours]) => {
+        const dayNum = parseInt(dayStr, 10);
+        const dayName = dayNames[dayNum];
+        return `${dayName}: ${hours.openTime} – ${hours.closeTime}`;
+      });
+
+      payload.hours = {
+        periods,
+        weekdayText,
+        isUnverified: true, // Mark as user-submitted
+      };
+    }
 
     try {
       await db.transact(db.tx.organizations[organizationId].update(payload));
@@ -700,6 +763,54 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
               </label>
+
+              {/* Hours subsection */}
+              <div className="md:col-span-2 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Hours of Operation (Optional)</h3>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Check days & set times</span>
+                </div>
+                <div className="space-y-2">
+                  {[
+                    { day: 1, label: "Monday" },
+                    { day: 2, label: "Tuesday" },
+                    { day: 3, label: "Wednesday" },
+                    { day: 4, label: "Thursday" },
+                    { day: 5, label: "Friday" },
+                    { day: 6, label: "Saturday" },
+                    { day: 0, label: "Sunday" },
+                  ].map(({ day, label }) => (
+                    <div key={day} className="flex items-center gap-3">
+                      <label className="flex items-center gap-2 min-w-[100px]">
+                        <input
+                          type="checkbox"
+                          checked={formValues.hours[day].enabled}
+                          onChange={(e) => handleHoursChange(day, "enabled", e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
+                        />
+                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>
+                      </label>
+                      {formValues.hours[day].enabled && (
+                        <div className="flex items-center gap-2 flex-1">
+                          <input
+                            type="time"
+                            value={formValues.hours[day].openTime}
+                            onChange={(e) => handleHoursChange(day, "openTime", e.target.value)}
+                            className="rounded border border-slate-300 px-2 py-1 text-sm text-slate-900 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                          />
+                          <span className="text-xs text-slate-500 dark:text-slate-400">to</span>
+                          <input
+                            type="time"
+                            value={formValues.hours[day].closeTime}
+                            onChange={(e) => handleHoursChange(day, "closeTime", e.target.value)}
+                            className="rounded border border-slate-300 px-2 py-1 text-sm text-slate-900 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </section>
 
