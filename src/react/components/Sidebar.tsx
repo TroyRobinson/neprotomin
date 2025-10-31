@@ -88,6 +88,30 @@ export const Sidebar = ({
   const selectedCounties = selectedAreas?.COUNTY ?? [];
   const totalSelectedCount = selectedZips.length + selectedCounties.length;
 
+  // Determine the "IN SELECTION" label - show area name if only one area is selected
+  const inSelectionLabel = useMemo(() => {
+    if (totalSelectedCount === 1) {
+      const selectedZip = selectedZips[0];
+      const selectedCounty = selectedCounties[0];
+      if (selectedZip && areaNameLookup) {
+        const areaName = areaNameLookup("ZIP", selectedZip);
+        return areaName ? `IN ${areaName}` : `IN ${selectedZip}`;
+      }
+      if (selectedCounty && areaNameLookup) {
+        const areaName = areaNameLookup("COUNTY", selectedCounty);
+        return areaName ? `IN ${areaName}` : `IN ${selectedCounty}`;
+      }
+      // Fallback to code if no lookup function available
+      if (selectedZip) {
+        return `IN ${selectedZip}`;
+      }
+      if (selectedCounty) {
+        return `IN ${selectedCounty}`;
+      }
+    }
+    return "IN SELECTION";
+  }, [totalSelectedCount, selectedZips, selectedCounties, areaNameLookup]);
+
   const visibleCount =
     typeof visibleInViewport === "number" ? visibleInViewport : inSelection.length + all.length;
   const totalCount = typeof totalSourceCount === "number" ? totalSourceCount : visibleCount;
@@ -252,7 +276,7 @@ export const Sidebar = ({
                 {inSelection.length > 0 && (
                   <>
                     <h3 className="px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                      IN SELECTION
+                      {inSelectionLabel}
                     </h3>
                     <ul className="space-y-2 px-4">
                       {inSelection.map((org) => (
