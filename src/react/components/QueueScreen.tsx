@@ -114,8 +114,27 @@ const buildLocationLine = (org: Organization): string | null => {
 };
 
 /**
- * Builds a Google Maps URL from organization address components.
- * Opens in default maps app on mobile devices, or Google Maps web on desktop.
+ * Detects if the user is on a mobile device and returns platform info.
+ */
+const getMobilePlatform = (): { isMobile: boolean; isIOS: boolean; isAndroid: boolean } => {
+  if (typeof window === "undefined") {
+    return { isMobile: false, isIOS: false, isAndroid: false };
+  }
+  
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  const isAndroid = /Android/i.test(ua);
+  const isMobile = isIOS || isAndroid || 
+    /webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua) ||
+    (window.matchMedia && window.matchMedia("(max-width: 768px)").matches);
+  
+  return { isMobile, isIOS, isAndroid };
+};
+
+/**
+ * Builds a maps URL from organization address components.
+ * On mobile: opens native maps app (Apple Maps on iOS, Google Maps on Android).
+ * On desktop: opens Google Maps web.
  */
 const buildMapsUrl = (org: Organization): string | null => {
   const segments = [
@@ -127,7 +146,42 @@ const buildMapsUrl = (org: Organization): string | null => {
   
   if (segments.length === 0) return null;
   
+  const { isMobile, isIOS, isAndroid } = getMobilePlatform();
   const query = encodeURIComponent(segments.join(", "));
+  
+  // On mobile, use platform-specific URL schemes to open native maps app
+  if (isMobile) {
+    // iOS: Use Apple Maps URL scheme
+    if (isIOS) {
+      // If we have coordinates, use them for precise location
+      if (typeof org.latitude === "number" && typeof org.longitude === "number" && 
+          isFinite(org.latitude) && isFinite(org.longitude)) {
+        return `http://maps.apple.com/?ll=${org.latitude},${org.longitude}`;
+      }
+      // Otherwise, use address query
+      return `http://maps.apple.com/?q=${query}`;
+    }
+    
+    // Android: Use geo: URI scheme (opens Google Maps)
+    if (isAndroid) {
+      // If we have coordinates, use them for precise location
+      if (typeof org.latitude === "number" && typeof org.longitude === "number" && 
+          isFinite(org.latitude) && isFinite(org.longitude)) {
+        return `geo:${org.latitude},${org.longitude}`;
+      }
+      // Otherwise, use address query
+      return `geo:0,0?q=${query}`;
+    }
+    
+    // Other mobile devices: try geo: URI as fallback
+    if (typeof org.latitude === "number" && typeof org.longitude === "number" && 
+        isFinite(org.latitude) && isFinite(org.longitude)) {
+      return `geo:${org.latitude},${org.longitude}`;
+    }
+    return `geo:0,0?q=${query}`;
+  }
+  
+  // On desktop, use Google Maps web
   return `https://www.google.com/maps/search/?api=1&query=${query}`;
 };
 
