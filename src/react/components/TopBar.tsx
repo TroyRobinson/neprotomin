@@ -428,7 +428,7 @@ export const TopBar = ({
                   <span className="relative inline-flex h-4 w-7 items-center rounded-full bg-brand-400 transition-colors dark:bg-brand-500 group-hover:bg-slate-300 dark:group-hover:bg-slate-600">
                     <span className="inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition translate-x-3 group-hover:translate-x-1.5" />
                   </span>
-                  <span className="whitespace-nowrap">Switch NE Back</span>
+                  <span className="whitespace-nowrap">Switch NE Home</span>
                 </a>
               </nav>
               {/* Gradient fade overlay for truncating links */}
