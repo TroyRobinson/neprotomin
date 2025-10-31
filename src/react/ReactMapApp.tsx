@@ -37,7 +37,7 @@ const COUNTY_MODE_ENABLE_ZOOM = 9;
 const COUNTY_MODE_DISABLE_ZOOM = 9.6;
 
 // Feature flag: if true, always show welcome modal on app load (for testing)
-const ALWAYS_SHOW_WELCOME_MODAL = true;
+const ALWAYS_SHOW_WELCOME_MODAL = false;
 
 const FALLBACK_ZIP_SCOPE = normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma") ?? "Oklahoma";
 const DEFAULT_PRIMARY_STAT_ID = "8383685c-2741-40a2-96ff-759c42ddd586";
