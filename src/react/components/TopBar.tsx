@@ -4,6 +4,11 @@ import { db } from "../../lib/reactDb";
 import { isAdminEmail } from "../../lib/admin";
 import { themeController } from "../imperative/theme";
 
+// ============================================================================
+// Enable Features
+// ============================================================================
+const ENABLE_REPORT_MENU = false;
+
 type ThemeName = "light" | "dark";
 
 const SunIcon = () => (
@@ -257,36 +262,38 @@ export const TopBar = ({
                     e.preventDefault();
                     onNavigate?.("map");
                   }}
-                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap ${
                     active === "map"
                       ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
                       : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                   }`}
                   aria-current={active === "map" ? "page" : undefined}
                 >
-                  Map
+                  Food Map
                 </a>
-                <a
-                  href="#report"
-                  onMouseEnter={() => {
-                    import("../components/ReportScreen");
-                  }}
-                  onFocus={() => {
-                    import("../components/ReportScreen");
-                  }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onNavigate?.("report");
-                  }}
-                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-                    active === "report"
-                      ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                      : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                  }`}
-                  aria-current={active === "report" ? "page" : undefined}
-                >
-                  Report
-                </a>
+                {ENABLE_REPORT_MENU && (
+                  <a
+                    href="#report"
+                    onMouseEnter={() => {
+                      import("../components/ReportScreen");
+                    }}
+                    onFocus={() => {
+                      import("../components/ReportScreen");
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onNavigate?.("report");
+                    }}
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                      active === "report"
+                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                        : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    }`}
+                    aria-current={active === "report" ? "page" : undefined}
+                  >
+                    Report
+                  </a>
+                )}
                 {showDataLink && (
                   <a
                     href="#data"
@@ -325,9 +332,9 @@ export const TopBar = ({
                   href="https://www.neighborhoodexplorer.org/statistics/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                 >
-                  Stats
+                  All Stats
                 </a>
                 <a
                   href="https://www.neighborhoodexplorer.org/organizations/"
@@ -543,19 +550,21 @@ export const TopBar = ({
               <button
                 type="button"
                 onClick={() => handleNavigate("map")}
-                className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 ${active === "map" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
+                className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 whitespace-nowrap ${active === "map" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
                 aria-current={active === "map" ? "page" : undefined}
               >
-                Map
+                Food Map
               </button>
-              <button
-                type="button"
-                onClick={() => handleNavigate("report")}
-                className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 ${active === "report" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
-                aria-current={active === "report" ? "page" : undefined}
-              >
-                Report
-              </button>
+              {ENABLE_REPORT_MENU && (
+                <button
+                  type="button"
+                  onClick={() => handleNavigate("report")}
+                  className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 ${active === "report" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
+                  aria-current={active === "report" ? "page" : undefined}
+                >
+                  Report
+                </button>
+              )}
               {showDataLink && (
                 <button
                   type="button"
@@ -580,9 +589,9 @@ export const TopBar = ({
                 href="https://www.neighborhoodexplorer.org/statistics/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+                className="w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 whitespace-nowrap"
               >
-                Stats
+                All Stats
               </a>
               <a
                 href="https://www.neighborhoodexplorer.org/organizations/"
