@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { id } from "@instantdb/react";
 import { db } from "../../lib/reactDb";
-import type { Category, OrganizationStatus } from "../../types/organization";
+import { isAdminEmail } from "../../lib/admin";
+import type { Category, OrganizationStatus, OrganizationModerationStatus } from "../../types/organization";
 
 interface AddOrganizationScreenProps {
   onCancel: () => void;
@@ -204,29 +205,6 @@ function parseFullAddress(input: string): {
     return null;
   }
 }
-
-const parseCoordinate = (
-  label: "Latitude" | "Longitude",
-  rawValue: string,
-  min: number,
-  max: number,
-): { value: number; error?: string } => {
-  const trimmed = rawValue.trim();
-  if (!trimmed) {
-    return { value: Number.NaN, error: `${label} is required so we can place the map pin.` };
-  }
-  const parsed = Number.parseFloat(trimmed);
-  if (!Number.isFinite(parsed)) {
-    return { value: Number.NaN, error: `${label} must be a numeric value.` };
-  }
-  if (parsed < min || parsed > max) {
-    return {
-      value: Number.NaN,
-      error: `${label} must be between ${min} and ${max}.`,
-    };
-  }
-  return { value: parsed };
-};
 
 // Geocode using multiple free services with fallback support
 async function geocodeAddress(
@@ -470,8 +448,13 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
     setGeocodedCoordinates(geocodeResult);
 
     const organizationId = id();
+    const submittedAt = Date.now();
 
     const canonicalOwnerEmail = ownerEmailInput.toLowerCase();
+    const submitterIsAdmin = user && !user.isGuest && isAdminEmail(user.email ?? null);
+    const ownerIsAdmin = isAdminEmail(canonicalOwnerEmail);
+    const moderationStatus: OrganizationModerationStatus =
+      submitterIsAdmin || ownerIsAdmin ? "approved" : "pending";
 
     const payload: Record<string, unknown> = {
       name: nextName,
@@ -480,7 +463,13 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
       status: formValues.status,
       latitude: latitudeValue,
       longitude: longitudeValue,
+      moderationStatus,
+      submittedAt,
+      queueSortKey: submittedAt,
     };
+    if (moderationStatus === "approved") {
+      payload.moderationChangedAt = submittedAt;
+    }
 
     const websiteValue = toNullableString(
       (formData.get("website") ?? formValues.website ?? "") as string,
@@ -544,7 +533,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
       payload.hours = {
         periods,
         weekdayText,
-        isUnverified: true, // Mark as user-submitted
+        isUnverified: moderationStatus !== "approved", // Admins auto-verify their submissions
       };
     }
 

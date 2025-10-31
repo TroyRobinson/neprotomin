@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { FormEvent, MouseEvent as ReactMouseEvent } from "react";
 import { db } from "../../lib/reactDb";
+import { isAdminEmail } from "../../lib/admin";
 import { themeController } from "../imperative/theme";
 
 type ThemeName = "light" | "dark";
@@ -80,8 +81,8 @@ const MOBILE_SEARCH_AUTO_EXPAND_THRESHOLD = 380;
 
 interface TopBarProps {
   onBrandClick?: () => void;
-  onNavigate?: (screen: "map" | "report" | "data") => void;
-  active?: "map" | "report" | "data";
+  onNavigate?: (screen: "map" | "report" | "data" | "queue") => void;
+  active?: "map" | "report" | "data" | "queue";
   onOpenAuth?: () => void;
   isMobile?: boolean;
   onMobileLocationSearch?: (query: string) => void;
@@ -195,7 +196,7 @@ export const TopBar = ({
     setIsMobileMenuOpen((prev) => !prev);
   };
 
-  const handleNavigate = (screen: "map" | "report" | "data") => {
+  const handleNavigate = (screen: "map" | "report" | "data" | "queue") => {
     setIsMobileMenuOpen(false);
     onNavigate?.(screen);
   };
@@ -227,6 +228,8 @@ export const TopBar = ({
   };
 
   const showDataLink = !isLoading && user && !user.isGuest;
+  const showQueueLink =
+    !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
 
   return (
     <>
@@ -295,12 +298,29 @@ export const TopBar = ({
                       : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                   }`}
                   aria-current={active === "data" ? "page" : undefined}
-                >
-                  Data
-                </a>
-              )}
-            </nav>
-          </div>
+              >
+                Data
+              </a>
+            )}
+            {showQueueLink && (
+              <a
+                href="#queue"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onNavigate?.("queue");
+                }}
+                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                  active === "queue"
+                    ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                    : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                }`}
+                aria-current={active === "queue" ? "page" : undefined}
+              >
+                Queue
+              </a>
+            )}
+          </nav>
+        </div>
           <div className="flex items-center gap-4">
             {!isLoading && (!user || user.isGuest) && (
               <button
@@ -476,6 +496,16 @@ export const TopBar = ({
                   aria-current={active === "data" ? "page" : undefined}
                 >
                   Data
+                </button>
+              )}
+              {showQueueLink && (
+                <button
+                  type="button"
+                  onClick={() => handleNavigate("queue")}
+                  className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 ${active === "queue" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
+                  aria-current={active === "queue" ? "page" : undefined}
+                >
+                  Queue
                 </button>
               )}
             </nav>

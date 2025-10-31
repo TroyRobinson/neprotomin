@@ -20,11 +20,15 @@ import { DEFAULT_PARENT_AREA_BY_KIND } from "../types/areas";
 import { normalizeScopeLabel, buildScopeLabelAliases } from "../lib/scopeLabels";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import type { MapViewController } from "./imperative/mapView";
+import { isAdminEmail } from "../lib/admin";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
 const AddOrganizationScreen = lazy(() =>
   import("./components/AddOrganizationScreen").then((m) => ({ default: m.AddOrganizationScreen })),
+);
+const QueueScreen = lazy(() =>
+  import("./components/QueueScreen").then((m) => ({ default: m.QueueScreen })),
 );
 
 const COUNTY_MODE_ENABLE_ZOOM = 9;
@@ -113,7 +117,7 @@ export const ReactMapApp = () => {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [hasAppliedDefaultStat, setHasAppliedDefaultStat] = useState(false);
   const [hasSyncedDefaultCategory, setHasSyncedDefaultCategory] = useState(false);
-  const [activeScreen, setActiveScreen] = useState<"map" | "report" | "data" | "addOrg">("map");
+  const [activeScreen, setActiveScreen] = useState<"map" | "report" | "data" | "queue" | "addOrg">("map");
   const [authOpen, setAuthOpen] = useState(false);
   const [cameraState, setCameraState] = useState<{ center: [number, number]; zoom: number } | null>(null);
   const [zipScope, setZipScope] = useState<string>(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
@@ -407,6 +411,11 @@ export const ReactMapApp = () => {
   };
 
   const { isLoading: isAuthLoading, user } = db.useAuth();
+  const isAdmin = useMemo(() => {
+    if (!user || user.isGuest) return false;
+    if (typeof user.email !== "string" || user.email.trim().length === 0) return false;
+    return isAdminEmail(user.email);
+  }, [user]);
   useEffect(() => {
     if (isAuthLoading) return;
     if (!user) {
@@ -415,6 +424,12 @@ export const ReactMapApp = () => {
       });
     }
   }, [isAuthLoading, user]);
+
+  useEffect(() => {
+    if (!isAdmin && activeScreen === "queue") {
+      setActiveScreen("map");
+    }
+  }, [isAdmin, activeScreen]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1709,12 +1724,31 @@ export const ReactMapApp = () => {
     ? sidebarOrganizations.inSelection.length
     : visibleCount;
 
+  const handleTopBarNavigate = useCallback(
+    (screen: "map" | "report" | "data" | "queue") => {
+      if (screen === "queue" && !isAdmin) {
+        setActiveScreen("map");
+        return;
+      }
+      setActiveScreen(screen);
+    },
+    [isAdmin, setActiveScreen],
+  );
+
   return (
     <div className="app-shell relative flex flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
       <TopBar
         onBrandClick={handleBrandClick}
-        onNavigate={setActiveScreen}
-        active={activeScreen === "report" ? "report" : activeScreen === "data" ? "data" : "map"}
+        onNavigate={handleTopBarNavigate}
+        active={
+          activeScreen === "report"
+            ? "report"
+            : activeScreen === "data"
+            ? "data"
+            : activeScreen === "queue"
+            ? "queue"
+            : "map"
+        }
         onOpenAuth={() => setAuthOpen(true)}
         isMobile={isMobile}
         onMobileLocationSearch={handleMobileLocationSearch}
@@ -1988,6 +2022,21 @@ export const ReactMapApp = () => {
           <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-slate-500">Loading data…</div>}>
             <div className="flex h-full w-full overflow-auto bg-white pb-safe dark:bg-slate-900">
               <DataScreen />
+            </div>
+          </Suspense>
+        )}
+      </div>
+
+      {/* Queue overlay */}
+      <div
+        aria-hidden={activeScreen !== "queue"}
+        style={{ visibility: activeScreen === "queue" ? "visible" : "hidden", top: topBarHeight }}
+        className="absolute left-0 right-0 bottom-0 z-30"
+      >
+        {activeScreen === "queue" && (
+          <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-slate-500">Loading queue…</div>}>
+            <div className="flex h-full w-full overflow-hidden bg-white pb-safe dark:bg-slate-950">
+              <QueueScreen />
             </div>
           </Suspense>
         )}

@@ -18,6 +18,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isOpen, onClose]);
 
+  React.useEffect(() => {
+    if (!isOpen) {
+      setSentEmail("");
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
@@ -51,7 +57,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           {!sentEmail ? (
             <EmailStep onSendEmail={setSentEmail} />
           ) : (
-            <CodeStep sentEmail={sentEmail} onSuccess={onClose} />
+            <CodeStep sentEmail={sentEmail} onSuccess={onClose} onChangeEmail={() => setSentEmail("")} />
           )}
         </div>
       </div>
@@ -97,8 +103,10 @@ function EmailStep({ onSendEmail }: { onSendEmail: (email: string) => void }) {
   );
 }
 
-function CodeStep({ sentEmail, onSuccess }: { sentEmail: string; onSuccess: () => void }) {
+function CodeStep({ sentEmail, onSuccess, onChangeEmail }: { sentEmail: string; onSuccess: () => void; onChangeEmail: () => void }) {
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const [isResending, setIsResending] = React.useState(false);
+  const [resendMessage, setResendMessage] = React.useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -111,6 +119,20 @@ function CodeStep({ sentEmail, onSuccess }: { sentEmail: string; onSuccess: () =
         inputEl.value = "";
         alert("Uh oh :" + (err.body?.message || "Invalid code"));
       });
+  };
+
+  const handleResend = () => {
+    setIsResending(true);
+    setResendMessage(null);
+    db.auth
+      .sendMagicCode({ email: sentEmail })
+      .then(() => {
+        setResendMessage("We just sent a new code. It might take a moment to arrive.");
+      })
+      .catch((err) => {
+        setResendMessage(err.body?.message || "We couldn't resend the code. Please try again.");
+      })
+      .finally(() => setIsResending(false));
   };
 
   return (
@@ -133,8 +155,25 @@ function CodeStep({ sentEmail, onSuccess }: { sentEmail: string; onSuccess: () =
       >
         Verify Code
       </button>
+      <div className="flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400">
+        <button
+          type="button"
+          onClick={handleResend}
+          disabled={isResending}
+          className="inline-flex w-full items-center justify-center rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-brand-200 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
+        >
+          {isResending ? "Sending…" : "Resend code"}
+        </button>
+        <button
+          type="button"
+          onClick={onChangeEmail}
+          className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-300"
+        >
+          Use a different email
+        </button>
+        {resendMessage ? <span>{resendMessage}</span> : null}
+      </div>
     </form>
   );
 }
-
 

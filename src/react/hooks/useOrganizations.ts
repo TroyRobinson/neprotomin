@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import { db } from "../../lib/reactDb";
-import type { Organization, OrganizationStatus } from "../../types/organization";
+import type {
+  Organization,
+  OrganizationStatus,
+  OrganizationModerationStatus,
+} from "../../types/organization";
 
 export const useOrganizations = () => {
   const { isLoading: isAuthLoading } = db.useAuth();
@@ -52,6 +56,18 @@ export const useOrganizations = () => {
             ? (rawStatus as OrganizationStatus)
             : null;
 
+        const rawModeration =
+          typeof (row as any).moderationStatus === "string"
+            ? ((row as any).moderationStatus as string).toLowerCase()
+            : null;
+        const moderationStatus =
+          rawModeration && ["pending", "approved", "declined"].includes(rawModeration)
+            ? (rawModeration as OrganizationModerationStatus)
+            : null;
+        if (moderationStatus === "pending" || moderationStatus === "declined") {
+          continue;
+        }
+
         const rawValue =
           typeof (row as any).raw === "object" && (row as any).raw !== null
             ? ((row as any).raw as Record<string, unknown>)
@@ -90,6 +106,19 @@ export const useOrganizations = () => {
           lastSyncedAt:
             typeof (row as any).lastSyncedAt === "number"
               ? ((row as any).lastSyncedAt as number)
+              : null,
+          moderationStatus,
+          moderationChangedAt:
+            typeof (row as any).moderationChangedAt === "number"
+              ? ((row as any).moderationChangedAt as number)
+              : null,
+          submittedAt:
+            typeof (row as any).submittedAt === "number"
+              ? ((row as any).submittedAt as number)
+              : null,
+          queueSortKey:
+            typeof (row as any).queueSortKey === "number"
+              ? ((row as any).queueSortKey as number)
               : null,
           raw: rawValue,
         });

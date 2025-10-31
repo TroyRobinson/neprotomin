@@ -40,6 +40,10 @@ const _schema = i.schema({
       status: i.string().indexed().optional(),
       lastSyncedAt: i.number().indexed().optional(),
       raw: i.json<Record<string, unknown>>().optional(),
+      moderationStatus: i.string().indexed().optional(),
+      moderationChangedAt: i.number().indexed().optional(),
+      submittedAt: i.number().indexed().optional(),
+      queueSortKey: i.number().indexed().optional(),
     }),
     areas: i.entity({
       code: i.string().unique().indexed(), // e.g., ZIP / county FIPS

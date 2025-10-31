@@ -2,6 +2,8 @@ export type Category = "health" | "education" | "justice" | "economy" | "food";
 
 export type OrganizationStatus = "active" | "moved" | "closed";
 
+export type OrganizationModerationStatus = "pending" | "approved" | "declined";
+
 export interface OrganizationHoursPeriod {
   day: number;
   openTime?: string | null;
@@ -38,6 +40,10 @@ export interface Organization {
   status?: OrganizationStatus | null;
   lastSyncedAt?: number | null;
   raw?: Record<string, unknown> | null;
+  moderationStatus?: OrganizationModerationStatus | null;
+  moderationChangedAt?: number | null;
+  submittedAt?: number | null;
+  queueSortKey?: number | null;
 }
 
 export const TULSA_CENTER = {

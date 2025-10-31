@@ -53,5 +53,6 @@ export default defineConfig(async ({ mode }) => {
         },
       },
     },
+    envPrefix: ['VITE_', 'ADMIN_'],
   };
 });
