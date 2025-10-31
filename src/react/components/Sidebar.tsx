@@ -9,6 +9,12 @@ import type { CombinedDemographicsSnapshot } from "../hooks/useDemographics";
 import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
 import type { AreaId } from "../../types/areas";
 
+// ============================================================================
+// Enable Features
+// ============================================================================
+const ENABLE_DEMOGRAPHICS_SECTION = false;
+const ENABLE_STATISTICS_VISUALIZATION_SECTION = false;
+
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type SelectedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
 type PinnedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
@@ -180,21 +186,25 @@ export const Sidebar = ({
       {showInsights && (
         <>
           {/* Demographics Bar */}
-          <DemographicsBar snapshot={demographicsSnapshot ?? null} />
+          {ENABLE_DEMOGRAPHICS_SECTION && (
+            <DemographicsBar snapshot={demographicsSnapshot ?? null} />
+          )}
 
           {/* Stat Visualization */}
-          <StatViz
-            statsById={statsById}
-            seriesByStatIdByKind={seriesByStatIdByKind}
-            statDataById={statDataById}
-            selectedAreas={selectedAreas}
-            pinnedAreas={pinnedAreas}
-            selectedStatId={selectedStatId}
-            hoveredArea={hoveredArea}
-            onHoverArea={onHoverArea}
-            areaNameLookup={areaNameLookup}
-            activeAreaKind={activeAreaKind}
-          />
+          {ENABLE_STATISTICS_VISUALIZATION_SECTION && (
+            <StatViz
+              statsById={statsById}
+              seriesByStatIdByKind={seriesByStatIdByKind}
+              statDataById={statDataById}
+              selectedAreas={selectedAreas}
+              pinnedAreas={pinnedAreas}
+              selectedStatId={selectedStatId}
+              hoveredArea={hoveredArea}
+              onHoverArea={onHoverArea}
+              areaNameLookup={areaNameLookup}
+              activeAreaKind={activeAreaKind}
+            />
+          )}
         </>
       )}
 
