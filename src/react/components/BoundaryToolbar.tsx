@@ -4,7 +4,7 @@ import type { AreaId, AreaKind } from "../../types/areas";
 import { themeController } from "../imperative/theme";
 import { getAreaRegistryEntry } from "../imperative/areas/registry";
 import { CustomSelect } from "./CustomSelect";
-import { getCountyName, getCountyIdByName } from "../../lib/countyCentroids";
+import { getCountyIdByName } from "../../lib/countyCentroids";
 
 interface AreaSelectionSnapshot {
   kind: AreaKind;
