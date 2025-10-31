@@ -368,6 +368,24 @@ interface OrganizationListItemProps {
 
 const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
 
+/**
+ * Builds a Google Maps URL from organization address components.
+ * Opens in default maps app on mobile devices, or Google Maps web on desktop.
+ */
+const buildMapsUrl = (org: Organization): string | null => {
+  const segments = [
+    org.address,
+    org.city,
+    org.state,
+    org.postalCode,
+  ].filter((part): part is string => typeof part === "string" && part.trim().length > 0);
+  
+  if (segments.length === 0) return null;
+  
+  const query = encodeURIComponent(segments.join(", "));
+  return `https://www.google.com/maps/search/?api=1&query=${query}`;
+};
+
 const formatHoursLines = (hours: OrganizationHours | null | undefined): string[] => {
   if (!hours) return [];
   if (Array.isArray(hours.weekdayText) && hours.weekdayText.length > 0) {
@@ -499,13 +517,31 @@ const OrganizationListItem = ({
       </div>
       {(org.address || org.city || org.state || org.postalCode) && (
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          {[
-            org.address,
-            [org.city, org.state].filter(Boolean).join(", ") || null,
-            org.postalCode ?? null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
+          {(() => {
+            const addressText = [
+              org.address,
+              [org.city, org.state].filter(Boolean).join(", ") || null,
+              org.postalCode ?? null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            const mapsUrl = buildMapsUrl(org);
+            
+            if (mapsUrl) {
+              return (
+                <a
+                  href={mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:underline"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {addressText}
+                </a>
+              );
+            }
+            return addressText;
+          })()}
         </p>
       )}
       {org.phone && (

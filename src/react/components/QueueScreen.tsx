@@ -113,6 +113,24 @@ const buildLocationLine = (org: Organization): string | null => {
   return segments.join(", ");
 };
 
+/**
+ * Builds a Google Maps URL from organization address components.
+ * Opens in default maps app on mobile devices, or Google Maps web on desktop.
+ */
+const buildMapsUrl = (org: Organization): string | null => {
+  const segments = [
+    org.address,
+    org.city,
+    org.state,
+    org.postalCode,
+  ].filter((part): part is string => typeof part === "string" && part.trim().length > 0);
+  
+  if (segments.length === 0) return null;
+  
+  const query = encodeURIComponent(segments.join(", "));
+  return `https://www.google.com/maps/search/?api=1&query=${query}`;
+};
+
 export const QueueScreen = () => {
   const { isLoading: isAuthLoading, user } = db.useAuth();
   const [expandedApproved, setExpandedApproved] = useState(false);
@@ -342,7 +360,24 @@ export const QueueScreen = () => {
                         ) : null}
                       </div>
                       {location ? (
-                        <p className="text-sm text-slate-600 dark:text-slate-300">{location}</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-300">
+                          {(() => {
+                            const mapsUrl = buildMapsUrl(org);
+                            if (mapsUrl) {
+                              return (
+                                <a
+                                  href={mapsUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="hover:underline"
+                                >
+                                  {location}
+                                </a>
+                              );
+                            }
+                            return location;
+                          })()}
+                        </p>
                       ) : null}
                       {org.ownerEmail ? (
                         <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -444,7 +479,24 @@ export const QueueScreen = () => {
                           ) : null}
                         </div>
                         {location ? (
-                          <p className="text-sm text-slate-600 dark:text-slate-300">{location}</p>
+                          <p className="text-sm text-slate-600 dark:text-slate-300">
+                            {(() => {
+                              const mapsUrl = buildMapsUrl(org);
+                              if (mapsUrl) {
+                                return (
+                                  <a
+                                    href={mapsUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="hover:underline"
+                                  >
+                                    {location}
+                                  </a>
+                                );
+                              }
+                              return location;
+                            })()}
+                          </p>
                         ) : null}
                         {org.ownerEmail ? (
                           <p className="text-sm text-slate-500 dark:text-slate-400">
