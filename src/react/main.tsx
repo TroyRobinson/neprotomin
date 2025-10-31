@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { Suspense } from "react";
+import { Analytics } from "@vercel/analytics/react";
 import { ReactMapApp } from "./ReactMapApp";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -16,6 +17,7 @@ root.render(
     <Suspense fallback={<div className="flex h-screen items-center justify-center text-sm text-slate-500">Loading…</div>}>
       <ReactMapApp />
     </Suspense>
+    <Analytics />
   </ErrorBoundary>
 );
 
