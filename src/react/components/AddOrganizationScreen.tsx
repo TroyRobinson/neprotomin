@@ -882,12 +882,16 @@ export const AddOrganizationScreen = ({ onCancel, onCreated, onFindNearbyOrg }: 
                 <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Website</span>
                 <input
                   name="website"
-                  type="url"
+                  type="text"
                   value={formValues.website}
                   onChange={handleInputChange("website")}
                   onInput={handleInputChange("website")}
+                  onBlur={(e) => {
+                    const normalized = normalizeWebsiteUrl(e.target.value);
+                    handleFieldChange("website")(normalized);
+                  }}
                   autoComplete="url"
-                  placeholder="https://example.org"
+                  placeholder="example.org (we'll add https:// for you)"
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
               </label>
