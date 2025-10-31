@@ -513,12 +513,14 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
         closeTime: hours.closeTime,
       }));
 
-      // Generate human-readable weekday text
+      // Generate human-readable weekday text with 12-hour format
       const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
       const weekdayText = enabledDays.map(([dayStr, hours]) => {
         const dayNum = parseInt(dayStr, 10);
         const dayName = dayNames[dayNum];
-        return `${dayName}: ${hours.openTime} – ${hours.closeTime}`;
+        const openTime12 = formatTime12Hour(hours.openTime);
+        const closeTime12 = formatTime12Hour(hours.closeTime);
+        return `${dayName}: ${openTime12} – ${closeTime12}`;
       });
 
       payload.hours = {
