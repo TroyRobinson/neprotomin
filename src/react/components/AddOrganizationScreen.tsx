@@ -45,8 +45,8 @@ const emptyFormState = (ownerEmail: string): FormState => ({
   ownerEmail,
   category: "health",
   status: "active",
-  latitude: "",
-  longitude: "",
+  latitude: "", // Auto-populated via geocoding
+  longitude: "", // Auto-populated via geocoding
   website: "",
   phone: "",
   address: "",
@@ -85,12 +85,88 @@ const parseCoordinate = (
   return { value: parsed };
 };
 
+// Geocode an address using OpenStreetMap's Nominatim API (CORS-friendly)
+async function geocodeAddress(
+  address: string,
+  city: string,
+  state: string,
+  zip: string,
+): Promise<{ latitude: number; longitude: number } | { error: string }> {
+  try {
+    // Construct a full address string for Nominatim
+    const fullAddress = `${address}, ${city}, ${state} ${zip}, USA`;
+
+    const params = new URLSearchParams({
+      q: fullAddress,
+      format: "json",
+      addressdetails: "1",
+      limit: "1",
+      countrycodes: "us", // Restrict to United States
+    });
+
+    const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`;
+    console.log("Geocoding request:", { address, city, state, zip });
+    console.log("Full address string:", fullAddress);
+
+    const response = await fetch(url, {
+      headers: {
+        // Nominatim requires a User-Agent header per their usage policy
+        "User-Agent": "NEProtoMinimal Community Map",
+      },
+    });
+    console.log("Response status:", response.status, response.statusText);
+
+    if (!response.ok) {
+      console.error("API error:", response.status, response.statusText);
+      return {
+        error: `Unable to connect to the geocoding service (${response.status}). Please try again later.`,
+      };
+    }
+
+    const data = await response.json();
+    console.log("Response data:", data);
+
+    // Check if we got any results
+    if (!Array.isArray(data) || data.length === 0) {
+      console.warn("No matches found for address");
+      return {
+        error:
+          "We couldn't find coordinates for this address. Please check the address and try again, or verify the street address, city, state, and ZIP code are all correct.",
+      };
+    }
+
+    // Use the first result
+    const result = data[0];
+    const latitude = parseFloat(result.lat);
+    const longitude = parseFloat(result.lon);
+
+    console.log("Found coordinates:", { latitude, longitude });
+    console.log("Matched address:", result.display_name);
+
+    return { latitude, longitude };
+  } catch (error) {
+    console.error("Geocoding error (full details):", error);
+    if (error instanceof Error) {
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+    }
+    return {
+      error:
+        `Geocoding failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
 export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationScreenProps) => {
   const { user } = db.useAuth();
   const ownerEmailFromAuth = user && !user.isGuest ? (user.email ?? "") : "";
   const [formValues, setFormValues] = useState<FormState>(() => emptyFormState(ownerEmailFromAuth));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [geocodedCoordinates, setGeocodedCoordinates] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
   // Keep the owner email synced with the authenticated user, but allow manual edits afterward
   useEffect(() => {
@@ -128,39 +204,29 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
       (formData.get("ownerEmail") ??
         formValues.ownerEmail ??
         "") as string;
-    const rawLatitude =
-      (formData.get("latitude") ??
-        formValues.latitude ??
+    const rawAddress =
+      (formData.get("address") ??
+        formValues.address ??
         "") as string;
-    const rawLongitude =
-      (formData.get("longitude") ??
-        formValues.longitude ??
+    const rawCity =
+      (formData.get("city") ??
+        formValues.city ??
+        "") as string;
+    const rawState =
+      (formData.get("state") ??
+        formValues.state ??
+        "") as string;
+    const rawPostalCode =
+      (formData.get("postalCode") ??
+        formValues.postalCode ??
         "") as string;
 
     const nextName = rawName.trim();
     const ownerEmailInput = rawOwnerEmail.trim();
-
-    const { value: latitudeValue, error: latitudeError } = parseCoordinate(
-      "Latitude",
-      rawLatitude,
-      -90,
-      90,
-    );
-    if (latitudeError) {
-      setFormError(latitudeError);
-      return;
-    }
-
-    const { value: longitudeValue, error: longitudeError } = parseCoordinate(
-      "Longitude",
-      rawLongitude,
-      -180,
-      180,
-    );
-    if (longitudeError) {
-      setFormError(longitudeError);
-      return;
-    }
+    const addressInput = rawAddress.trim();
+    const cityInput = rawCity.trim();
+    const stateInput = rawState.trim();
+    const postalCodeInput = rawPostalCode.trim();
 
     if (!nextName) {
       setFormError("Organization name is required.");
@@ -170,8 +236,41 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
       setFormError("Owner email is required so you can revise details later.");
       return;
     }
+    if (!addressInput) {
+      setFormError("Street address is required to determine the location.");
+      return;
+    }
+    if (!cityInput) {
+      setFormError("City is required to determine the location.");
+      return;
+    }
+    if (!stateInput) {
+      setFormError("State is required to determine the location.");
+      return;
+    }
+    if (!postalCodeInput) {
+      setFormError("ZIP code is required to determine the location.");
+      return;
+    }
 
+    // Geocode the address
     setIsSubmitting(true);
+    const geocodeResult = await geocodeAddress(
+      addressInput,
+      cityInput,
+      stateInput,
+      postalCodeInput,
+    );
+
+    if ("error" in geocodeResult) {
+      setFormError(geocodeResult.error);
+      setIsSubmitting(false);
+      return;
+    }
+
+    const { latitude: latitudeValue, longitude: longitudeValue } = geocodeResult;
+    setGeocodedCoordinates(geocodeResult);
+
     const organizationId = id();
 
     const canonicalOwnerEmail = ownerEmailInput.toLowerCase();
@@ -367,47 +466,18 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
               </p>
               <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Where can we find it?</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Latitude and longitude determine the map pin. Contact details help neighbors get in touch.
+                Enter the address and we'll automatically determine the map pin location. Contact details help neighbors get in touch.
               </p>
             </header>
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                  Latitude <span className="text-brand-500">*</span>
-                </span>
-                <input
-                  name="latitude"
-                  type="number"
-                  required
-                  inputMode="decimal"
-                  step="any"
-                  value={formValues.latitude}
-                  onChange={(event) => handleFieldChange("latitude")(event.target.value)}
-                  placeholder="36.1539"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
-                />
-              </label>
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                  Longitude <span className="text-brand-500">*</span>
-                </span>
-                <input
-                  name="longitude"
-                  type="number"
-                  required
-                  inputMode="decimal"
-                  step="any"
-                  value={formValues.longitude}
-                  onChange={(event) => handleFieldChange("longitude")(event.target.value)}
-                  placeholder="-95.9928"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
-                />
-              </label>
               <label className="flex flex-col gap-2 md:col-span-2">
-                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Street address</span>
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                  Street address <span className="text-brand-500">*</span>
+                </span>
                 <input
                   name="address"
                   type="text"
+                  required
                   value={formValues.address}
                   onChange={(event) => handleFieldChange("address")(event.target.value)}
                   autoComplete="street-address"
@@ -416,10 +486,13 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                 />
               </label>
               <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">City</span>
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                  City <span className="text-brand-500">*</span>
+                </span>
                 <input
                   name="city"
                   type="text"
+                  required
                   value={formValues.city}
                   onChange={(event) => handleFieldChange("city")(event.target.value)}
                   autoComplete="address-level2"
@@ -428,10 +501,13 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                 />
               </label>
               <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">State</span>
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                  State <span className="text-brand-500">*</span>
+                </span>
                 <input
                   name="state"
                   type="text"
+                  required
                   value={formValues.state}
                   onChange={(event) => handleFieldChange("state")(event.target.value)}
                   autoComplete="address-level1"
@@ -440,10 +516,13 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                 />
               </label>
               <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">ZIP / Postal code</span>
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                  ZIP / Postal code <span className="text-brand-500">*</span>
+                </span>
                 <input
                   name="postalCode"
                   type="text"
+                  required
                   value={formValues.postalCode}
                   onChange={(event) => handleFieldChange("postalCode")(event.target.value)}
                   autoComplete="postal-code"
@@ -451,6 +530,16 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
               </label>
+              {geocodedCoordinates && (
+                <div className="md:col-span-2 rounded-lg bg-green-50 p-4 dark:bg-green-900/20">
+                  <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                    ✓ Location found
+                  </p>
+                  <p className="mt-1 text-xs text-green-700 dark:text-green-300">
+                    Coordinates: {geocodedCoordinates.latitude.toFixed(6)}, {geocodedCoordinates.longitude.toFixed(6)}
+                  </p>
+                </div>
+              )}
               <label className="flex flex-col gap-2">
                 <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Phone</span>
                 <input
