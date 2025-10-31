@@ -69,7 +69,7 @@ export const StatList = ({
   secondaryStatId = null,
   selectedStatId = null,
   onStatSelect,
-  variant: _variant = "desktop",
+  variant = "desktop",
 }: StatListProps) => {
   const areaEntries = useMemo(() => buildAreaEntries(selectedAreas), [selectedAreas]);
 
@@ -186,7 +186,7 @@ export const StatList = ({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Banner for secondary stat hint */}
-      {selectedStatId !== null && secondaryStatId === null && (
+      {selectedStatId !== null && secondaryStatId === null && variant !== "mobile" && (
         <div className="px-4 py-2">
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Shift+click another stat for secondary overlay
