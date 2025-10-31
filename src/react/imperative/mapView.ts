@@ -1880,6 +1880,32 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
 
   function updateChoroplethLegend() {
     if (!selectedStatId) { choroplethLegend.setVisible(false); return; }
+    
+    // Hide legend when zoomed in close enough that only 1-7 zips are visible
+    if (boundaryMode === "zips") {
+      try {
+        const canvas = map.getCanvas();
+        const bounds: [[number, number], [number, number]] = [
+          [0, 0],
+          [canvas.width, canvas.height],
+        ];
+        const features = map.queryRenderedFeatures(bounds, { layers: zipLayerOrder });
+        const uniqueZips = new Set<string>();
+        for (const feature of features) {
+          const zip = feature?.properties?.[zipFeatureProperty];
+          if (typeof zip === "string" && zip.length > 0) {
+            uniqueZips.add(zip);
+          }
+        }
+        if (uniqueZips.size <= 7) {
+          choroplethLegend.setVisible(false);
+          return;
+        }
+      } catch {
+        // If counting fails, proceed with normal legend update
+      }
+    }
+    
     extUpdateLegend(choroplethLegend, selectedStatId, boundaryMode, scopedStatDataByBoundary);
   }
 
@@ -1966,7 +1992,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       COUNTY_SECONDARY_LAYER_ID,
       SECONDARY_STAT_HOVER_LAYER_ID,
       COUNTY_SECONDARY_HOVER_LAYER_ID,
-    }, currentTheme, boundaryMode, selectedStatId, scopedStatDataByBoundary);
+    }, currentTheme, boundaryMode, selectedStatId, scopedStatDataByBoundary, zipLayerOrder, zipFeatureProperty);
   }
 
   const applyData = () => {
