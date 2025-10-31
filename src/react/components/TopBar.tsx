@@ -446,11 +446,15 @@ export const TopBar = ({
                   className="group relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                   title="switch to original Neighborhood Explorer homepage"
                 >
-                  <span className="relative inline-flex h-4 w-7 items-center rounded-full bg-brand-400 transition-colors dark:bg-brand-500 group-hover:bg-slate-300 dark:group-hover:bg-slate-600">
+                  <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                    neHomeRedirectDisabled
+                      ? "bg-slate-300 dark:bg-slate-600 group-hover:bg-brand-400 dark:group-hover:bg-brand-500"
+                      : "bg-brand-400 dark:bg-brand-500 group-hover:bg-slate-300 dark:group-hover:bg-slate-600"
+                  }`}>
                     <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition ${
                       neHomeRedirectDisabled
-                        ? "translate-x-3 group-hover:translate-x-1.5" 
-                        : "translate-x-1.5 group-hover:translate-x-3"
+                        ? "translate-x-1.5 group-hover:translate-x-3" 
+                        : "translate-x-3 group-hover:translate-x-1.5"
                     }`} />
                   </span>
                   <span className="whitespace-nowrap">Switch NE Home</span>
