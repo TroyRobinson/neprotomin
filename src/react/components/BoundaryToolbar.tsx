@@ -4,6 +4,7 @@ import type { AreaId, AreaKind } from "../../types/areas";
 import { themeController } from "../imperative/theme";
 import { getAreaRegistryEntry } from "../imperative/areas/registry";
 import { CustomSelect } from "./CustomSelect";
+import { getCountyName, getCountyIdByName } from "../../lib/countyCentroids";
 
 interface AreaSelectionSnapshot {
   kind: AreaKind;
@@ -155,6 +156,35 @@ export const BoundaryToolbar = ({
     return out;
   };
 
+  // Parse counties by name or FIPS code
+  const parseCounties = (raw: string): string[] => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+
+    // Split by common delimiters (comma, semicolon, newline)
+    const parts = raw.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+
+    for (const part of parts) {
+      let countyId: string | undefined;
+
+      // Try as FIPS code (5 digits)
+      if (/^\d{5}$/.test(part)) {
+        countyId = part;
+      } else {
+        // Try as county name (remove "County" suffix if present)
+        const cleanName = part.replace(/\s+county$/i, '').trim();
+        countyId = getCountyIdByName(cleanName);
+      }
+
+      if (countyId && !seen.has(countyId)) {
+        seen.add(countyId);
+        out.push(countyId);
+      }
+    }
+
+    return out;
+  };
+
   const submitZips = () => {
     const zips = parseZips(inputValue);
     if (zips.length > 0) {
@@ -173,10 +203,32 @@ export const BoundaryToolbar = ({
     setInputValue("");
   };
 
+  const submitCounties = () => {
+    const counties = parseCounties(inputValue);
+    if (counties.length > 0) {
+      const merged = [...selectedCounties];
+      const seen = new Set(merged);
+      for (const county of counties) {
+        if (!seen.has(county)) {
+          merged.push(county);
+          seen.add(county);
+        }
+      }
+      const nextPinned = pinnedCounties.filter((county) => seen.has(county));
+      onUpdateSelection("COUNTY", { selected: merged, pinned: nextPinned });
+    }
+    setInputOpen(false);
+    setInputValue("");
+  };
+
   const handleInputKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      submitZips();
+      if (isActiveZip) {
+        submitZips();
+      } else if (isActiveCounty) {
+        submitCounties();
+      }
     } else if (e.key === "Escape") {
       e.preventDefault();
       setInputOpen(false);
@@ -345,14 +397,18 @@ export const BoundaryToolbar = ({
             {!activeHasSelections && !inputOpen && <span className="ml-1 whitespace-nowrap">add {areaPluralLabel}</span>}
           </button>
 
-          <div ref={inputWrapperRef} className={inputOpen && isActiveZip ? "" : "hidden"}>
+          <div ref={inputWrapperRef} className={inputOpen && activeAreaKind ? "" : "hidden"}>
             <textarea
               ref={inputRef}
               rows={1}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleInputKeyDown}
-              placeholder={`Add ${areaPluralLabel} (comma or space separated)`}
+              placeholder={
+                isActiveZip
+                  ? `Add ${areaPluralLabel} (comma or space separated)`
+                  : `Add ${areaPluralLabel} (by name or FIPS code)`
+              }
               className="ml-1 mt-1.5 h-7 min-h-[1.75rem] w-56 resize-none rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50 md:w-64"
             />
           </div>

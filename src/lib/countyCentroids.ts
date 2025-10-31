@@ -36,6 +36,16 @@ for (const f of oklahomaCountyBoundaries.features as any[]) {
 export const getCountyCentroidsMap = () => centroids;
 export const getCountyName = (id: string) => names.get(id) || id;
 
+// Build reverse lookup: name -> id (case-insensitive)
+const nameToId = new Map<string, string>();
+for (const [id, name] of names.entries()) {
+  nameToId.set(name.toLowerCase(), id);
+}
+
+export const getCountyIdByName = (name: string): string | undefined => {
+  return nameToId.get(name.toLowerCase());
+};
+
 export const getCountyCentroidFeatureCollection = (): FeatureCollection<
   Point,
   { county: string; name: string | undefined }
