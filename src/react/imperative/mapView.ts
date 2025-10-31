@@ -1881,7 +1881,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   function updateChoroplethLegend() {
     if (!selectedStatId) { choroplethLegend.setVisible(false); return; }
     
-    // Hide legend when zoomed in close enough that only 1-3 zips are visible
+    // Hide legend when zoomed in close enough that only 1-5 zips are visible
     if (boundaryMode === "zips") {
       try {
         const canvas = map.getCanvas();
@@ -1897,7 +1897,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
             uniqueZips.add(zip);
           }
         }
-        if (uniqueZips.size <= 3) {
+        if (uniqueZips.size <= 5) {
           choroplethLegend.setVisible(false);
           return;
         }
