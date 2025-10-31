@@ -84,6 +84,21 @@ const PlusIcon = () => (
 
 const MOBILE_SEARCH_AUTO_EXPAND_THRESHOLD = 380;
 
+const NE_HOME_REDIRECT_STORAGE_KEY = "ne.homeRedirectDisabled";
+
+const getNeHomeRedirectState = (): boolean => {
+  if (typeof window === "undefined") return true; // Default: redirect disabled (=1), toggle "on"
+  const stored = localStorage.getItem(NE_HOME_REDIRECT_STORAGE_KEY);
+  if (stored === null) return true; // Never clicked: default "on" (=1)
+  // If clicked before, return stored value (false = "off" =0, true = "on" =1)
+  return stored === "true";
+};
+
+const setNeHomeRedirectState = (disabled: boolean): void => {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(NE_HOME_REDIRECT_STORAGE_KEY, disabled ? "true" : "false");
+};
+
 interface TopBarProps {
   onBrandClick?: () => void;
   onNavigate?: (screen: "map" | "report" | "data" | "queue") => void;
@@ -111,6 +126,7 @@ export const TopBar = ({
   const [mobileSearchValue, setMobileSearchValue] = useState("");
   const [isCompactMobileSearch, setIsCompactMobileSearch] = useState(false);
   const [isMobileSearchExpanded, setIsMobileSearchExpanded] = useState(true);
+  const [neHomeRedirectDisabled, setNeHomeRedirectDisabled] = useState(getNeHomeRedirectState);
   const mobileActionsRef = useRef<HTMLDivElement | null>(null);
   const mobileSearchFormRef = useRef<HTMLFormElement | null>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
@@ -419,14 +435,25 @@ export const TopBar = ({
                   About
                 </a>
                 <a
-                  href="https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=1"
+                  href={`https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=${neHomeRedirectDisabled ? "1" : "0"}`}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const newState = !neHomeRedirectDisabled;
+                    setNeHomeRedirectDisabled(newState);
+                    setNeHomeRedirectState(newState);
+                    window.open(`https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=${newState ? "1" : "0"}`, "_blank", "noopener,noreferrer");
+                  }}
                   className="group relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                   title="switch to original Neighborhood Explorer homepage"
                 >
                   <span className="relative inline-flex h-4 w-7 items-center rounded-full bg-brand-400 transition-colors dark:bg-brand-500 group-hover:bg-slate-300 dark:group-hover:bg-slate-600">
-                    <span className="inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition translate-x-3 group-hover:translate-x-1.5" />
+                    <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition ${
+                      neHomeRedirectDisabled
+                        ? "translate-x-3 group-hover:translate-x-1.5" 
+                        : "translate-x-1.5 group-hover:translate-x-3"
+                    }`} />
                   </span>
                   <span className="whitespace-nowrap">Switch NE Home</span>
                 </a>
