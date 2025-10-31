@@ -591,7 +591,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
             onClick={onCancel}
             className="inline-flex w-max items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white"
           >
-            ← Back to map
+            ← To Map
           </button>
           <div>
             <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Add an organization</h1>
