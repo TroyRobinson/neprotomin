@@ -64,8 +64,8 @@ export const updateStatDataChoropleth = (
       ? countVisibleZipCodes(map, zipLayerOrder, zipFeatureProperty)
       : null;
 
-  // Hide choropleth when 1-5 zips are visible (too close zoom)
-  const shouldHideChoropleth = visibleZipCount !== null && visibleZipCount <= 5;
+  // Hide choropleth when 1-7 zips are visible (too close zoom)
+  const shouldHideChoropleth = visibleZipCount !== null && visibleZipCount <= 7;
 
   const applyEntry = (
     layerId: string,
