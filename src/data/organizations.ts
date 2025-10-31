@@ -13,6 +13,13 @@ export interface OrganizationSeed {
   postalCode?: string;
 }
 
+/**
+ * Test/example organization data.
+ * 
+ * NOTE: Automatic seeding of this test data is disabled. These organizations
+ * will only appear if manually seeded via `npm run seed` or by calling
+ * `ensureOrganizationsSeeded()` directly.
+ */
 export const organizationSeedData: OrganizationSeed[] = [
   {
     name: "Greenwood Community Works",
@@ -22,7 +29,7 @@ export const organizationSeedData: OrganizationSeed[] = [
     category: "economy",
   },
   {
-    name: "Arkansas River Conservancy",
+    name: " ",
     website: "https://arkansasriverconservancy.example",
     latitude: 36.1433,
     longitude: -96.0009,
