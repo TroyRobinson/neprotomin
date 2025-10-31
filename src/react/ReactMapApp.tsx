@@ -1872,6 +1872,8 @@ export const ReactMapApp = () => {
               pinnedAreas={pinnedAreasMap}
               activeAreaKind={activeAreaKind}
               areaNameLookup={areaNameLookup}
+              zipScopeDisplayName={zipScopeDisplayName}
+              countyScopeDisplayName={countyScopeDisplayName}
               hoveredArea={hoveredArea}
               selectedStatId={selectedStatId}
               secondaryStatId={secondaryStatId}
@@ -1954,6 +1956,8 @@ export const ReactMapApp = () => {
                     pinnedAreas={pinnedAreasMap}
                     activeAreaKind={activeAreaKind}
                     areaNameLookup={areaNameLookup}
+                    zipScopeDisplayName={zipScopeDisplayName}
+                    countyScopeDisplayName={countyScopeDisplayName}
                     hoveredArea={hoveredArea}
                     selectedStatId={selectedStatId}
                     secondaryStatId={secondaryStatId}

@@ -21,6 +21,8 @@ type StatRow = {
   contextAvg: number;
   hasData: boolean;
   goodIfUp?: boolean;
+  aggregationMethod: "sum" | "average" | "raw";
+  aggregationDescription: string;
 };
 
 interface StatListProps {
@@ -34,6 +36,8 @@ interface StatListProps {
   selectedStatId?: string | null;
   onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
   variant?: "desktop" | "mobile";
+  zipScopeDisplayName?: string | null;
+  countyScopeDisplayName?: string | null;
 }
 
 const SUPPORTED_KINDS: SupportedAreaKind[] = ["ZIP", "COUNTY"];
@@ -44,6 +48,13 @@ const computeContextAverage = (entry: StatBoundaryEntry | undefined): number => 
   const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   if (nums.length === 0) return 0;
   return nums.reduce((sum, v) => sum + v, 0) / nums.length;
+};
+
+const computeTotal = (entry: StatBoundaryEntry | undefined): number => {
+  if (!entry) return 0;
+  const values = Object.values(entry.data || {});
+  const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  return nums.reduce((sum, v) => sum + v, 0);
 };
 
 const buildAreaEntries = (selectedAreas?: SelectedAreasMap): AreaEntry[] => {
@@ -70,6 +81,8 @@ export const StatList = ({
   selectedStatId = null,
   onStatSelect,
   variant = "desktop",
+  zipScopeDisplayName = null,
+  countyScopeDisplayName = null,
 }: StatListProps) => {
   const areaEntries = useMemo(() => buildAreaEntries(selectedAreas), [selectedAreas]);
 
@@ -131,13 +144,46 @@ export const StatList = ({
         })
         .filter((v): v is { area: AreaEntry; entry: StatBoundaryEntry; value: number } => v !== null);
 
+      const isPercent = fallbackEntry.type === "percent";
+      
       let displayValue = fallbackContextAvg;
-      if (areaEntries.length === 1 && valuesForSelection.length === 1) {
+      let aggregationMethod: "sum" | "average" | "raw" = "average";
+      let aggregationDescription = "";
+      
+      if (areaEntries.length === 0) {
+        // No selection: sum all values (or average for percentages)
+        // County level: sum/average all Oklahoma counties
+        // ZIP level: sum/average all ZIPs in the viewport county
+        aggregationMethod = isPercent ? "average" : "sum";
+        const method = isPercent ? "Average" : "Sum";
+        if (preferCounty) {
+          // County level: "Sum of All OK Counties" or "Average of all OK Counties"
+          aggregationDescription = `${method} of ${countyScopeDisplayName ? `All ${countyScopeDisplayName} Counties` : "All OK Counties"}`;
+        } else {
+          // ZIP level: "Sum of all Tulsa County ZIPs" or "Average of all Tulsa County ZIPs"
+          const countyName = zipScopeDisplayName ? `${zipScopeDisplayName} County` : "County";
+          aggregationDescription = `${method} of all ${countyName} ZIPs`;
+        }
+        displayValue = isPercent ? computeContextAverage(fallbackEntry) : computeTotal(fallbackEntry);
+      } else if (areaEntries.length === 1 && valuesForSelection.length === 1) {
+        // Single selection: show the raw value
+        aggregationMethod = "raw";
+        const areaName = areaNameLookup
+          ? areaNameLookup(valuesForSelection[0].area.kind, valuesForSelection[0].area.code)
+          : `${valuesForSelection[0].area.kind} ${valuesForSelection[0].area.code}`;
+        aggregationDescription = areaName;
         displayValue = valuesForSelection[0].value;
       } else if (areaEntries.length > 1 && valuesForSelection.length > 0) {
-        displayValue =
-          valuesForSelection.reduce((sum, item) => sum + item.value, 0) /
-          valuesForSelection.length;
+        // Multiple selections: sum the values (or average for percentages)
+        aggregationMethod = isPercent ? "average" : "sum";
+        const method = isPercent ? "Average" : "Sum";
+        const areaType = preferCounty ? "Counties" : "ZIPs";
+        aggregationDescription = `${method} of Selected ${areaType}`;
+        if (isPercent) {
+          displayValue = valuesForSelection.reduce((sum, item) => sum + item.value, 0) / valuesForSelection.length;
+        } else {
+          displayValue = valuesForSelection.reduce((sum, item) => sum + item.value, 0);
+        }
       }
 
       const normalizedDiffs = valuesForSelection.map(({ value, entry, area }) => {
@@ -159,6 +205,8 @@ export const StatList = ({
         contextAvg: fallbackContextAvg,
         hasData: valuesForSelection.length > 0 || areaEntries.length === 0,
         goodIfUp: s.goodIfUp,
+        aggregationMethod,
+        aggregationDescription,
       });
     }
 
@@ -169,7 +217,7 @@ export const StatList = ({
     }
 
     return result;
-  }, [statsById, statDataById, areaEntries, categoryFilter, effectiveAreaKind]);
+  }, [statsById, statDataById, areaEntries, categoryFilter, effectiveAreaKind, zipScopeDisplayName, countyScopeDisplayName, areaNameLookup]);
 
   const subtitle = useMemo(() => {
     if (areaEntries.length === 1) {
@@ -241,6 +289,8 @@ const StatListItem = ({
 }: StatListItemProps) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const [showValueTooltip, setShowValueTooltip] = useState(false);
+  const [valueTooltipPos, setValueTooltipPos] = useState({ x: 0, y: 0 });
 
   // Determine color based on goodIfUp and whether value is above/below average
   // Only apply color when there's a selection (averageLabel is shown)
@@ -281,6 +331,20 @@ const StatListItem = ({
     setShowTooltip(true);
   };
 
+  const handleValueHover = (e: React.MouseEvent) => {
+    const li = e.currentTarget.closest("li");
+    if (!li) return;
+    const liRect = li.getBoundingClientRect();
+    const x = e.clientX - liRect.left;
+    const y = e.clientY - liRect.top;
+    setValueTooltipPos({ x, y });
+    setShowValueTooltip(true);
+  };
+
+  const getAggregationLabel = (): string => {
+    return row.aggregationDescription || "";
+  };
+
   const common =
     "group relative flex items-center justify-between rounded-2xl border px-3 py-2 shadow-sm transition-colors cursor-pointer select-none";
 
@@ -293,7 +357,10 @@ const StatListItem = ({
   const valueLabel = row.hasData ? formatStatValue(row.value, row.type) : "—";
 
   return (
-    <li className={className} onClick={handleClick} onMouseLeave={() => setShowTooltip(false)}>
+    <li className={className} onClick={handleClick} onMouseLeave={() => {
+      setShowTooltip(false);
+      setShowValueTooltip(false);
+    }}>
       <div>
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{row.name}</span>
@@ -321,7 +388,11 @@ const StatListItem = ({
       </div>
 
       <div className="flex items-center gap-2">
-        <span className={`text-sm font-semibold ${valueColorClass}`}>
+        <span
+          className={`text-sm font-semibold ${valueColorClass}`}
+          onMouseEnter={handleValueHover}
+          onMouseLeave={() => setShowValueTooltip(false)}
+        >
           {valueLabel}
         </span>
       </div>
@@ -332,6 +403,22 @@ const StatListItem = ({
           style={{ left: tooltipPos.x, top: tooltipPos.y - 32 }}
         >
           {averageLabel} across all areas
+        </div>
+      )}
+
+      {showValueTooltip && row.hasData && (
+        <div
+          className="pointer-events-none absolute z-10 rounded border border-black/10 bg-slate-800 px-1.5 py-1 text-[10px] text-white shadow-sm dark:border-white/20 dark:bg-slate-200 dark:text-slate-900"
+          style={{
+            left: valueTooltipPos.x,
+            top: valueTooltipPos.y - 32,
+            transform: "translateX(-100%)",
+            marginLeft: "-4px",
+            opacity: 0.9,
+            minWidth: "120px",
+          }}
+        >
+          {getAggregationLabel()}
         </div>
       )}
     </li>

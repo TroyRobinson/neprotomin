@@ -37,6 +37,8 @@ interface SidebarProps {
   pinnedAreas?: PinnedAreasMap;
   activeAreaKind?: SupportedAreaKind | null;
   areaNameLookup?: (kind: SupportedAreaKind, code: string) => string;
+  zipScopeDisplayName?: string | null;
+  countyScopeDisplayName?: string | null;
   selectedStatId?: string | null;
   secondaryStatId?: string | null;
   categoryFilter?: string | null;
@@ -68,6 +70,8 @@ export const Sidebar = ({
   pinnedAreas = {},
   activeAreaKind = null,
   areaNameLookup,
+  zipScopeDisplayName = null,
+  countyScopeDisplayName = null,
   selectedStatId = null,
   secondaryStatId = null,
   categoryFilter = null,
@@ -265,6 +269,8 @@ export const Sidebar = ({
             selectedAreas={selectedAreas}
             activeAreaKind={activeAreaKind}
             areaNameLookup={areaNameLookup}
+            zipScopeDisplayName={zipScopeDisplayName}
+            countyScopeDisplayName={countyScopeDisplayName}
             categoryFilter={categoryFilter}
             secondaryStatId={secondaryStatId}
             selectedStatId={selectedStatId}
