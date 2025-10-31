@@ -1,3 +1,4 @@
+import "dotenv/config";
 import type { InstantRules } from "@instantdb/react";
 
 const splitEntries = (value?: string | null): string[] => {
@@ -39,21 +40,77 @@ const adminCondition =
 const restrictedStatuses = "['approved', 'declined']";
 
 const rules = {
+  $default: {
+    allow: {
+      $default: "false",
+    },
+  },
+  attrs: {
+    allow: {
+      create: "isAdmin",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
   organizations: {
     allow: {
-      view: "true",
-      create: "auth.id != null && (!createsRestrictedStatus || isAdmin)",
-      update: "auth.id != null && (!changesRestrictedStatus || isAdmin)",
+      view: "isAdmin || data.moderationStatus == 'approved' || data.moderationStatus == null",
+      create: "allowPublicOrgCreate",
+      update: "isAdmin",
       delete: "isAdmin",
     },
     bind: [
       "isAdmin",
       adminCondition,
-      "createsRestrictedStatus",
-      `data.moderationStatus in ${restrictedStatuses}`,
-      "changesRestrictedStatus",
-      `newData.moderationStatus in ${restrictedStatuses} && newData.moderationStatus != data.moderationStatus`,
+      "setsRestrictedStatus",
+      `newData.moderationStatus in ${restrictedStatuses}`,
+      "allowPublicOrgCreate",
+      "(!setsRestrictedStatus) || isAdmin",
     ],
+  },
+  uiState: {
+    allow: {
+      view: "isAdmin || (auth.id != null && data.owner == auth.id)",
+      create: "isAdmin || (auth.id != null && newData.owner == auth.id)",
+      update: "isAdmin || (auth.id != null && data.owner == auth.id)",
+      delete: "isAdmin || (auth.id != null && data.owner == auth.id)",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
+  areas: {
+    allow: {
+      view: "true",
+      create: "isAdmin",
+      update: "isAdmin",
+      delete: "isAdmin",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
+  stats: {
+    allow: {
+      view: "true",
+      create: "isAdmin",
+      update: "isAdmin",
+      delete: "isAdmin",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
+  statData: {
+    allow: {
+      view: "true",
+      create: "isAdmin",
+      update: "isAdmin",
+      delete: "isAdmin",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
+  $files: {
+    allow: {
+      view: "true",
+      create: "isAdmin",
+      update: "isAdmin",
+      delete: "isAdmin",
+    },
+    bind: ["isAdmin", adminCondition],
   },
 } satisfies InstantRules;
 
