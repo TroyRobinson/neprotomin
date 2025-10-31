@@ -239,130 +239,145 @@ export const TopBar = ({
         className="sticky top-0 z-20 flex flex-col gap-2 border-b border-slate-200 bg-white/80 px-4 pt-safe backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/80 sm:gap-0 sm:px-6"
       >
         <div className="hidden h-16 w-full items-center justify-between sm:flex">
-          <div className="flex items-center gap-4">
+          <div className="flex min-w-0 flex-1 items-center gap-4">
             <a
               href="#"
               onClick={handleBrandClick}
-              className="flex items-center gap-3 text-sm font-medium text-slate-500 dark:text-slate-400 -ml-2"
+              className="flex shrink-0 items-center gap-3 text-sm font-medium text-slate-500 dark:text-slate-400 -ml-2"
             >
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-500 font-display text-lg font-semibold tracking-wider text-white shadow-floating">
                 NE
               </span>
             </a>
-            <nav className="hidden items-center gap-2 sm:flex">
-              <a
-                href="#map"
-                onClick={(e) => {
-                  e.preventDefault();
-                  onNavigate?.("map");
-                }}
-                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-                  active === "map"
-                    ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                    : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                }`}
-                aria-current={active === "map" ? "page" : undefined}
-              >
-                Map
-              </a>
-              <a
-                href="#report"
-                onMouseEnter={() => {
-                  import("../components/ReportScreen");
-                }}
-                onFocus={() => {
-                  import("../components/ReportScreen");
-                }}
-                onClick={(e) => {
-                  e.preventDefault();
-                  onNavigate?.("report");
-                }}
-                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-                  active === "report"
-                    ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                    : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                }`}
-                aria-current={active === "report" ? "page" : undefined}
-              >
-                Report
-              </a>
-              {showDataLink && (
+            <div className="relative flex min-w-0 flex-1 items-center overflow-hidden">
+              <nav className="hidden items-center gap-2 sm:flex">
                 <a
-                  href="#data"
+                  href="#map"
                   onClick={(e) => {
                     e.preventDefault();
-                    onNavigate?.("data");
+                    onNavigate?.("map");
                   }}
                   className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-                    active === "data"
+                    active === "map"
                       ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
                       : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                   }`}
-                  aria-current={active === "data" ? "page" : undefined}
-              >
-                Data
-              </a>
-            )}
-            {showQueueLink && (
-              <a
-                href="#queue"
-                onClick={(e) => {
-                  e.preventDefault();
-                  onNavigate?.("queue");
+                  aria-current={active === "map" ? "page" : undefined}
+                >
+                  Map
+                </a>
+                <a
+                  href="#report"
+                  onMouseEnter={() => {
+                    import("../components/ReportScreen");
+                  }}
+                  onFocus={() => {
+                    import("../components/ReportScreen");
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigate?.("report");
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                    active === "report"
+                      ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                      : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  }`}
+                  aria-current={active === "report" ? "page" : undefined}
+                >
+                  Report
+                </a>
+                {showDataLink && (
+                  <a
+                    href="#data"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onNavigate?.("data");
+                    }}
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                      active === "data"
+                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                        : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    }`}
+                    aria-current={active === "data" ? "page" : undefined}
+                  >
+                    Data
+                  </a>
+                )}
+                {showQueueLink && (
+                  <a
+                    href="#queue"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onNavigate?.("queue");
+                    }}
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                      active === "queue"
+                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                        : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    }`}
+                    aria-current={active === "queue" ? "page" : undefined}
+                  >
+                    Queue
+                  </a>
+                )}
+                <a
+                  href="https://www.neighborhoodexplorer.org/statistics/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                  Stats
+                </a>
+                <a
+                  href="https://www.neighborhoodexplorer.org/organizations/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                  Orgs
+                </a>
+                <a
+                  href="https://www.neighborhoodexplorer.org/community-goals/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                  Goals
+                </a>
+                <a
+                  href="https://www.neighborhoodexplorer.org/research-questions/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                  Research
+                </a>
+                <a
+                  href="https://www.9bcorp.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                  About
+                </a>
+              </nav>
+              {/* Gradient fade overlay for truncating links */}
+              <div 
+                className="pointer-events-none absolute right-0 top-0 h-full w-56 dark:hidden"
+                style={{
+                  background: 'linear-gradient(to left, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.65) 15%, rgba(255, 255, 255, 0.45) 35%, rgba(255, 255, 255, 0.25) 55%, rgba(255, 255, 255, 0.1) 75%, rgba(255, 255, 255, 0.05) 90%, transparent 100%)'
                 }}
-                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-                  active === "queue"
-                    ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                    : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                }`}
-                aria-current={active === "queue" ? "page" : undefined}
-              >
-                Queue
-              </a>
-            )}
-            <a
-              href="https://www.neighborhoodexplorer.org/statistics/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-            >
-              Stats
-            </a>
-            <a
-              href="https://www.neighborhoodexplorer.org/organizations/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-            >
-              Orgs
-            </a>
-            <a
-              href="https://www.neighborhoodexplorer.org/community-goals/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-            >
-              Goals
-            </a>
-            <a
-              href="https://www.neighborhoodexplorer.org/research-questions/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-            >
-              Research
-            </a>
-            <a
-              href="https://www.9bcorp.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-            >
-              About
-            </a>
-          </nav>
-        </div>
-          <div className="flex items-center gap-4">
+              />
+              <div 
+                className="pointer-events-none absolute right-0 top-0 h-full w-56 hidden dark:block"
+                style={{
+                  background: 'linear-gradient(to left, rgba(15, 23, 42, 0.8) 0%, rgba(15, 23, 42, 0.65) 15%, rgba(15, 23, 42, 0.45) 35%, rgba(15, 23, 42, 0.25) 55%, rgba(15, 23, 42, 0.1) 75%, rgba(15, 23, 42, 0.05) 90%, transparent 100%)'
+                }}
+              />
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-4">
             {!isLoading && (!user || user.isGuest) && (
               <button
                 type="button"
