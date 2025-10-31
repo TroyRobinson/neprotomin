@@ -62,6 +62,115 @@ const toNullableString = (value: string): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+// Parse a full address string into components
+// Handles formats like:
+// - "123 Main St, Tulsa, OK 74103"
+// - "123 Main St, Tulsa, OK, 74103"
+// - "123 Main St Tulsa OK 74103"
+function parseFullAddress(input: string): {
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+} | null {
+  const trimmed = input.trim();
+
+  // Only parse if it looks like a full address (contains comma or has multiple parts)
+  const hasCommas = trimmed.includes(",");
+  const parts = trimmed.split(/[\s,]+/).filter(Boolean);
+
+  // Need at least 4 parts (street, city, state, zip) to consider parsing
+  if (!hasCommas && parts.length < 4) {
+    return null;
+  }
+
+  try {
+    // Split by commas first if present
+    if (hasCommas) {
+      const segments = trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+
+      // Common format: "Street Address, City, State ZIP"
+      // or: "Street Address, City, State, ZIP"
+      if (segments.length >= 3) {
+        const streetAddress = segments[0];
+        const city = segments[1];
+
+        // Last segment should contain state and/or ZIP
+        const lastSegment = segments[segments.length - 1];
+        const lastParts = lastSegment.split(/\s+/).filter(Boolean);
+
+        // Try to identify state and ZIP from last segment(s)
+        let state = "";
+        let zip = "";
+
+        // If we have 3 segments: "Street, City, State ZIP"
+        if (segments.length === 3) {
+          // Last part could be "OK 74103" or "OK"
+          if (lastParts.length >= 2) {
+            state = lastParts[0];
+            zip = lastParts[lastParts.length - 1];
+          } else if (lastParts.length === 1) {
+            // Could be just state or just ZIP
+            if (/^\d{5}(-\d{4})?$/.test(lastParts[0])) {
+              zip = lastParts[0];
+            } else {
+              state = lastParts[0];
+            }
+          }
+        }
+        // If we have 4 segments: "Street, City, State, ZIP"
+        else if (segments.length === 4) {
+          state = segments[2];
+          zip = segments[3];
+        }
+
+        return {
+          address: streetAddress,
+          city,
+          state: state.toUpperCase(),
+          zip,
+        };
+      }
+    }
+
+    // Fallback: try to parse without commas
+    // Assume last part is ZIP, second to last is state
+    const zipMatch = trimmed.match(/\b(\d{5}(?:-\d{4})?)\b/);
+    if (zipMatch) {
+      const zip = zipMatch[1];
+      const beforeZip = trimmed.substring(0, zipMatch.index).trim();
+
+      // Find state (2-letter code before ZIP)
+      const stateMatch = beforeZip.match(/\b([A-Z]{2})\b$/);
+      if (stateMatch) {
+        const state = stateMatch[1];
+        const beforeState = beforeZip.substring(0, stateMatch.index).trim();
+
+        // Split remaining into street and city
+        const remaining = beforeState.split(/\s+/);
+        if (remaining.length >= 2) {
+          // Assume last word before state is city, rest is street
+          const cityIndex = Math.max(0, remaining.length - 1);
+          const address = remaining.slice(0, cityIndex).join(" ");
+          const city = remaining.slice(cityIndex).join(" ");
+
+          return {
+            address,
+            city,
+            state,
+            zip,
+          };
+        }
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error parsing address:", error);
+    return null;
+  }
+}
+
 const parseCoordinate = (
   label: "Latitude" | "Longitude",
   rawValue: string,
@@ -479,9 +588,27 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   type="text"
                   required
                   value={formValues.address}
-                  onChange={(event) => handleFieldChange("address")(event.target.value)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    // Try to parse as a full address
+                    const parsed = parseFullAddress(value);
+                    if (parsed) {
+                      // Auto-fill all fields if we successfully parsed a full address
+                      console.log("Auto-filling address fields:", parsed);
+                      setFormValues((prev) => ({
+                        ...prev,
+                        address: parsed.address || value,
+                        city: parsed.city || prev.city,
+                        state: parsed.state || prev.state,
+                        postalCode: parsed.zip || prev.postalCode,
+                      }));
+                    } else {
+                      // Just update the address field normally
+                      handleFieldChange("address")(value);
+                    }
+                  }}
                   autoComplete="street-address"
-                  placeholder="123 Community Ave."
+                  placeholder="123 Community Ave. (or paste full address)"
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
               </label>
