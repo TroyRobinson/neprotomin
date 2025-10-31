@@ -3,6 +3,9 @@ import type { Stat } from "../../types/stat";
 import { formatStatValue } from "../../lib/format";
 import type { StatBoundaryEntry } from "../hooks/useStats";
 
+// Feature flag: Hide stat values when at county level with no selection
+const HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION = true;
+
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type SelectedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
 
@@ -263,6 +266,7 @@ export const StatList = ({
                 isSecondary={secondaryStatId === row.id}
                 averageLabel={averageLabel}
                 onStatSelect={onStatSelect}
+                hideValue={HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION && effectiveAreaKind === "COUNTY" && areaEntries.length === 0}
               />
             ))}
           </ul>
@@ -278,6 +282,7 @@ interface StatListItemProps {
   isSecondary: boolean;
   averageLabel: string | null;
   onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
+  hideValue?: boolean;
 }
 
 const StatListItem = ({
@@ -286,6 +291,7 @@ const StatListItem = ({
   isSecondary,
   averageLabel,
   onStatSelect,
+  hideValue = false,
 }: StatListItemProps) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -387,15 +393,17 @@ const StatListItem = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <span
-          className={`text-sm font-semibold ${valueColorClass}`}
-          onMouseEnter={handleValueHover}
-          onMouseLeave={() => setShowValueTooltip(false)}
-        >
-          {valueLabel}
-        </span>
-      </div>
+      {!hideValue && (
+        <div className="flex items-center gap-2">
+          <span
+            className={`text-sm font-semibold ${valueColorClass}`}
+            onMouseEnter={handleValueHover}
+            onMouseLeave={() => setShowValueTooltip(false)}
+          >
+            {valueLabel}
+          </span>
+        </div>
+      )}
 
       {showTooltip && averageLabel && (
         <div
