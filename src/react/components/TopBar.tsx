@@ -338,7 +338,7 @@ export const TopBar = ({
               <button
                 type="button"
                 onClick={handleAddOrganization}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-500 text-white shadow-floating transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-100 text-brand-700 shadow-sm transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900"
                 aria-label="Add organization"
               >
                 <PlusIcon />
@@ -390,15 +390,6 @@ export const TopBar = ({
             )}
             {/* Mobile location button removed; now rendered on map */}
           </div>
-          <button
-            type="button"
-            onClick={handleMobileMenuToggle}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-            aria-label="Open menu"
-            aria-expanded={isMobileMenuOpen}
-          >
-            <HamburgerIcon />
-          </button>
           {(!isCompactMobileSearch || !isMobileSearchExpanded) && (
             <button
               type="button"
@@ -414,12 +405,21 @@ export const TopBar = ({
             <button
               type="button"
               onClick={handleAddOrganization}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-brand-500 text-white shadow-floating transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-brand-100 text-brand-700 shadow-sm transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900"
               aria-label="Add organization"
             >
               <PlusIcon />
             </button>
           )}
+          <button
+            type="button"
+            onClick={handleMobileMenuToggle}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+            aria-label="Open menu"
+            aria-expanded={isMobileMenuOpen}
+          >
+            <HamburgerIcon />
+          </button>
         </div>
       </header>
       {/* Location errors are now rendered inline within the map overlay button */}
