@@ -1509,10 +1509,15 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     };
 
     const unwireOrganizations = (() => {
+      // Track short, low‑movement taps on mobile to treat as a primary select
+      let tapStart: { point: maplibregl.PointLike; time: number; id: string | null } | null = null;
+      let consumedTap = false;
       const onPointsMouseEnter = () => { map.getCanvas().style.cursor = "pointer"; };
       const onPointsMouseLeave = () => { map.getCanvas().style.cursor = "pointer"; clearClusterHighlight(); onHover(null); };
       const onPointsMouseMove = (e: any) => { const f = e.features?.[0]; const id = f?.properties?.id as string | undefined; clearClusterHighlight(); onHover(id || null); };
       const onPointsClick = (e: any) => {
+        // Avoid duplicate open when a touch tap already handled selection
+        if (consumedTap) { consumedTap = false; return; }
         const handled = selectZipForOrgInteraction(e.point, e.originalEvent);
         if (handled) {
           resetCountyPressState();
@@ -1526,10 +1531,42 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
           onOrganizationClick?.(orgId, { source: "point" });
         }
       };
+      const onPointsTouchStart = (e: any) => {
+        if (!isMobile) return;
+        tapStart = { point: e.point, time: Date.now(), id: (e.features?.[0]?.properties?.id as string) || null };
+        consumedTap = false;
+      };
+      const onPointsTouchEnd = (e: any) => {
+        if (!isMobile || !tapStart) return;
+        const dt = Date.now() - tapStart.time;
+        const dx = (e.point?.x ?? 0) - (tapStart.point as any)?.x;
+        const dy = (e.point?.y ?? 0) - (tapStart.point as any)?.y;
+        const distancePx = Math.sqrt((dx || 0) * (dx || 0) + (dy || 0) * (dy || 0));
+        // Treat quick, small movement as a tap
+        if (dt < 500 && distancePx < 6) {
+          const handled = selectZipForOrgInteraction(e.point, e.originalEvent);
+          if (handled) {
+            resetCountyPressState();
+            if (typeof e.preventDefault === "function") e.preventDefault();
+            const original = e.originalEvent as Event | undefined;
+            original?.stopPropagation?.();
+          }
+          const feature = e.features?.[0];
+          const orgId = feature?.properties?.id as string | undefined;
+          if (orgId) {
+            consumedTap = true;
+            onOrganizationClick?.(orgId, { source: "point" });
+          }
+        }
+        tapStart = null;
+      };
       map.on("mouseenter", LAYER_POINTS_ID, onPointsMouseEnter);
       map.on("mouseleave", LAYER_POINTS_ID, onPointsMouseLeave);
       map.on("mousemove", LAYER_POINTS_ID, onPointsMouseMove);
       map.on("click", LAYER_POINTS_ID, onPointsClick);
+      // Mobile tap support
+      map.on("touchstart", LAYER_POINTS_ID, onPointsTouchStart);
+      map.on("touchend", LAYER_POINTS_ID, onPointsTouchEnd);
 
       const onClustersMouseEnter = () => { map.getCanvas().style.cursor = "pointer"; };
       const onClustersMouseLeave = () => { map.getCanvas().style.cursor = "pointer"; clearClusterHighlight(); onHover(null); };
@@ -1597,6 +1634,8 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         map.off("mouseleave", LAYER_CLUSTERS_ID, onClustersMouseLeave);
         map.off("mousemove", LAYER_CLUSTERS_ID, onClustersMouseMove);
         map.off("click", LAYER_CLUSTERS_ID, onClustersClick);
+        map.off("touchstart", LAYER_POINTS_ID, onPointsTouchStart);
+        map.off("touchend", LAYER_POINTS_ID, onPointsTouchEnd);
       };
     })();
 
