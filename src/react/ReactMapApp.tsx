@@ -429,6 +429,9 @@ export const ReactMapApp = () => {
     if (!isAdmin && activeScreen === "queue") {
       setActiveScreen("map");
     }
+    if (!isAdmin && activeScreen === "data") {
+      setActiveScreen("map");
+    }
   }, [isAdmin, activeScreen]);
 
   useEffect(() => {
@@ -1725,6 +1728,10 @@ export const ReactMapApp = () => {
   const handleTopBarNavigate = useCallback(
     (screen: "map" | "report" | "data" | "queue") => {
       if (screen === "queue" && !isAdmin) {
+        setActiveScreen("map");
+        return;
+      }
+      if (screen === "data" && !isAdmin) {
         setActiveScreen("map");
         return;
       }

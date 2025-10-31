@@ -227,7 +227,8 @@ export const TopBar = ({
     void db.auth.signOut();
   };
 
-  const showDataLink = !isLoading && user && !user.isGuest;
+  const showDataLink =
+    !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
   const showQueueLink =
     !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
 
