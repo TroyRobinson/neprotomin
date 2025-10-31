@@ -1,11 +1,11 @@
 export const CHOROPLETH_COLORS = [
-  "#e9efff",
-  "#cdd9ff",
-  "#aebfff",
-  "#85a3ff",
-  "#6d8afc",
-  "#4a6af9",
-  "#3755f0",
+  "#f0f1ff",
+  "#e3e5ff",
+  "#ccd0ff",
+  "#a8afff",
+  "#8a93ff",
+  "#7d87f0",
+  "#737de6",
 ];
 
 export const TEAL_COLORS = [

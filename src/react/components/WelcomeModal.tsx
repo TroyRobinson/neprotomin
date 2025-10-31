@@ -64,7 +64,7 @@ export const WelcomeModal = ({
 
         {/* Content - scrollable */}
         <div className="overflow-y-auto px-6 py-8 pr-12">
-          <h2 className="mb-4 text-xl font-bold text-slate-900 dark:text-slate-100">
+          <h2 className="mb-4 text-xl font-bold font-display text-slate-900 dark:text-slate-100">
             Welcome to Neighborhood Explorer
           </h2>
           <p className="mb-8 text-sm text-slate-600 dark:text-slate-400">

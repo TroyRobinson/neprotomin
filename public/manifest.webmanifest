@@ -1,6 +1,6 @@
 {
-  "name": "NE Proto",
-  "short_name": "NE Proto",
+  "name": "NE Food Map",
+  "short_name": "NE Food Map",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

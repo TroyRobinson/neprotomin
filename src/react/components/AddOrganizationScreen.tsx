@@ -605,7 +605,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated, onFindNearbyOrg }: 
             ← To Map
           </button>
           <div>
-            <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Add an organization</h1>
+            <h1 className="text-3xl font-semibold font-display text-slate-900 dark:text-white">Add an organization</h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-400">
               Share the details of a community organization so neighbors can discover it on the map.
               If you don't have an organization yet just want to share food, then use the button below...
@@ -630,7 +630,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated, onFindNearbyOrg }: 
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-500">
                 01 — Essentials
               </p>
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Organization overview</h2>
+              <h2 className="text-xl font-semibold font-display text-slate-900 dark:text-white">Organization overview</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Tell us who you are adding and how we can contact the person who can edit it later.
               </p>
@@ -723,7 +723,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated, onFindNearbyOrg }: 
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-500">
                 02 — Location & contact
               </p>
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Where can we find it?</h2>
+              <h2 className="text-xl font-semibold font-display text-slate-900 dark:text-white">Where can we find it?</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Enter the address and we'll automatically determine the map pin location. Contact details help neighbors get in touch.
               </p>
@@ -872,7 +872,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated, onFindNearbyOrg }: 
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-500">
                 03 — Optional extras
               </p>
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Help us tell the full story</h2>
+              <h2 className="text-xl font-semibold font-display text-slate-900 dark:text-white">Help us tell the full story</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Websites, sources, and service categories help residents know what to expect before they visit.
               </p>

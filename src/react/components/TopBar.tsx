@@ -300,7 +300,7 @@ export const TopBar = ({
               onClick={handleBrandClick}
               className="flex shrink-0 items-center gap-3 text-sm font-medium text-slate-500 dark:text-slate-400 -ml-2"
             >
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-500 font-display text-lg font-semibold tracking-wider text-white shadow-floating">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500 font-display text-lg font-semibold tracking-wider text-white shadow-floating">
                 NE
               </span>
             </a>
@@ -500,7 +500,7 @@ export const TopBar = ({
           <button
             type="button"
             onClick={() => onBrandClick?.()}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-500 font-display text-lg font-semibold tracking-wider text-white shadow-floating"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500 font-display text-lg font-semibold tracking-wider text-white shadow-floating"
             aria-label="Return to home"
           >
             NE
@@ -573,7 +573,7 @@ export const TopBar = ({
         <div className="fixed inset-0 z-50 bg-white/95 backdrop-blur-md dark:bg-slate-950/95">
           <div className="flex h-full flex-col">
             <div className="flex items-center justify-between px-6 pt-6">
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-brand-500 font-display text-lg font-semibold text-white shadow-floating">
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-brand-500 font-display text-lg font-semibold text-white shadow-floating">
                 NE
               </span>
               <button
