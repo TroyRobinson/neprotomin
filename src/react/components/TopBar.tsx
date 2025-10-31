@@ -436,21 +436,12 @@ export const TopBar = ({
                 </a>
                 <a
                   href={`https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=${neHomeRedirectDisabled ? "1" : "0"}`}
-                  target={neHomeRedirectDisabled ? "_blank" : undefined}
-                  rel={neHomeRedirectDisabled ? "noopener noreferrer" : undefined}
                   onClick={(e) => {
                     e.preventDefault();
                     const newState = !neHomeRedirectDisabled;
                     setNeHomeRedirectDisabled(newState);
                     setNeHomeRedirectState(newState);
-                    const url = `https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=${newState ? "1" : "0"}`;
-                    if (newState) {
-                      // When redirect is disabled (=1), open in new tab
-                      window.open(url, "_blank", "noopener,noreferrer");
-                    } else {
-                      // When redirect is enabled (=0), open in same tab
-                      window.location.href = url;
-                    }
+                    window.location.href = `https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=${newState ? "1" : "0"}`;
                   }}
                   className="group relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                   title="switch to original Neighborhood Explorer homepage"
