@@ -1,5 +1,5 @@
 const CATEGORY_CHIP_CLASSES =
-  "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-all duration-300 shadow-sm backdrop-blur-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400";
+  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-300 shadow-sm backdrop-blur-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400";
 
 const CATEGORY_CHIP_NEUTRAL_CLASSES =
   "border-slate-200 bg-white/90 text-slate-600 hover:border-brand-200 hover:bg-white hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white";
@@ -15,14 +15,14 @@ const MOBILE_STAT_CHIP_SELECTED_CLASSES =
   "border-transparent bg-brand-100 text-brand-700 shadow-floating hover:bg-brand-100 dark:bg-brand-400/80 dark:text-white px-3 py-1 text-xs";
 
 const MOBILE_STAT_CHIP_BASE_CLASSES =
-  "inline-flex items-center gap-2 rounded-full border bg-white/90 text-brand-700 shadow-sm transition-all duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400";
+  "inline-flex items-center gap-1.5 rounded-full border bg-white/90 text-brand-700 shadow-sm transition-all duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400";
 
 // Teal styling for secondary stat chip to match map overlay
 const SECONDARY_STAT_CHIP_CLASSES =
   "border-transparent bg-teal-100 text-teal-700 shadow-floating hover:bg-teal-100 dark:bg-teal-400/20 dark:text-teal-200";
 
 const CLOSE_ICON = `
-  <svg viewBox="0 0 12 12" aria-hidden="true" class="h-3.5 w-3.5">
+  <svg viewBox="0 0 12 12" aria-hidden="true" class="h-2.5 w-2.5">
     <path
       fill="currentColor"
       d="M9.53 2.47a.75.75 0 00-1.06-1.06L6 3.94 3.53 1.41A.75.75 0 002.47 2.47L4.94 5 2.47 7.53a.75.75 0 101.06 1.06L6 6.06l2.47 2.53a.75.75 0 001.06-1.06L7.06 5z"
