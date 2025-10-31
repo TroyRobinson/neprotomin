@@ -17,34 +17,7 @@ export interface StatOverlayIds {
   COUNTY_SECONDARY_HOVER_LAYER_ID: string;
 }
 
-/**
- * Counts the number of unique zip codes visible in the current viewport.
- * Returns null if the count cannot be determined.
- */
-const countVisibleZipCodes = (
-  map: maplibregl.Map,
-  zipLayerOrder: string[],
-  zipFeatureProperty: string,
-): number | null => {
-  try {
-    const canvas = map.getCanvas();
-    const bounds: [[number, number], [number, number]] = [
-      [0, 0],
-      [canvas.width, canvas.height],
-    ];
-    const features = map.queryRenderedFeatures(bounds, { layers: zipLayerOrder });
-    const uniqueZips = new Set<string>();
-    for (const feature of features) {
-      const zip = feature?.properties?.[zipFeatureProperty];
-      if (typeof zip === "string" && zip.length > 0) {
-        uniqueZips.add(zip);
-      }
-    }
-    return uniqueZips.size;
-  } catch {
-    return null;
-  }
-};
+export const CHOROPLETH_HIDE_ZOOM = 13;
 
 export const updateStatDataChoropleth = (
   map: maplibregl.Map,
@@ -53,19 +26,12 @@ export const updateStatDataChoropleth = (
   boundaryMode: "zips" | "counties" | string,
   selectedStatId: string | null,
   statDataByStatId: Map<string, BoundaryEntry>,
-  zipLayerOrder?: string[],
-  zipFeatureProperty?: string,
+  currentZoom: number,
 ) => {
   const { BOUNDARY_STATDATA_FILL_LAYER_ID, COUNTY_STATDATA_FILL_LAYER_ID } = ids;
 
-  // Count visible zip codes when in zip mode to determine if choropleth should be hidden
-  const visibleZipCount =
-    boundaryMode === "zips" && zipLayerOrder && zipFeatureProperty
-      ? countVisibleZipCodes(map, zipLayerOrder, zipFeatureProperty)
-      : null;
-
-  // Hide choropleth when 1-7 zips are visible (too close zoom)
-  const shouldHideChoropleth = visibleZipCount !== null && visibleZipCount <= 7;
+  // Hide choropleth when zoomed in too close (similar to county/zip boundary switching)
+  const shouldHideChoropleth = boundaryMode === "zips" && currentZoom >= CHOROPLETH_HIDE_ZOOM;
 
   const applyEntry = (
     layerId: string,
