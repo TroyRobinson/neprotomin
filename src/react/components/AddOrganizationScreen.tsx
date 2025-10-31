@@ -228,67 +228,85 @@ const parseCoordinate = (
   return { value: parsed };
 };
 
-// Geocode an address using geocode.maps.co (free, browser-friendly)
+// Geocode using multiple free services with fallback support
 async function geocodeAddress(
   address: string,
   city: string,
   state: string,
   zip: string,
 ): Promise<{ latitude: number; longitude: number } | { error: string }> {
-  try {
-    // Construct a full address string
-    const fullAddress = `${address}, ${city}, ${state} ${zip}, USA`;
+  const fullAddress = `${address}, ${city}, ${state} ${zip}, USA`;
+  console.log("Geocoding request:", { address, city, state, zip, fullAddress });
 
-    const params = new URLSearchParams({
-      q: fullAddress,
-    });
+  // List of free geocoding services to try (in order)
+  const services = [
+    {
+      name: "geocode.maps.co",
+      getUrl: (addr: string) => {
+        const params = new URLSearchParams({ q: addr });
+        return `https://geocode.maps.co/search?${params.toString()}`;
+      },
+      parseResponse: (data: any) => {
+        if (!Array.isArray(data) || data.length === 0) return null;
+        return {
+          latitude: parseFloat(data[0].lat),
+          longitude: parseFloat(data[0].lon),
+        };
+      },
+    },
+    {
+      name: "photon.komoot.io",
+      getUrl: (addr: string) => {
+        const params = new URLSearchParams({ q: addr, limit: "1" });
+        return `https://photon.komoot.io/api/?${params.toString()}`;
+      },
+      parseResponse: (data: any) => {
+        if (!data.features || data.features.length === 0) return null;
+        const coords = data.features[0].geometry.coordinates;
+        return {
+          latitude: coords[1], // GeoJSON uses [lon, lat]
+          longitude: coords[0],
+        };
+      },
+    },
+  ];
 
-    const url = `https://geocode.maps.co/search?${params.toString()}`;
-    console.log("Geocoding request:", { address, city, state, zip });
-    console.log("Full address string:", fullAddress);
+  // Try each service in order
+  const errors: string[] = [];
+  for (const service of services) {
+    try {
+      console.log(`Trying geocoding service: ${service.name}`);
+      const url = service.getUrl(fullAddress);
+      const response = await fetch(url);
 
-    const response = await fetch(url);
-    console.log("Response status:", response.status, response.statusText);
+      if (!response.ok) {
+        console.warn(`${service.name} returned status ${response.status}`);
+        errors.push(`${service.name}: HTTP ${response.status}`);
+        continue; // Try next service
+      }
 
-    if (!response.ok) {
-      console.error("API error:", response.status, response.statusText);
-      return {
-        error: `Unable to connect to the geocoding service (${response.status}). Please try again later.`,
-      };
+      const data = await response.json();
+      const result = service.parseResponse(data);
+
+      if (result) {
+        console.log(`✓ ${service.name} found coordinates:`, result);
+        return result;
+      } else {
+        console.warn(`${service.name} returned no results`);
+        errors.push(`${service.name}: No results found`);
+      }
+    } catch (error) {
+      console.error(`${service.name} error:`, error);
+      errors.push(`${service.name}: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    const data = await response.json();
-    console.log("Response data:", data);
-
-    // Check if we got any results
-    if (!Array.isArray(data) || data.length === 0) {
-      console.warn("No matches found for address");
-      return {
-        error:
-          "We couldn't find coordinates for this address. Please check the address and try again, or verify the street address, city, state, and ZIP code are all correct.",
-      };
-    }
-
-    // Use the first result
-    const result = data[0];
-    const latitude = parseFloat(result.lat);
-    const longitude = parseFloat(result.lon);
-
-    console.log("Found coordinates:", { latitude, longitude });
-    console.log("Matched address:", result.display_name);
-
-    return { latitude, longitude };
-  } catch (error) {
-    console.error("Geocoding error (full details):", error);
-    if (error instanceof Error) {
-      console.error("Error message:", error.message);
-      console.error("Error stack:", error.stack);
-    }
-    return {
-      error:
-        `Geocoding failed: ${error instanceof Error ? error.message : String(error)}`,
-    };
   }
+
+  // All services failed
+  console.error("All geocoding services failed:", errors);
+  return {
+    error:
+      "We couldn't find coordinates for this address. Please check the address and try again, or verify the street address, city, state, and ZIP code are all correct.",
+  };
 }
 
 export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationScreenProps) => {
@@ -782,7 +800,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                     { day: 6, label: "Saturday" },
                     { day: 0, label: "Sunday" },
                   ].map(({ day, label }) => (
-                    <div key={day} className="flex items-center gap-3">
+                    <div key={day} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                       <label className="flex items-center gap-2 min-w-[100px]">
                         <input
                           type="checkbox"
@@ -793,19 +811,19 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                         <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>
                       </label>
                       {formValues.hours[day].enabled && (
-                        <div className="flex items-center gap-2 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 flex-1 pl-6 sm:pl-0">
                           <input
                             type="time"
                             value={formValues.hours[day].openTime}
                             onChange={(e) => handleHoursChange(day, "openTime", e.target.value)}
-                            className="rounded border border-slate-300 px-2 py-1 text-sm text-slate-900 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                            className="min-w-[120px] flex-1 sm:flex-none rounded border border-slate-300 px-2 py-1 text-sm text-slate-900 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
                           />
-                          <span className="text-xs text-slate-500 dark:text-slate-400">to</span>
+                          <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">to</span>
                           <input
                             type="time"
                             value={formValues.hours[day].closeTime}
                             onChange={(e) => handleHoursChange(day, "closeTime", e.target.value)}
-                            className="rounded border border-slate-300 px-2 py-1 text-sm text-slate-900 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                            className="min-w-[120px] flex-1 sm:flex-none rounded border border-slate-300 px-2 py-1 text-sm text-slate-900 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
                           />
                         </div>
                       )}
