@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { id } from "@instantdb/react";
+import { XMarkIcon } from "@heroicons/react/24/outline";
 import { db } from "../../lib/reactDb";
 import { isAdminEmail } from "../../lib/admin";
 import type { Category, OrganizationStatus, OrganizationModerationStatus } from "../../types/organization";
@@ -52,7 +53,7 @@ const statusOptions: Array<{ value: OrganizationStatus; label: string }> = [
 const emptyFormState = (ownerEmail: string): FormState => ({
   name: "",
   ownerEmail,
-  category: "health",
+  category: "food",
   status: "active",
   latitude: "", // Auto-populated via geocoding
   longitude: "", // Auto-populated via geocoding
@@ -62,7 +63,7 @@ const emptyFormState = (ownerEmail: string): FormState => ({
   city: "",
   state: "OK",
   postalCode: "",
-  source: "",
+  source: "Community",
   googleCategory: "",
   hours: {
     0: { enabled: false, openTime: "09:00", closeTime: "17:00" }, // Sunday
@@ -79,6 +80,20 @@ const toNullableString = (value: string): string | null => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 };
+
+// Normalize website URL by prepending https:// if no protocol is present
+function normalizeWebsiteUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return trimmed;
+  
+  // Check if URL already has a protocol
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+  
+  // Prepend https:// if no protocol
+  return `https://${trimmed}`;
+}
 
 // Convert 24-hour time (HH:MM) to 12-hour format (H:MM AM/PM)
 function formatTime12Hour(time24: string): string {
@@ -293,6 +308,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
   const [formValues, setFormValues] = useState<FormState>(() => emptyFormState(ownerEmailFromAuth));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [submissionSuccess, setSubmissionSuccess] = useState(false);
   const [geocodedCoordinates, setGeocodedCoordinates] = useState<{
     latitude: number;
     longitude: number;
@@ -471,9 +487,9 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
       payload.moderationChangedAt = submittedAt;
     }
 
-    const websiteValue = toNullableString(
-      (formData.get("website") ?? formValues.website ?? "") as string,
-    );
+    const rawWebsiteValue = (formData.get("website") ?? formValues.website ?? "") as string;
+    const normalizedWebsite = normalizeWebsiteUrl(rawWebsiteValue);
+    const websiteValue = toNullableString(normalizedWebsite);
     if (websiteValue) payload.website = websiteValue;
 
     const phoneValue = toNullableString(
@@ -540,12 +556,17 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
     try {
       await db.transact(db.tx.organizations[organizationId].update(payload));
       setIsSubmitting(false);
-      onCreated({
-        id: organizationId,
-        latitude: latitudeValue,
-        longitude: longitudeValue,
-        name: nextName,
-      });
+      setSubmissionSuccess(true);
+      setFormError(null);
+      // Delay calling onCreated to allow user to see success message
+      setTimeout(() => {
+        onCreated({
+          id: organizationId,
+          latitude: latitudeValue,
+          longitude: longitudeValue,
+          name: nextName,
+        });
+      }, 2000);
     } catch (error) {
       console.error("Failed to create organization", error);
       setFormError(
@@ -554,6 +575,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
           : "We could not save the organization. Please try again.",
       );
       setIsSubmitting(false);
+      setSubmissionSuccess(false);
     }
   };
 
@@ -847,57 +869,46 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
               </label>
-              <label className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Submitted by / Source</span>
-                <input
-                  name="source"
-                  type="text"
-                  value={formValues.source}
-                  onChange={handleInputChange("source")}
-                  onInput={handleInputChange("source")}
-                  placeholder="Community submission"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
-                />
-              </label>
               <label className="flex flex-col gap-2 md:col-span-2">
-                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Google category (optional)</span>
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Organization Sub-type</span>
                 <input
                   name="googleCategory"
                   type="text"
                   value={formValues.googleCategory}
                   onChange={handleInputChange("googleCategory")}
                   onInput={handleInputChange("googleCategory")}
-                  placeholder="Community center"
+                  placeholder="Food Bank"
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Helpful if the organization appears on Google Maps and you know its official category.
-                </p>
               </label>
             </div>
           </section>
 
-          <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+          <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-2 rounded-3xl border border-slate-200 bg-white/80 p-3 shadow-lg backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
             {formError ? (
               <p className="text-sm font-medium text-rose-600 dark:text-rose-300">{formError}</p>
-            ) : (
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                We’ll review submissions quickly—thanks for helping keep the map accurate.
+            ) : submissionSuccess ? (
+              <p className="text-sm font-medium text-green-600 dark:text-green-300">
+                Thank you for your map submission! We'll review and add your location as soon as we're able.
               </p>
+            ) : (
+              <div className="flex-1" />
             )}
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={onCancel}
-                className="inline-flex items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-400 hover:text-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+                className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-slate-400 hover:text-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white sm:px-4"
                 disabled={isSubmitting}
+                aria-label="Cancel"
               >
-                Cancel
+                <XMarkIcon className="h-4 w-4 sm:hidden" />
+                <span className="hidden sm:inline">Cancel</span>
               </button>
               <button
                 type="submit"
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-brand-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-brand-500 dark:hover:bg-brand-400 dark:focus:ring-brand-300 dark:focus:ring-offset-slate-900"
-                disabled={isSubmitting}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-brand-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-brand-500 dark:hover:bg-brand-400 dark:focus:ring-brand-300 dark:focus:ring-offset-slate-900"
+                disabled={isSubmitting || submissionSuccess}
               >
                 {isSubmitting ? "Saving…" : "Publish on map"}
               </button>
