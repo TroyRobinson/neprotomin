@@ -942,7 +942,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated, onFindNearbyOrg }: 
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-brand-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-brand-500 dark:hover:bg-brand-400 dark:focus:ring-brand-300 dark:focus:ring-offset-slate-900"
                 disabled={isSubmitting || submissionSuccess}
               >
-                {isSubmitting ? "Saving…" : "Publish on map"}
+                {isSubmitting ? "Saving…" : "Submit for Map Approval"}
               </button>
             </div>
           </div>
