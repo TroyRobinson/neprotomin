@@ -1,4 +1,101 @@
 import type maplibregl from "maplibre-gl";
+import type {
+  DataDrivenPropertyValueSpecification,
+  ExpressionSpecification,
+} from "@maplibre/maplibre-gl-style-spec";
+
+const desktopClusterRadiusExpression = [
+  "step",
+  ["get", "point_count"],
+  12,
+  10,
+  16,
+  25,
+  20,
+] as ExpressionSpecification;
+
+const mobileClusterRadiusExpression = [
+  "step",
+  ["zoom"],
+  desktopClusterRadiusExpression,
+  10.01,
+  ["step", ["get", "point_count"], 18, 10, 22, 25, 26],
+] as ExpressionSpecification;
+
+const desktopClusterTextSize = 12;
+
+const mobileClusterTextSizeExpression = [
+  "step",
+  ["zoom"],
+  12,
+  10.01,
+  14,
+] as ExpressionSpecification;
+
+const desktopPointRadius = 6;
+
+const mobilePointRadiusExpression = [
+  "step",
+  ["zoom"],
+  6,
+  10.01,
+  16,
+] as ExpressionSpecification;
+
+const desktopHighlightRadius = 9;
+
+const mobileHighlightRadiusExpression = [
+  "step",
+  ["zoom"],
+  9,
+  10.01,
+  20,
+] as ExpressionSpecification;
+
+const desktopClusterHighlightRadiusExpression = [
+  "step",
+  ["get", "point_count"],
+  18,
+  10,
+  22,
+  25,
+  28,
+] as ExpressionSpecification;
+
+const mobileClusterHighlightRadiusExpression = [
+  "step",
+  ["zoom"],
+  desktopClusterHighlightRadiusExpression,
+  10.01,
+  ["step", ["get", "point_count"], 24, 10, 28, 25, 32],
+] as ExpressionSpecification;
+
+const getClusterRadius = (
+  isMobile: boolean,
+): DataDrivenPropertyValueSpecification<number> =>
+  isMobile ? mobileClusterRadiusExpression : desktopClusterRadiusExpression;
+
+const getClusterTextSize = (
+  isMobile: boolean,
+): DataDrivenPropertyValueSpecification<number> =>
+  (isMobile ? mobileClusterTextSizeExpression : desktopClusterTextSize);
+
+const getPointRadius = (
+  isMobile: boolean,
+): DataDrivenPropertyValueSpecification<number> =>
+  (isMobile ? mobilePointRadiusExpression : desktopPointRadius);
+
+const getHighlightRadius = (
+  isMobile: boolean,
+): DataDrivenPropertyValueSpecification<number> =>
+  (isMobile ? mobileHighlightRadiusExpression : desktopHighlightRadius);
+
+const getClusterHighlightRadius = (
+  isMobile: boolean,
+): DataDrivenPropertyValueSpecification<number> =>
+  isMobile
+    ? mobileClusterHighlightRadiusExpression
+    : desktopClusterHighlightRadiusExpression;
 
 export interface OrgLayerIds {
   SOURCE_ID: string;
@@ -44,16 +141,8 @@ export const ensureOrganizationLayers = (
     // On mobile when zoomed in past level 10, make clusters larger for better tap targets
     // Desktop: base 12, >=10 count: 16, >=25 count: 20
     // Mobile + zoom > 10: base 18, >=10 count: 22, >=25 count: 26
-    const clusterRadius = isMobile
-      ? [
-          "step",
-          ["zoom"],
-          ["step", ["get", "point_count"], 12, 10, 16, 25, 20], // zoom <= 10: desktop sizes
-          10.01,
-          ["step", ["get", "point_count"], 18, 10, 22, 25, 26], // zoom > 10: larger sizes
-        ]
-      : ["step", ["get", "point_count"], 12, 10, 16, 25, 20];
-    
+    const clusterRadius = getClusterRadius(isMobile);
+
     map.addLayer({
       id: LAYER_CLUSTERS_ID,
       type: "circle",
@@ -69,15 +158,7 @@ export const ensureOrganizationLayers = (
     });
   } else {
     // Update existing layer with new sizes based on mobile state
-    const clusterRadius = isMobile
-      ? [
-          "step",
-          ["zoom"],
-          ["step", ["get", "point_count"], 12, 10, 16, 25, 20],
-          10.01,
-          ["step", ["get", "point_count"], 18, 10, 22, 25, 26],
-        ]
-      : ["step", ["get", "point_count"], 12, 10, 16, 25, 20];
+    const clusterRadius = getClusterRadius(isMobile);
     try {
       map.setPaintProperty(LAYER_CLUSTERS_ID, "circle-radius", clusterRadius);
     } catch {}
@@ -85,16 +166,8 @@ export const ensureOrganizationLayers = (
 
   if (!map.getLayer(LAYER_CLUSTER_COUNT_ID)) {
     // Scale text size proportionally with cluster size on mobile when zoomed in
-    const clusterTextSize = isMobile
-      ? [
-          "step",
-          ["zoom"],
-          12, // zoom <= 10: normal size
-          10.01,
-          14, // zoom > 10: slightly larger
-        ]
-      : 12;
-    
+    const clusterTextSize = getClusterTextSize(isMobile);
+
     map.addLayer({
       id: LAYER_CLUSTER_COUNT_ID,
       type: "symbol",
@@ -111,15 +184,7 @@ export const ensureOrganizationLayers = (
     });
   } else {
     // Update existing layer text size
-    const clusterTextSize = isMobile
-      ? [
-          "step",
-          ["zoom"],
-          12,
-          10.01,
-          14,
-        ]
-      : 12;
+    const clusterTextSize = getClusterTextSize(isMobile);
     try {
       map.setLayoutProperty(LAYER_CLUSTER_COUNT_ID, "text-size", clusterTextSize);
     } catch {}
@@ -145,17 +210,13 @@ export const ensureOrganizationLayers = (
       if (!map.getLayer(LAYER_POINTS_ID)) return;
       // On mobile when zoomed in past level 10, make individual points larger (similar to cluster base size)
       // Desktop: 6, Mobile + zoom > 10: 16
-      const pointRadius = isMobile
-        ? ["step", ["zoom"], 6, 10.01, 16]
-        : 6;
+      const pointRadius = getPointRadius(isMobile);
       map.setPaintProperty(LAYER_POINTS_ID, "circle-radius", pointRadius);
       map.setPaintProperty(LAYER_POINTS_ID, "circle-opacity", 1);
     });
   } else {
     // Update existing layer point size
-    const pointRadius = isMobile
-      ? ["step", ["zoom"], 6, 10.01, 16]
-      : 6;
+    const pointRadius = getPointRadius(isMobile);
     try {
       map.setPaintProperty(LAYER_POINTS_ID, "circle-radius", pointRadius);
     } catch {}
@@ -164,10 +225,8 @@ export const ensureOrganizationLayers = (
   if (!map.getLayer(LAYER_HIGHLIGHT_ID)) {
     // Scale highlight proportionally with point size on mobile when zoomed in
     // Desktop: 9, Mobile + zoom > 10: 20 (proportional to point size increase from 6 to 16)
-    const highlightRadius = isMobile
-      ? ["step", ["zoom"], 9, 10.01, 20]
-      : 9;
-    
+    const highlightRadius = getHighlightRadius(isMobile);
+
     map.addLayer({
       id: LAYER_HIGHLIGHT_ID,
       type: "circle",
@@ -183,9 +242,7 @@ export const ensureOrganizationLayers = (
     });
   } else {
     // Update existing layer highlight size
-    const highlightRadius = isMobile
-      ? ["step", ["zoom"], 9, 10.01, 20]
-      : 9;
+    const highlightRadius = getHighlightRadius(isMobile);
     try {
       map.setPaintProperty(LAYER_HIGHLIGHT_ID, "circle-radius", highlightRadius);
     } catch {}
@@ -195,16 +252,8 @@ export const ensureOrganizationLayers = (
     // Scale cluster highlight proportionally with cluster size on mobile when zoomed in
     // Desktop: base 18, >=10 count: 22, >=25 count: 28
     // Mobile + zoom > 10: base 24, >=10 count: 28, >=25 count: 32
-    const clusterHighlightRadius = isMobile
-      ? [
-          "step",
-          ["zoom"],
-          ["step", ["get", "point_count"], 18, 10, 22, 25, 28], // zoom <= 10: desktop sizes
-          10.01,
-          ["step", ["get", "point_count"], 24, 10, 28, 25, 32], // zoom > 10: larger sizes
-        ]
-      : ["step", ["get", "point_count"], 18, 10, 22, 25, 28];
-    
+    const clusterHighlightRadius = getClusterHighlightRadius(isMobile);
+
     map.addLayer({
       id: LAYER_CLUSTER_HIGHLIGHT_ID,
       type: "circle",
@@ -220,18 +269,9 @@ export const ensureOrganizationLayers = (
     });
   } else {
     // Update existing layer cluster highlight size
-    const clusterHighlightRadius = isMobile
-      ? [
-          "step",
-          ["zoom"],
-          ["step", ["get", "point_count"], 18, 10, 22, 25, 28],
-          10.01,
-          ["step", ["get", "point_count"], 24, 10, 28, 25, 32],
-        ]
-      : ["step", ["get", "point_count"], 18, 10, 22, 25, 28];
+    const clusterHighlightRadius = getClusterHighlightRadius(isMobile);
     try {
       map.setPaintProperty(LAYER_CLUSTER_HIGHLIGHT_ID, "circle-radius", clusterHighlightRadius);
     } catch {}
   }
 };
-

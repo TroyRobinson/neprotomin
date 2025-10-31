@@ -1715,7 +1715,6 @@ export const ReactMapApp = () => {
     return { inSelection, all: [...rest, ...inactiveSorted], totalSourceCount, visibleInViewport };
   })();
 
-  const totalSelectedCount = selectedZips.length + selectedCounties.length;
   const visibleCount =
     typeof sidebarOrganizations.visibleInViewport === "number"
       ? sidebarOrganizations.visibleInViewport
