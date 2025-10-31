@@ -403,7 +403,7 @@ export const TopBar = ({
                   value={mobileSearchValue}
                   onChange={(e) => setMobileSearchValue(e.target.value)}
                   placeholder="enter ZIP"
-                  className="w-full min-w-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
+                  className="w-full min-w-0 bg-transparent text-base text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
                   enterKeyHint="search"
                 />
               </form>

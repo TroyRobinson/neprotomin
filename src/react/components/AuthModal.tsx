@@ -88,7 +88,7 @@ function EmailStep({ onSendEmail }: { onSendEmail: (email: string) => void }) {
       <input
         ref={inputRef}
         type="email"
-        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-300 focus:outline-none dark:border-slate-700 dark:bg-slate-800"
+        className="w-full rounded-md border border-slate-300 px-3 py-2 text-base focus:border-brand-300 focus:outline-none dark:border-slate-700 dark:bg-slate-800"
         placeholder="Enter your email"
         required
         autoFocus
@@ -144,7 +144,7 @@ function CodeStep({ sentEmail, onSuccess, onChangeEmail }: { sentEmail: string; 
       <input
         ref={inputRef}
         type="text"
-        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-300 focus:outline-none dark:border-slate-700 dark:bg-slate-800"
+        className="w-full rounded-md border border-slate-300 px-3 py-2 text-base focus:border-brand-300 focus:outline-none dark:border-slate-700 dark:bg-slate-800"
         placeholder="123456..."
         required
         autoFocus

@@ -605,7 +605,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   onInput={handleInputChange("name")}
                   autoComplete="organization"
                   placeholder="Community Resource Center"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
               </label>
 
@@ -623,7 +623,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                     onInput={handleInputChange("ownerEmail")}
                     autoComplete="email"
                     placeholder="you@example.org"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                   />
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     Required so you can edit your org details in the future.
@@ -698,7 +698,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   onInput={handleAddressChange}
                   autoComplete="street-address"
                   placeholder="123 Community Ave. (or paste full address)"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
               </label>
               <label className="flex flex-col gap-2">
@@ -714,7 +714,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   onInput={handleInputChange("city")}
                   autoComplete="address-level2"
                   placeholder="Tulsa"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
               </label>
               <label className="flex flex-col gap-2">
@@ -730,7 +730,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   onInput={handleInputChange("state")}
                   autoComplete="address-level1"
                   placeholder="OK"
-                  className="uppercase rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
+                  className="uppercase rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
               </label>
               <label className="flex flex-col gap-2">
@@ -746,7 +746,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   onInput={handleInputChange("postalCode")}
                   autoComplete="postal-code"
                   placeholder="74103"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
               </label>
               {geocodedCoordinates && (
@@ -769,7 +769,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   onInput={handleInputChange("phone")}
                   autoComplete="tel"
                   placeholder="(918) 555-1234"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
               </label>
 
@@ -805,14 +805,14 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                             type="time"
                             value={formValues.hours[day].openTime}
                             onChange={(e) => handleHoursChange(day, "openTime", e.target.value)}
-                            className="min-w-[120px] flex-1 sm:flex-none rounded border border-slate-300 px-2 py-1 text-sm text-slate-900 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                            className="min-w-[120px] flex-1 sm:flex-none rounded border border-slate-300 px-2 py-1 text-base text-slate-900 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
                           />
                           <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">to</span>
                           <input
                             type="time"
                             value={formValues.hours[day].closeTime}
                             onChange={(e) => handleHoursChange(day, "closeTime", e.target.value)}
-                            className="min-w-[120px] flex-1 sm:flex-none rounded border border-slate-300 px-2 py-1 text-sm text-slate-900 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                            className="min-w-[120px] flex-1 sm:flex-none rounded border border-slate-300 px-2 py-1 text-base text-slate-900 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
                           />
                         </div>
                       )}
@@ -844,7 +844,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   onInput={handleInputChange("website")}
                   autoComplete="url"
                   placeholder="https://example.org"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
               </label>
               <label className="flex flex-col gap-2">
@@ -856,7 +856,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   onChange={handleInputChange("source")}
                   onInput={handleInputChange("source")}
                   placeholder="Community submission"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
               </label>
               <label className="flex flex-col gap-2 md:col-span-2">
@@ -868,7 +868,7 @@ export const AddOrganizationScreen = ({ onCancel, onCreated }: AddOrganizationSc
                   onChange={handleInputChange("googleCategory")}
                   onInput={handleInputChange("googleCategory")}
                   placeholder="Community center"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/40"
                 />
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   Helpful if the organization appears on Google Maps and you know its official category.
