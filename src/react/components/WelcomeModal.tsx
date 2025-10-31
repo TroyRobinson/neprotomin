@@ -68,8 +68,7 @@ export const WelcomeModal = ({
             Welcome to Neighborhood Explorer
           </h2>
           <p className="mb-8 text-sm text-slate-600 dark:text-slate-400">
-            Discover food resources and community organizations in your area. Explore interactive maps,
-            statistics, and find help when you need it most.
+            Discover food resources and community organizations in your area. Explore interactive maps and statistics to learn how we can come together to make a difference.
           </p>
 
           {/* CTA Buttons */}
