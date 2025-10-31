@@ -80,6 +80,16 @@ const PlusIcon = () => (
   </svg>
 );
 
+const ArrowRightIcon = () => (
+  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-4 w-4">
+    <path
+      fillRule="evenodd"
+      d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
+
 // Locate icon is now rendered in the map overlay button
 
 const MOBILE_SEARCH_AUTO_EXPAND_THRESHOLD = 380;
@@ -549,9 +559,9 @@ export const TopBar = ({
               <form
                 ref={mobileSearchFormRef}
                 onSubmit={handleMobileSearchSubmit}
-                className="flex flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 shadow-sm transition focus-within:border-brand-300 focus-within:ring-2 focus-within:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:focus-within:border-slate-500"
+                className="flex flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white pl-3 pr-2 py-2 shadow-sm transition focus-within:border-brand-300 focus-within:ring-2 focus-within:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:focus-within:border-slate-500"
               >
-                <SearchIcon />
+                {!isCompactMobileSearch && <SearchIcon />}
                 <input
                   ref={mobileSearchInputRef}
                   type="search"
@@ -561,30 +571,39 @@ export const TopBar = ({
                   className="w-full min-w-0 bg-transparent text-base text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
                   enterKeyHint="search"
                 />
+                <button
+                  type="submit"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white transition hover:bg-brand-600 active:bg-brand-700 dark:bg-brand-600 dark:hover:bg-brand-500"
+                  aria-label="Submit search"
+                >
+                  <ArrowRightIcon />
+                </button>
               </form>
             )}
             {/* Mobile location button removed; now rendered on map */}
           </div>
           {(!isCompactMobileSearch || !isMobileSearchExpanded) && (
-            <button
-              type="button"
-              onClick={handleThemeToggle}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-              aria-pressed={theme === "dark"}
-            >
-              {theme === "dark" ? <MoonIcon /> : <SunIcon />}
-            </button>
-          )}
-          {onAddOrganization && (
-            <button
-              type="button"
-              onClick={handleAddOrganization}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-brand-100 text-brand-700 shadow-sm transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900"
-              aria-label="Add organization"
-            >
-              <PlusIcon />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleThemeToggle}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+                aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+                aria-pressed={theme === "dark"}
+              >
+                {theme === "dark" ? <MoonIcon /> : <SunIcon />}
+              </button>
+              {onAddOrganization && (
+                <button
+                  type="button"
+                  onClick={handleAddOrganization}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-brand-100 text-brand-700 shadow-sm transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900"
+                  aria-label="Add organization"
+                >
+                  <PlusIcon />
+                </button>
+              )}
+            </>
           )}
           <button
             type="button"
