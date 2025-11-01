@@ -384,13 +384,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       statWrapper.classList.add("hidden");
       return;
     }
-    // If a stat is selected, move it to the start so it "floats left"
-    if (selectedStatId) {
-      const selectedEntry = statEntries.find((e) => e.id === selectedStatId);
-      if (selectedEntry) {
-        statWrapper.insertBefore(selectedEntry.btn, statWrapper.firstChild);
-      }
-    }
+    // Stat chips maintain their original order - no reordering on selection
     statEntries.forEach(({ btn, id, name, labelEl, closeIcon }) => {
       const isSelected = selectedStatId === id;
       if (isMobile) {
