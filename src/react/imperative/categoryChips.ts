@@ -190,40 +190,20 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
         list.insertBefore(selectedEntry.button, list.firstChild);
         // Ensure stats wrapper renders immediately after the selected chip
         if (statWrapper.parentElement !== list) list.appendChild(statWrapper);
-        // Order: selected category -> orgs chip (if visible) -> stat chips
+        // Order: selected category -> stat chips -> orgs chip (always at right end)
         list.insertBefore(statWrapper, selectedEntry.button.nextSibling);
-        if (orgsChipBtn.style.display !== "none") {
-          list.insertBefore(orgsChipBtn, statWrapper);
-        }
       }
     } else if (selectedStatId) {
       // If stat is selected but no category, move stat wrapper to the beginning
       if (statWrapper.parentElement !== list) list.appendChild(statWrapper);
       list.insertBefore(statWrapper, list.firstChild);
-      if (orgsChipBtn.style.display !== "none") {
-        list.insertBefore(orgsChipBtn, statWrapper);
-      }
-    } else {
-      // No category and no stat selected: orgs chip goes at the end of category chips
-      if (orgsChipBtn.style.display !== "none") {
-        if (orgsChipBtn.parentElement !== list) list.appendChild(orgsChipBtn);
-        // Find the last category chip and insert after it
-        // If there are no visible category chips, just append to the end
-        let lastCategoryButton: HTMLElement | null = null;
-        for (let i = list.children.length - 1; i >= 0; i--) {
-          const child = list.children[i];
-          if (child !== orgsChipBtn && child !== statWrapper && entries.some(e => e.button === child)) {
-            lastCategoryButton = child as HTMLElement;
-            break;
-          }
-        }
-        if (lastCategoryButton) {
-          list.insertBefore(orgsChipBtn, lastCategoryButton.nextSibling);
-        } else {
-          // No visible category chips, just ensure it's at the end
-          list.appendChild(orgsChipBtn);
-        }
-      }
+    }
+    
+    // Always position orgs chip at the right end (after all category and stat chips)
+    if (orgsChipBtn.style.display !== "none") {
+      if (orgsChipBtn.parentElement !== list) list.appendChild(orgsChipBtn);
+      // Always append to the very end to ensure it's rightmost
+      list.appendChild(orgsChipBtn);
     }
 
     entries.forEach(({ button, closeIcon, categoryId }) => {
