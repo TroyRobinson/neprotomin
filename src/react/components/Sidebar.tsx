@@ -39,6 +39,10 @@ interface SidebarProps {
   pinnedAreas?: PinnedAreasMap;
   activeAreaKind?: SupportedAreaKind | null;
   areaNameLookup?: (kind: SupportedAreaKind, code: string) => string;
+  // Indicates that selection is from direct org clicks (vs area-based)
+  directOrgSelectionActive?: boolean;
+  // Selected org IDs from direct clicks (used to detect selection changes)
+  selectedOrgIds?: string[];
   zipScopeDisplayName?: string | null;
   countyScopeDisplayName?: string | null;
   selectedStatId?: string | null;
@@ -78,6 +82,8 @@ export const Sidebar = ({
   pinnedAreas = {},
   activeAreaKind = null,
   areaNameLookup,
+  directOrgSelectionActive = false,
+  selectedOrgIds = [],
   zipScopeDisplayName = null,
   countyScopeDisplayName = null,
   selectedStatId = null,
@@ -101,6 +107,7 @@ export const Sidebar = ({
   const [activeTab, setActiveTab] = useState<TabType>("orgs");
   const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(true);
   const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
+  const orgsScrollRef = useRef<HTMLDivElement>(null);
 
   const highlightedIds = new Set(highlightedOrganizationIds ?? []);
 
@@ -117,6 +124,15 @@ export const Sidebar = ({
 
   // Determine the "IN SELECTION" label - show area name if only one area is selected
   const inSelectionLabel = useMemo(() => {
+    // Direct org selection mode (clicked org centroids or small clusters)
+    if (directOrgSelectionActive) {
+      if (inSelection.length === 1) {
+        return "SELECTED";
+      }
+      return "IN SELECTION";
+    }
+
+    // Area-based selection mode
     if (totalSelectedCount === 1) {
       const selectedZip = selectedZips[0];
       const selectedCounty = selectedCounties[0];
@@ -137,13 +153,20 @@ export const Sidebar = ({
       }
     }
     return "IN SELECTION";
-  }, [totalSelectedCount, selectedZips, selectedCounties, areaNameLookup]);
+  }, [directOrgSelectionActive, inSelection.length, totalSelectedCount, selectedZips, selectedCounties, areaNameLookup]);
 
   const visibleCount =
     typeof visibleInViewport === "number" ? visibleInViewport : inSelection.length + all.length;
   const totalCount = typeof totalSourceCount === "number" ? totalSourceCount : visibleCount;
   const countForTab = totalSelectedCount > 0 ? inSelection.length : visibleCount;
   const missingCount = Math.max(totalCount - visibleCount, 0);
+
+  // Scroll to top when selection changes (area or direct org selection)
+  useEffect(() => {
+    if (orgsScrollRef.current && activeTab === "orgs") {
+      orgsScrollRef.current.scrollTop = 0;
+    }
+  }, [selectedZips.length, selectedCounties.length, selectedOrgIds.length, activeTab]);
 
   useEffect(() => {
     const visible = keepOrgsOnMap || activeTab === "orgs";
@@ -297,7 +320,7 @@ export const Sidebar = ({
 
         {/* Organizations Tab */}
         {activeTab === "orgs" && (
-          <div className="flex flex-1 flex-col overflow-y-auto">
+          <div ref={orgsScrollRef} className="flex flex-1 flex-col overflow-y-auto">
             {/* Time Filter Indicator */}
             {timeSelection && (
               <div className="mx-4 mt-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 dark:border-brand-800 dark:bg-brand-900/20">
@@ -370,7 +393,7 @@ export const Sidebar = ({
                 )}
 
                 {/* All Section */}
-                {totalSelectedCount > 0 && (
+                {(totalSelectedCount > 0 || (directOrgSelectionActive && all.length > 0)) && (
                   <h3 className="px-8 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                     ALL
                   </h3>
