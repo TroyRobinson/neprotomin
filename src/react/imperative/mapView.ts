@@ -1568,7 +1568,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
           const countRaw = feature.properties?.point_count;
           const count = typeof countRaw === "number" ? countRaw : undefined;
           const leavesPromise =
-            typeof count === "number" && count <= 5
+            typeof count === "number" && count <= 3
               ? source.getClusterLeaves(clusterId, Math.max(count, 1), 0)
               : null;
           
@@ -1587,7 +1587,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
               onClusterClick?.(ids, { count: count ?? ids.length, longitude: lng, latitude: lat });
             } catch {}
           } else {
-            // For large clusters (count > 5), still zoom as before
+            // For large clusters (count > 3), still zoom as before
             map.easeTo({ center: [lng, lat], zoom });
           }
         } catch {}

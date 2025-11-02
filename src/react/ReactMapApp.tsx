@@ -1240,13 +1240,13 @@ export const ReactMapApp = () => {
         setHighlightedOrganizationIds(null);
         // Single org in cluster - select it
         setSelectedOrgIds([uniqueIds[0]]);
-      } else if (uniqueIds.length <= 5) {
-        // Small cluster (2-5 orgs) - select all orgs in cluster
+      } else if (uniqueIds.length <= 3) {
+        // Small cluster (2-3 orgs) - select all orgs in cluster
         setActiveOrganizationId(null);
         setHighlightedOrganizationIds(uniqueIds);
         setSelectedOrgIds(uniqueIds);
       } else {
-        // Large cluster (>5 orgs) - just highlight, don't change selection
+        // Large cluster (>3 orgs) - just highlight, don't change selection
         setActiveOrganizationId(null);
         setHighlightedOrganizationIds(uniqueIds);
       }
