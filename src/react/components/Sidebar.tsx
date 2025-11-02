@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type React from "react";
 import { DemographicsBar } from "./DemographicsBar";
 import { StatViz } from "./StatViz";
 import { StatList } from "./StatList";
+import { IssueReportModal } from "./IssueReportModal";
 import type { Organization, OrganizationHours } from "../../types/organization";
 import type { Stat } from "../../types/stat";
 import { getCategoryLabel } from "../../types/categories";
@@ -10,6 +12,7 @@ import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
 import type { AreaId } from "../../types/areas";
 import type { TimeSelection } from "../lib/timeFilters";
 import { formatTimeSelection } from "../lib/timeFilters";
+import { db } from "../../lib/reactDb";
 
 // ============================================================================
 // Enable Features
@@ -107,7 +110,61 @@ export const Sidebar = ({
   const [activeTab, setActiveTab] = useState<TabType>("orgs");
   const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(true);
   const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
+  const [issueModalOrg, setIssueModalOrg] = useState<Organization | null>(null);
+  const [issueFeedback, setIssueFeedback] = useState<string | null>(null);
   const orgsScrollRef = useRef<HTMLDivElement>(null);
+  const { user } = db.useAuth();
+
+  const handleOpenIssueModal = useCallback((org: Organization) => {
+    setIssueModalOrg(org);
+    setIssueFeedback(null);
+  }, []);
+
+  const handleCloseIssueModal = useCallback(() => {
+    setIssueModalOrg(null);
+  }, []);
+
+  const handleSubmitIssue = useCallback(
+    async (details: string) => {
+      if (!issueModalOrg) {
+        throw new Error("No organization selected");
+      }
+
+      const payload = {
+        orgId: issueModalOrg.id,
+        orgName: issueModalOrg.name,
+        text: details,
+        source: "Issue Button",
+        reporterId: user?.id ?? null,
+        reporterEmail: typeof user?.email === "string" ? user.email : null,
+        pageUrl: typeof window !== "undefined" ? window.location.href : null,
+        locale: typeof navigator !== "undefined" ? navigator.language : null,
+      };
+
+      const response = await fetch("/api/report-issue", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      let data: any = null;
+      try {
+        data = await response.json();
+      } catch {
+        // ignored
+      }
+
+      if (!response.ok) {
+        const message = typeof data?.error === "string" ? data.error : "Failed to submit issue report.";
+        throw new Error(message);
+      }
+
+      setIssueFeedback("Thanks for flagging this location. We'll review it shortly.");
+    },
+    [issueModalOrg, user],
+  );
 
   const highlightedIds = new Set(highlightedOrganizationIds ?? []);
 
@@ -173,6 +230,13 @@ export const Sidebar = ({
     onOrgPinsVisibleChange?.(visible);
   }, [activeTab, keepOrgsOnMap, onOrgPinsVisibleChange]);
 
+  useEffect(() => {
+    if (!issueFeedback) return;
+    if (typeof window === "undefined") return;
+    const timeout = window.setTimeout(() => setIssueFeedback(null), 4000);
+    return () => window.clearTimeout(timeout);
+  }, [issueFeedback]);
+
   // Respond to external force-hide requests (e.g., closing the Orgs chip on the map)
   const lastForceHideNonceRef = useRef<number | undefined>(undefined);
 
@@ -226,7 +290,13 @@ export const Sidebar = ({
   }, [variant, className]);
 
   return (
-    <aside className={containerClassName}>
+    <>
+      <aside className={containerClassName}>
+      {issueFeedback ? (
+        <div className="mx-4 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 shadow-sm dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
+          {issueFeedback}
+        </div>
+      ) : null}
       {showInsights && (
         <>
           {/* Demographics Bar */}
@@ -386,6 +456,7 @@ export const Sidebar = ({
                           onToggleExpand={(id) =>
                             setExpandedOrgId((prev) => (prev === id ? null : id))
                           }
+                          onIssueClick={handleOpenIssueModal}
                         />
                       ))}
                     </ul>
@@ -410,6 +481,7 @@ export const Sidebar = ({
                       onToggleExpand={(id) =>
                         setExpandedOrgId((prev) => (prev === id ? null : id))
                       }
+                      onIssueClick={handleOpenIssueModal}
                     />
                   ))}
 
@@ -431,7 +503,14 @@ export const Sidebar = ({
           </div>
         )}
       </div>
-    </aside>
+      </aside>
+      <IssueReportModal
+        org={issueModalOrg}
+        isOpen={Boolean(issueModalOrg)}
+        onClose={handleCloseIssueModal}
+        onSubmit={handleSubmitIssue}
+      />
+    </>
   );
 };
 
@@ -442,6 +521,7 @@ interface OrganizationListItemProps {
   onHover?: (idOrIds: string | string[] | null) => void;
   onCategoryClick?: (categoryId: string) => void;
   onToggleExpand?: (id: string) => void;
+  onIssueClick?: (org: Organization) => void;
 }
 
 const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
@@ -598,6 +678,7 @@ const OrganizationListItem = ({
   onHover,
   onCategoryClick,
   onToggleExpand,
+  onIssueClick,
 }: OrganizationListItemProps) => {
   const handleMouseEnter = () => onHover?.(org.id);
   const handleMouseLeave = () => onHover?.(null);
@@ -720,18 +801,30 @@ const OrganizationListItem = ({
             {getCategoryLabel(org.category)}
           </span>
         </div>
-        {formatHoursLines(org.hours).length > 0 ? (
+        <div className="flex items-center gap-2">
           <button
             type="button"
             className="inline-flex items-center rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-500 transition-colors group-hover:bg-brand-100 group-hover:text-brand-900 dark:bg-slate-800/60 dark:text-slate-300 dark:group-hover:bg-slate-700 dark:group-hover:text-slate-100"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleToggle();
+            onClick={(event) => {
+              event.stopPropagation();
+              onIssueClick?.(org);
             }}
           >
-            Hours
+            Issue?
           </button>
-        ) : null}
+          {formatHoursLines(org.hours).length > 0 ? (
+            <button
+              type="button"
+              className="inline-flex items-center rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-500 transition-colors group-hover:bg-brand-100 group-hover:text-brand-900 dark:bg-slate-800/60 dark:text-slate-300 dark:group-hover:bg-slate-700 dark:group-hover:text-slate-100"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleToggle();
+              }}
+            >
+              Hours
+            </button>
+          ) : null}
+        </div>
       </div>
       {isExpanded ? renderHours(org.hours) : null}
     </li>

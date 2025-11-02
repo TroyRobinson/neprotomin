@@ -34,20 +34,21 @@ export const ensureOrganizationsSeeded = async (): Promise<void> => {
 
       const txs: any[] = [];
       for (const seed of organizationSeedData) {
-        const existing = existingByName.get(seed.name);
-        const payload = {
-          name: seed.name,
-          website: seed.website ?? null,
-          latitude: seed.latitude,
-          longitude: seed.longitude,
-          category: seed.category,
-          status: seed.status ?? "active",
-          source: "seed",
-          address: seed.address ?? null,
-          city: seed.city ?? null,
-          state: seed.state ?? null,
-          postalCode: seed.postalCode ?? null,
-        };
+      const existing = existingByName.get(seed.name);
+      const payload = {
+        name: seed.name,
+        website: seed.website ?? null,
+        latitude: seed.latitude,
+        longitude: seed.longitude,
+        category: seed.category,
+        status: seed.status ?? "active",
+        source: "seed",
+        address: seed.address ?? null,
+        city: seed.city ?? null,
+        state: seed.state ?? null,
+        postalCode: seed.postalCode ?? null,
+        ...(existing ? {} : { issueCount: 0 }),
+      };
         if (existing && existing.id) {
           const needsUpdate =
             existing.website !== payload.website ||

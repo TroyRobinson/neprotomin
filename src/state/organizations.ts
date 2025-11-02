@@ -61,6 +61,18 @@ class OrganizationStore {
               continue;
             }
 
+            const rawModeration =
+              typeof (org as any).moderationStatus === "string"
+                ? ((org as any).moderationStatus as string).toLowerCase()
+                : null;
+            const moderationStatus =
+              rawModeration && ["pending", "approved", "declined", "removed"].includes(rawModeration)
+                ? (rawModeration as Organization["moderationStatus"])
+                : null;
+            if (moderationStatus === "pending" || moderationStatus === "declined" || moderationStatus === "removed") {
+              continue;
+            }
+
             const rawStatus =
               typeof (org as any).status === "string"
                 ? ((org as any).status as string).toLowerCase()
@@ -109,6 +121,23 @@ class OrganizationStore {
               lastSyncedAt:
                 typeof (org as any).lastSyncedAt === "number"
                   ? ((org as any).lastSyncedAt as number)
+                  : null,
+              moderationStatus,
+              moderationChangedAt:
+                typeof (org as any).moderationChangedAt === "number"
+                  ? ((org as any).moderationChangedAt as number)
+                  : null,
+              submittedAt:
+                typeof (org as any).submittedAt === "number"
+                  ? ((org as any).submittedAt as number)
+                  : null,
+              queueSortKey:
+                typeof (org as any).queueSortKey === "number"
+                  ? ((org as any).queueSortKey as number)
+                  : null,
+              issueCount:
+                typeof (org as any).issueCount === "number"
+                  ? ((org as any).issueCount as number)
                   : null,
               raw: rawValue,
             });

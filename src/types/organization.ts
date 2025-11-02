@@ -2,7 +2,7 @@ export type Category = "health" | "education" | "justice" | "economy" | "food";
 
 export type OrganizationStatus = "active" | "moved" | "closed";
 
-export type OrganizationModerationStatus = "pending" | "approved" | "declined";
+export type OrganizationModerationStatus = "pending" | "approved" | "declined" | "removed";
 
 export interface OrganizationHoursPeriod {
   day: number;
@@ -44,6 +44,7 @@ export interface Organization {
   moderationChangedAt?: number | null;
   submittedAt?: number | null;
   queueSortKey?: number | null;
+  issueCount?: number | null;
 }
 
 export const TULSA_CENTER = {

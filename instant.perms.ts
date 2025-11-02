@@ -37,7 +37,7 @@ if (ADMIN_DOMAINS.size > 0) {
 const adminCondition =
   adminChecks.length > 0 ? `auth.email != null && (${adminChecks.join(" || ")})` : "false";
 
-const restrictedStatuses = "['approved', 'declined']";
+const restrictedStatuses = "['approved', 'declined', 'removed']";
 
 const rules = {
   $default: {
@@ -66,6 +66,15 @@ const rules = {
       "allowPublicOrgCreate",
       "(!setsRestrictedStatus) || isAdmin",
     ],
+  },
+  comments: {
+    allow: {
+      view: "isAdmin",
+      create: "isAdmin",
+      update: "isAdmin",
+      delete: "isAdmin",
+    },
+    bind: ["isAdmin", adminCondition],
   },
   uiState: {
     allow: {

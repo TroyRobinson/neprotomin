@@ -61,10 +61,10 @@ export const useOrganizations = () => {
             ? ((row as any).moderationStatus as string).toLowerCase()
             : null;
         const moderationStatus =
-          rawModeration && ["pending", "approved", "declined"].includes(rawModeration)
+          rawModeration && ["pending", "approved", "declined", "removed"].includes(rawModeration)
             ? (rawModeration as OrganizationModerationStatus)
             : null;
-        if (moderationStatus === "pending" || moderationStatus === "declined") {
+        if (moderationStatus === "pending" || moderationStatus === "declined" || moderationStatus === "removed") {
           continue;
         }
 
@@ -119,6 +119,10 @@ export const useOrganizations = () => {
           queueSortKey:
             typeof (row as any).queueSortKey === "number"
               ? ((row as any).queueSortKey as number)
+              : null,
+          issueCount:
+            typeof (row as any).issueCount === "number"
+              ? ((row as any).issueCount as number)
               : null,
           raw: rawValue,
         });

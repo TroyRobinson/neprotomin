@@ -44,6 +44,27 @@ const _schema = i.schema({
       moderationChangedAt: i.number().indexed().optional(),
       submittedAt: i.number().indexed().optional(),
       queueSortKey: i.number().indexed().optional(),
+      issueCount: i.number().indexed().optional(),
+    }),
+    comments: i.entity({
+      orgId: i.string().indexed(),
+      orgName: i.string(),
+      text: i.string(),
+      source: i.string().indexed(),
+      reporterId: i.string().indexed().optional(),
+      reporterEmail: i.string().optional(),
+      reporterKey: i.string().indexed().optional(),
+      reporterIsAdmin: i.boolean().indexed().optional(),
+      ipHash: i.string().indexed().optional(),
+      createdAt: i.number().indexed(),
+      context: i
+        .json<{
+          userAgent?: string | null;
+          referer?: string | null;
+          pageUrl?: string | null;
+          locale?: string | null;
+        }>()
+        .optional(),
     }),
     areas: i.entity({
       code: i.string().unique().indexed(), // e.g., ZIP / county FIPS
