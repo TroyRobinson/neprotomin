@@ -1491,31 +1491,6 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       };
     })();
 
-    const extractShiftKey = (event: Event | undefined): boolean =>
-      Boolean(event && typeof (event as any).shiftKey === "boolean" && (event as any).shiftKey);
-
-    const selectZipForOrgInteraction = (
-      point: maplibregl.PointLike,
-      originalEvent?: Event,
-    ): boolean => {
-      if (boundaryMode !== "zips") return false;
-      const features = map.queryRenderedFeatures(point, { layers: zipLayerOrder });
-      for (const feature of features) {
-        const zip = feature?.properties?.[zipFeatureProperty];
-        if (typeof zip === "string" && zip.length > 0) {
-          const shiftKey = extractShiftKey(originalEvent);
-          // On mobile, clear prior selections before selecting the new ZIP (unless shift-clicking to add)
-          if (isMobile && !shiftKey) {
-            zipSelection.setPinnedIds([], { shouldZoom: false, notify: false });
-            zipSelection.clearTransient({ shouldZoom: false, notify: false });
-          }
-          zipSelection.toggle(zip, shiftKey, false);
-          return true;
-        }
-      }
-      return false;
-    };
-
     const unwireOrganizations = (() => {
       // Track short, low‑movement taps on mobile to treat as a primary select
       let tapStart: { point: maplibregl.PointLike; time: number; id: string | null } | null = null;
@@ -1526,13 +1501,6 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       const onPointsClick = (e: any) => {
         // Avoid duplicate open when a touch tap already handled selection
         if (consumedTap) { consumedTap = false; return; }
-        const handled = selectZipForOrgInteraction(e.point, e.originalEvent);
-        if (handled) {
-          resetCountyPressState();
-          if (typeof e.preventDefault === "function") e.preventDefault();
-          const original = e.originalEvent as Event | undefined;
-          original?.stopPropagation?.();
-        }
         const feature = e.features?.[0];
         const orgId = feature?.properties?.id as string | undefined;
         if (orgId) {
@@ -1552,13 +1520,6 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         const distancePx = Math.sqrt((dx || 0) * (dx || 0) + (dy || 0) * (dy || 0));
         // Treat quick, small movement as a tap
         if (dt < 500 && distancePx < 6) {
-          const handled = selectZipForOrgInteraction(e.point, e.originalEvent);
-          if (handled) {
-            resetCountyPressState();
-            if (typeof e.preventDefault === "function") e.preventDefault();
-            const original = e.originalEvent as Event | undefined;
-            original?.stopPropagation?.();
-          }
           const feature = e.features?.[0];
           const orgId = feature?.properties?.id as string | undefined;
           if (orgId) {
@@ -1594,13 +1555,6 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         } catch {}
       };
       const onClustersClick = async (e: any) => {
-        const handledSelection = selectZipForOrgInteraction(e.point, e.originalEvent);
-        if (handledSelection) {
-          resetCountyPressState();
-          if (typeof e.preventDefault === "function") e.preventDefault();
-          const original = e.originalEvent as Event | undefined;
-          original?.stopPropagation?.();
-        }
         const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS_ID] });
         const feature = features[0];
         if (!feature || feature.geometry?.type !== "Point") return;
