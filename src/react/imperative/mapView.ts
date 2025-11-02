@@ -1571,15 +1571,24 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
             typeof count === "number" && count <= 5
               ? source.getClusterLeaves(clusterId, Math.max(count, 1), 0)
               : null;
-          map.easeTo({ center: [lng, lat], zoom });
+          
           if (leavesPromise) {
             try {
               const leaves = await leavesPromise;
               const ids = leaves
                 .map((leaf: any) => leaf?.properties?.id)
                 .filter((id: unknown): id is string => typeof id === "string" && id.length > 0);
+              
+              // Only zoom if single org; skip zoom for multiple orgs
+              if (ids.length === 1) {
+                map.easeTo({ center: [lng, lat], zoom });
+              }
+              
               onClusterClick?.(ids, { count: count ?? ids.length, longitude: lng, latitude: lat });
             } catch {}
+          } else {
+            // For large clusters (count > 5), still zoom as before
+            map.easeTo({ center: [lng, lat], zoom });
           }
         } catch {}
       };
