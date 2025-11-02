@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { init as initAdmin, id as createId } from "@instantdb/admin";
-import { isAdminEmail } from "../src/lib/admin";
+import { isAdminEmail } from "./_shared/admin";
 
 type ReportRequest = {
   method?: string;
