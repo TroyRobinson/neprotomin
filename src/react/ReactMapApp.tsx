@@ -6,7 +6,7 @@ import { MapLibreMap } from "./components/MapLibreMap";
 import { Sidebar } from "./components/Sidebar";
 import { WelcomeModal } from "./components/WelcomeModal";
 import { ZipSearchModal } from "./components/ZipSearchModal";
-import { TimeSelectorModal, type TimeSelection } from "./components/TimeSelectorModal";
+import { TimeSelectorModal } from "./components/TimeSelectorModal";
 import { useDemographics, type CombinedDemographicsSnapshot } from "./hooks/useDemographics";
 import { useStats } from "./hooks/useStats";
 import type { StatBoundaryEntry, SeriesByKind, SeriesEntry } from "./hooks/useStats";
@@ -24,6 +24,7 @@ import { normalizeScopeLabel, buildScopeLabelAliases } from "../lib/scopeLabels"
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import type { MapViewController } from "./imperative/mapView";
 import { isAdminEmail } from "../lib/admin";
+import { type TimeSelection, isOrganizationOpenAtTime, toTimeSelection } from "./lib/timeFilters";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
@@ -144,7 +145,11 @@ export const ReactMapApp = () => {
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showZipSearchModal, setShowZipSearchModal] = useState(false);
   const [showTimeSelectorModal, setShowTimeSelectorModal] = useState(false);
-  const [timeSelection, setTimeSelection] = useState<TimeSelection | null>(null);
+  const [timeSelectionState, setTimeSelectionState] = useState<TimeSelection | null>(null);
+  const timeSelection = useMemo(() => toTimeSelection(timeSelectionState), [timeSelectionState]);
+  const setTimeSelection = useCallback((selection: TimeSelection | null) => {
+    setTimeSelectionState(toTimeSelection(selection));
+  }, [setTimeSelectionState]);
   const [expandMobileSearch, setExpandMobileSearch] = useState(false);
   const sheetPointerIdRef = useRef<number | null>(null);
   const sheetDragStateRef = useRef<{ startY: number; startState: "peek" | "expanded" } | null>(null);
@@ -963,49 +968,10 @@ export const ReactMapApp = () => {
     [organizations],
   );
 
-  // Helper function to check if an organization is open at a specific time
-  const isOrganizationOpenAtTime = (org: Organization, selection: TimeSelection | null): boolean => {
-    if (!selection) return true; // No time filter means show all
-    if (!org.hours) return false; // Hide orgs without hours data
-    
-    const { day, hour, minute } = selection;
-    const selectedMinutes = hour * 60 + minute;
-    
-    // Find the period for the selected day
-    const dayPeriods = org.hours.periods?.filter(period => period.day === day) ?? [];
-    
-    if (dayPeriods.length === 0) return false; // No hours for this day
-    
-    // Check if any period covers the selected time
-    for (const period of dayPeriods) {
-      if (!period.openTime || !period.closeTime) continue;
-      
-      const [openHours, openMinutes] = period.openTime.split(':').map(Number);
-      const [closeHours, closeMinutes] = period.closeTime.split(':').map(Number);
-      const openTime = openHours * 60 + openMinutes;
-      const closeTime = closeHours * 60 + closeMinutes;
-      
-      if (period.isOvernight) {
-        // Overnight period (e.g., 22:00 - 02:00)
-        if (selectedMinutes >= openTime || selectedMinutes <= closeTime) {
-          return true;
-        }
-      } else {
-        // Normal period (e.g., 09:00 - 17:00)
-        if (selectedMinutes >= openTime && selectedMinutes <= closeTime) {
-          return true;
-        }
-      }
-    }
-    
-    return false;
-  };
-
-  // Filter active organizations based on time selection
-  const timeFilteredOrganizations = useMemo(
+  const availableOrganizations = useMemo(
     () => {
       if (!timeSelection) return activeOrganizations;
-      return activeOrganizations.filter(org => isOrganizationOpenAtTime(org, timeSelection));
+      return activeOrganizations.filter((org) => isOrganizationOpenAtTime(org, timeSelection));
     },
     [activeOrganizations, timeSelection],
   );
@@ -1554,7 +1520,7 @@ export const ReactMapApp = () => {
       headers.push(orgCountHeader);
 
       const idsFilter = new Set(orgsAllSourceIds);
-      const fromSource = activeOrganizations.filter(
+      const fromSource = availableOrganizations.filter(
         (org) => idsFilter.size === 0 || idsFilter.has(org.id),
       );
       const catOrgs = fromSource.filter((org) => org.category === selectedCategory);
@@ -1786,7 +1752,7 @@ export const ReactMapApp = () => {
   const sidebarOrganizations = (() => {
     const sourceIds = new Set(orgsAllSourceIds);
     const visibleIds = new Set(orgsVisibleIds);
-    const fromSource = activeOrganizations.filter((o) => sourceIds.size === 0 || sourceIds.has(o.id));
+    const fromSource = availableOrganizations.filter((o) => sourceIds.size === 0 || sourceIds.has(o.id));
     const visible = fromSource.filter((o) => visibleIds.size === 0 || visibleIds.has(o.id));
     const zipSel = new Set(selectedZips);
     const countySel = new Set(selectedCounties);
@@ -1847,8 +1813,11 @@ export const ReactMapApp = () => {
         rest = rest.slice().sort(cmp);
       }
     }
-    const inactiveSorted = inactiveOrganizations.slice().sort((a, b) => a.name.localeCompare(b.name));
-    const totalSourceCount = (sourceIds.size || fromSource.length) + inactiveOrganizations.length;
+    const matchingInactive = timeSelection
+      ? inactiveOrganizations.filter((org) => isOrganizationOpenAtTime(org, timeSelection))
+      : inactiveOrganizations;
+    const inactiveSorted = matchingInactive.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const totalSourceCount = (sourceIds.size || fromSource.length) + matchingInactive.length;
     const visibleInViewport = inSelection.length + rest.length;
     return { inSelection, all: [...rest, ...inactiveSorted], totalSourceCount, visibleInViewport };
   })();
@@ -1948,11 +1917,10 @@ export const ReactMapApp = () => {
 
   const handleClearTimeFilter = useCallback(() => {
     setTimeSelection(null);
-    // Update the map controller to clear the time selection display on the chip
     if (mapControllerRef.current) {
       mapControllerRef.current.setTimeSelection(null);
     }
-  }, []);
+  }, [setTimeSelection]);
 
   const handleChangeTimeFilter = useCallback(() => {
     setShowTimeSelectorModal(true);
@@ -1997,7 +1965,7 @@ export const ReactMapApp = () => {
           <div className="relative flex flex-1 flex-col overflow-hidden">
               <MapLibreMap
                 key={isMobile ? "mobile" : "desktop"}
-                organizations={timeFilteredOrganizations}
+                organizations={availableOrganizations}
                 orgPinsVisible={orgPinsVisible}
                 zoomOutRequestNonce={zoomOutNonce}
                 clearMapCategoryNonce={clearMapCategoryNonce}
@@ -2045,13 +2013,7 @@ export const ReactMapApp = () => {
                 onTimeChipClick={() => {
                   setShowTimeSelectorModal(true);
                 }}
-                onTimeChipClear={() => {
-                  setTimeSelection(null);
-                  // Update the map controller to clear the time selection display on the chip
-                  if (mapControllerRef.current) {
-                    mapControllerRef.current.setTimeSelection(null);
-                  }
-                }}
+                onTimeChipClear={handleClearTimeFilter}
               />
               {/* Desktop-only overlay still shows the location button inline */}
               {!isMobile && (
@@ -2321,12 +2283,9 @@ export const ReactMapApp = () => {
         onClose={() => setShowTimeSelectorModal(false)}
         onTimeSelect={(selection) => {
           setTimeSelection(selection);
-          // Update the map controller to display the selection on the chip
           if (mapControllerRef.current) {
             mapControllerRef.current.setTimeSelection(selection);
           }
-          // TODO: Use the time selection to filter organizations by availability
-          console.log("Time selection:", selection);
         }}
         initialSelection={timeSelection}
         isMobile={isMobile}

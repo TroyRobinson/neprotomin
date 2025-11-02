@@ -21,6 +21,7 @@ import { createOrgLegend, type OrgLegendController } from "./components/orgLegen
 import { getCountyCentroidsMap, getCountyName } from "../../lib/countyCentroids";
 import type { AreaId, AreaKind } from "../../types/areas";
 import { DEFAULT_PARENT_AREA_BY_KIND } from "../../types/areas";
+import type { TimeSelection } from "../lib/timeFilters";
 // choropleth helpers are used only inside overlays/stats now
 import { updateChoroplethLegend as extUpdateLegend, updateSecondaryChoroplethLegend as extUpdateSecondaryLegend, updateSecondaryStatOverlay as extUpdateSecondaryOverlay, updateStatDataChoropleth as extUpdatePrimaryChoropleth, CHOROPLETH_HIDE_ZOOM } from "./overlays/stats";
 import {
@@ -102,7 +103,7 @@ export interface MapViewController {
   clearCountyTransientSelection: () => void;
   addTransientCounties: (counties: string[]) => void;
   fitAllOrganizations: () => void;
-  setTimeSelection: (selection: { day: number; hour: number; minute: number } | null) => void;
+  setTimeSelection: (selection: TimeSelection | null) => void;
   setOrganizationPinsVisible: (visible: boolean) => void;
   setUserLocation: (location: { lng: number; lat: number } | null) => void;
   fitBounds: (bounds: BoundsArray, options?: { padding?: number; maxZoom?: number; duration?: number }) => void;
@@ -2279,7 +2280,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         updateUserLocationSource();
       }
     },
-    setTimeSelection: (selection: { day: number; hour: number; minute: number } | null) => {
+    setTimeSelection: (selection: TimeSelection | null) => {
       categoryChips.setTimeSelection(selection);
     },
     fitBounds: (bounds: BoundsArray, options?: { padding?: number; maxZoom?: number; duration?: number }) => {

@@ -8,7 +8,8 @@ import { getCategoryLabel } from "../../types/categories";
 import type { CombinedDemographicsSnapshot } from "../hooks/useDemographics";
 import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
 import type { AreaId } from "../../types/areas";
-import type { TimeSelection } from "./TimeSelectorModal";
+import type { TimeSelection } from "../lib/timeFilters";
+import { formatTimeSelection } from "../lib/timeFilters";
 
 // ============================================================================
 // Enable Features
@@ -107,63 +108,12 @@ export const Sidebar = ({
   const selectedCounties = selectedAreas?.COUNTY ?? [];
   const totalSelectedCount = selectedZips.length + selectedCounties.length;
 
-  // Function to check if an organization is open at a specific time
-  const isOrganizationOpenAtTime = (org: Organization, timeSelection: TimeSelection | null): boolean => {
-    if (!timeSelection) return true; // No time filter means show all
-    if (!org.hours) return false; // Hide orgs without hours data
-    
-    const { day, hour, minute } = timeSelection;
-    const selectedMinutes = hour * 60 + minute;
-    
-    // Find the period for the selected day
-    const dayPeriods = org.hours.periods?.filter(period => period.day === day) ?? [];
-    
-    if (dayPeriods.length === 0) return false; // No hours for this day
-    
-    // Check if any period covers the selected time
-    for (const period of dayPeriods) {
-      if (!period.openTime || !period.closeTime) continue;
-      
-      const openMinutes = timeToMinutes(period.openTime);
-      const closeMinutes = timeToMinutes(period.closeTime);
-      
-      if (period.isOvernight) {
-        // Overnight period (e.g., 22:00 - 02:00)
-        if (selectedMinutes >= openMinutes || selectedMinutes <= closeMinutes) {
-          return true;
-        }
-      } else {
-        // Normal period (e.g., 09:00 - 17:00)
-        if (selectedMinutes >= openMinutes && selectedMinutes <= closeMinutes) {
-          return true;
-        }
-      }
-    }
-    
-    return false;
-  };
-  
-  // Helper function to convert "HH:MM" to minutes since midnight
-  const timeToMinutes = (timeStr: string): number => {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    return hours * 60 + minutes;
-  };
-
-  // Filter organizations based on time selection
-  const filteredOrganizations = useMemo(() => {
-    if (!timeSelection) {
-      return organizations;
-    }
-    
-    return {
-      ...organizations,
-      inSelection: organizations.inSelection.filter(org => isOrganizationOpenAtTime(org, timeSelection)),
-      all: organizations.all.filter(org => isOrganizationOpenAtTime(org, timeSelection)),
-    };
-  }, [organizations, timeSelection]);
-
-  // Use filtered organizations for display
-  const { inSelection: filteredInSelection = [], all: filteredAll = [], totalSourceCount: filteredTotalSourceCount = 0, visibleInViewport: filteredVisibleInViewport } = filteredOrganizations;
+  const {
+    inSelection = [],
+    all = [],
+    totalSourceCount = 0,
+    visibleInViewport,
+  } = organizations ?? { inSelection: [], all: [], totalSourceCount: 0 };
 
   // Determine the "IN SELECTION" label - show area name if only one area is selected
   const inSelectionLabel = useMemo(() => {
@@ -190,9 +140,9 @@ export const Sidebar = ({
   }, [totalSelectedCount, selectedZips, selectedCounties, areaNameLookup]);
 
   const visibleCount =
-    typeof filteredVisibleInViewport === "number" ? filteredVisibleInViewport : filteredInSelection.length + filteredAll.length;
-  const totalCount = typeof filteredTotalSourceCount === "number" ? filteredTotalSourceCount : visibleCount;
-  const countForTab = totalSelectedCount > 0 ? filteredInSelection.length : visibleCount;
+    typeof visibleInViewport === "number" ? visibleInViewport : inSelection.length + all.length;
+  const totalCount = typeof totalSourceCount === "number" ? totalSourceCount : visibleCount;
+  const countForTab = totalSelectedCount > 0 ? inSelection.length : visibleCount;
   const missingCount = Math.max(totalCount - visibleCount, 0);
 
   useEffect(() => {
@@ -362,14 +312,7 @@ export const Sidebar = ({
                       <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <span className="text-sm font-medium text-brand-900 dark:text-brand-100">
-                      Only orgs open at {(() => {
-                        const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
-                        const dayName = DAY_LABELS[timeSelection.day] ?? `Day ${timeSelection.day}`;
-                        const h = timeSelection.hour % 12 || 12;
-                        const m = timeSelection.minute.toString().padStart(2, "0");
-                        const ampm = timeSelection.hour < 12 ? "AM" : "PM";
-                        return `${dayName} ${h}:${m} ${ampm}`;
-                      })()}
+                      Only orgs open at {formatTimeSelection(timeSelection)}
                     </span>
                   </button>
                   <button
@@ -393,7 +336,7 @@ export const Sidebar = ({
               <p className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
                 No organizations found. Add one to get started.
               </p>
-            ) : timeSelection && filteredInSelection.length === 0 && filteredAll.length === 0 ? (
+            ) : timeSelection && inSelection.length === 0 && all.length === 0 ? (
               <p className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
                 No organizations are open at the selected time.
               </p>
@@ -401,13 +344,13 @@ export const Sidebar = ({
               <div className="flex-1">
 
                 {/* In Selection Section */}
-                {filteredInSelection.length > 0 && (
+                {inSelection.length > 0 && (
                   <>
                     <h3 className="px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                       {inSelectionLabel}
                     </h3>
                     <ul className="space-y-2 px-4">
-                      {filteredInSelection.map((org) => (
+                      {inSelection.map((org) => (
                         <OrganizationListItem
                           key={org.id}
                           org={org}
@@ -433,7 +376,7 @@ export const Sidebar = ({
                   </h3>
                 )}
                 <ul className="space-y-2 px-4 pb-6">
-                  {filteredAll.map((org) => (
+                  {all.map((org) => (
                     <OrganizationListItem
                       key={org.id}
                       org={org}

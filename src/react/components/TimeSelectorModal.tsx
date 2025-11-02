@@ -1,12 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-
-const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
-
-export interface TimeSelection {
-  day: number;
-  hour: number;
-  minute: number;
-}
+import { DAY_LABELS, toTimeSelection, type TimeSelection } from "../lib/timeFilters";
 
 interface TimeSelectorModalProps {
   isOpen: boolean;
@@ -26,6 +19,7 @@ interface CustomDropdownProps<T = number> {
 
 const CustomDropdown = <T,>({ value, onChange, options, placeholder, className = "" }: CustomDropdownProps<T>) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [dropUp, setDropUp] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -33,12 +27,22 @@ const CustomDropdown = <T,>({ value, onChange, options, placeholder, className =
   const displayValue = selectedOption?.label || placeholder || "Select...";
 
   const handleToggle = useCallback(() => {
+    if (!isOpen && buttonRef.current) {
+      const buttonRect = buttonRef.current.getBoundingClientRect();
+      const dropdownHeight = Math.min(options.length * 36, 144); // Estimate: 36px per option, max 144px (4 options)
+      const spaceBelow = window.innerHeight - buttonRect.bottom - 8; // 8px for margin
+      const spaceAbove = buttonRect.top - 8; // 8px for margin
+      
+      // Drop up if not enough space below but enough space above
+      setDropUp(spaceBelow < dropdownHeight && spaceAbove > dropdownHeight);
+    }
     setIsOpen(prev => !prev);
-  }, []);
+  }, [isOpen, options.length]);
 
   const handleSelect = useCallback((optionValue: T) => {
     onChange(optionValue);
     setIsOpen(false);
+    setDropUp(false);
   }, [onChange]);
 
   // Close on click outside
@@ -46,6 +50,7 @@ const CustomDropdown = <T,>({ value, onChange, options, placeholder, className =
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
+        setDropUp(false);
       }
     };
 
@@ -63,6 +68,7 @@ const CustomDropdown = <T,>({ value, onChange, options, placeholder, className =
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && isOpen) {
         setIsOpen(false);
+        setDropUp(false);
       }
     };
 
@@ -104,7 +110,9 @@ const CustomDropdown = <T,>({ value, onChange, options, placeholder, className =
       </button>
 
       {isOpen && (
-        <div className="absolute z-10 mt-1 max-h-36 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+        <div className={`absolute z-10 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800 ${
+          dropUp ? 'bottom-full mb-1' : 'top-full mt-1'
+        } max-h-36`}>
           <ul className="py-1" role="listbox">
             {options.map((option) => (
               <li key={option.key || String(option.value)}>
@@ -137,17 +145,30 @@ export const TimeSelectorModal = ({
   initialSelection,
   isMobile = false,
 }: TimeSelectorModalProps) => {
-  const [selectedDay, setSelectedDay] = useState<number>(initialSelection?.day ?? new Date().getDay());
-  const [selectedHour12, setSelectedHour12] = useState<number>(initialSelection ? (initialSelection.hour % 12 || 12) - 1 : (new Date().getHours() % 12 || 12) - 1);
-  const [selectedAmPm, setSelectedAmPm] = useState<'AM' | 'PM'>(initialSelection ? (initialSelection.hour < 12 ? 'AM' : 'PM') : (new Date().getHours() < 12 ? 'AM' : 'PM'));
+  const initialNormalized = toTimeSelection(initialSelection);
+  const [selectedDay, setSelectedDay] = useState<number>(() => initialNormalized?.day ?? new Date().getDay());
+  const [selectedHour12, setSelectedHour12] = useState<number>(() => {
+    const hour = initialNormalized?.hour ?? new Date().getHours();
+    return (hour % 12 || 12) - 1;
+  });
+  const [selectedAmPm, setSelectedAmPm] = useState<"AM" | "PM">(() => {
+    const hour = initialNormalized?.hour ?? new Date().getHours();
+    return hour < 12 ? "AM" : "PM";
+  });
 
-  // Update state when initialSelection changes
   useEffect(() => {
-    if (initialSelection) {
-      setSelectedDay(initialSelection.day);
-      setSelectedHour12((initialSelection.hour % 12 || 12) - 1);
-      setSelectedAmPm(initialSelection.hour < 12 ? 'AM' : 'PM');
+    const normalized = toTimeSelection(initialSelection);
+    if (normalized) {
+      setSelectedDay(normalized.day);
+      setSelectedHour12((normalized.hour % 12 || 12) - 1);
+      setSelectedAmPm(normalized.hour < 12 ? "AM" : "PM");
+      return;
     }
+    const now = new Date();
+    const hour = now.getHours();
+    setSelectedDay(now.getDay());
+    setSelectedHour12((hour % 12 || 12) - 1);
+    setSelectedAmPm(hour < 12 ? "AM" : "PM");
   }, [initialSelection]);
 
   const handleNowClick = () => {
@@ -178,9 +199,6 @@ export const TimeSelectorModal = ({
     onTimeSelect(selection);
     onClose();
   };
-
-  
-  
   // Close on escape key and click outside
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {

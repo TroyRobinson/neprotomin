@@ -46,6 +46,7 @@ const CHIP_VISIBLE_STYLES = {
 import { CATEGORIES as categories } from "../../types/categories";
 import type { Stat } from "../../types/stat";
 import { statsStore } from "../../state/stats";
+import { formatTimeSelection as formatTimeSelectionLabel, type TimeSelection } from "../lib/timeFilters";
 
 export interface CategoryChipsController {
   element: HTMLElement;
@@ -53,7 +54,7 @@ export interface CategoryChipsController {
   setSelectedStat: (statId: string | null) => void;
   setSecondaryStat: (statId: string | null) => void;
   setOrgsVisible: (visible: boolean) => void;
-  setTimeSelection: (selection: { day: number; hour: number; minute: number } | null) => void;
+  setTimeSelection: (selection: TimeSelection | null) => void;
   destroy: () => void;
 }
 
@@ -222,17 +223,6 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   let selectedId: string | null = null;
   let selectedStatId: string | null = null;
   let secondaryStatId: string | null = null;
-
-  const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
-
-  const formatTimeSelection = (selection: { day: number; hour: number; minute: number } | null): string => {
-    if (!selection) return "Time Open";
-    const dayName = DAY_LABELS[selection.day] ?? `Day ${selection.day}`;
-    const h = selection.hour % 12 || 12;
-    const m = selection.minute.toString().padStart(2, "0");
-    const ampm = selection.hour < 12 ? "AM" : "PM";
-    return `${dayName} ${h}:${m} ${ampm}`;
-  };
 
   // Secondary stat button will be appended directly to list (no wrapper needed)
 
@@ -594,10 +584,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     applyMobileLabelWidths();
   };
 
-  const setTimeSelection = (selection: { day: number; hour: number; minute: number } | null) => {
+  const setTimeSelection = (selection: TimeSelection | null) => {
     // Update the label text (keep the icon)
     if (selection) {
-      labelText.textContent = formatTimeSelection(selection);
+      labelText.textContent = formatTimeSelectionLabel(selection);
     } else {
       labelText.textContent = isMobile ? "Open" : "Time Open";
     }
