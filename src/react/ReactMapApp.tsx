@@ -2156,21 +2156,19 @@ export const ReactMapApp = () => {
                     </button>
                   )}
                   {/* Drag bar with subtle arrow shape */}
-                  <div className={`flex items-center justify-center transition-all duration-200 ${
-                    sheetState === "peek" ? "gap-0" : "gap-0"
-                  }`}>
+                  <div className="flex items-center justify-center transition-all duration-200 -space-x-2">
                     <span
                       className={`h-1.5 w-5 rounded-full bg-slate-300 transition-all duration-200 group-active:bg-slate-400 dark:bg-slate-600 dark:group-active:bg-slate-500 ${
                         sheetState === "peek"
-                          ? "translate-x-0.5 translate-y-0.5 rotate-12"
-                          : "-translate-x-0.5 -translate-y-0.5 -rotate-12"
+                          ? "-translate-x-0.5 -translate-y-0.5 -rotate-12"
+                          : "-translate-x-0.5 translate-y-0.5 rotate-12"
                       }`}
                     />
                     <span
                       className={`h-1.5 w-5 rounded-full bg-slate-300 transition-all duration-200 group-active:bg-slate-400 dark:bg-slate-600 dark:group-active:bg-slate-500 ${
                         sheetState === "peek"
-                          ? "-translate-x-0.5 translate-y-0.5 -rotate-12"
-                          : "translate-x-0.5 -translate-y-0.5 rotate-12"
+                          ? "translate-x-0.5 -translate-y-0.5 rotate-12"
+                          : "translate-x-0.5 translate-y-0.5 -rotate-12"
                       }`}
                     />
                   </div>
