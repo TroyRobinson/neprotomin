@@ -47,6 +47,7 @@ const DEFAULT_TOP_BAR_HEIGHT = 64;
 const MOBILE_MAX_WIDTH_QUERY = "(max-width: 767px)";
 const MOBILE_SHEET_PEEK_HEIGHT = 136;
 const MOBILE_SHEET_DRAG_THRESHOLD = 72;
+const MOBILE_TAP_THRESHOLD = 10; // pixels - movement below this is considered a tap, not a drag
 
 interface AreaSelectionState {
   selected: string[];
@@ -340,7 +341,8 @@ export const ReactMapApp = () => {
       }
       sheetPointerIdRef.current = pointerId;
       sheetDragStateRef.current = { startY: clientY, startState };
-      setIsDraggingSheet(true);
+      // Don't set isDraggingSheet immediately - wait for movement beyond tap threshold
+      // This allows click events to fire for taps on iOS
     },
     [expandSheet, sheetPeekOffset],
   );
@@ -566,6 +568,14 @@ export const ReactMapApp = () => {
           content?.setPointerCapture?.(event.pointerId);
         } else if (delta < -6) {
           pendingContentDragRef.current = null;
+        }
+      }
+
+      // Check if we should enter dragging mode based on movement threshold
+      if (!isDraggingSheet && sheetDragStateRef.current && event.pointerId === sheetPointerIdRef.current) {
+        const delta = Math.abs(event.clientY - sheetDragStateRef.current.startY);
+        if (delta > MOBILE_TAP_THRESHOLD) {
+          setIsDraggingSheet(true);
         }
       }
 
