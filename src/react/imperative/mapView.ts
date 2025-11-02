@@ -81,6 +81,8 @@ interface MapViewOptions {
   ) => void;
   isMobile?: boolean;
   onRequestHideOrgs?: () => void;
+  onTimeChipClick?: () => void;
+  onTimeChipClear?: () => void;
 }
 
 export interface MapViewController {
@@ -100,15 +102,16 @@ export interface MapViewController {
   clearCountyTransientSelection: () => void;
   addTransientCounties: (counties: string[]) => void;
   fitAllOrganizations: () => void;
-  fitBounds: (bounds: BoundsArray, options?: { padding?: number; maxZoom?: number; duration?: number }) => void;
+  setTimeSelection: (selection: { day: number; hour: number; minute: number } | null) => void;
   setOrganizationPinsVisible: (visible: boolean) => void;
+  setUserLocation: (location: { lng: number; lat: number } | null) => void;
+  fitBounds: (bounds: BoundsArray, options?: { padding?: number; maxZoom?: number; duration?: number }) => void;
   setCamera: (centerLng: number, centerLat: number, zoom: number) => void;
   onCameraChange: (fn: (centerLng: number, centerLat: number, zoom: number) => void) => () => void;
   setLegendInset: (pixels: number) => void;
   setLegendTop: (topPx: number) => void;
   setLegendVisible: (visible: boolean) => void;
   setLegendRightContent: (el: HTMLElement | null) => void;
-  setUserLocation: (location: { lng: number; lat: number } | null) => void;
   resize: () => void;
   destroy: () => void;
 }
@@ -252,6 +255,8 @@ export const createMapView = ({
   onClusterClick,
   isMobile = false,
   onRequestHideOrgs,
+  onTimeChipClick,
+  onTimeChipClear,
 }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
   container.className = "relative flex flex-1";
@@ -289,6 +294,8 @@ export const createMapView = ({
       }
     },
     onOrgsChipClose: () => { try { onRequestHideOrgs?.(); } catch {} },
+    onTimeChipClick: () => { try { onTimeChipClick?.(); } catch {} },
+    onTimeChipClear: () => { try { onTimeChipClear?.(); } catch {} },
   });
   container.appendChild(categoryChips.element);
 
@@ -2271,6 +2278,9 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       } else {
         updateUserLocationSource();
       }
+    },
+    setTimeSelection: (selection: { day: number; hour: number; minute: number } | null) => {
+      categoryChips.setTimeSelection(selection);
     },
     fitBounds: (bounds: BoundsArray, options?: { padding?: number; maxZoom?: number; duration?: number }) => {
       map.fitBounds(bounds, {

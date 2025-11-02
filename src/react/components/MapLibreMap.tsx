@@ -19,6 +19,7 @@ interface MapLibreMapProps {
   clearMapCategoryNonce?: number;
   // Request from map to hide orgs and switch sidebar to stats
   onRequestHideOrgs?: () => void;
+  onTimeChipClick?: () => void;
   boundaryMode?: BoundaryMode;
   selectedZips?: string[];
   pinnedZips?: string[];
@@ -55,6 +56,7 @@ interface MapLibreMapProps {
   legendInset?: number;
   onControllerReady?: (controller: MapViewController | null) => void;
   userLocation?: { lng: number; lat: number } | null;
+  onTimeChipClear?: () => void;
 }
 
 /**
@@ -69,6 +71,8 @@ export const MapLibreMap = ({
   zoomOutRequestNonce,
   clearMapCategoryNonce,
   onRequestHideOrgs,
+  onTimeChipClick,
+  onTimeChipClear,
   boundaryMode = "zips",
   selectedZips = [],
   pinnedZips = [],
@@ -127,6 +131,8 @@ export const MapLibreMap = ({
   const onCameraChangeRef = useRef(onCameraChange);
   const shouldAutoSwitchRef = useRef<boolean>(autoBoundarySwitch);
   const onMapDragStartRef = useRef(onMapDragStart);
+  const onTimeChipClickRef = useRef(onTimeChipClick);
+  const onTimeChipClearRef = useRef(onTimeChipClear);
   const setLegendInsetRef = useRef<(pixels: number) => void>(() => {});
 
   useEffect(() => { onZipSelectionChangeRef.current = onZipSelectionChange; }, [onZipSelectionChange]);
@@ -147,6 +153,8 @@ export const MapLibreMap = ({
   useEffect(() => { onCameraChangeRef.current = onCameraChange; }, [onCameraChange]);
   useEffect(() => { shouldAutoSwitchRef.current = autoBoundarySwitch; }, [autoBoundarySwitch]);
   useEffect(() => { onMapDragStartRef.current = onMapDragStart; }, [onMapDragStart]);
+  useEffect(() => { onTimeChipClickRef.current = onTimeChipClick; }, [onTimeChipClick]);
+  useEffect(() => { onTimeChipClearRef.current = onTimeChipClear; }, [onTimeChipClear]);
   useEffect(() => {
     const controller = mapControllerRef.current;
     if (controller) {
@@ -214,6 +222,12 @@ export const MapLibreMap = ({
       isMobile,
       onRequestHideOrgs: () => {
         try { onRequestHideOrgs?.(); } catch {}
+      },
+      onTimeChipClick: () => {
+        try { onTimeChipClickRef.current?.(); } catch {}
+      },
+      onTimeChipClear: () => {
+        try { onTimeChipClearRef.current?.(); } catch {}
       },
     });
 

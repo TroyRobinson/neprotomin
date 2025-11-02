@@ -2,7 +2,7 @@ const CATEGORY_CHIP_CLASSES =
   "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-300 shadow-sm backdrop-blur-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400";
 
 const CATEGORY_CHIP_NEUTRAL_CLASSES =
-  "border-slate-200 bg-white/90 text-slate-600 hover:border-brand-200 hover:bg-white hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white";
+  "border-slate-200 bg-white/40 text-slate-600 hover:border-brand-200 hover:bg-white/80 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white";
 
 const CATEGORY_CHIP_SELECTED_CLASSES =
   "border-transparent bg-brand-500 text-white shadow-floating hover:bg-brand-500 dark:bg-brand-400 dark:text-white";
@@ -53,6 +53,7 @@ export interface CategoryChipsController {
   setSelectedStat: (statId: string | null) => void;
   setSecondaryStat: (statId: string | null) => void;
   setOrgsVisible: (visible: boolean) => void;
+  setTimeSelection: (selection: { day: number; hour: number; minute: number } | null) => void;
   destroy: () => void;
 }
 
@@ -62,6 +63,8 @@ interface CategoryChipsOptions {
   onSecondaryStatChange?: (statId: string | null) => void;
   isMobile?: boolean;
   onOrgsChipClose?: () => void;
+  onTimeChipClick?: () => void;
+  onTimeChipClear?: () => void;
 }
 
 // Type for chip entry elements with their handlers
@@ -135,9 +138,101 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   });
   list.appendChild(orgsChipBtn);
 
+  // Time Open chip - only shows when provider chip is visible
+  const timeOpenChipBtn = document.createElement("button");
+  timeOpenChipBtn.type = "button";
+  timeOpenChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES}`;
+  timeOpenChipBtn.style.display = "none"; // hidden by default
+  
+  // Create a container for the chip content
+  const chipContent = document.createElement("div");
+  chipContent.className = "flex items-center";
+  
+  const timeOpenLabel = document.createElement("span");
+  timeOpenLabel.className = "flex items-center gap-1.5 whitespace-nowrap";
+  
+  // Add time icon
+  const timeIcon = document.createElement("span");
+  timeIcon.innerHTML = `
+    <svg viewBox="0 0 24 24" aria-hidden="true" class="h-3 w-3">
+      <path
+        fill="currentColor"
+        fill-rule="evenodd"
+        d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18a8 8 0 100-16 8 8 0 000 16zm.5-13a.5.5 0 00-1 0v7a.5.5 0 00.276.447l3.5 2a.5.5 0 10.496-.868L12.5 13.764V7z"
+        clip-rule="evenodd"
+      />
+    </svg>
+  `;
+  timeIcon.className = isMobile ? "" : "flex items-center";
+  
+  // Add text label (different text on mobile vs desktop)
+  const labelText = document.createElement("span");
+  labelText.textContent = isMobile ? "Open" : "Time Open";
+  labelText.className = "";
+  
+  // Assemble the label with icon and text
+  timeOpenLabel.appendChild(timeIcon);
+  timeOpenLabel.appendChild(labelText);
+  
+  // Create divider and close icon container
+  const closeSection = document.createElement("div");
+  closeSection.className = "flex items-center hidden";
+  
+  const divider = document.createElement("div");
+  divider.className = "w-px h-4 bg-slate-300 dark:bg-slate-600 mx-1";
+  
+  const closeIcon = document.createElement("button");
+  closeIcon.type = "button";
+  closeIcon.innerHTML = CLOSE_ICON;
+  closeIcon.className = "flex items-center justify-center w-4 h-4 hover:bg-slate-200 dark:hover:bg-slate-700 rounded -mr-1";
+  closeIcon.setAttribute("aria-label", "Clear time filter");
+  
+  // Assemble the close section
+  closeSection.appendChild(divider);
+  closeSection.appendChild(closeIcon);
+  
+  // Assemble the chip content
+  chipContent.appendChild(timeOpenLabel);
+  chipContent.appendChild(closeSection);
+  
+  // Add chip content to the main button
+  timeOpenChipBtn.appendChild(chipContent);
+  
+  // Handle clicks on the time chip
+  timeOpenChipBtn.addEventListener("click", (e) => {
+    // Check if the click was on the close icon
+    if (e.target === closeIcon || closeIcon.contains(e.target as Node)) {
+      // Close icon clicked - clear time filter
+      e.stopPropagation(); // Prevent the main button click
+      options.onTimeChipClear?.();
+    } else {
+      // Main chip clicked - open time selector
+      options.onTimeChipClick?.();
+    }
+  });
+  
+  // Also handle close icon clicks directly
+  closeIcon.addEventListener("click", (e) => {
+    e.stopPropagation(); // Prevent the main button click
+    options.onTimeChipClear?.();
+  });
+  
+  list.appendChild(timeOpenChipBtn);
+
   let selectedId: string | null = null;
   let selectedStatId: string | null = null;
   let secondaryStatId: string | null = null;
+
+  const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+
+  const formatTimeSelection = (selection: { day: number; hour: number; minute: number } | null): string => {
+    if (!selection) return "Time Open";
+    const dayName = DAY_LABELS[selection.day] ?? `Day ${selection.day}`;
+    const h = selection.hour % 12 || 12;
+    const m = selection.minute.toString().padStart(2, "0");
+    const ampm = selection.hour < 12 ? "AM" : "PM";
+    return `${dayName} ${h}:${m} ${ampm}`;
+  };
 
   // Secondary stat button will be appended directly to list (no wrapper needed)
 
@@ -204,6 +299,9 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       if (orgsChipBtn.parentElement !== list) list.appendChild(orgsChipBtn);
       // Always append to the very end to ensure it's rightmost
       list.appendChild(orgsChipBtn);
+      // Position time open chip right after orgs chip
+      if (timeOpenChipBtn.parentElement !== list) list.appendChild(timeOpenChipBtn);
+      list.appendChild(timeOpenChipBtn);
     }
 
     entries.forEach(({ button, closeIcon, categoryId }) => {
@@ -496,6 +594,18 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     applyMobileLabelWidths();
   };
 
+  const setTimeSelection = (selection: { day: number; hour: number; minute: number } | null) => {
+    // Update the label text (keep the icon)
+    if (selection) {
+      labelText.textContent = formatTimeSelection(selection);
+    } else {
+      labelText.textContent = isMobile ? "Open" : "Time Open";
+    }
+    // Show close section (divider + icon) only when a time is selected
+    closeSection.classList.toggle("hidden", !selection);
+    closeSection.classList.toggle("flex", !!selection);
+  };
+
   if (isMobile) {
     applyMobileLabelWidths();
     window.addEventListener("resize", handleResize);
@@ -509,12 +619,15 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     setOrgsVisible: (visible: boolean) => {
       if (isMobile) {
         orgsChipBtn.style.display = "none";
+        timeOpenChipBtn.style.display = visible ? "" : "none";
         return;
       }
       orgsChipBtn.style.display = visible ? "" : "none";
+      timeOpenChipBtn.style.display = visible ? "" : "none";
       // Re-run ordering so it stays between category and stats
       update();
     },
+    setTimeSelection,
     destroy,
   };
 };
