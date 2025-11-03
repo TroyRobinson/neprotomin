@@ -292,7 +292,7 @@ export default async function handler(req: ReportRequest, res: ReportResponse) {
     startOfDay.setUTCHours(0, 0, 0, 0);
     const startOfDayTimestamp = startOfDay.getTime();
 
-    if (reporterKey) {
+    if (!reporterIsAdmin && reporterKey) {
       const todays = await fetchCommentsForReporterToday(reporterKey, startOfDayTimestamp);
       const distinctOrgIds = new Set<string>();
       for (const comment of todays) {
