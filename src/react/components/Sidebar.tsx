@@ -330,7 +330,7 @@ export const Sidebar = ({
             className={tabClasses(activeTab === "orgs")}
             onClick={() => handleTabChange("orgs")}
           >
-            <span>Organizations ({countForTab})</span>
+            <span>Locations ({countForTab})</span>
             {/* Keep Orgs On Map Toggle */}
             <span
               role="switch"
@@ -388,7 +388,7 @@ export const Sidebar = ({
           />
         )}
 
-        {/* Organizations Tab */}
+        {/* Locations Tab */}
         {activeTab === "orgs" && (
           <div ref={orgsScrollRef} className="flex flex-1 flex-col overflow-y-auto">
             {/* Time Filter Indicator */}
@@ -427,11 +427,11 @@ export const Sidebar = ({
             
             {visibleCount === 0 && missingCount === 0 ? (
               <p className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
-                No organizations found. Add one to get started.
+                No locations found. Add one to get started.
               </p>
             ) : timeSelection && inSelection.length === 0 && all.length === 0 ? (
               <p className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
-                No organizations are open at the selected time.
+                No locations are open at the selected time.
               </p>
             ) : (
               <div className="flex-1">
