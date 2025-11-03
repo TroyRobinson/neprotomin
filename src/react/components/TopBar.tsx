@@ -526,7 +526,7 @@ export const TopBar = ({
                 aria-label="Add organization"
               >
                 <PlusIcon />
-                <span>Org</span>
+                <span>Location</span>
               </button>
             )}
           </div>
@@ -597,10 +597,11 @@ export const TopBar = ({
                 <button
                   type="button"
                   onClick={handleAddOrganization}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-brand-100 text-brand-700 shadow-sm transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900"
+                  className="inline-flex h-11 w-11 min-[360px]:w-auto min-[360px]:px-3 items-center justify-center min-[360px]:justify-start gap-2 rounded-full bg-brand-100 text-brand-700 shadow-sm transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900"
                   aria-label="Add organization"
                 >
                   <PlusIcon />
+                  <span className="hidden min-[360px]:inline text-sm font-medium">Location</span>
                 </button>
               )}
             </>
