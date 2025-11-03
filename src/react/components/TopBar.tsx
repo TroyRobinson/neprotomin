@@ -454,7 +454,7 @@ export const TopBar = ({
                     window.location.href = `https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=${newState ? "1" : "0"}`;
                   }}
                   className="relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 dark:text-slate-300"
-                  title="switch to original Neighborhood Explorer homepage"
+                  title={neHomeRedirectDisabled ? "Make this map the default NE homepage" : "switch to original Neighborhood Explorer homepage"}
                 >
                   <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
                     neHomeRedirectDisabled
@@ -499,11 +499,11 @@ export const TopBar = ({
               <button
                 type="button"
                 onClick={() => db.auth.signOut()}
-                className="group inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+                className="group inline-flex items-center gap-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
                 title="Sign out"
               >
                 <span className="max-w-[16ch] truncate">{user.email}</span>
-                <span className="text-slate-500 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-current">
+                <span className="text-slate-500 w-0 overflow-hidden transition-all duration-200 group-hover:w-4 group-hover:ml-2 group-hover:text-current group-active:w-4 group-active:ml-2 group-active:text-current">
                   <LogoutIcon />
                 </span>
               </button>
