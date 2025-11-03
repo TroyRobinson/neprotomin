@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
+import { track } from "@vercel/analytics";
 import { DemographicsBar } from "./DemographicsBar";
 import { StatViz } from "./StatViz";
 import { StatList } from "./StatList";
@@ -361,7 +362,10 @@ export const Sidebar = ({
           <button
             type="button"
             className={tabClasses(activeTab === "stats")}
-            onClick={() => handleTabChange("stats")}
+            onClick={() => {
+              track("sidebar_tab_click", { tab: "statistics", device: variant ?? "desktop" });
+              handleTabChange("stats");
+            }}
           >
             <span>Statistics</span>
           </button>

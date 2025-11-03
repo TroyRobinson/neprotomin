@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { track } from "@vercel/analytics";
 import type { BoundaryMode } from "../../types/boundaries";
 import type { AreaId, AreaKind } from "../../types/areas";
 import { themeController } from "../imperative/theme";
@@ -373,7 +374,15 @@ export const BoundaryToolbar = ({
           <button
             ref={addBtnRef}
             type="button"
-            onClick={() => setInputOpen(!inputOpen)}
+            onClick={() => {
+              const nextOpen = !inputOpen;
+              track("boundary_manual_add_toggle", {
+                areaKind: activeAreaKind ?? "none",
+                nextOpen,
+                device: isMobile ? "mobile" : "desktop",
+              });
+              setInputOpen(nextOpen);
+            }}
             className={
               !activeHasSelections && !inputOpen
                 ? "inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/70 px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300"

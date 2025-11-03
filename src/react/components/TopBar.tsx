@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { FormEvent, MouseEvent as ReactMouseEvent } from "react";
+import { track } from "@vercel/analytics";
 import { db } from "../../lib/reactDb";
 import { isAdminEmail } from "../../lib/admin";
 import { themeController } from "../imperative/theme";
@@ -277,8 +278,19 @@ export const TopBar = ({
     setIsMobileMenuOpen((prev) => !prev);
   };
 
+  const trackNavItem = (item: string, destination: "internal" | "external") => {
+    track("topbar_nav_click", { item, destination, device: isMobile ? "mobile" : "desktop" });
+  };
+
   const handleNavigate = (screen: "map" | "report" | "data" | "queue") => {
     setIsMobileMenuOpen(false);
+    const labelMap: Record<typeof screen, string> = {
+      map: "Food Map",
+      report: "Report",
+      data: "Data",
+      queue: "Queue",
+    };
+    trackNavItem(labelMap[screen], "internal");
     onNavigate?.(screen);
   };
 
@@ -336,6 +348,7 @@ export const TopBar = ({
                   href="#map"
                   onClick={(e) => {
                     e.preventDefault();
+                    trackNavItem("Food Map", "internal");
                     onNavigate?.("map");
                   }}
                   className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap ${
@@ -358,6 +371,7 @@ export const TopBar = ({
                     }}
                     onClick={(e) => {
                       e.preventDefault();
+                      trackNavItem("Report", "internal");
                       onNavigate?.("report");
                     }}
                     className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
@@ -375,6 +389,7 @@ export const TopBar = ({
                     href="#data"
                     onClick={(e) => {
                       e.preventDefault();
+                      trackNavItem("Data", "internal");
                       onNavigate?.("data");
                     }}
                     className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
@@ -392,6 +407,7 @@ export const TopBar = ({
                     href="#queue"
                     onClick={(e) => {
                       e.preventDefault();
+                      trackNavItem("Queue", "internal");
                       onNavigate?.("queue");
                     }}
                     className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
@@ -409,6 +425,7 @@ export const TopBar = ({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  onClick={() => trackNavItem("All Stats", "external")}
                 >
                   All Stats
                 </a>
@@ -417,6 +434,7 @@ export const TopBar = ({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  onClick={() => trackNavItem("Orgs", "external")}
                 >
                   Orgs
                 </a>
@@ -425,6 +443,7 @@ export const TopBar = ({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  onClick={() => trackNavItem("Goals", "external")}
                 >
                   Goals
                 </a>
@@ -433,6 +452,7 @@ export const TopBar = ({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  onClick={() => trackNavItem("Research", "external")}
                 >
                   Research
                 </a>
@@ -441,6 +461,7 @@ export const TopBar = ({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  onClick={() => trackNavItem("About", "external")}
                 >
                   About
                 </a>
@@ -567,6 +588,13 @@ export const TopBar = ({
                   type="search"
                   value={mobileSearchValue}
                   onChange={(e) => setMobileSearchValue(e.target.value)}
+                  onPointerDown={() =>
+                    track("mobile_search_bar_tap", {
+                      compact: isCompactMobileSearch,
+                      expanded: isMobileSearchExpanded,
+                      device: "mobile",
+                    })
+                  }
                   placeholder="enter ZIP"
                   className="w-full min-w-0 bg-transparent text-base text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
                   enterKeyHint="search"
@@ -690,6 +718,7 @@ export const TopBar = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 whitespace-nowrap"
+                onClick={() => trackNavItem("All Stats", "external")}
               >
                 All Stats
               </a>
@@ -698,6 +727,7 @@ export const TopBar = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+                onClick={() => trackNavItem("Orgs", "external")}
               >
                 Orgs
               </a>
@@ -706,6 +736,7 @@ export const TopBar = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+                onClick={() => trackNavItem("Goals", "external")}
               >
                 Goals
               </a>
@@ -714,6 +745,7 @@ export const TopBar = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+                onClick={() => trackNavItem("Research", "external")}
               >
                 Research
               </a>
@@ -722,6 +754,7 @@ export const TopBar = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+                onClick={() => trackNavItem("About", "external")}
               >
                 About
               </a>

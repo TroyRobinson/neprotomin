@@ -1,5 +1,6 @@
 import { useState, lazy, Suspense, useEffect, useMemo, useRef, useCallback } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { track } from "@vercel/analytics";
 import { TopBar } from "./components/TopBar";
 import { BoundaryToolbar } from "./components/BoundaryToolbar";
 import { MapLibreMap } from "./components/MapLibreMap";
@@ -1218,6 +1219,10 @@ export const ReactMapApp = () => {
   const handleOrganizationClick = useCallback(
     (id: string) => {
       if (!id) return;
+      track("map_organization_click", {
+        organizationId: id,
+        device: isMobile ? "mobile" : "desktop",
+      });
       setActiveScreen("map");
       setActiveOrganizationId(id);
       setHighlightedOrganizationIds(null);
@@ -1234,6 +1239,11 @@ export const ReactMapApp = () => {
     (ids: string[], _meta: { count: number; longitude: number; latitude: number }) => {
       if (!Array.isArray(ids) || ids.length === 0) return;
       const uniqueIds = dedupeIds(ids);
+      track("map_cluster_click", {
+        organizationCount: uniqueIds.length,
+        clusterAction: uniqueIds.length <= 3 ? "select" : "highlight",
+        device: isMobile ? "mobile" : "desktop",
+      });
       setActiveScreen("map");
       if (uniqueIds.length === 1) {
         setActiveOrganizationId(uniqueIds[0]);
@@ -1274,11 +1284,28 @@ export const ReactMapApp = () => {
     if (change.selected.length > 0 || change.pinned.length > 0) {
       setSelectedOrgIds([]);
     }
+    const current = areaSelections[change.kind];
+    const hasChanged =
+      !current ||
+      !(
+        arraysEqual(current.selected, change.selected) &&
+        arraysEqual(current.pinned, change.pinned) &&
+        arraysEqual(current.transient, change.transient)
+      );
     applyAreaSelection(change.kind, {
       selected: change.selected,
       pinned: change.pinned,
       transient: change.transient,
     });
+    if (hasChanged) {
+      track("map_area_selected", {
+        areaKind: change.kind,
+        selectedCount: change.selected.length,
+        pinnedCount: change.pinned.length,
+        transientCount: change.transient.length,
+        device: isMobile ? "mobile" : "desktop",
+      });
+    }
   };
 
   const handleAreaHoverChange = (area: AreaId | null) => {
@@ -1338,6 +1365,10 @@ export const ReactMapApp = () => {
     );
     btn.addEventListener("click", () => {
       if (isRequestingLocation) return;
+      track("map_my_location_click", {
+        variant: "mobile",
+        action: userLocation ? "zoom" : "request",
+      });
       if (userLocation) {
         focusUserLocation();
       } else {
@@ -2040,6 +2071,7 @@ export const ReactMapApp = () => {
                 }}
                 onCameraChange={setCameraState}
                 onMapDragStart={() => {
+                  track("map_interaction", { type: "drag", device: isMobile ? "mobile" : "desktop" });
                   if (isMobile) collapseSheet();
                 }}
                 isMobile={isMobile}
@@ -2047,9 +2079,21 @@ export const ReactMapApp = () => {
                 onControllerReady={handleMapControllerReady}
                 userLocation={userLocation}
                 onTimeChipClick={() => {
+                  track("map_time_chip_click", {
+                    action: "open",
+                    chipState: timeSelection ? "custom" : "open-now",
+                    device: isMobile ? "mobile" : "desktop",
+                  });
                   setShowTimeSelectorModal(true);
                 }}
-                onTimeChipClear={handleClearTimeFilter}
+                onTimeChipClear={() => {
+                  track("map_time_chip_click", {
+                    action: "clear",
+                    chipState: timeSelection ? "custom" : "open-now",
+                    device: isMobile ? "mobile" : "desktop",
+                  });
+                  handleClearTimeFilter();
+                }}
               />
               {/* Desktop-only overlay still shows the location button inline */}
               {!isMobile && (
@@ -2058,6 +2102,10 @@ export const ReactMapApp = () => {
                     type="button"
                     onClick={() => {
                       if (isRequestingLocation) return;
+                      track("map_my_location_click", {
+                        variant: "desktop",
+                        action: userLocation ? "zoom" : "request",
+                      });
                       if (userLocation) {
                         focusUserLocation();
                       } else {
