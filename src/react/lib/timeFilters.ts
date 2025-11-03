@@ -47,7 +47,7 @@ export const isOrganizationOpenAtTime = (org: Organization, selection: TimeSelec
 };
 
 export const formatTimeSelection = (selection: TimeSelection | null): string => {
-  if (!selection) return "Time Open";
+  if (!selection) return "Hours Open";
   const dayName = DAY_LABELS[selection.day] ?? `Day ${selection.day}`;
   const hour12 = selection.hour % 12 || 12;
   const minute = selection.minute.toString().padStart(2, "0");

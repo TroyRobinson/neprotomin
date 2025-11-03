@@ -4,6 +4,9 @@ const CATEGORY_CHIP_CLASSES =
 const CATEGORY_CHIP_NEUTRAL_CLASSES =
   "border-slate-200 bg-white/40 text-slate-600 hover:border-brand-200 hover:bg-white/80 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white";
 
+const TIME_OPEN_CHIP_CLASSES =
+  "border-orange-200/60 bg-orange-50/50 text-orange-800 hover:border-orange-300/80 hover:bg-orange-50/80 hover:text-orange-900 dark:border-orange-800/40 dark:bg-orange-950/30 dark:text-orange-300 dark:hover:border-orange-700/60 dark:hover:text-orange-200";
+
 const CATEGORY_CHIP_SELECTED_CLASSES =
   "border-transparent bg-brand-500 text-white shadow-floating hover:bg-brand-500 dark:bg-brand-400 dark:text-white";
 
@@ -142,7 +145,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   // Time Open chip - only shows when provider chip is visible
   const timeOpenChipBtn = document.createElement("button");
   timeOpenChipBtn.type = "button";
-  timeOpenChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES}`;
+  timeOpenChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${TIME_OPEN_CHIP_CLASSES}`;
   timeOpenChipBtn.style.display = "none"; // hidden by default
   
   // Create a container for the chip content
@@ -168,7 +171,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   
   // Add text label (different text on mobile vs desktop)
   const labelText = document.createElement("span");
-  labelText.textContent = isMobile ? "Open" : "Time Open";
+  labelText.textContent = isMobile ? "Open Now" : "Hours Open";
   labelText.className = "";
   
   // Assemble the label with icon and text
@@ -589,7 +592,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     if (selection) {
       labelText.textContent = formatTimeSelectionLabel(selection);
     } else {
-      labelText.textContent = isMobile ? "Open" : "Time Open";
+      labelText.textContent = isMobile ? "Open Now" : "Hours Open";
     }
     // Show close section (divider + icon) only when a time is selected
     closeSection.classList.toggle("hidden", !selection);
