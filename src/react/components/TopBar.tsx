@@ -467,7 +467,7 @@ export const TopBar = ({
                         : "translate-x-3 group-hover:translate-x-1.5"
                     }`} />
                   </span>
-                  <span className="whitespace-nowrap">Switch NE Home</span>
+                  <span className="whitespace-nowrap">{neHomeRedirectDisabled ? "Normal Home" : "New Home"}</span>
                 </a>
               </nav>
               {/* Gradient fade overlay for truncating links */}
