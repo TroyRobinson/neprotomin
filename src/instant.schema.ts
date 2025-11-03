@@ -85,6 +85,7 @@ const _schema = i.schema({
       // Used to control which stats appear as selectable chips in the map UI
       // Indexed because we filter by this field in queries
       featured: i.boolean().indexed().optional(),
+      active: i.boolean().indexed().optional(),
       createdOn: i.number().indexed().optional(),
       lastUpdated: i.number().indexed().optional(),
     }),

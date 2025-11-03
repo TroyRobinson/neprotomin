@@ -64,6 +64,7 @@ export const useStats = () => {
           name: row.name,
           category: row.category as Category,
           goodIfUp: typeof row.goodIfUp === "boolean" ? row.goodIfUp : undefined,
+          active: typeof row.active === "boolean" ? row.active : undefined,
         });
       }
     }

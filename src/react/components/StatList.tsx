@@ -108,9 +108,13 @@ export const StatList = ({
   }, [effectiveAreaKind, areaEntries.length]);
 
   const rows = useMemo<StatRow[]>(() => {
-    const stats: Stat[] = Array.from(statsById.values()).filter((s) =>
-      categoryFilter ? s.category === categoryFilter : true,
-    );
+    const stats: Stat[] = Array.from(statsById.values()).filter((s) => {
+      // Only show stats that are active
+      if (s.active !== true) return false;
+      // Apply category filter if provided
+      if (categoryFilter) return s.category === categoryFilter;
+      return true;
+    });
 
     const result: StatRow[] = [];
 

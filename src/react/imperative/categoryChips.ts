@@ -438,16 +438,17 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     // Determine which stats to show:
     // - Desktop: show category stats when a category is selected, otherwise show the selected stat
     // - Mobile: always show only the selected stat
+    // Only show stats that are active (active === true)
     let stats: Stat[] = [];
     if (isMobile) {
       if (selectedStatId) {
-        const selectedStat = allStats.find((s) => s.id === selectedStatId);
+        const selectedStat = allStats.find((s) => s.id === selectedStatId && s.active === true);
         stats = selectedStat ? [selectedStat] : [];
       }
     } else if (selectedId) {
-      stats = allStats.filter((s) => s.category === selectedId);
+      stats = allStats.filter((s) => s.category === selectedId && s.active === true);
     } else if (selectedStatId) {
-      const selectedStat = allStats.find((s) => s.id === selectedStatId);
+      const selectedStat = allStats.find((s) => s.id === selectedStatId && s.active === true);
       stats = selectedStat ? [selectedStat] : [];
     }
 
@@ -546,7 +547,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       return;
     }
 
-    const stat = allStats.find((s) => s.id === secondaryStatId);
+    const stat = allStats.find((s) => s.id === secondaryStatId && s.active === true);
     if (!stat) {
       return;
     }

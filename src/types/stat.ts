@@ -6,4 +6,5 @@ export interface Stat {
   category: Category;
   goodIfUp?: boolean;
   featured?: boolean;
+  active?: boolean;
 }
