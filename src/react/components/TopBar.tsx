@@ -641,7 +641,7 @@ export const TopBar = ({
                   onClick={handleAddOrganization}
                   className="flex w-full items-center justify-between rounded-2xl border border-brand-200 bg-brand-50 px-5 py-4 text-left text-lg font-semibold text-brand-700 shadow-sm transition hover:border-brand-300 hover:bg-brand-100 dark:border-brand-500/50 dark:bg-brand-500/10 dark:text-brand-200 dark:hover:border-brand-400 dark:hover:bg-brand-500/20"
                 >
-                  <span>Add an organization</span>
+                  <span>Add an Location</span>
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-white">
                     <PlusIcon />
                   </span>

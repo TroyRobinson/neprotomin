@@ -605,9 +605,9 @@ export const AddOrganizationScreen = ({ onCancel, onCreated, onFindNearbyOrg }: 
             ← To Map
           </button>
           <div>
-            <h1 className="text-3xl font-semibold font-display text-slate-900 dark:text-white">Add an organization</h1>
+            <h1 className="text-3xl font-semibold font-display text-slate-900 dark:text-white">Add a Location</h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-400">
-              Share the details of a community organization so neighbors can discover it on the map.
+              Share the details of a community organization or business so neighbors can discover it on the map.
               If you don't have an organization yet just want to share food, then use the button below...
             </p>
             <button
