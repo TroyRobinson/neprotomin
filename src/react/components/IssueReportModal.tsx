@@ -93,7 +93,7 @@ export const IssueReportModal = ({ org, isOpen, onClose, onSubmit }: IssueReport
       aria-modal="true"
     >
       <div
-        className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+        className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
         onClick={(event) => event.stopPropagation()}
       >
         <button
@@ -117,7 +117,7 @@ export const IssueReportModal = ({ org, isOpen, onClose, onSubmit }: IssueReport
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
               What went wrong?
             </h2>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            <p className="mt-1 text-sm text-slate-400 dark:text-slate-500">
               Closed location? Out of food? Not a food provider? …
             </p>
             <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
@@ -134,13 +134,13 @@ export const IssueReportModal = ({ org, isOpen, onClose, onSubmit }: IssueReport
               ref={textareaRef}
               value={text}
               onChange={(event) => setText(event.target.value.slice(0, MAX_LENGTH))}
-              className="min-h-[120px] w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              className="min-h-[60px] md:min-h-[120px] w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
               placeholder="Share a brief note…"
               maxLength={MAX_LENGTH}
               disabled={isSubmitting}
               aria-describedby="issue-details-help"
             />
-            <div className="mt-1 flex items-center justify-between text-xs text-slate-400 dark:text-slate-500">
+            <div className="hidden md:flex mt-1 items-center justify-between text-xs text-slate-400 dark:text-slate-500">
               <span id="issue-details-help">We send these to our moderation team.</span>
               <span>{remaining} characters left</span>
             </div>
