@@ -123,6 +123,29 @@ function formatTime12Hour(time24: string): string {
   }
 }
 
+// Notify moderators via serverless endpoint when a pending submission arrives.
+const notifyQueueModerators = async (payload: {
+  organizationId: string;
+  organizationName: string;
+  ownerEmail: string | null;
+  submitterEmail: string | null;
+  submittedAt: number;
+}) => {
+  try {
+    const response = await fetch("/api/queue-notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      console.error("Queue notification failed", response.status, message);
+    }
+  } catch (error) {
+    console.error("Queue notification error", error);
+  }
+};
+
 // Parse a full address string into components
 // Handles formats like:
 // - "123 Main St, Tulsa, OK 74103"
@@ -478,10 +501,13 @@ export const AddOrganizationScreen = ({ onCancel, onCreated, onFindNearbyOrg }: 
     const submittedAt = Date.now();
 
     const canonicalOwnerEmail = ownerEmailInput.toLowerCase();
-    const submitterIsAdmin = user && !user.isGuest && isAdminEmail(user.email ?? null);
+    const submitterEmailRaw = user && !user.isGuest ? user.email ?? null : null;
+    const submitterEmail = submitterEmailRaw ? submitterEmailRaw.toLowerCase() : null;
+    const submitterIsAdmin = submitterEmail ? isAdminEmail(submitterEmail) : false;
     const ownerIsAdmin = isAdminEmail(canonicalOwnerEmail);
     const moderationStatus: OrganizationModerationStatus =
       submitterIsAdmin || ownerIsAdmin ? "approved" : "pending";
+    const shouldNotifyModerators = moderationStatus === "pending";
 
     const payload: Record<string, unknown> = {
       name: nextName,
@@ -566,6 +592,15 @@ export const AddOrganizationScreen = ({ onCancel, onCreated, onFindNearbyOrg }: 
 
     try {
       await db.transact(db.tx.organizations[organizationId].update(payload));
+      if (shouldNotifyModerators) {
+        void notifyQueueModerators({
+          organizationId,
+          organizationName: nextName,
+          ownerEmail: canonicalOwnerEmail,
+          submitterEmail,
+          submittedAt,
+        });
+      }
       setIsSubmitting(false);
       setSubmissionSuccess(true);
       setFormError(null);
