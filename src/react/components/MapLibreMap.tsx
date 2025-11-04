@@ -58,6 +58,7 @@ interface MapLibreMapProps {
   onControllerReady?: (controller: MapViewController | null) => void;
   userLocation?: { lng: number; lat: number } | null;
   onTimeChipClear?: () => void;
+  onLocationSearch?: (query: string) => void;
 }
 
 /**
@@ -108,6 +109,7 @@ export const MapLibreMap = ({
   legendInset,
   onControllerReady,
   userLocation = null,
+  onLocationSearch,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
@@ -135,6 +137,7 @@ export const MapLibreMap = ({
   const onMapDragStartRef = useRef(onMapDragStart);
   const onTimeChipClickRef = useRef(onTimeChipClick);
   const onTimeChipClearRef = useRef(onTimeChipClear);
+  const onLocationSearchRef = useRef(onLocationSearch);
   const setLegendInsetRef = useRef<(pixels: number) => void>(() => {});
 
   useEffect(() => { onZipSelectionChangeRef.current = onZipSelectionChange; }, [onZipSelectionChange]);
@@ -157,6 +160,7 @@ export const MapLibreMap = ({
   useEffect(() => { onMapDragStartRef.current = onMapDragStart; }, [onMapDragStart]);
   useEffect(() => { onTimeChipClickRef.current = onTimeChipClick; }, [onTimeChipClick]);
   useEffect(() => { onTimeChipClearRef.current = onTimeChipClear; }, [onTimeChipClear]);
+  useEffect(() => { onLocationSearchRef.current = onLocationSearch; }, [onLocationSearch]);
   useEffect(() => {
     const controller = mapControllerRef.current;
     if (controller) {
@@ -230,6 +234,9 @@ export const MapLibreMap = ({
       },
       onTimeChipClear: () => {
         try { onTimeChipClearRef.current?.(); } catch {}
+      },
+      onLocationSearch: (query) => {
+        try { onLocationSearchRef.current?.(query); } catch {}
       },
     });
 

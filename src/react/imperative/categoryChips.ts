@@ -7,6 +7,26 @@ const CATEGORY_CHIP_NEUTRAL_CLASSES =
 const TIME_OPEN_CHIP_CLASSES =
   "border-orange-200/60 bg-orange-50/50 text-orange-800 hover:border-orange-300/80 hover:bg-orange-50/80 hover:text-orange-900 dark:border-orange-800/40 dark:bg-orange-950/30 dark:text-orange-300 dark:hover:border-orange-700/60 dark:hover:text-orange-200";
 
+const SEARCH_ICON = `
+  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px] text-slate-400 dark:text-slate-500">
+    <path
+      fill-rule="evenodd"
+      d="M9 3.5a5.5 5.5 0 013.894 9.394l3.703 3.703a.75.75 0 11-1.06 1.06l-3.703-3.703A5.5 5.5 0 119 3.5zm0 1.5a4 4 0 100 8 4 4 0 000-8z"
+      clip-rule="evenodd"
+    />
+  </svg>
+`;
+
+const ARROW_ICON = `
+  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-3.5 w-3.5">
+    <path
+      fill-rule="evenodd"
+      d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z"
+      clip-rule="evenodd"
+    />
+  </svg>
+`;
+
 const CATEGORY_CHIP_SELECTED_CLASSES =
   "border-transparent bg-brand-500 text-white shadow-floating hover:bg-brand-500 dark:bg-brand-400 dark:text-white";
 
@@ -66,6 +86,7 @@ interface CategoryChipsOptions {
   onStatChange?: (statId: string | null) => void;
   onSecondaryStatChange?: (statId: string | null) => void;
   isMobile?: boolean;
+  onSearch?: (query: string) => void;
   onOrgsChipClose?: () => void;
   onTimeChipClick?: () => void;
   onTimeChipClear?: () => void;
@@ -114,6 +135,14 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   const list = document.createElement("div");
   list.className = "flex flex-wrap gap-2 pointer-events-auto transition-all duration-300";
   wrapper.appendChild(list);
+
+  let searchExpanded = false;
+  let searchContainer: HTMLDivElement | null = null;
+  let searchButton: HTMLButtonElement | null = null;
+  let searchForm: HTMLFormElement | null = null;
+  let searchInput: HTMLInputElement | null = null;
+  let removeSearchOutsideHandler: (() => void) | null = null;
+  let orgsChipVisible = false;
 
   // Stats chips appear to the right of the selected category
   const statWrapper = document.createElement("div");
@@ -316,6 +345,135 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     renderStatChips();
   };
 
+  const applyAccessoryChipVisibility = () => {
+    if (isMobile) {
+      orgsChipBtn.style.display = "none";
+      timeOpenChipBtn.style.display = orgsChipVisible ? "" : "none";
+      return;
+    }
+    const shouldShow = orgsChipVisible && !searchExpanded;
+    orgsChipBtn.style.display = shouldShow ? "" : "none";
+    timeOpenChipBtn.style.display = shouldShow ? "" : "none";
+    update();
+  };
+
+  if (!isMobile) {
+    // Desktop-only search control that mimics the compact mobile search UX.
+    searchContainer = document.createElement("div");
+    searchContainer.className =
+      "pointer-events-auto flex items-center gap-2 transition-all duration-300";
+    wrapper.insertBefore(searchContainer, list);
+
+    searchButton = document.createElement("button");
+    searchButton.type = "button";
+    searchButton.className =
+      "inline-flex h-8 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white";
+    searchButton.setAttribute("aria-label", "Open search");
+    searchButton.setAttribute("aria-expanded", "false");
+    searchButton.innerHTML = SEARCH_ICON;
+    searchContainer.appendChild(searchButton);
+
+    searchForm = document.createElement("form");
+    searchForm.className =
+      "hidden flex min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-white pl-3 pr-2 py-.5 shadow-sm transition focus-within:border-brand-300 focus-within:ring-2 focus-within:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:focus-within:border-slate-500";
+    searchForm.setAttribute("role", "search");
+    searchForm.style.minWidth = "240px";
+    searchForm.style.maxWidth = "320px";
+    searchContainer.appendChild(searchForm);
+
+    const searchIconSpan = document.createElement("span");
+    searchIconSpan.innerHTML = SEARCH_ICON;
+    searchForm.appendChild(searchIconSpan);
+
+    searchInput = document.createElement("input");
+    searchInput.type = "search";
+    searchInput.autocomplete = "off";
+    searchInput.className =
+      "w-full min-w-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500";
+    searchInput.placeholder = "Search city, ZIP, county, address, or org";
+    searchInput.setAttribute("aria-label", "Search locations");
+    searchForm.appendChild(searchInput);
+
+    const submitButton = document.createElement("button");
+    submitButton.type = "submit";
+    submitButton.className =
+      "flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white transition hover:bg-brand-600 active:bg-brand-700 dark:bg-brand-600 dark:hover:bg-brand-500 my-1 mr-[-4px]";
+    submitButton.setAttribute("aria-label", "Submit search");
+    submitButton.innerHTML = ARROW_ICON;
+    searchForm.appendChild(submitButton);
+
+    const teardownOutsideHandler = () => {
+      if (removeSearchOutsideHandler) {
+        removeSearchOutsideHandler();
+        removeSearchOutsideHandler = null;
+      }
+    };
+
+    const closeSearch = () => {
+      if (!searchExpanded) return;
+      searchExpanded = false;
+      searchButton?.classList.remove("hidden");
+      searchButton?.setAttribute("aria-expanded", "false");
+      searchForm?.classList.add("hidden");
+      teardownOutsideHandler();
+      applyAccessoryChipVisibility();
+      renderStatChips();
+      renderSecondaryStatChip();
+      update();
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!searchContainer) return;
+      const target = event.target as Node | null;
+      if (target && searchContainer.contains(target)) return;
+      closeSearch();
+    };
+
+    const openSearch = () => {
+      if (searchExpanded) return;
+      searchExpanded = true;
+      searchButton?.classList.add("hidden");
+      searchButton?.setAttribute("aria-expanded", "true");
+      searchForm?.classList.remove("hidden");
+      applyAccessoryChipVisibility();
+      renderStatChips();
+      renderSecondaryStatChip();
+      update();
+      document.addEventListener("pointerdown", handlePointerDown, true);
+      removeSearchOutsideHandler = () => {
+        document.removeEventListener("pointerdown", handlePointerDown, true);
+      };
+      // Focus after layout settles so the input receives focus reliably.
+      requestAnimationFrame(() => {
+        searchInput?.focus();
+        searchInput?.select();
+      });
+    };
+
+    searchButton.addEventListener("click", () => {
+      if (searchExpanded) {
+        closeSearch();
+      } else {
+        openSearch();
+      }
+    });
+
+    searchForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const query = searchInput?.value.trim() ?? "";
+      if (!query) return;
+      options.onSearch?.(query);
+    });
+
+    searchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeSearch();
+        searchButton?.focus();
+      }
+    });
+  }
+
   const setSelected = (categoryId: string | null) => {
     selectedId = categoryId;
     // Clear stat selection if no category
@@ -422,6 +580,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       statEntries = [];
       return;
     }
+    if (searchExpanded) {
+      statWrapper.classList.add("hidden");
+      return;
+    }
     // Show stat chips if either:
     // 1. A category is selected (show all stats in that category)
     // 2. A stat is selected (show just that stat, even if no category or non-matching category)
@@ -468,6 +630,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   const updateStatSelectionStyles = () => {
     // On mobile, we suppress the stat chip entirely
     if (isMobile) {
+      statWrapper.classList.add("hidden");
+      return;
+    }
+    if (searchExpanded) {
       statWrapper.classList.add("hidden");
       return;
     }
@@ -543,7 +709,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       secondaryChipEntry = null;
     }
 
-    if (!secondaryStatId || isMobile) {
+    if (!secondaryStatId || isMobile || searchExpanded) {
       return;
     }
 
@@ -570,6 +736,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     statEntries.forEach(({ btn, handleClick }) => btn.removeEventListener("click", handleClick));
     if (secondaryChipEntry) {
       secondaryChipEntry.btn.removeEventListener("click", secondaryChipEntry.handleClick);
+    }
+    if (removeSearchOutsideHandler) {
+      removeSearchOutsideHandler();
+      removeSearchOutsideHandler = null;
     }
     if (unsubscribeStats) unsubscribeStats();
     if (isMobile) window.removeEventListener("resize", handleResize);
@@ -611,15 +781,13 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     setSelectedStat,
     setSecondaryStat,
     setOrgsVisible: (visible: boolean) => {
+      orgsChipVisible = visible;
       if (isMobile) {
         orgsChipBtn.style.display = "none";
         timeOpenChipBtn.style.display = visible ? "" : "none";
         return;
       }
-      orgsChipBtn.style.display = visible ? "" : "none";
-      timeOpenChipBtn.style.display = visible ? "" : "none";
-      // Re-run ordering so it stays between category and stats
-      update();
+      applyAccessoryChipVisibility();
     },
     setTimeSelection,
     destroy,

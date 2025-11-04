@@ -1203,6 +1203,13 @@ export const ReactMapApp = () => {
     }
   }, [categoryFilter, hasSyncedDefaultCategory, selectedStatId, statsById]);
 
+  // When a stat is selected and there are orgs selected from the map, deselect them
+  useEffect(() => {
+    if (selectedStatId && selectedOrgIdsFromMap && selectedOrgIds.length > 0) {
+      setSelectedOrgIds([]);
+      setSelectedOrgIdsFromMap(false);
+    }
+  }, [selectedStatId, selectedOrgIdsFromMap, selectedOrgIds.length]);
 
   const [orgPinsVisible, setOrgPinsVisible] = useState(true);
   const [orgsVisibleIds, setOrgsVisibleIds] = useState<string[]>([]);
@@ -2024,6 +2031,12 @@ export const ReactMapApp = () => {
       return;
     }
 
+    // If a stat is selected and there are orgs selected from the map, deselect them
+    if (selectedOrgIdsFromMap && selectedOrgIds.length > 0) {
+      setSelectedOrgIds([]);
+      setSelectedOrgIdsFromMap(false);
+    }
+
     if (meta?.shiftKey) {
       // Shift-click: toggle secondary stat
       setSecondaryStatId((prev) => (prev === statId ? null : statId));
@@ -2296,6 +2309,7 @@ export const ReactMapApp = () => {
                 legendInset={legendInset}
                 onControllerReady={handleMapControllerReady}
                 userLocation={userLocation}
+                onLocationSearch={handleMobileLocationSearch}
                 onTimeChipClick={() => {
                   track("map_time_chip_click", {
                     action: "open",

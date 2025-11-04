@@ -81,6 +81,7 @@ interface MapViewOptions {
     meta: { count: number; longitude: number; latitude: number },
   ) => void;
   isMobile?: boolean;
+  onLocationSearch?: (query: string) => void;
   onRequestHideOrgs?: () => void;
   onTimeChipClick?: () => void;
   onTimeChipClear?: () => void;
@@ -257,6 +258,7 @@ export const createMapView = ({
   onOrganizationClick,
   onClusterClick,
   isMobile = false,
+  onLocationSearch,
   onRequestHideOrgs,
   onTimeChipClick,
   onTimeChipClear,
@@ -299,6 +301,9 @@ export const createMapView = ({
     onOrgsChipClose: () => { try { onRequestHideOrgs?.(); } catch {} },
     onTimeChipClick: () => { try { onTimeChipClick?.(); } catch {} },
     onTimeChipClear: () => { try { onTimeChipClear?.(); } catch {} },
+    onSearch: (query) => {
+      try { onLocationSearch?.(query); } catch {}
+    },
   });
   container.appendChild(categoryChips.element);
 
