@@ -7,6 +7,7 @@ import {
 } from "../../types/areas";
 import { useAreas } from "./useAreas";
 import { normalizeScopeLabel, buildScopeLabelAliases } from "../../lib/scopeLabels";
+import { useAuthSession } from "./useAuthSession";
 
 type SupportedAreaKind = Extract<AreaKind, "ZIP" | "COUNTY">;
 
@@ -262,13 +263,12 @@ export const useDemographics = ({
   defaultContext = null,
   zipScope = null,
 }: UseDemographicsOptions): DemographicsResult => {
-  const { isLoading: isAuthLoading } = db.useAuth();
+  const { authReady } = useAuthSession();
   const { areasByKindAndCode } = useAreas();
 
   const { data } = db.useQuery(
-    isAuthLoading
-      ? null
-      : {
+    authReady
+      ? {
           stats: {
             $: {
               order: { name: "asc" as const },
@@ -279,7 +279,8 @@ export const useDemographics = ({
               order: { date: "asc" as const },
             },
           },
-        },
+        }
+      : null,
   );
 
   const populationStatId = useMemo(() => {

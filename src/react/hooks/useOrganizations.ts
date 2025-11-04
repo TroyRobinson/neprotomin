@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { db } from "../../lib/reactDb";
+import { useAuthSession } from "./useAuthSession";
 import type {
   Organization,
   OrganizationStatus,
@@ -7,19 +8,20 @@ import type {
 } from "../../types/organization";
 
 export const useOrganizations = () => {
-  const { isLoading: isAuthLoading } = db.useAuth();
+  const { authReady } = useAuthSession();
+  const queryEnabled = authReady;
 
   // Wait for auth to be ready to avoid race conditions (especially in Safari)
   const { data, isLoading, error } = db.useQuery(
-    isAuthLoading
-      ? null
-      : {
+    queryEnabled
+      ? {
           organizations: {
             $: {
               order: { name: "asc" as const },
             },
           },
         }
+      : null,
   );
 
   const organizations = useMemo<Organization[]>(() => {

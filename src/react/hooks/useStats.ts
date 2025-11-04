@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { db } from "../../lib/reactDb";
+import { useAuthSession } from "./useAuthSession";
 import type { Stat } from "../../types/stat";
 import type { Category } from "../../types/organization";
 import type { AreaKind } from "../../types/areas";
@@ -31,14 +32,14 @@ const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
 export const useStats = () => {
-  const { isLoading: isAuthLoading } = db.useAuth();
+  const { authReady } = useAuthSession();
+  const queryEnabled = authReady;
 
   // Query stats and statData directly from InstantDB
   // Wait for auth to be ready to avoid race conditions (especially in Safari)
   const { data, isLoading, error } = db.useQuery(
-    isAuthLoading
-      ? null
-      : {
+    queryEnabled
+      ? {
           stats: {
             $: {
               order: { name: "asc" as const },
@@ -49,7 +50,8 @@ export const useStats = () => {
               order: { date: "asc" as const },
             },
           },
-        },
+        }
+      : null,
   );
 
   // Normalize stats once to reuse everywhere

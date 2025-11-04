@@ -26,6 +26,7 @@ import { useMediaQuery } from "./hooks/useMediaQuery";
 import type { MapViewController } from "./imperative/mapView";
 import { isAdminEmail } from "../lib/admin";
 import { type TimeSelection, isOrganizationOpenAtTime, toTimeSelection } from "./lib/timeFilters";
+import { useAuthSession } from "./hooks/useAuthSession";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
@@ -443,21 +444,12 @@ export const ReactMapApp = () => {
     setBoundaryControlMode("auto");
   };
 
-  const { isLoading: isAuthLoading, user } = db.useAuth();
+  const { user, authReady } = useAuthSession();
   const isAdmin = useMemo(() => {
     if (!user || user.isGuest) return false;
     if (typeof user.email !== "string" || user.email.trim().length === 0) return false;
     return isAdminEmail(user.email);
   }, [user]);
-  useEffect(() => {
-    if (isAuthLoading) return;
-    if (!user) {
-      db.auth.signInAsGuest().catch(() => {
-        // ignore; may be offline or already attempted
-      });
-    }
-  }, [isAuthLoading, user]);
-
   useEffect(() => {
     if (!isAdmin && activeScreen === "queue") {
       setActiveScreen("map");
@@ -635,7 +627,7 @@ export const ReactMapApp = () => {
 
   // Persisted UI state: load on auth ready
   useEffect(() => {
-    if (isAuthLoading) return;
+    if (!authReady) return;
     const owner = user?.id;
     const load = async () => {
       // Try server first
@@ -667,10 +659,11 @@ export const ReactMapApp = () => {
     load();
     // only when auth readiness changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthLoading, user?.id]);
+  }, [authReady, user?.id]);
 
   // Persisted UI state: save with debounce
   useEffect(() => {
+    if (!authReady) return;
     const owner = user?.id;
     const selection: PersistedAreaSelection = {
       version: 2,
@@ -698,7 +691,7 @@ export const ReactMapApp = () => {
       }
     }, 500);
     return () => clearTimeout(timeout);
-  }, [user?.id, selectedZips, pinnedZips, selectedCounties, pinnedCounties, boundaryMode]);
+  }, [authReady, user?.id, selectedZips, pinnedZips, selectedCounties, pinnedCounties, boundaryMode]);
 
   const { areasByKindAndCode, getAreaLabel } = useAreas();
 

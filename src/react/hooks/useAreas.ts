@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { db } from "../../lib/reactDb";
+import { useAuthSession } from "./useAuthSession";
 import type { AreaKind, AreaRecord } from "../../types/areas";
 import { AREA_KINDS, areaCodeKey, parseAreaKind } from "../../types/areas";
 
@@ -20,18 +21,19 @@ const EMPTY_INDEX: AreasIndex = {
  * This keeps area labels and centroids handy for any component that needs them.
  */
 export const useAreas = () => {
-  const { isLoading: isAuthLoading } = db.useAuth();
+  const { authReady } = useAuthSession();
+  const queryEnabled = authReady;
 
   const { data, isLoading, error } = db.useQuery(
-    isAuthLoading
-      ? null
-      : {
+    queryEnabled
+      ? {
           areas: {
             $: {
               order: { name: "asc" as const },
             },
           },
-        },
+        }
+      : null,
   );
 
   const index = useMemo<AreasIndex>(() => {
