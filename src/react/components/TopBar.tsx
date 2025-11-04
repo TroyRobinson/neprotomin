@@ -619,13 +619,17 @@ export const TopBar = ({
                       device: "mobile",
                     })
                   }
-                  placeholder="enter ZIP"
+                  placeholder="City, Org, ZIP, Address, ..."
                   className="w-full min-w-0 bg-transparent text-base text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
                   enterKeyHint="search"
                 />
                 <button
                   type="submit"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white transition hover:bg-brand-600 active:bg-brand-700 dark:bg-brand-600 dark:hover:bg-brand-500"
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition ${
+                    mobileSearchValue.trim().length > 0
+                      ? "bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700 dark:bg-brand-600 dark:hover:bg-brand-500"
+                      : "bg-slate-200 text-slate-600 hover:bg-slate-300 active:bg-slate-400 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600"
+                  }`}
                   aria-label="Submit search"
                 >
                   <ArrowRightIcon />

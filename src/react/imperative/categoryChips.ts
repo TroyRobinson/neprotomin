@@ -390,17 +390,30 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     searchInput.autocomplete = "off";
     searchInput.className =
       "w-full min-w-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500";
-    searchInput.placeholder = "Search city, ZIP, county, address, or org";
+    searchInput.placeholder = "City, Location, ZIP, Address, ...";
     searchInput.setAttribute("aria-label", "Search locations");
     searchForm.appendChild(searchInput);
 
     const submitButton = document.createElement("button");
     submitButton.type = "submit";
     submitButton.className =
-      "flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white transition hover:bg-brand-600 active:bg-brand-700 dark:bg-brand-600 dark:hover:bg-brand-500 my-1 mr-[-4px]";
+      "flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-600 transition hover:bg-slate-300 active:bg-slate-400 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 my-1 ml-[-4px] mr-[-4px]";
     submitButton.setAttribute("aria-label", "Submit search");
     submitButton.innerHTML = ARROW_ICON;
     searchForm.appendChild(submitButton);
+
+    const updateSubmitButtonStyle = () => {
+      const hasValue = (searchInput?.value.trim().length ?? 0) > 0;
+      if (hasValue) {
+        submitButton.className =
+          "flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white transition hover:bg-brand-600 active:bg-brand-700 dark:bg-brand-600 dark:hover:bg-brand-500 my-1 ml-[-4px] mr-[-4px]";
+      } else {
+        submitButton.className =
+          "flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-600 transition hover:bg-slate-300 active:bg-slate-400 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 my-1 ml-[-4px] mr-[-4px]";
+      }
+    };
+
+    searchInput.addEventListener("input", updateSubmitButtonStyle);
 
     const teardownOutsideHandler = () => {
       if (removeSearchOutsideHandler) {
@@ -415,6 +428,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       searchButton?.classList.remove("hidden");
       searchButton?.setAttribute("aria-expanded", "false");
       searchForm?.classList.add("hidden");
+      if (searchInput) {
+        searchInput.value = "";
+        updateSubmitButtonStyle();
+      }
       teardownOutsideHandler();
       applyAccessoryChipVisibility();
       renderStatChips();
@@ -435,6 +452,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       searchButton?.classList.add("hidden");
       searchButton?.setAttribute("aria-expanded", "true");
       searchForm?.classList.remove("hidden");
+      updateSubmitButtonStyle();
       applyAccessoryChipVisibility();
       renderStatChips();
       renderSecondaryStatChip();
