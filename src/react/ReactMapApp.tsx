@@ -2034,6 +2034,17 @@ export const ReactMapApp = () => {
     setShowTimeSelectorModal(true);
   }, []);
 
+  // Center the map on sidebar-selected organization(s)
+  useEffect(() => {
+    if (selectedOrgIdsFromMap) return;
+    if (selectedOrgIds.length !== 1) return;
+    const controller = mapControllerRef.current;
+    if (!controller) return;
+    try {
+      controller.centerOnOrganization(selectedOrgIds[0], { animate: true });
+    } catch {}
+  }, [selectedOrgIds, selectedOrgIdsFromMap]);
+
   return (
     <div className="app-shell relative flex flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
       <TopBar

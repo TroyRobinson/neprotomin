@@ -243,6 +243,40 @@ export const Sidebar = ({
     activeTab,
   ]);
 
+  // When an organization is selected from the sidebar, keep it aligned at the top of the viewport
+  useEffect(() => {
+    if (selectedOrgIdsFromMap) return; // Only handle sidebar-driven selections
+    if (selectedOrgIds.length !== 1) return;
+    if (activeTab !== "orgs") return;
+
+    const scrollContainer = orgsScrollRef.current;
+    if (!scrollContainer) return;
+
+    const targetId = selectedOrgIds[0];
+    const alignSelection = () => {
+      const targetEl = scrollContainer.querySelector<HTMLElement>(`[data-org-id="${targetId}"]`);
+      if (!targetEl) return;
+
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const targetRect = targetEl.getBoundingClientRect();
+
+      // Account for the tab bar and padding above the scroll container
+      const TAB_OFFSET = 18; // approx. height of tab selector + spacing
+      const delta = targetRect.top - containerRect.top;
+      const targetScrollTop = scrollContainer.scrollTop + delta - TAB_OFFSET;
+
+      scrollContainer.scrollTo({ top: Math.max(targetScrollTop, 0), behavior: "smooth" });
+    };
+
+    const timeout = window.setTimeout(() => {
+      window.requestAnimationFrame(alignSelection);
+    }, 650);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [selectedOrgIds, selectedOrgIdsFromMap, activeTab]);
+
   useEffect(() => {
     const visible = keepOrgsOnMap || activeTab === "orgs";
     onOrgPinsVisibleChange?.(visible);

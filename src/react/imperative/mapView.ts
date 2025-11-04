@@ -90,6 +90,7 @@ export interface MapViewController {
   element: HTMLElement;
   setOrganizations: (organizations: Organization[]) => void;
   setActiveOrganization: (id: string | null) => void;
+  centerOnOrganization: (id: string, options?: { animate?: boolean; zoom?: number }) => void;
   setSelectedOrgIds: (ids: string[]) => void;
   setCategoryFilter: (categoryId: string | null) => void;
   setSelectedStat: (statId: string | null) => void;
@@ -2279,6 +2280,31 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     void highlightClusterContainingOrg(activeId);
   };
 
+  const centerOnOrganization = (
+    id: string,
+    options: { animate?: boolean; zoom?: number } = {},
+  ) => {
+    if (!id) return;
+    const org = allOrganizations.find((o) => o.id === id);
+    if (!org) return;
+    const { longitude, latitude } = org;
+    if (typeof longitude !== "number" || typeof latitude !== "number") return;
+
+    const animate = options.animate !== false;
+    const targetZoom = typeof options.zoom === "number" ? options.zoom : map.getZoom();
+
+    const center: [number, number] = [longitude, latitude];
+    if (animate) {
+      try {
+        map.easeTo({ center, zoom: targetZoom, duration: 600 });
+      } catch {}
+    } else {
+      try {
+        map.jumpTo({ center, zoom: targetZoom });
+      } catch {}
+    }
+  };
+
   const setSelectedOrgIds = (ids: string[]) => {
     const newSet = new Set(ids);
     // Check if selection actually changed
@@ -2507,6 +2533,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     element: container,
     setOrganizations,
     setActiveOrganization,
+    centerOnOrganization,
     setSelectedOrgIds,
     setCategoryFilter,
     setSelectedStat: (statId: string | null) => {
