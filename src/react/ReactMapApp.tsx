@@ -2063,6 +2063,7 @@ export const ReactMapApp = () => {
                 pinnedCounties={pinnedCounties}
                 hoveredCounty={hoveredCounty}
                 activeOrganizationId={activeOrganizationId}
+                selectedOrgIds={selectedOrgIds}
                 onHover={handleHover}
                 onOrganizationClick={handleOrganizationClick}
                 onClusterClick={handleClusterClick}

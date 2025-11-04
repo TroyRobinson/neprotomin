@@ -34,7 +34,7 @@ import {
   updateCountySelectionHighlight as extUpdateCountySelectionHighlight,
 } from "./layers/boundaries";
 import { ensureOrganizationLayers } from "./layers/organizations";
-import { setClusterHighlight as extSetClusterHighlight, highlightClusterContainingOrg as extHighlightClusterContainingOrg } from "./organizationsHighlight";
+import { setClusterHighlight as extSetClusterHighlight, setClusterHighlights as extSetClusterHighlights, highlightClusterContainingOrg as extHighlightClusterContainingOrg } from "./organizationsHighlight";
 import { wireVisibleIds } from "./visibilityTracker";
 import { getAreaRegistryEntry, type AreaLayerIds } from "./areas/registry";
 import {
@@ -90,6 +90,7 @@ export interface MapViewController {
   element: HTMLElement;
   setOrganizations: (organizations: Organization[]) => void;
   setActiveOrganization: (id: string | null) => void;
+  setSelectedOrgIds: (ids: string[]) => void;
   setCategoryFilter: (categoryId: string | null) => void;
   setSelectedStat: (statId: string | null) => void;
   setSecondaryStat: (statId: string | null) => void;
@@ -1026,6 +1027,10 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   };
 
   let activeId: string | null = null;
+  let hoverClusterId: number | null = null;
+  let selectedOrgIds: Set<string> = new Set();
+  let selectedClusterId: number | null = null;
+  let selectedClusterIds: number[] = []; // Support multiple clusters when orgs split
   let lastVisibleIdsKey: string | null = null;
 
   // getBoundaryPalette and getHoverColors moved to styles/boundaryPalettes
@@ -1296,6 +1301,12 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
 
   const handleViewportSettled = () => {
     void ensureZctasForCurrentView();
+    // Check if selected orgs are still visible after viewport change
+    void checkSelectedOrgsVisibility();
+    // Update cluster highlights after zoom (clusters may have merged/split)
+    if (selectedOrgIds.size > 0) {
+      void updateSelectedClusterHighlight();
+    }
   };
   map.on("moveend", handleViewportSettled);
   map.on("zoomend", handleViewportSettled);
@@ -1303,6 +1314,58 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     map.off("moveend", handleViewportSettled);
     map.off("zoomend", handleViewportSettled);
   });
+
+  const checkSelectedOrgsVisibility = async () => {
+    if (selectedOrgIds.size === 0) return;
+    const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (!source) return;
+    try {
+      const canvas = map.getCanvas();
+      // Check visible point features
+      const visiblePoints = map.queryRenderedFeatures(
+        [[0, 0], [canvas.width, canvas.height]] as any,
+        { layers: [LAYER_POINTS_ID] }
+      );
+      const visiblePointIds = new Set(
+        visiblePoints.map(f => f?.properties?.id).filter((id: any): id is string => typeof id === "string")
+      );
+      // Check visible clusters
+      const visibleClusters = map.queryRenderedFeatures(
+        [[0, 0], [canvas.width, canvas.height]] as any,
+        { layers: [LAYER_CLUSTERS_ID] }
+      ).filter((f) => typeof (f.properties as any)?.cluster_id === "number");
+      
+      // Check if any selected orgs are visible as points
+      const hasVisiblePoints = Array.from(selectedOrgIds).some(id => visiblePointIds.has(id));
+      
+      // Check if selected orgs are in visible clusters
+      let hasVisibleCluster = false;
+      for (const f of visibleClusters) {
+        const cid = (f.properties as any).cluster_id as number;
+        const leaves = await source.getClusterLeaves(cid, 1000, 0);
+        const clusterOrgIds = new Set(
+          leaves.map((lf: any) => lf?.properties?.id).filter((id: any): id is string => typeof id === "string")
+        );
+        if (Array.from(selectedOrgIds).some(id => clusterOrgIds.has(id))) {
+          hasVisibleCluster = true;
+          break;
+        }
+      }
+      
+      // If no selected orgs are visible, clear the selection
+      if (!hasVisiblePoints && !hasVisibleCluster) {
+        selectedOrgIds = new Set();
+        selectedClusterId = null;
+        selectedClusterIds = [];
+        updateSelectedHighlights();
+      } else {
+        // Update cluster highlight if needed
+        void updateSelectedClusterHighlight();
+      }
+    } catch {
+      // On error, keep selection (might be temporary issue)
+    }
+  };
 
   const updateUserLocationSource = () => {
     const source = map.getSource(USER_LOCATION_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
@@ -1496,8 +1559,17 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       let tapStart: { point: maplibregl.PointLike; time: number; id: string | null } | null = null;
       let consumedTap = false;
       const onPointsMouseEnter = () => { map.getCanvas().style.cursor = "pointer"; };
-      const onPointsMouseLeave = () => { map.getCanvas().style.cursor = "pointer"; clearClusterHighlight(); onHover(null); };
-      const onPointsMouseMove = (e: any) => { const f = e.features?.[0]; const id = f?.properties?.id as string | undefined; clearClusterHighlight(); onHover(id || null); };
+      const onPointsMouseLeave = () => { 
+        map.getCanvas().style.cursor = "pointer"; 
+        // Clear hover - updateHighlight will restore selection if any
+        onHover(null); 
+      };
+      const onPointsMouseMove = (e: any) => { 
+        const f = e.features?.[0]; 
+        const id = f?.properties?.id as string | undefined; 
+        // Update hover - this will call updateHighlight which handles hover vs selection
+        onHover(id || null); 
+      };
       const onPointsClick = (e: any) => {
         // Avoid duplicate open when a touch tap already handled selection
         if (consumedTap) { consumedTap = false; return; }
@@ -1538,15 +1610,29 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       map.on("touchend", LAYER_POINTS_ID, onPointsTouchEnd);
 
       const onClustersMouseEnter = () => { map.getCanvas().style.cursor = "pointer"; };
-      const onClustersMouseLeave = () => { map.getCanvas().style.cursor = "pointer"; clearClusterHighlight(); onHover(null); };
+      const onClustersMouseLeave = () => { 
+        map.getCanvas().style.cursor = "pointer"; 
+        // Clear hover - selection will persist
+        hoverClusterId = null;
+        onHover(null); 
+        updateSelectedHighlights();
+      };
       const onClustersMouseMove = async (e: any) => {
         const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS_ID] });
         const feature = features[0];
         const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
         const clusterId = feature?.properties?.cluster_id as number | undefined;
-        if (!feature || !source || clusterId === undefined) return;
+        if (!feature || !source || clusterId === undefined) {
+          // If no cluster under cursor, clear hover (selection will persist)
+          hoverClusterId = null;
+          onHover(null);
+          updateSelectedHighlights();
+          return;
+        }
         try {
-          setClusterHighlight(clusterId);
+          // Set hover cluster - updateSelectedHighlights will show both selected and hover
+          hoverClusterId = clusterId;
+          updateSelectedHighlights();
           const leaves = await source.getClusterLeaves(clusterId, 1000, 0);
           const ids = leaves
             .map((f: any) => f?.properties?.id)
@@ -1924,10 +2010,81 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   function updateHighlight() {
     if (!map.getLayer(LAYER_HIGHLIGHT_ID)) return;
     const baseFilter: any[] = ["!", ["has", "point_count"]];
-    const filter = activeId
-      ? ["all", baseFilter, ["==", ["get", "id"], activeId]]
-      : ["all", baseFilter, ["==", ["get", "id"], "__none__"]];
-    map.setFilter(LAYER_HIGHLIGHT_ID, filter as any);
+    // Show highlights for BOTH selected orgs AND hover (if any)
+    // Selection persists even when hovering over other orgs
+    const highlightIds: string[] = [];
+    const hasSelectedOrgs = selectedOrgIds.size > 0;
+    
+    if (hasSelectedOrgs) {
+      highlightIds.push(...Array.from(selectedOrgIds));
+    }
+    if (activeId && !selectedOrgIds.has(activeId)) {
+      // Add hover ID if it's not already selected
+      highlightIds.push(activeId);
+    }
+    
+    if (highlightIds.length > 0) {
+      const filter = ["all", baseFilter, ["in", ["get", "id"], ["literal", highlightIds]]];
+      map.setFilter(LAYER_HIGHLIGHT_ID, filter as any);
+      
+      // Use data-driven properties: selected orgs get orange glow ring, hover gets white stroke
+      if (hasSelectedOrgs) {
+        const selectedIdsArray = Array.from(selectedOrgIds);
+        // Conditional: if ID is in selected set, use orange glow; otherwise white stroke for hover
+        const strokeColorExpr: any = [
+          "case",
+          ["in", ["get", "id"], ["literal", selectedIdsArray]],
+          "#fdba74", // Orange stroke for selected orgs
+          "#ffffff"  // White stroke for hover-only orgs
+        ];
+        const opacityExpr: any = [
+          "case",
+          ["in", ["get", "id"], ["literal", selectedIdsArray]],
+          0.35, // Semi-transparent for selected (glow effect)
+          1     // Fully opaque for hover
+        ];
+        map.setPaintProperty(LAYER_HIGHLIGHT_ID, "circle-stroke-color", strokeColorExpr);
+        map.setPaintProperty(LAYER_HIGHLIGHT_ID, "circle-opacity", opacityExpr);
+      } else {
+        // Just hover - use white stroke, fully opaque
+        map.setPaintProperty(LAYER_HIGHLIGHT_ID, "circle-stroke-color", "#ffffff");
+        map.setPaintProperty(LAYER_HIGHLIGHT_ID, "circle-opacity", 1);
+      }
+    } else {
+      // No highlights
+      const filter = ["all", baseFilter, ["==", ["get", "id"], "__none__"]];
+      map.setFilter(LAYER_HIGHLIGHT_ID, filter as any);
+    }
+  }
+
+  function updateSelectedHighlights() {
+    updateHighlight();
+    // Update cluster highlight - show BOTH selected clusters AND hover cluster (if different)
+    // Selection persists even when hovering over other clusters
+    const clusterIdsToHighlight: number[] = [];
+    
+    // Add all selected clusters (supports multiple when orgs split across clusters)
+    if (selectedClusterIds.length > 0) {
+      clusterIdsToHighlight.push(...selectedClusterIds);
+    } else if (selectedClusterId !== null) {
+      // Fallback to single cluster ID for backward compatibility
+      clusterIdsToHighlight.push(selectedClusterId);
+    }
+    
+    // Add hover cluster if different from selected clusters
+    if (hoverClusterId !== null && !clusterIdsToHighlight.includes(hoverClusterId)) {
+      clusterIdsToHighlight.push(hoverClusterId);
+    }
+    
+    if (clusterIdsToHighlight.length > 0) {
+      if (clusterIdsToHighlight.length === 1) {
+        extSetClusterHighlight(map, LAYER_CLUSTER_HIGHLIGHT_ID, clusterIdsToHighlight[0]);
+      } else {
+        extSetClusterHighlights(map, LAYER_CLUSTER_HIGHLIGHT_ID, clusterIdsToHighlight);
+      }
+    } else {
+      extSetClusterHighlight(map, LAYER_CLUSTER_HIGHLIGHT_ID, null);
+    }
   }
 
   function updateChoroplethLegend() {
@@ -1970,6 +2127,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   }
 
   const setClusterHighlight = (clusterId: number | null) => {
+    // Direct setter - use updateSelectedHighlights instead for proper combined highlighting
     extSetClusterHighlight(map, LAYER_CLUSTER_HIGHLIGHT_ID, clusterId);
   };
 
@@ -2006,10 +2164,43 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     onBoundaryModeChange?.(boundaryMode);
   };
 
-  const clearClusterHighlight = () => setClusterHighlight(null);
+  const clearClusterHighlight = () => {
+    // This is now handled by updateSelectedHighlights
+    // But keep for backward compatibility - just update highlights
+    updateSelectedHighlights();
+  };
 
   const highlightClusterContainingOrg = async (id: string | null) => {
-    await extHighlightClusterContainingOrg(map, SOURCE_ID, LAYER_CLUSTERS_ID, LAYER_CLUSTER_HIGHLIGHT_ID, id);
+    if (!id) {
+      hoverClusterId = null;
+      updateSelectedHighlights();
+      return;
+    }
+    const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (!source) return;
+    try {
+      const canvas = map.getCanvas();
+      const clusters = map
+        .queryRenderedFeatures([[0, 0], [canvas.width, canvas.height]] as any, {
+          layers: [LAYER_CLUSTERS_ID],
+        })
+        .filter((f) => typeof (f.properties as any)?.cluster_id === "number");
+
+      for (const f of clusters) {
+        const cid = (f.properties as any).cluster_id as number;
+        const leaves = await source.getClusterLeaves(cid, 1000, 0);
+        if (leaves.some((lf: any) => lf?.properties?.id === id)) {
+          hoverClusterId = cid;
+          updateSelectedHighlights();
+          return;
+        }
+      }
+      hoverClusterId = null;
+      updateSelectedHighlights();
+    } catch {
+      hoverClusterId = null;
+      updateSelectedHighlights();
+    }
   };
 
   const setOrganizations = (organizations: Organization[]) => {
@@ -2061,7 +2252,19 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     if (activeId && !filtered.some((o) => o.id === activeId)) {
       activeId = null;
       updateHighlight();
-      clearClusterHighlight();
+      // Restore selection highlights if hover is cleared
+      updateSelectedHighlights();
+    }
+
+    // Clear selected orgs if they're filtered out
+    const filteredIds = new Set(filtered.map(o => o.id));
+    const remainingSelected = Array.from(selectedOrgIds).filter(id => filteredIds.has(id));
+    if (remainingSelected.length !== selectedOrgIds.size) {
+      selectedOrgIds = new Set(remainingSelected);
+      if (selectedOrgIds.size === 0) {
+        selectedClusterId = null;
+      }
+      updateSelectedHighlights();
     }
 
     // visibility will be emitted by the wired tracker on next move/zoom end
@@ -2070,8 +2273,140 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   const setActiveOrganization = (id: string | null) => {
     if (activeId === id) return;
     activeId = id;
+    // Update highlights - show both selection and hover
     updateHighlight();
+    // Update cluster highlight for hover (selection will be maintained)
     void highlightClusterContainingOrg(activeId);
+  };
+
+  const setSelectedOrgIds = (ids: string[]) => {
+    const newSet = new Set(ids);
+    // Check if selection actually changed
+    if (selectedOrgIds.size === newSet.size && 
+        Array.from(selectedOrgIds).every(id => newSet.has(id))) {
+      return;
+    }
+    selectedOrgIds = newSet;
+    // Clear selected clusters if no orgs selected
+    if (selectedOrgIds.size === 0) {
+      selectedClusterId = null;
+      selectedClusterIds = [];
+    }
+    updateSelectedHighlights();
+    // If we have selected orgs, check if they're in clusters and highlight them
+    if (selectedOrgIds.size > 0) {
+      void updateSelectedClusterHighlight();
+    }
+  };
+
+  const updateSelectedClusterHighlight = async () => {
+    if (selectedOrgIds.size === 0) {
+      selectedClusterId = null;
+      selectedClusterIds = [];
+      updateSelectedHighlights();
+      return;
+    }
+    const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (!source) return;
+    try {
+      const canvas = map.getCanvas();
+      
+      // Check visible individual points first
+      const visiblePoints = map.queryRenderedFeatures(
+        [[0, 0], [canvas.width, canvas.height]] as any,
+        { layers: [LAYER_POINTS_ID] }
+      );
+      const visiblePointIds = new Set(
+        visiblePoints.map(f => f?.properties?.id).filter((id: any): id is string => typeof id === "string")
+      );
+      
+      // Check if all selected orgs are visible as individual points (not clustered)
+      const allSelectedVisibleAsPoints = Array.from(selectedOrgIds).every(id => visiblePointIds.has(id));
+      if (allSelectedVisibleAsPoints) {
+        // All selected orgs are visible as individual points - no cluster highlight needed
+        selectedClusterId = null;
+        selectedClusterIds = [];
+        updateSelectedHighlights();
+        return;
+      }
+      
+      // Check clusters
+      const clusters = map
+        .queryRenderedFeatures([[0, 0], [canvas.width, canvas.height]] as any, {
+          layers: [LAYER_CLUSTERS_ID],
+        })
+        .filter((f) => typeof (f.properties as any)?.cluster_id === "number");
+
+      // Find clusters that contain selected orgs
+      const clustersContainingSelected: Array<{ id: number; orgIds: Set<string> }> = [];
+      for (const f of clusters) {
+        const cid = (f.properties as any).cluster_id as number;
+        const leaves = await source.getClusterLeaves(cid, 1000, 0);
+        const clusterOrgIds = new Set(
+          leaves.map((lf: any) => lf?.properties?.id).filter((id: any): id is string => typeof id === "string")
+        );
+        // Check if any selected orgs are in this cluster
+        const hasSelectedOrgs = Array.from(selectedOrgIds).some(id => clusterOrgIds.has(id));
+        if (hasSelectedOrgs) {
+          clustersContainingSelected.push({ id: cid, orgIds: clusterOrgIds });
+        }
+      }
+      
+      if (clustersContainingSelected.length === 0) {
+        // No clusters contain selected orgs - they might be off-screen or individual points
+        selectedClusterId = null;
+        selectedClusterIds = [];
+        updateSelectedHighlights();
+        return;
+      }
+      
+      // Find clusters that contain all selected orgs (parent clusters when zooming out)
+      // or clusters that contain some selected orgs (split clusters when zooming in)
+      const clustersWithAllSelected: Array<{ id: number; orgIds: Set<string> }> = [];
+      const clustersWithSomeSelected: Array<{ id: number; orgIds: Set<string> }> = [];
+      
+      for (const cluster of clustersContainingSelected) {
+        const allSelectedInCluster = Array.from(selectedOrgIds).every(id => cluster.orgIds.has(id));
+        if (allSelectedInCluster) {
+          clustersWithAllSelected.push(cluster);
+        } else {
+          clustersWithSomeSelected.push(cluster);
+        }
+      }
+      
+      if (clustersWithAllSelected.length > 0) {
+        // Found cluster(s) containing all selected orgs
+        // Prefer the smallest cluster (most specific match), but support multiple if needed
+        clustersWithAllSelected.sort((a, b) => a.orgIds.size - b.orgIds.size);
+        const bestCluster = clustersWithAllSelected[0];
+        
+        // Check if there are multiple clusters of the same size (rare case)
+        if (clustersWithAllSelected.length === 1 || bestCluster.orgIds.size < clustersWithAllSelected[1].orgIds.size) {
+          // Single best match or clearly smallest - use single cluster ID
+          selectedClusterId = bestCluster.id;
+          selectedClusterIds = [];
+        } else {
+          // Multiple clusters of same size (very rare) - highlight all
+          selectedClusterId = null;
+          selectedClusterIds = clustersWithAllSelected.map(c => c.id);
+        }
+      } else if (clustersWithSomeSelected.length > 0) {
+        // Selected orgs are split across multiple clusters (zoomed in)
+        // Highlight all clusters that contain selected orgs
+        selectedClusterId = null;
+        selectedClusterIds = clustersWithSomeSelected.map(c => c.id);
+      } else {
+        // No clusters found (shouldn't happen, but handle gracefully)
+        selectedClusterId = null;
+        selectedClusterIds = [];
+      }
+      
+      updateSelectedHighlights();
+    } catch {
+      selectedClusterId = null;
+      selectedClusterIds = [];
+      updateSelectedHighlights();
+    }
   };
 
   const setCategoryFilter = (categoryId: string | null) => {
@@ -2172,6 +2507,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     element: container,
     setOrganizations,
     setActiveOrganization,
+    setSelectedOrgIds,
     setCategoryFilter,
     setSelectedStat: (statId: string | null) => {
       selectedStatId = statId;

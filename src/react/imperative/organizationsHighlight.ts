@@ -12,6 +12,25 @@ export const setClusterHighlight = (
   map.setFilter(highlightLayerId, filter as any);
 };
 
+export const setClusterHighlights = (
+  map: maplibregl.Map,
+  highlightLayerId: string,
+  clusterIds: number[],
+) => {
+  if (!map.getLayer(highlightLayerId)) return;
+  if (clusterIds.length === 0) {
+    setClusterHighlight(map, highlightLayerId, null);
+    return;
+  }
+  if (clusterIds.length === 1) {
+    setClusterHighlight(map, highlightLayerId, clusterIds[0]);
+    return;
+  }
+  // Show multiple clusters using "in" filter
+  const filter = ["all", ["has", "point_count"], ["in", ["get", "cluster_id"], ["literal", clusterIds]]];
+  map.setFilter(highlightLayerId, filter as any);
+};
+
 export const clearClusterHighlight = (
   map: maplibregl.Map,
   highlightLayerId: string,

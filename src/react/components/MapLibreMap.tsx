@@ -28,6 +28,7 @@ interface MapLibreMapProps {
   pinnedCounties?: string[];
   hoveredCounty?: string | null;
   activeOrganizationId?: string | null;
+  selectedOrgIds?: string[];
   categoryFilter?: string | null;
   selectedStatId?: string | null;
   secondaryStatId?: string | null;
@@ -81,6 +82,7 @@ export const MapLibreMap = ({
   pinnedCounties = [],
   hoveredCounty = null,
   activeOrganizationId = null,
+  selectedOrgIds = [],
   categoryFilter = null,
   selectedStatId = null,
   secondaryStatId = null,
@@ -332,6 +334,13 @@ export const MapLibreMap = ({
       mapControllerRef.current.setActiveOrganization(activeOrganizationId);
     }
   }, [activeOrganizationId]);
+
+  // Update selected org IDs
+  useEffect(() => {
+    if (mapControllerRef.current) {
+      mapControllerRef.current.setSelectedOrgIds(selectedOrgIds);
+    }
+  }, [selectedOrgIds]);
 
   // Update category filter
   useEffect(() => {
