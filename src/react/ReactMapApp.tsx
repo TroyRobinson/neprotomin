@@ -1234,12 +1234,21 @@ export const ReactMapApp = () => {
     }
   }, [categoryFilter, hasSyncedDefaultCategory, selectedStatId, statsById]);
 
-  // When a stat is selected and there are orgs selected from the map, deselect them
+  // When the stat changes, clear any map-driven org selection so the views stay in sync.
+  const previousSelectedStatIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (selectedStatId && selectedOrgIdsFromMap && selectedOrgIds.length > 0) {
+    const previousStatId = previousSelectedStatIdRef.current;
+    const statChanged = selectedStatId !== previousStatId;
+    if (
+      statChanged &&
+      selectedStatId &&
+      selectedOrgIdsFromMap &&
+      selectedOrgIds.length > 0
+    ) {
       setSelectedOrgIds([]);
       setSelectedOrgIdsFromMap(false);
     }
+    previousSelectedStatIdRef.current = selectedStatId ?? null;
   }, [selectedStatId, selectedOrgIdsFromMap, selectedOrgIds.length]);
 
   const [orgPinsVisible, setOrgPinsVisible] = useState(true);
