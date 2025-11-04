@@ -26,6 +26,7 @@ import { useMediaQuery } from "./hooks/useMediaQuery";
 import type { MapViewController } from "./imperative/mapView";
 import { isAdminEmail } from "../lib/admin";
 import { type TimeSelection, isOrganizationOpenAtTime, toTimeSelection } from "./lib/timeFilters";
+import { findCitySearchTarget, DEFAULT_CITY_ZOOM } from "./lib/citySearchTargets";
 import { useAuthSession } from "./hooks/useAuthSession";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
@@ -1409,6 +1410,35 @@ export const ReactMapApp = () => {
       const query = rawQuery.trim();
       if (!query) return;
 
+      const cityTarget = findCitySearchTarget(query);
+      if (cityTarget) {
+        // Clear area selections so the viewport jump represents the city context
+        applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
+        applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
+
+        const mapController = mapControllerRef.current;
+        if (mapController) {
+          const [lng, lat] = cityTarget.center;
+          const targetZoom = cityTarget.zoom ?? DEFAULT_CITY_ZOOM;
+
+          if (cityTarget.bounds) {
+            mapController.fitBounds(cityTarget.bounds, {
+              padding: 72,
+              maxZoom: Math.max(targetZoom, DEFAULT_CITY_ZOOM),
+            });
+          }
+
+          mapController.setCamera(lng, lat, targetZoom);
+        }
+
+        setBoundaryMode("zips");
+        setActiveScreen("map");
+        if (isMobile && sheetState === "expanded") {
+          collapseSheet();
+        }
+        return;
+      }
+
       const normalized = query.toLowerCase();
       const zipRecordsMap = areasByKindAndCode.get("ZIP") ?? new Map<string, any>();
 
@@ -1501,16 +1531,7 @@ export const ReactMapApp = () => {
         collapseSheet();
       }
     },
-    [
-      areasByKindAndCode,
-      countyRecords,
-      zipRecords,
-      collapseSheet,
-      isMobile,
-      sheetState,
-      applyAreaSelection,
-      setBoundaryMode,
-    ],
+    [areasByKindAndCode, countyRecords, zipRecords, collapseSheet, isMobile, sheetState, applyAreaSelection, setBoundaryMode],
   );
 
   const handleExport = () => {
