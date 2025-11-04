@@ -34,7 +34,7 @@ import {
   updateCountySelectionHighlight as extUpdateCountySelectionHighlight,
 } from "./layers/boundaries";
 import { ensureOrganizationLayers } from "./layers/organizations";
-import { setClusterHighlight as extSetClusterHighlight, setClusterHighlights as extSetClusterHighlights, highlightClusterContainingOrg as extHighlightClusterContainingOrg } from "./organizationsHighlight";
+import { setClusterHighlight as extSetClusterHighlight, setClusterHighlights as extSetClusterHighlights } from "./organizationsHighlight";
 import { wireVisibleIds } from "./visibilityTracker";
 import { getAreaRegistryEntry, type AreaLayerIds } from "./areas/registry";
 import {
@@ -2127,11 +2127,6 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       (hoveredCountyFromToolbar || hoveredCountyFromMap || null));
   }
 
-  const setClusterHighlight = (clusterId: number | null) => {
-    // Direct setter - use updateSelectedHighlights instead for proper combined highlighting
-    extSetClusterHighlight(map, LAYER_CLUSTER_HIGHLIGHT_ID, clusterId);
-  };
-
   const setBoundaryMode = (mode: BoundaryMode) => {
     if (mode === boundaryMode) return;
     const previousMode = boundaryMode;
@@ -2163,12 +2158,6 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     updateBoundaryVisibility();
     refreshStatVisuals();
     onBoundaryModeChange?.(boundaryMode);
-  };
-
-  const clearClusterHighlight = () => {
-    // This is now handled by updateSelectedHighlights
-    // But keep for backward compatibility - just update highlights
-    updateSelectedHighlights();
   };
 
   const highlightClusterContainingOrg = async (id: string | null) => {
