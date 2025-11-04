@@ -30,6 +30,7 @@ interface SidebarProps {
   organizations?: {
     inSelection: Organization[];
     all: Organization[];
+    recent?: Organization[];
     totalSourceCount?: number;
     visibleInViewport?: number;
   };
@@ -182,9 +183,10 @@ export const Sidebar = ({
   const {
     inSelection = [],
     all = [],
+    recent = [],
     totalSourceCount = 0,
     visibleInViewport,
-  } = organizations ?? { inSelection: [], all: [], totalSourceCount: 0 };
+  } = organizations ?? { inSelection: [], all: [], recent: [], totalSourceCount: 0 };
 
   // Determine the "IN SELECTION" label - show area name if only one area is selected
   const inSelectionLabel = useMemo(() => {
@@ -480,16 +482,46 @@ export const Sidebar = ({
               </div>
             )}
             
-            {visibleCount === 0 && missingCount === 0 ? (
+            {visibleCount === 0 && missingCount === 0 && recent.length === 0 ? (
               <p className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
                 No locations found. Add one to get started.
               </p>
-            ) : timeSelection && inSelection.length === 0 && all.length === 0 ? (
+            ) : timeSelection && inSelection.length === 0 && all.length === 0 && recent.length === 0 ? (
               <p className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
                 No locations are open at the selected time.
               </p>
             ) : (
               <div className="flex-1">
+
+                {/* Recently Added Section */}
+                {recent.length > 0 && (
+                  <>
+                    <h3 className="px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                      RECENTLY ADDED
+                    </h3>
+                    <ul className="space-y-2 px-4">
+                      {recent.map((org) => (
+                        <OrganizationListItem
+                          key={org.id}
+                          org={org}
+                          isActive={
+                            org.id === activeOrganizationId || 
+                            highlightedIds.has(org.id) || 
+                            selectedOrgIdsSet.has(org.id)
+                          }
+                          isExpanded={expandedOrgId === org.id}
+                          onHover={onHover}
+                          onCategoryClick={onCategoryClick}
+                          onOrganizationClick={onOrganizationClick}
+                          onToggleExpand={(id) =>
+                            setExpandedOrgId((prev) => (prev === id ? null : id))
+                          }
+                          onIssueClick={handleOpenIssueModal}
+                        />
+                      ))}
+                    </ul>
+                  </>
+                )}
 
                 {/* In Selection Section */}
                 {inSelection.length > 0 && (
@@ -522,7 +554,7 @@ export const Sidebar = ({
                 )}
 
                 {/* All Section */}
-                {(totalSelectedCount > 0 || (directOrgSelectionActive && all.length > 0)) && (
+                {(totalSelectedCount > 0 || (directOrgSelectionActive && all.length > 0) || (recent.length > 0 && all.length > 0)) && (
                   <h3 className="px-8 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                     ALL
                   </h3>

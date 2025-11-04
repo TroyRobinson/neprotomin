@@ -12,6 +12,7 @@ import { useDemographics, type CombinedDemographicsSnapshot } from "./hooks/useD
 import { useStats } from "./hooks/useStats";
 import type { StatBoundaryEntry, SeriesByKind, SeriesEntry } from "./hooks/useStats";
 import { useOrganizations } from "./hooks/useOrganizations";
+import { useRecentOrganizations } from "./hooks/useRecentOrganizations";
 import { useAreas } from "./hooks/useAreas";
 import { type Organization, OKLAHOMA_CENTER, OKLAHOMA_DEFAULT_ZOOM } from "../types/organization";
 import { findZipForLocation, getZipBounds } from "../lib/zipBoundaries";
@@ -140,6 +141,7 @@ export const ReactMapApp = () => {
   const [activeScreen, setActiveScreen] = useState<"map" | "report" | "data" | "queue" | "addOrg">("map");
   const [authOpen, setAuthOpen] = useState(false);
   const [cameraState, setCameraState] = useState<{ center: [number, number]; zoom: number } | null>(null);
+  const [hasInteractedWithMap, setHasInteractedWithMap] = useState(false);
   const [zipScope, setZipScope] = useState<string>(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
   const [zipNeighborScopes, setZipNeighborScopes] = useState<string[]>([]);
   const isMobile = useMediaQuery(MOBILE_MAX_WIDTH_QUERY);
@@ -668,6 +670,33 @@ export const ReactMapApp = () => {
     } catch {}
   }, []);
 
+  // Track map interaction: detect when user pans/zooms away from initial position
+  useEffect(() => {
+    if (!cameraState || hasInteractedWithMap) return;
+    
+    const initialCenter: [number, number] = [OKLAHOMA_CENTER.longitude, OKLAHOMA_CENTER.latitude];
+    const initialZoom = OKLAHOMA_DEFAULT_ZOOM;
+    const tolerance = 0.01; // Small tolerance for floating-point precision
+    
+    const { center, zoom } = cameraState;
+    const centerDelta = Math.sqrt(
+      Math.pow(center[0] - initialCenter[0], 2) + Math.pow(center[1] - initialCenter[1], 2)
+    );
+    const zoomDelta = Math.abs(zoom - initialZoom);
+    
+    // Mark as interacted if camera moved significantly from initial position
+    if (centerDelta > tolerance || zoomDelta > tolerance) {
+      setHasInteractedWithMap(true);
+    }
+  }, [cameraState, hasInteractedWithMap]);
+
+  // Mark as interacted when user selects areas or orgs
+  useEffect(() => {
+    if (selectedZips.length > 0 || selectedCounties.length > 0 || selectedOrgIds.length > 0) {
+      setHasInteractedWithMap(true);
+    }
+  }, [selectedZips.length, selectedCounties.length, selectedOrgIds.length]);
+
   // Persisted UI state: load on auth ready
   useEffect(() => {
     if (!authReady) return;
@@ -809,6 +838,7 @@ export const ReactMapApp = () => {
     isLoading: areStatsLoading,
   } = useStats();
   const { organizations } = useOrganizations();
+  const { recentOrganizations } = useRecentOrganizations();
   const organizationSearchIndex = useMemo(
     () =>
       organizations
@@ -2061,6 +2091,12 @@ export const ReactMapApp = () => {
     const countySel = new Set(selectedCounties);
     let inSelection: Organization[] = [];
     const selectedOrgSet = new Set(selectedOrgIds);
+    
+    // Show recent organizations when map hasn't been interacted with and no selections are active
+    const shouldShowRecent = !hasInteractedWithMap && 
+      selectedZips.length === 0 && 
+      selectedCounties.length === 0 && 
+      selectedOrgIds.length === 0;
 
     // Direct org selection (from clicking org centroids or small clusters)
     // moves to the inSelection section only when originating from the map.
@@ -2130,9 +2166,43 @@ export const ReactMapApp = () => {
       ? inactiveOrganizations.filter((org) => isOrganizationOpenAtTime(org, timeSelection))
       : inactiveOrganizations;
     const inactiveSorted = matchingInactive.slice().sort((a, b) => a.name.localeCompare(b.name));
+    
+    // If showing recent orgs, filter and sort them, then show rest alphabetically
+    let allOrgs: Organization[] = [];
+    let recentOrgsToShow: Organization[] = [];
+    
+    if (shouldShowRecent && recentOrganizations.length > 0) {
+      // Filter recent orgs to only include visible ones that aren't already in selection
+      const recentIds = new Set(recentOrganizations.map(o => o.id));
+      const recentVisible = recentOrganizations.filter((org) => {
+        if (inSelectionIds.has(org.id)) return false;
+        if (sourceIds.size > 0 && !sourceIds.has(org.id)) return false;
+        if (visibleIds.size > 0 && !visibleIds.has(org.id)) return false;
+        return true;
+      });
+      
+      // Filter rest to exclude recent orgs
+      const restWithoutRecent = rest.filter((o) => !recentIds.has(o.id));
+      
+      // Sort rest alphabetically
+      const restSorted = restWithoutRecent.slice().sort((a, b) => a.name.localeCompare(b.name));
+      
+      recentOrgsToShow = recentVisible;
+      allOrgs = [...restSorted, ...inactiveSorted];
+    } else {
+      // Normal mode: show rest alphabetically
+      allOrgs = [...rest.slice().sort((a, b) => a.name.localeCompare(b.name)), ...inactiveSorted];
+    }
+    
     const totalSourceCount = (sourceIds.size || fromSource.length) + matchingInactive.length;
     const visibleInViewport = inSelection.length + rest.length;
-    return { inSelection, all: [...rest, ...inactiveSorted], totalSourceCount, visibleInViewport };
+    return { 
+      inSelection, 
+      all: allOrgs, 
+      recent: recentOrgsToShow,
+      totalSourceCount, 
+      visibleInViewport 
+    };
   })();
 
   const visibleCount =
