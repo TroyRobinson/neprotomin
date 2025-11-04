@@ -589,7 +589,7 @@ export const TopBar = ({
           >
             NE
           </button>
-          <div className="flex flex-1 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             {isCompactMobileSearch && !isMobileSearchExpanded ? (
               <button
                 type="button"
@@ -604,7 +604,7 @@ export const TopBar = ({
               <form
                 ref={mobileSearchFormRef}
                 onSubmit={handleMobileSearchSubmit}
-                className="flex flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white pl-3 pr-2 py-2 shadow-sm transition focus-within:border-brand-300 focus-within:ring-2 focus-within:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:focus-within:border-slate-500"
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white pl-3 pr-2 py-2 shadow-sm transition focus-within:border-brand-300 focus-within:ring-2 focus-within:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:focus-within:border-slate-500"
               >
                 {!isCompactMobileSearch && <SearchIcon />}
                 <input
@@ -649,11 +649,17 @@ export const TopBar = ({
                 <button
                   type="button"
                   onClick={handleAddOrganization}
-                  className="inline-flex h-11 w-11 min-[360px]:w-auto min-[360px]:px-3 items-center justify-center min-[360px]:justify-start gap-2 rounded-full bg-brand-100 text-brand-700 shadow-sm transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900"
+                  className={`inline-flex h-11 items-center justify-center gap-2 rounded-full bg-brand-100 text-brand-700 shadow-sm transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900 ${
+                    isCompactMobileSearch && !isMobileSearchExpanded
+                      ? "w-auto px-3"
+                      : "w-11"
+                  }`}
                   aria-label="Add organization"
                 >
                   <PlusIcon />
-                  <span className="hidden min-[360px]:inline text-sm font-medium">Location</span>
+                  {isCompactMobileSearch && !isMobileSearchExpanded && (
+                    <span className="text-sm font-medium">Location</span>
+                  )}
                 </button>
               )}
             </>
