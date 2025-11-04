@@ -27,6 +27,8 @@ import type { MapViewController } from "./imperative/mapView";
 import { isAdminEmail } from "../lib/admin";
 import { type TimeSelection, isOrganizationOpenAtTime, toTimeSelection } from "./lib/timeFilters";
 import { findCitySearchTarget, DEFAULT_CITY_ZOOM } from "./lib/citySearchTargets";
+import { parseFullAddress, geocodeAddress, looksLikeAddress } from "./lib/geocoding";
+import { normalizeForSearch, computeSimilarityFromNormalized } from "./lib/fuzzyMatch";
 import { useAuthSession } from "./hooks/useAuthSession";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
@@ -51,6 +53,9 @@ const MOBILE_MAX_WIDTH_QUERY = "(max-width: 767px)";
 const MOBILE_SHEET_PEEK_HEIGHT = 136;
 const MOBILE_SHEET_DRAG_THRESHOLD = 72;
 const MOBILE_TAP_THRESHOLD = 10; // pixels - movement below this is considered a tap, not a drag
+const ORGANIZATION_MATCH_THRESHOLD = 0.55;
+const ORGANIZATION_FOCUS_ZOOM_DESKTOP = 12;
+const ORGANIZATION_FOCUS_ZOOM_MOBILE = 13.3;
 
 interface AreaSelectionState {
   selected: string[];
@@ -148,8 +153,11 @@ export const ReactMapApp = () => {
     return Math.round(viewport?.height ?? window.innerHeight);
   });
   const [userLocation, setUserLocation] = useState<{ lng: number; lat: number } | null>(null);
+  const [userLocationSource, setUserLocationSource] = useState<"device" | "search" | null>(null);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [userLocationError, setUserLocationError] = useState<string | null>(null);
+  const lastDeviceLocationRef = useRef<{ lng: number; lat: number } | null>(null);
+  const geocodeCacheRef = useRef<Map<string, { lng: number; lat: number }>>(new Map());
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showZipSearchModal, setShowZipSearchModal] = useState(false);
   const [showTimeSelectorModal, setShowTimeSelectorModal] = useState(false);
@@ -164,6 +172,7 @@ export const ReactMapApp = () => {
   const pendingContentDragRef = useRef<{ pointerId: number; startY: number } | null>(null);
   const sheetContentRef = useRef<HTMLDivElement | null>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
+  const suppressAreaSelectionClearRef = useRef<{ ZIP: number; COUNTY: number }>({ ZIP: 0, COUNTY: 0 });
   const sheetAvailableHeight = Math.max(viewportHeight - topBarHeight, 0);
   const sheetPeekOffset = Math.max(sheetAvailableHeight - MOBILE_SHEET_PEEK_HEIGHT, 0);
 
@@ -262,6 +271,46 @@ export const ReactMapApp = () => {
     ] as [[number, number], [number, number]];
   }, [isMobile]);
 
+  const focusOnLocation = useCallback(
+    (location: { lng: number; lat: number }) => {
+      setActiveScreen("map");
+
+      applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
+      applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
+
+      const zipCode = findZipForLocation(location.lng, location.lat);
+      if (zipCode) {
+        applyAreaSelection("ZIP", {
+          selected: [zipCode],
+          pinned: [zipCode],
+          transient: [],
+        });
+      }
+      setBoundaryMode("zips");
+
+      const controller = mapControllerRef.current;
+      if (controller) {
+        const bounds = buildBoundsAroundPoint(location.lng, location.lat);
+        controller.fitBounds(bounds, { padding: isMobile ? 40 : 72, maxZoom: isMobile ? 13 : 11 });
+      } else {
+        const targetZoom = isMobile ? 12.6 : 10.5;
+        mapControllerRef.current?.setCamera(location.lng, location.lat, targetZoom);
+      }
+
+      if (isMobile && sheetState === "expanded") {
+        collapseSheet();
+      }
+    },
+    [
+      applyAreaSelection,
+      buildBoundsAroundPoint,
+      collapseSheet,
+      isMobile,
+      setBoundaryMode,
+      sheetState,
+    ],
+  );
+
   const requestUserLocation = useCallback((): Promise<{ lng: number; lat: number }> => {
     return new Promise((resolve, reject) => {
       if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -282,6 +331,8 @@ export const ReactMapApp = () => {
           const { longitude, latitude } = position.coords;
           const location = { lng: longitude, lat: latitude };
           setUserLocation(location);
+          setUserLocationSource("device");
+          lastDeviceLocationRef.current = location;
           setActiveScreen("map");
           resolve(location);
         },
@@ -301,42 +352,30 @@ export const ReactMapApp = () => {
   }, [isRequestingLocation]);
 
   const focusUserLocation = useCallback(() => {
-    if (!userLocation) {
-      requestUserLocation();
+    const focusWithSelection = (location: { lng: number; lat: number }) => {
+      setUserLocation(location);
+      setUserLocationSource("device");
+      focusOnLocation(location);
+    };
+
+    if (userLocationSource === "device" && userLocation) {
+      focusOnLocation(userLocation);
       return;
     }
-    setActiveScreen("map");
-    
-    // Find and select the ZIP code for the user's location
-    const zipCode = findZipForLocation(userLocation.lng, userLocation.lat);
-    if (zipCode) {
-      // Clear existing selections before selecting the new ZIP
-      applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
-      applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
 
-      // Select the ZIP containing the user's location
-      applyAreaSelection("ZIP", {
-        selected: [zipCode],
-        pinned: [zipCode],
-        transient: [],
-      });
-      
-      // Switch to ZIP mode if needed
-      setBoundaryMode("zips");
+    const storedDeviceLocation = lastDeviceLocationRef.current;
+    if (storedDeviceLocation) {
+      focusWithSelection(storedDeviceLocation);
+      void requestUserLocation().catch(() => {});
+      return;
     }
-    
-    const controller = mapControllerRef.current;
-    if (controller) {
-      const bounds = buildBoundsAroundPoint(userLocation.lng, userLocation.lat);
-      controller.fitBounds(bounds, { padding: isMobile ? 40 : 72, maxZoom: isMobile ? 13 : 11 });
-    } else if (mapControllerRef.current?.setCamera) {
-      const targetZoom = isMobile ? 12.6 : 10.5;
-      mapControllerRef.current.setCamera(userLocation.lng, userLocation.lat, targetZoom);
-    }
-    if (isMobile) {
-      collapseSheet();
-    }
-  }, [buildBoundsAroundPoint, collapseSheet, isMobile, requestUserLocation, userLocation, applyAreaSelection, setBoundaryMode]);
+
+    requestUserLocation()
+      .then((location) => {
+        focusWithSelection(location);
+      })
+      .catch(() => {});
+  }, [focusOnLocation, requestUserLocation, userLocation, userLocationSource]);
 
   const startSheetDrag = useCallback(
     (pointerId: number, clientY: number, startState: "peek" | "expanded") => {
@@ -769,6 +808,72 @@ export const ReactMapApp = () => {
     isLoading: areStatsLoading,
   } = useStats();
   const { organizations } = useOrganizations();
+  const organizationSearchIndex = useMemo(
+    () =>
+      organizations
+        .map((org) => {
+          const normalized = new Set<string>();
+          const addField = (value: string | null | undefined) => {
+            if (!value) return;
+            const normalizedValue = normalizeForSearch(value);
+            if (normalizedValue) normalized.add(normalizedValue);
+          };
+          addField(org.name);
+          addField(org.city ? `${org.city} ${org.name}` : null);
+          addField(org.address ? `${org.name} ${org.address}` : null);
+          addField(org.address ? `${org.address}` : null);
+          addField(org.city ? `${org.city}` : null);
+          return {
+            org,
+            normalizedPrimary: normalizeForSearch(org.name) ?? "",
+            normalizedNames: Array.from(normalized),
+          };
+        })
+        .filter((entry) => entry.normalizedPrimary.length > 0),
+    [organizations],
+  );
+
+  const findOrganizationMatch = useCallback(
+    (query: string) => {
+      const normalizedQuery = normalizeForSearch(query);
+      if (!normalizedQuery) return null;
+      if (normalizedQuery.length < 2) return null;
+
+      const directMatch =
+        organizationSearchIndex.find((entry) => {
+          if (entry.normalizedPrimary === normalizedQuery) return true;
+          if (entry.normalizedPrimary.includes(normalizedQuery)) return true;
+          if (normalizedQuery.includes(entry.normalizedPrimary)) return true;
+          return entry.normalizedNames.some((name) => {
+            if (name === normalizedQuery) return true;
+            if (name.includes(normalizedQuery)) return true;
+            if (normalizedQuery.includes(name)) return true;
+            return false;
+          });
+        }) ?? null;
+
+      if (directMatch) {
+        return { org: directMatch.org, score: 1 } as const;
+      }
+
+      let best: { org: Organization; score: number } | null = null;
+      for (const entry of organizationSearchIndex) {
+        let entryScore = 0;
+        for (const name of entry.normalizedNames) {
+          const score = computeSimilarityFromNormalized(name, normalizedQuery);
+          if (score > entryScore) entryScore = score;
+        }
+        if (!best || entryScore > best.score) {
+          best = { org: entry.org, score: entryScore };
+        }
+      }
+      if (best && best.score >= ORGANIZATION_MATCH_THRESHOLD) {
+        return best;
+      }
+      return null;
+    },
+    [organizationSearchIndex],
+  );
 
   const areaNameLookup = useMemo(
     () => (kind: SupportedAreaKind, code: string) => getAreaLabel(kind, code) ?? code,
@@ -1160,38 +1265,9 @@ export const ReactMapApp = () => {
     // First try to get user's location
     try {
       const location = await requestUserLocation();
-      // If location is successfully obtained, zoom to it
-      setActiveScreen("map");
-      
-      // Find and select the ZIP code for the user's location
-      const zipCode = findZipForLocation(location.lng, location.lat);
-      if (zipCode) {
-        // Clear existing selections before selecting the new ZIP
-        applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
-        applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
-
-        // Select the ZIP containing the user's location
-        applyAreaSelection("ZIP", {
-          selected: [zipCode],
-          pinned: [zipCode],
-          transient: [],
-        });
-        
-        // Switch to ZIP mode if needed
-        setBoundaryMode("zips");
-      }
-      
-      const controller = mapControllerRef.current;
-      if (controller) {
-        const bounds = buildBoundsAroundPoint(location.lng, location.lat);
-        controller.fitBounds(bounds, { padding: isMobile ? 40 : 72, maxZoom: isMobile ? 13 : 11 });
-      } else if (mapControllerRef.current?.setCamera) {
-        const targetZoom = isMobile ? 12.6 : 10.5;
-        mapControllerRef.current.setCamera(location.lng, location.lat, targetZoom);
-      }
-      if (isMobile) {
-        collapseSheet();
-      }
+      setUserLocation(location);
+      setUserLocationSource("device");
+      focusOnLocation(location);
     } catch (error) {
       // Location failed, open zip search modal on desktop or expand mobile search on mobile
       if (isMobile) {
@@ -1201,7 +1277,7 @@ export const ReactMapApp = () => {
         setShowZipSearchModal(true);
       }
     }
-  }, [isMobile, requestUserLocation, buildBoundsAroundPoint, collapseSheet, applyAreaSelection, setBoundaryMode]);
+  }, [focusOnLocation, isMobile, requestUserLocation, setUserLocation, setUserLocationSource]);
 
   const handleHover = useCallback((idOrIds: string | string[] | null) => {
     if (Array.isArray(idOrIds)) {
@@ -1262,13 +1338,13 @@ export const ReactMapApp = () => {
         setHighlightedOrganizationIds(null);
         // Single org in cluster - select it
         setSelectedOrgIds([uniqueIds[0]]);
-+        setSelectedOrgIdsFromMap(true);
+        setSelectedOrgIdsFromMap(true);
       } else if (uniqueIds.length <= 3) {
         // Small cluster (2-3 orgs) - select all orgs in cluster
         setActiveOrganizationId(null);
         setHighlightedOrganizationIds(uniqueIds);
         setSelectedOrgIds(uniqueIds);
-+        setSelectedOrgIdsFromMap(true);
+        setSelectedOrgIdsFromMap(true);
       } else {
         // Large cluster (>3 orgs) - just highlight, don't change selection
         setActiveOrganizationId(null);
@@ -1282,24 +1358,24 @@ export const ReactMapApp = () => {
   );
 
   const handleUpdateAreaSelection = (kind: AreaKind, selection: { selected: string[]; pinned: string[] }) => {
-    // Clear direct org selection when user selects areas
-    if (selection.selected.length > 0 || selection.pinned.length > 0) {
+    const normalizedSelected = dedupeIds(selection.selected);
+    const normalizedPinned = dedupeIds(selection.pinned);
+    const isNonEmpty = normalizedSelected.length > 0 || normalizedPinned.length > 0;
+    const current = areaSelections[kind];
+    const differs =
+      !arraysEqual(current.selected, normalizedSelected) || !arraysEqual(current.pinned, normalizedPinned);
+    if (isNonEmpty && differs) {
       setSelectedOrgIds([]);
-+      setSelectedOrgIdsFromMap(false);
+      setSelectedOrgIdsFromMap(false);
     }
     applyAreaSelection(kind, {
-      selected: dedupeIds(selection.selected),
-      pinned: dedupeIds(selection.pinned),
+      selected: normalizedSelected,
+      pinned: normalizedPinned,
       transient: [],
     });
   };
 
   const handleAreaSelectionChange = (change: { kind: AreaKind; selected: string[]; pinned: string[]; transient: string[] }) => {
-    // Clear direct org selection when user selects areas
-    if (change.selected.length > 0 || change.pinned.length > 0) {
-      setSelectedOrgIds([]);
-+      setSelectedOrgIdsFromMap(false);
-    }
     const current = areaSelections[change.kind];
     const hasChanged =
       !current ||
@@ -1308,6 +1384,14 @@ export const ReactMapApp = () => {
         arraysEqual(current.pinned, change.pinned) &&
         arraysEqual(current.transient, change.transient)
       );
+    const isNonEmpty = change.selected.length > 0 || change.pinned.length > 0;
+    const suppressKey = change.kind === "ZIP" || change.kind === "COUNTY" ? change.kind : null;
+    if (suppressKey && suppressAreaSelectionClearRef.current[suppressKey] > 0) {
+      suppressAreaSelectionClearRef.current[suppressKey] -= 1;
+    } else if (isNonEmpty && hasChanged) {
+      setSelectedOrgIds([]);
+      setSelectedOrgIdsFromMap(false);
+    }
     applyAreaSelection(change.kind, {
       selected: change.selected,
       pinned: change.pinned,
@@ -1428,15 +1512,21 @@ export const ReactMapApp = () => {
   }, [isMobile, isRequestingLocation, userLocation, userLocationError, focusUserLocation, requestUserLocation]);
 
   const handleMobileLocationSearch = useCallback(
-    (rawQuery: string) => {
+    async (rawQuery: string) => {
       const query = rawQuery.trim();
       if (!query) return;
 
       const cityTarget = findCitySearchTarget(query);
       if (cityTarget) {
         // Clear area selections so the viewport jump represents the city context
+        suppressAreaSelectionClearRef.current.ZIP += 1;
+        suppressAreaSelectionClearRef.current.COUNTY += 1;
         applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
         applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
+        setActiveOrganizationId(null);
+        setHighlightedOrganizationIds(null);
+        setSelectedOrgIds([]);
+        setSelectedOrgIdsFromMap(false);
 
         const mapController = mapControllerRef.current;
         if (mapController) {
@@ -1485,6 +1575,84 @@ export const ReactMapApp = () => {
             targetKind = "COUNTY";
             targetRecord = record;
             break;
+          }
+        }
+      }
+
+      if (!targetRecord) {
+        const orgMatch = findOrganizationMatch(query);
+        if (orgMatch) {
+          const match = orgMatch.org;
+          suppressAreaSelectionClearRef.current.ZIP += 1;
+          suppressAreaSelectionClearRef.current.COUNTY += 1;
+          applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
+          applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
+
+          setActiveScreen("map");
+          setOrgPinsVisible(true);
+          setActiveOrganizationId(match.id);
+          setHighlightedOrganizationIds(null);
+          setSelectedOrgIds([match.id]);
+          setSelectedOrgIdsFromMap(false);
+
+          if (isMobile) {
+            expandSheet();
+          }
+
+          track("map_search_organization_match", {
+            query,
+            organizationId: match.id,
+            score: Number(orgMatch.score.toFixed(3)),
+          });
+          return;
+        }
+      }
+
+      if (!targetRecord) {
+        const parsedAddress = parseFullAddress(query);
+        const shouldAttemptGeocode = Boolean(parsedAddress) || looksLikeAddress(query);
+
+        if (shouldAttemptGeocode) {
+          const cacheKey = parsedAddress
+            ? JSON.stringify({
+                address: (parsedAddress.address ?? "").toLowerCase(),
+                city: (parsedAddress.city ?? "").toLowerCase(),
+                state: (parsedAddress.state ?? "").toLowerCase(),
+                zip: (parsedAddress.zip ?? "").toLowerCase(),
+              })
+            : normalized;
+
+          let cachedLocation = geocodeCacheRef.current.get(cacheKey);
+
+          if (!cachedLocation) {
+            try {
+              const geocodeResult = await geocodeAddress(
+                parsedAddress && (parsedAddress.address || parsedAddress.city || parsedAddress.state || parsedAddress.zip)
+                  ? parsedAddress
+                  : query,
+              );
+              if ("error" in geocodeResult) {
+                console.warn("Address geocode failed:", geocodeResult.error);
+                setUserLocationError(geocodeResult.error);
+              } else {
+                cachedLocation = { lng: geocodeResult.longitude, lat: geocodeResult.latitude };
+                geocodeCacheRef.current.set(cacheKey, cachedLocation);
+              }
+            } catch (error) {
+              console.error("Address geocode error:", error);
+            }
+          }
+
+          if (cachedLocation) {
+            setActiveOrganizationId(null);
+            setHighlightedOrganizationIds(null);
+            setSelectedOrgIds([]);
+            setSelectedOrgIdsFromMap(false);
+            setUserLocation(cachedLocation);
+            setUserLocationSource("search");
+            setUserLocationError(null);
+            focusOnLocation(cachedLocation);
+            return;
           }
         }
       }
@@ -1553,7 +1721,30 @@ export const ReactMapApp = () => {
         collapseSheet();
       }
     },
-    [areasByKindAndCode, countyRecords, zipRecords, collapseSheet, isMobile, sheetState, applyAreaSelection, setBoundaryMode],
+    [
+      areasByKindAndCode,
+      countyRecords,
+      zipRecords,
+      collapseSheet,
+      focusOnLocation,
+      isMobile,
+      sheetState,
+      expandSheet,
+      findOrganizationMatch,
+      applyAreaSelection,
+      setBoundaryMode,
+      setActiveOrganizationId,
+      setActiveScreen,
+      setHighlightedOrganizationIds,
+      setOrgPinsVisible,
+      setSelectedOrgIds,
+      setSelectedOrgIdsFromMap,
+      setUserLocation,
+      setUserLocationSource,
+      setUserLocationError,
+      geocodeCacheRef,
+      track,
+    ],
   );
 
   const handleExport = () => {
@@ -1963,38 +2154,9 @@ export const ReactMapApp = () => {
     handleCloseWelcomeModal();
     try {
       const location = await requestUserLocation();
-      // Zoom to location immediately with the resolved location
-      setActiveScreen("map");
-      
-      // Find and select the ZIP code for the user's location
-      const zipCode = findZipForLocation(location.lng, location.lat);
-      if (zipCode) {
-        // Clear existing selections before selecting the new ZIP
-        applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
-        applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
-
-        // Select the ZIP containing the user's location
-        applyAreaSelection("ZIP", {
-          selected: [zipCode],
-          pinned: [zipCode],
-          transient: [],
-        });
-        
-        // Switch to ZIP mode if needed
-        setBoundaryMode("zips");
-      }
-      
-      const controller = mapControllerRef.current;
-      if (controller) {
-        const bounds = buildBoundsAroundPoint(location.lng, location.lat);
-        controller.fitBounds(bounds, { padding: isMobile ? 40 : 72, maxZoom: isMobile ? 13 : 11 });
-      } else if (mapControllerRef.current?.setCamera) {
-        const targetZoom = isMobile ? 12.6 : 10.5;
-        mapControllerRef.current.setCamera(location.lng, location.lat, targetZoom);
-      }
-      if (isMobile) {
-        collapseSheet();
-      }
+      setUserLocation(location);
+      setUserLocationSource("device");
+      focusOnLocation(location);
     } catch (error) {
       // Location failed, open zip search
       if (isMobile) {
@@ -2008,7 +2170,7 @@ export const ReactMapApp = () => {
         setShowZipSearchModal(true);
       }
     }
-  }, [handleCloseWelcomeModal, requestUserLocation, isMobile, buildBoundsAroundPoint, collapseSheet, applyAreaSelection, setBoundaryMode]);
+  }, [focusOnLocation, handleCloseWelcomeModal, isMobile, requestUserLocation, setUserLocation, setUserLocationSource]);
 
   const handleShareFood = useCallback(() => {
     handleCloseWelcomeModal();
@@ -2041,9 +2203,12 @@ export const ReactMapApp = () => {
     const controller = mapControllerRef.current;
     if (!controller) return;
     try {
-      controller.centerOnOrganization(selectedOrgIds[0], { animate: true });
+      controller.centerOnOrganization(selectedOrgIds[0], {
+        animate: true,
+        zoom: isMobile ? ORGANIZATION_FOCUS_ZOOM_MOBILE : ORGANIZATION_FOCUS_ZOOM_DESKTOP,
+      });
     } catch {}
-  }, [selectedOrgIds, selectedOrgIdsFromMap]);
+  }, [isMobile, selectedOrgIds, selectedOrgIdsFromMap]);
 
   return (
     <div className="app-shell relative flex flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">

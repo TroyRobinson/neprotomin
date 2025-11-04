@@ -5,6 +5,7 @@ import { XMarkIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import { db } from "../../lib/reactDb";
 import { isAdminEmail } from "../../lib/admin";
 import type { Category, OrganizationStatus, OrganizationModerationStatus } from "../../types/organization";
+import { parseFullAddress, geocodeAddress } from "../lib/geocoding";
 
 const SearchIcon = () => (
   <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px] text-slate-400 dark:text-slate-500">
@@ -145,196 +146,6 @@ const notifyQueueModerators = async (payload: {
     console.error("Queue notification error", error);
   }
 };
-
-// Parse a full address string into components
-// Handles formats like:
-// - "123 Main St, Tulsa, OK 74103"
-// - "123 Main St, Tulsa, OK, 74103"
-// - "123 Main St Tulsa OK 74103"
-function parseFullAddress(input: string): {
-  address?: string;
-  city?: string;
-  state?: string;
-  zip?: string;
-} | null {
-  const trimmed = input.trim();
-
-  // Only parse if it looks like a full address (contains comma or has multiple parts)
-  const hasCommas = trimmed.includes(",");
-  const parts = trimmed.split(/[\s,]+/).filter(Boolean);
-
-  // Need at least 4 parts (street, city, state, zip) to consider parsing
-  if (!hasCommas && parts.length < 4) {
-    return null;
-  }
-
-  try {
-    // Split by commas first if present
-    if (hasCommas) {
-      const segments = trimmed.split(",").map((s) => s.trim()).filter(Boolean);
-
-      // Common format: "Street Address, City, State ZIP"
-      // or: "Street Address, City, State, ZIP"
-      if (segments.length >= 3) {
-        const streetAddress = segments[0];
-        const city = segments[1];
-
-        // Last segment should contain state and/or ZIP
-        const lastSegment = segments[segments.length - 1];
-        const lastParts = lastSegment.split(/\s+/).filter(Boolean);
-
-        // Try to identify state and ZIP from last segment(s)
-        let state = "";
-        let zip = "";
-
-        // If we have 3 segments: "Street, City, State ZIP"
-        if (segments.length === 3) {
-          // Last part could be "OK 74103" or "OK"
-          if (lastParts.length >= 2) {
-            state = lastParts[0];
-            zip = lastParts[lastParts.length - 1];
-          } else if (lastParts.length === 1) {
-            // Could be just state or just ZIP
-            if (/^\d{5}(-\d{4})?$/.test(lastParts[0])) {
-              zip = lastParts[0];
-            } else {
-              state = lastParts[0];
-            }
-          }
-        }
-        // If we have 4 segments: "Street, City, State, ZIP"
-        else if (segments.length === 4) {
-          state = segments[2];
-          zip = segments[3];
-        }
-
-        return {
-          address: streetAddress,
-          city,
-          state: state.toUpperCase(),
-          zip,
-        };
-      }
-    }
-
-    // Fallback: try to parse without commas
-    // Assume last part is ZIP, second to last is state
-    const zipMatch = trimmed.match(/\b(\d{5}(?:-\d{4})?)\b/);
-    if (zipMatch) {
-      const zip = zipMatch[1];
-      const beforeZip = trimmed.substring(0, zipMatch.index).trim();
-
-      // Find state (2-letter code before ZIP)
-      const stateMatch = beforeZip.match(/\b([A-Z]{2})\b$/);
-      if (stateMatch) {
-        const state = stateMatch[1];
-        const beforeState = beforeZip.substring(0, stateMatch.index).trim();
-
-        // Split remaining into street and city
-        const remaining = beforeState.split(/\s+/);
-        if (remaining.length >= 2) {
-          // Assume last word before state is city, rest is street
-          const cityIndex = Math.max(0, remaining.length - 1);
-          const address = remaining.slice(0, cityIndex).join(" ");
-          const city = remaining.slice(cityIndex).join(" ");
-
-          return {
-            address,
-            city,
-            state,
-            zip,
-          };
-        }
-      }
-    }
-
-    return null;
-  } catch (error) {
-    console.error("Error parsing address:", error);
-    return null;
-  }
-}
-
-// Geocode using multiple free services with fallback support
-async function geocodeAddress(
-  address: string,
-  city: string,
-  state: string,
-  zip: string,
-): Promise<{ latitude: number; longitude: number } | { error: string }> {
-  const fullAddress = `${address}, ${city}, ${state} ${zip}, USA`;
-  console.log("Geocoding request:", { address, city, state, zip, fullAddress });
-
-  // List of free geocoding services to try (in order)
-  const services = [
-    {
-      name: "geocode.maps.co",
-      getUrl: (addr: string) => {
-        const params = new URLSearchParams({ q: addr });
-        return `https://geocode.maps.co/search?${params.toString()}`;
-      },
-      parseResponse: (data: any) => {
-        if (!Array.isArray(data) || data.length === 0) return null;
-        return {
-          latitude: parseFloat(data[0].lat),
-          longitude: parseFloat(data[0].lon),
-        };
-      },
-    },
-    {
-      name: "photon.komoot.io",
-      getUrl: (addr: string) => {
-        const params = new URLSearchParams({ q: addr, limit: "1" });
-        return `https://photon.komoot.io/api/?${params.toString()}`;
-      },
-      parseResponse: (data: any) => {
-        if (!data.features || data.features.length === 0) return null;
-        const coords = data.features[0].geometry.coordinates;
-        return {
-          latitude: coords[1], // GeoJSON uses [lon, lat]
-          longitude: coords[0],
-        };
-      },
-    },
-  ];
-
-  // Try each service in order
-  const errors: string[] = [];
-  for (const service of services) {
-    try {
-      console.log(`Trying geocoding service: ${service.name}`);
-      const url = service.getUrl(fullAddress);
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        console.warn(`${service.name} returned status ${response.status}`);
-        errors.push(`${service.name}: HTTP ${response.status}`);
-        continue; // Try next service
-      }
-
-      const data = await response.json();
-      const result = service.parseResponse(data);
-
-      if (result) {
-        console.log(`✓ ${service.name} found coordinates:`, result);
-        return result;
-      } else {
-        console.warn(`${service.name} returned no results`);
-        errors.push(`${service.name}: No results found`);
-      }
-    } catch (error) {
-      console.error(`${service.name} error:`, error);
-      errors.push(`${service.name}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  // All services failed
-  console.error("All geocoding services failed:", errors);
-  return {
-    error:
-      "We couldn't find coordinates for this address. Please check the address and try again, or verify the street address, city, state, and ZIP code are all correct.",
-  };
-}
 
 export const AddOrganizationScreen = ({ onCancel, onCreated, onFindNearbyOrg }: AddOrganizationScreenProps) => {
   const { user } = db.useAuth();
@@ -481,12 +292,12 @@ export const AddOrganizationScreen = ({ onCancel, onCreated, onFindNearbyOrg }: 
 
     // Geocode the address
     setIsSubmitting(true);
-    const geocodeResult = await geocodeAddress(
-      addressInput,
-      cityInput,
-      stateInput,
-      postalCodeInput,
-    );
+    const geocodeResult = await geocodeAddress({
+      address: addressInput,
+      city: cityInput,
+      state: stateInput,
+      zip: postalCodeInput,
+    });
 
     if ("error" in geocodeResult) {
       setFormError(geocodeResult.error);
