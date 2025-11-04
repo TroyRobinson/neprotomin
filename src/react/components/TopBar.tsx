@@ -407,7 +407,7 @@ export const TopBar = ({
                     Report
                   </a>
                 )}
-                {showDataLink && (
+                {/* {showDataLink && (
                   <a
                     href="#data"
                     onClick={(e) => {
@@ -424,7 +424,7 @@ export const TopBar = ({
                   >
                     Data
                   </a>
-                )}
+                )} */}
                 {showQueueLink && (
                   <a
                     href="#queue"
