@@ -142,6 +142,8 @@ export const TopBar = ({
   const [isCompactMobileSearch, setIsCompactMobileSearch] = useState(false);
   const [isMobileSearchExpanded, setIsMobileSearchExpanded] = useState(true);
   const [neHomeRedirectDisabled, setNeHomeRedirectDisabled] = useState(getNeHomeRedirectState);
+  const [showLocationTextMobile, setShowLocationTextMobile] = useState(true);
+  const [showThemeButtonMobile, setShowThemeButtonMobile] = useState(true);
   const mobileActionsRef = useRef<HTMLDivElement | null>(null);
   const mobileSearchFormRef = useRef<HTMLFormElement | null>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
@@ -185,6 +187,17 @@ export const TopBar = ({
         }
         return next;
       });
+      
+      // Hide Location text when mobile container is narrow to ensure theme button always fits
+      // Fixed elements: brand button (~48px) + gap (12px) + search icon (~44px) + gap (12px) + theme button (~44px) + gap (12px) + hamburger (~44px) + gaps = ~212px
+      // Location icon button needs ~44px, text adds ~80px
+      // Hide text earlier (at ~340px) to ensure theme button always has room
+      setShowLocationTextMobile(width >= 340);
+      
+      // Hide theme button when space is very tight to ensure Location and Hamburger buttons always fit
+      // Minimum needed: brand (~48px) + search icon (~44px) + location icon (~44px) + hamburger (~44px) + gaps (~36px) = ~216px
+      // Hide theme button when width is less than ~260px to provide buffer
+      setShowThemeButtonMobile(width >= 260);
     };
 
     updateCompactState();
@@ -619,7 +632,7 @@ export const TopBar = ({
               <button
                 type="button"
                 onClick={handleMobileSearchExpand}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+                className="inline-flex h-11 min-w-[2.75rem] w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
                 aria-label="Open search"
                 aria-expanded={false}
               >
@@ -665,43 +678,47 @@ export const TopBar = ({
           </div>
           {(!isCompactMobileSearch || !isMobileSearchExpanded) && (
             <>
-              <button
-                type="button"
-                onClick={handleThemeToggle}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-                aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-                aria-pressed={theme === "dark"}
-              >
-                {theme === "dark" ? <MoonIcon /> : <SunIcon />}
-              </button>
+              {showThemeButtonMobile && (
+                <button
+                  type="button"
+                  onClick={handleThemeToggle}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+                  aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+                  aria-pressed={theme === "dark"}
+                >
+                  {theme === "dark" ? <MoonIcon /> : <SunIcon />}
+                </button>
+              )}
               {onAddOrganization && (
                 <button
                   type="button"
                   onClick={handleAddOrganization}
-                  className={`inline-flex h-11 items-center justify-center gap-2 rounded-full bg-brand-100 text-brand-700 shadow-sm transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900 ${
-                    isCompactMobileSearch && !isMobileSearchExpanded
-                      ? "w-auto px-3"
-                      : "w-11"
+                  className={`inline-flex h-11 items-center justify-center rounded-full bg-brand-100 text-brand-700 shadow-sm transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900 ${
+                    showLocationTextMobile && (!isCompactMobileSearch || !isMobileSearchExpanded)
+                      ? "gap-2 w-auto px-3"
+                      : "w-11 px-0"
                   }`}
                   aria-label="Add organization"
                 >
                   <PlusIcon />
-                  {isCompactMobileSearch && !isMobileSearchExpanded && (
+                  {showLocationTextMobile && (!isCompactMobileSearch || !isMobileSearchExpanded) && (
                     <span className="text-sm font-medium">Location</span>
                   )}
                 </button>
               )}
             </>
           )}
-          <button
-            type="button"
-            onClick={handleMobileMenuToggle}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-            aria-label="Open menu"
-            aria-expanded={isMobileMenuOpen}
-          >
-            <HamburgerIcon />
-          </button>
+          {(!isCompactMobileSearch || !isMobileSearchExpanded) && (
+            <button
+              type="button"
+              onClick={handleMobileMenuToggle}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+              aria-label="Open menu"
+              aria-expanded={isMobileMenuOpen}
+            >
+              <HamburgerIcon />
+            </button>
+          )}
         </div>
       </header>
       {/* Location errors are now rendered inline within the map overlay button */}
