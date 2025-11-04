@@ -844,7 +844,7 @@ const OrganizationListItem = ({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="inline-flex items-center rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-500 transition-colors group-hover:bg-brand-100 group-hover:text-brand-900 dark:bg-slate-800/60 dark:text-slate-300 dark:group-hover:bg-slate-700 dark:group-hover:text-slate-100"
+            className="inline-flex items-center rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-500 transition-colors group-hover:bg-red-100 group-hover:text-brand-900 dark:bg-slate-800/60 dark:text-slate-300 dark:group-hover:bg-red-900/30 dark:group-hover:text-slate-100"
             onClick={(event) => {
               event.stopPropagation();
               onIssueClick?.(org);
