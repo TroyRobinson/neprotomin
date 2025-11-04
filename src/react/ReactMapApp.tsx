@@ -125,6 +125,8 @@ export const ReactMapApp = () => {
   const [highlightedOrganizationIds, setHighlightedOrganizationIds] = useState<string[] | null>(null);
   // Direct org selection (from clicking org centroids or small clusters) - takes priority over area-based selection
   const [selectedOrgIds, setSelectedOrgIds] = useState<string[]>([]);
+  // Track whether the direct org selection originated from the map (vs sidebar click)
+  const [selectedOrgIdsFromMap, setSelectedOrgIdsFromMap] = useState<boolean>(false);
   const [selectedStatId, setSelectedStatId] = useState<string | null>(null);
   const [secondaryStatId, setSecondaryStatId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
@@ -1210,23 +1212,39 @@ export const ReactMapApp = () => {
     setActiveOrganizationId(idOrIds);
   }, []);
 
-  const handleOrganizationClick = useCallback(
-    (id: string) => {
+  const selectOrganization = useCallback(
+    (id: string, fromMap: boolean) => {
       if (!id) return;
       track("map_organization_click", {
         organizationId: id,
         device: isMobile ? "mobile" : "desktop",
+        source: fromMap ? "map" : "sidebar",
       });
       setActiveScreen("map");
       setActiveOrganizationId(id);
       setHighlightedOrganizationIds(null);
       // Set this org as the only selected org (direct selection takes priority over area selection)
       setSelectedOrgIds([id]);
+      setSelectedOrgIdsFromMap(fromMap);
       if (isMobile) {
         expandSheet();
       }
     },
     [expandSheet, isMobile],
+  );
+
+  const handleOrganizationClick = useCallback(
+    (id: string, _meta?: { source: "point" | "centroid" }) => {
+      selectOrganization(id, true);
+    },
+    [selectOrganization],
+  );
+
+  const handleSidebarOrganizationClick = useCallback(
+    (id: string) => {
+      selectOrganization(id, false);
+    },
+    [selectOrganization],
   );
 
   const handleClusterClick = useCallback(
@@ -1244,11 +1262,13 @@ export const ReactMapApp = () => {
         setHighlightedOrganizationIds(null);
         // Single org in cluster - select it
         setSelectedOrgIds([uniqueIds[0]]);
++        setSelectedOrgIdsFromMap(true);
       } else if (uniqueIds.length <= 3) {
         // Small cluster (2-3 orgs) - select all orgs in cluster
         setActiveOrganizationId(null);
         setHighlightedOrganizationIds(uniqueIds);
         setSelectedOrgIds(uniqueIds);
++        setSelectedOrgIdsFromMap(true);
       } else {
         // Large cluster (>3 orgs) - just highlight, don't change selection
         setActiveOrganizationId(null);
@@ -1265,6 +1285,7 @@ export const ReactMapApp = () => {
     // Clear direct org selection when user selects areas
     if (selection.selected.length > 0 || selection.pinned.length > 0) {
       setSelectedOrgIds([]);
++      setSelectedOrgIdsFromMap(false);
     }
     applyAreaSelection(kind, {
       selected: dedupeIds(selection.selected),
@@ -1277,6 +1298,7 @@ export const ReactMapApp = () => {
     // Clear direct org selection when user selects areas
     if (change.selected.length > 0 || change.pinned.length > 0) {
       setSelectedOrgIds([]);
++      setSelectedOrgIdsFromMap(false);
     }
     const current = areaSelections[change.kind];
     const hasChanged =
@@ -1833,31 +1855,36 @@ export const ReactMapApp = () => {
     const zipSel = new Set(selectedZips);
     const countySel = new Set(selectedCounties);
     let inSelection: Organization[] = [];
+    const selectedOrgSet = new Set(selectedOrgIds);
 
-    // Direct org selection (from clicking org centroids or small clusters) takes priority
-    if (selectedOrgIds.length > 0) {
-      const selectedOrgSet = new Set(selectedOrgIds);
+    // Direct org selection (from clicking org centroids or small clusters)
+    // moves to the inSelection section only when originating from the map.
+    // Sidebar-driven selections stay in-place within the "All" section.
+    if (selectedOrgIds.length > 0 && selectedOrgIdsFromMap) {
       inSelection = visible.filter((o) => selectedOrgSet.has(o.id));
-    } else if (activeAreaKind === "ZIP" && zipSel.size > 0) {
-      inSelection = visible.filter((o) => {
-        const zip = orgZipById.get(o.id);
-        return !!zip && zipSel.has(zip);
-      });
-    } else if (activeAreaKind === "COUNTY" && countySel.size > 0) {
-      inSelection = visible.filter((o) => {
-        const county = orgCountyById.get(o.id);
-        return !!county && countySel.has(county);
-      });
-    } else if (zipSel.size > 0) {
-      inSelection = visible.filter((o) => {
-        const zip = orgZipById.get(o.id);
-        return !!zip && zipSel.has(zip);
-      });
-    } else if (countySel.size > 0) {
-      inSelection = visible.filter((o) => {
-        const county = orgCountyById.get(o.id);
-        return !!county && countySel.has(county);
-      });
+    } else if (selectedOrgIds.length === 0) {
+      // No direct org selection - use area-based selection
+      if (activeAreaKind === "ZIP" && zipSel.size > 0) {
+        inSelection = visible.filter((o) => {
+          const zip = orgZipById.get(o.id);
+          return !!zip && zipSel.has(zip);
+        });
+      } else if (activeAreaKind === "COUNTY" && countySel.size > 0) {
+        inSelection = visible.filter((o) => {
+          const county = orgCountyById.get(o.id);
+          return !!county && countySel.has(county);
+        });
+      } else if (zipSel.size > 0) {
+        inSelection = visible.filter((o) => {
+          const zip = orgZipById.get(o.id);
+          return !!zip && zipSel.has(zip);
+        });
+      } else if (countySel.size > 0) {
+        inSelection = visible.filter((o) => {
+          const county = orgCountyById.get(o.id);
+          return !!county && countySel.has(county);
+        });
+      }
     }
     const inSelectionIds = new Set(inSelection.map((o) => o.id));
     let rest = visible.filter((o) => !inSelectionIds.has(o.id));
@@ -2162,8 +2189,9 @@ export const ReactMapApp = () => {
               pinnedAreas={pinnedAreasMap}
               activeAreaKind={activeAreaKind}
               areaNameLookup={areaNameLookup}
-              directOrgSelectionActive={selectedOrgIds.length > 0}
+              directOrgSelectionActive={selectedOrgIdsFromMap && selectedOrgIds.length > 0}
               selectedOrgIds={selectedOrgIds}
+              selectedOrgIdsFromMap={selectedOrgIdsFromMap}
               zipScopeDisplayName={zipScopeDisplayName}
               countyScopeDisplayName={countyScopeDisplayName}
               hoveredArea={hoveredArea}
@@ -2171,6 +2199,7 @@ export const ReactMapApp = () => {
               secondaryStatId={secondaryStatId}
               categoryFilter={categoryFilter}
               onHover={handleHover}
+              onOrganizationClick={handleSidebarOrganizationClick}
               onHoverArea={handleAreaHoverChange}
               onZoomOutAll={handleZoomOutAll}
               onStatSelect={handleStatSelect}
@@ -2267,8 +2296,9 @@ export const ReactMapApp = () => {
                     pinnedAreas={pinnedAreasMap}
                     activeAreaKind={activeAreaKind}
                     areaNameLookup={areaNameLookup}
-                    directOrgSelectionActive={selectedOrgIds.length > 0}
+                    directOrgSelectionActive={selectedOrgIdsFromMap && selectedOrgIds.length > 0}
                     selectedOrgIds={selectedOrgIds}
+                    selectedOrgIdsFromMap={selectedOrgIdsFromMap}
                     zipScopeDisplayName={zipScopeDisplayName}
                     countyScopeDisplayName={countyScopeDisplayName}
                     hoveredArea={hoveredArea}
@@ -2276,6 +2306,7 @@ export const ReactMapApp = () => {
                     secondaryStatId={secondaryStatId}
                     categoryFilter={categoryFilter}
                     onHover={handleHover}
+                    onOrganizationClick={handleSidebarOrganizationClick}
                     onHoverArea={handleAreaHoverChange}
                     onZoomOutAll={handleZoomOutAll}
                     onStatSelect={handleStatSelect}

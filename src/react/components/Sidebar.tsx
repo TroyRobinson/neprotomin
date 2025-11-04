@@ -47,6 +47,8 @@ interface SidebarProps {
   directOrgSelectionActive?: boolean;
   // Selected org IDs from direct clicks (used to detect selection changes)
   selectedOrgIds?: string[];
+  // Whether the current direct org selection originated from the map
+  selectedOrgIdsFromMap?: boolean;
   zipScopeDisplayName?: string | null;
   countyScopeDisplayName?: string | null;
   selectedStatId?: string | null;
@@ -54,6 +56,7 @@ interface SidebarProps {
   categoryFilter?: string | null;
   hoveredArea?: AreaId | null;
   onHover?: (idOrIds: string | string[] | null) => void;
+  onOrganizationClick?: (organizationId: string) => void;
   onZoomOutAll?: () => void;
   onCategoryClick?: (categoryId: string) => void;
   onHoverArea?: (area: AreaId | null) => void;
@@ -88,6 +91,7 @@ export const Sidebar = ({
   areaNameLookup,
   directOrgSelectionActive = false,
   selectedOrgIds = [],
+  selectedOrgIdsFromMap = false,
   zipScopeDisplayName = null,
   countyScopeDisplayName = null,
   selectedStatId = null,
@@ -95,6 +99,7 @@ export const Sidebar = ({
   categoryFilter = null,
   hoveredArea = null,
   onHover,
+  onOrganizationClick,
   onZoomOutAll,
   onCategoryClick,
   onHoverArea,
@@ -168,6 +173,7 @@ export const Sidebar = ({
   );
 
   const highlightedIds = new Set(highlightedOrganizationIds ?? []);
+  const selectedOrgIdsSet = new Set(selectedOrgIds);
 
   const selectedZips = selectedAreas?.ZIP ?? [];
   const selectedCounties = selectedAreas?.COUNTY ?? [];
@@ -219,12 +225,23 @@ export const Sidebar = ({
   const countForTab = totalSelectedCount > 0 ? inSelection.length : visibleCount;
   const missingCount = Math.max(totalCount - visibleCount, 0);
 
-  // Scroll to top when selection changes (area or direct org selection)
+  // Scroll to top when selection changes due to area selections or map-based org selections
   useEffect(() => {
     if (orgsScrollRef.current && activeTab === "orgs") {
-      orgsScrollRef.current.scrollTop = 0;
+      const shouldScroll =
+        totalSelectedCount > 0 || (selectedOrgIdsFromMap && selectedOrgIds.length > 0);
+      if (shouldScroll) {
+        orgsScrollRef.current.scrollTop = 0;
+      }
     }
-  }, [selectedZips.length, selectedCounties.length, selectedOrgIds.length, activeTab]);
+  }, [
+    selectedZips.length,
+    selectedCounties.length,
+    selectedOrgIds.length,
+    selectedOrgIdsFromMap,
+    totalSelectedCount,
+    activeTab,
+  ]);
 
   useEffect(() => {
     const visible = keepOrgsOnMap || activeTab === "orgs";
@@ -452,11 +469,14 @@ export const Sidebar = ({
                           key={org.id}
                           org={org}
                           isActive={
-                            org.id === activeOrganizationId || highlightedIds.has(org.id)
+                            org.id === activeOrganizationId || 
+                            highlightedIds.has(org.id) || 
+                            selectedOrgIdsSet.has(org.id)
                           }
                           isExpanded={expandedOrgId === org.id}
                           onHover={onHover}
                           onCategoryClick={onCategoryClick}
+                          onOrganizationClick={onOrganizationClick}
                           onToggleExpand={(id) =>
                             setExpandedOrgId((prev) => (prev === id ? null : id))
                           }
@@ -478,9 +498,14 @@ export const Sidebar = ({
                     <OrganizationListItem
                       key={org.id}
                       org={org}
-                      isActive={org.id === activeOrganizationId || highlightedIds.has(org.id)}
+                      isActive={
+                        org.id === activeOrganizationId ||
+                        highlightedIds.has(org.id) ||
+                        selectedOrgIdsSet.has(org.id)
+                      }
                       onHover={onHover}
                       onCategoryClick={onCategoryClick}
+                      onOrganizationClick={onOrganizationClick}
                       isExpanded={expandedOrgId === org.id}
                       onToggleExpand={(id) =>
                         setExpandedOrgId((prev) => (prev === id ? null : id))
@@ -524,6 +549,7 @@ interface OrganizationListItemProps {
   isExpanded: boolean;
   onHover?: (idOrIds: string | string[] | null) => void;
   onCategoryClick?: (categoryId: string) => void;
+  onOrganizationClick?: (organizationId: string) => void;
   onToggleExpand?: (id: string) => void;
   onIssueClick?: (org: Organization) => void;
 }
@@ -681,6 +707,7 @@ const OrganizationListItem = ({
   isExpanded,
   onHover,
   onCategoryClick,
+  onOrganizationClick,
   onToggleExpand,
   onIssueClick,
 }: OrganizationListItemProps) => {
@@ -695,7 +722,16 @@ const OrganizationListItem = ({
     }
   };
 
-  const handleToggle = () => onToggleExpand?.(org.id);
+  const handleToggle = () => {
+    onToggleExpand?.(org.id);
+    // Also select the org when clicked/tapped
+    onOrganizationClick?.(org.id);
+  };
+
+  const handleToggleExpandOnly = () => {
+    // Toggle expand/collapse without selecting the org
+    onToggleExpand?.(org.id);
+  };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLLIElement>) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -822,7 +858,7 @@ const OrganizationListItem = ({
               className="inline-flex items-center rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-500 transition-colors group-hover:bg-brand-100 group-hover:text-brand-900 dark:bg-slate-800/60 dark:text-slate-300 dark:group-hover:bg-slate-700 dark:group-hover:text-slate-100"
               onClick={(event) => {
                 event.stopPropagation();
-                handleToggle();
+                handleToggleExpandOnly();
               }}
             >
               Hours
