@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import type { FormEvent, MouseEvent as ReactMouseEvent } from "react";
 import { track } from "@vercel/analytics";
 import { db } from "../../lib/reactDb";
@@ -325,6 +325,25 @@ export const TopBar = ({
   const showQueueLink =
     !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
 
+  const queueQuery = useMemo(
+    () =>
+      showQueueLink
+        ? {
+            organizations: {
+              $: {
+                where: { moderationStatus: "pending" },
+              },
+            },
+          }
+        : null,
+    [showQueueLink],
+  );
+
+  const { data: queueData } = db.useQuery(queueQuery);
+  const pendingQueueCount = queueData?.organizations?.length ?? 0;
+  const showQueueBadge = pendingQueueCount > 0;
+  const queueBadgeLabel = pendingQueueCount > 99 ? "99+" : pendingQueueCount.toString();
+
   return (
     <>
       <header
@@ -417,7 +436,12 @@ export const TopBar = ({
                     }`}
                     aria-current={active === "queue" ? "page" : undefined}
                   >
-                    Queue
+                    <span>Queue</span>
+                    {showQueueBadge ? (
+                      <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-fuchsia-500 px-1 text-xs font-semibold leading-tight text-white">
+                        {queueBadgeLabel}
+                      </span>
+                    ) : null}
                   </a>
                 )}
                 <a
@@ -707,10 +731,15 @@ export const TopBar = ({
                 <button
                   type="button"
                   onClick={() => handleNavigate("queue")}
-                  className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 ${active === "queue" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
+                  className={`flex w-full items-center justify-between rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 ${active === "queue" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
                   aria-current={active === "queue" ? "page" : undefined}
                 >
-                  Queue
+                  <span>Queue</span>
+                  {showQueueBadge ? (
+                    <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-fuchsia-500 px-1.5 text-xs font-semibold leading-tight text-white">
+                      {queueBadgeLabel}
+                    </span>
+                  ) : null}
                 </button>
               )}
               <a
