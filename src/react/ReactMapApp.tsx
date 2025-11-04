@@ -147,6 +147,7 @@ export const ReactMapApp = () => {
   const [sheetState, setSheetState] = useState<"peek" | "expanded">("peek");
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
   const [isDraggingSheet, setIsDraggingSheet] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(() => {
     if (typeof window === "undefined") return 0;
     const viewport = window.visualViewport;
@@ -2242,9 +2243,11 @@ export const ReactMapApp = () => {
         onMobileLocationSearch={handleMobileLocationSearch}
         onAddOrganization={handleOpenAddOrganization}
         expandMobileSearch={expandMobileSearch}
+        showAdvanced={showAdvanced}
+        onAdvancedToggle={setShowAdvanced}
       />
       <div className="relative flex flex-1 flex-col overflow-hidden">
-        {!isMobile && (
+        {!isMobile && showAdvanced && (
           <BoundaryToolbar
             boundaryMode={boundaryMode}
             boundaryControlMode={boundaryControlMode}
