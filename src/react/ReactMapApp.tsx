@@ -621,7 +621,8 @@ export const ReactMapApp = () => {
   useEffect(() => {
     if (!isMobile) return;
     if (sheetState !== "partial") return;
-    if (selectedOrgIds.length !== 1) {
+    // Collapse sheet if we don't have a small selection (1-3 orgs)
+    if (selectedOrgIds.length < 1 || selectedOrgIds.length > 3) {
       collapseSheet();
     }
   }, [collapseSheet, isMobile, selectedOrgIds.length, sheetState]);
@@ -1479,7 +1480,9 @@ export const ReactMapApp = () => {
         setHighlightedOrganizationIds(uniqueIds);
       }
       if (isMobile) {
-        if (uniqueIds.length === 1) {
+        // For 1-3 orgs: partial sheet with offset centering
+        // For >3 orgs: full expansion
+        if (uniqueIds.length <= 3) {
           previewSheet();
         } else {
           expandSheet();
@@ -2390,7 +2393,8 @@ export const ReactMapApp = () => {
   useEffect(() => {
     if (!isMobile) return;
     if (sheetState !== "partial") return;
-    if (selectedOrgIds.length !== 1) return;
+    // Support centering for 1-3 selected orgs (single org or small cluster)
+    if (selectedOrgIds.length < 1 || selectedOrgIds.length > 3) return;
     if (isDraggingSheet) return;
     if (sheetAvailableHeight <= 0) return;
     const visibleHeight = Math.max(0, Math.min(sheetTranslateY, sheetAvailableHeight));
@@ -2405,6 +2409,7 @@ export const ReactMapApp = () => {
     const controller = mapControllerRef.current;
     if (!controller) return;
     try {
+      // For small clusters (2-3 orgs), center on the first org
       controller.centerOnOrganization(selectedOrgIds[0], { animate: true, offset });
     } catch {}
   }, [
