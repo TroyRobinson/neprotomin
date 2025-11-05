@@ -63,8 +63,6 @@ const MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX_HEIGHT = 920; // Heights at or above
 const MOBILE_SHEET_DRAG_THRESHOLD = 72;
 const MOBILE_TAP_THRESHOLD = 10; // pixels - movement below this is considered a tap, not a drag
 const ORGANIZATION_MATCH_THRESHOLD = 0.55;
-const ORGANIZATION_FOCUS_ZOOM_DESKTOP = 12;
-const ORGANIZATION_FOCUS_ZOOM_MOBILE = 13.3;
 
 interface AreaSelectionState {
   selected: string[];
