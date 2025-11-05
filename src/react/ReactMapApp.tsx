@@ -56,7 +56,10 @@ const MOBILE_PARTIAL_MIN_MAP_RATIO = 0.05; // Min amount of viewport for the map
 const MOBILE_PARTIAL_TARGET_SHEET_HEIGHT = 560; // Aim for this sheet height before applying other clamps
 const MOBILE_PARTIAL_MAP_HEIGHT_SCALE = 1; // Scale the computed map height when we have room above the minimum
 const MOBILE_PARTIAL_FOCUS_ANCHOR = 0.12; // Portion of visible sheet height to align with viewport center
-const MOBILE_PARTIAL_FOCUS_OFFSET_SCALE = 0.85; // Multiplier to tweak how aggressively we nudge the map when the sheet is partial
+const MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MIN = 0.7; // Offset multiplier for taller mobile screens
+const MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX = 1; // Offset multiplier for shorter mobile screens
+const MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MIN_HEIGHT = 640; // Heights at or below this use the max multiplier
+const MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX_HEIGHT = 920; // Heights at or above this use the min multiplier
 const MOBILE_SHEET_DRAG_THRESHOLD = 72;
 const MOBILE_TAP_THRESHOLD = 10; // pixels - movement below this is considered a tap, not a drag
 const ORGANIZATION_MATCH_THRESHOLD = 0.55;
@@ -197,6 +200,19 @@ export const ReactMapApp = () => {
     );
     return Math.max(0, adjustedMapHeight);
   }, [sheetAvailableHeight, sheetPeekOffset, viewportHeight]);
+
+  // Scale map offset based on viewport height so taller screens nudge less
+  const mobilePartialFocusOffsetScale = useMemo(() => {
+    if (!isMobile) return 1;
+    if (viewportHeight <= 0) return MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX;
+    const minHeight = MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MIN_HEIGHT;
+    const maxHeight = MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX_HEIGHT;
+    if (maxHeight <= minHeight) return MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX;
+    const clampedHeight = Math.min(Math.max(viewportHeight, minHeight), maxHeight);
+    const progress = (clampedHeight - minHeight) / (maxHeight - minHeight);
+    const range = MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX - MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MIN;
+    return MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX - progress * range;
+  }, [isMobile, viewportHeight]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2383,7 +2399,10 @@ export const ReactMapApp = () => {
     const desiredY = topBarHeight + visibleHeight * MOBILE_PARTIAL_FOCUS_ANCHOR;
     const offsetY = desiredY - viewportHeight / 2;
     if (Math.abs(offsetY) < 4) return;
-    const offset: [number, number] = [0, Math.round(offsetY * MOBILE_PARTIAL_FOCUS_OFFSET_SCALE)];
+    const offsetScale = Number.isFinite(mobilePartialFocusOffsetScale)
+      ? mobilePartialFocusOffsetScale
+      : MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX;
+    const offset: [number, number] = [0, Math.round(offsetY * offsetScale)];
     const controller = mapControllerRef.current;
     if (!controller) return;
     try {
@@ -2398,6 +2417,7 @@ export const ReactMapApp = () => {
     isMobile,
     selectedOrgIds,
     sheetAvailableHeight,
+    mobilePartialFocusOffsetScale,
     sheetState,
     sheetTranslateY,
     topBarHeight,
