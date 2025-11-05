@@ -1615,6 +1615,45 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       map.on("touchstart", LAYER_POINTS_ID, onPointsTouchStart);
       map.on("touchend", LAYER_POINTS_ID, onPointsTouchEnd);
 
+      const triggerClusterInteraction = async (point: maplibregl.PointLike) => {
+        const features = map.queryRenderedFeatures(point, { layers: [LAYER_CLUSTERS_ID] });
+        const feature = features[0];
+        if (!feature || feature.geometry?.type !== "Point") return;
+        const clusterId = feature.properties?.cluster_id as number | undefined;
+        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+        if (!source || clusterId === undefined) return;
+        try {
+          const zoom = await source.getClusterExpansionZoom(clusterId);
+          const pointGeometry = feature.geometry as GeoJSON.Point;
+          const [lng, lat] = pointGeometry.coordinates as [number, number];
+          const countRaw = feature.properties?.point_count;
+          const count = typeof countRaw === "number" ? countRaw : undefined;
+          const leavesPromise =
+            typeof count === "number" && count <= 3
+              ? source.getClusterLeaves(clusterId, Math.max(count, 1), 0)
+              : null;
+
+          if (leavesPromise) {
+            try {
+              const leaves = await leavesPromise;
+              const ids = leaves
+                .map((leaf: any) => leaf?.properties?.id)
+                .filter((id: unknown): id is string => typeof id === "string" && id.length > 0);
+
+              // Only zoom if single org; skip zoom for multiple orgs
+              if (ids.length === 1) {
+                map.easeTo({ center: [lng, lat], zoom });
+              }
+
+              onClusterClick?.(ids, { count: count ?? ids.length, longitude: lng, latitude: lat });
+            } catch {}
+          } else {
+            // For large clusters (count > 3), still zoom as before
+            map.easeTo({ center: [lng, lat], zoom });
+          }
+        } catch {}
+      };
+
       const onClustersMouseEnter = () => { map.getCanvas().style.cursor = "pointer"; };
       const onClustersMouseLeave = () => { 
         map.getCanvas().style.cursor = "pointer"; 
@@ -1647,47 +1686,37 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         } catch {}
       };
       const onClustersClick = async (e: any) => {
-        const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS_ID] });
-        const feature = features[0];
-        if (!feature || feature.geometry?.type !== "Point") return;
-        const clusterId = feature.properties?.cluster_id as number | undefined;
-        const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-        if (!source || clusterId === undefined) return;
-        try {
-          const zoom = await source.getClusterExpansionZoom(clusterId);
-          const point = feature.geometry as GeoJSON.Point;
-          const [lng, lat] = point.coordinates as [number, number];
-          const countRaw = feature.properties?.point_count;
-          const count = typeof countRaw === "number" ? countRaw : undefined;
-          const leavesPromise =
-            typeof count === "number" && count <= 3
-              ? source.getClusterLeaves(clusterId, Math.max(count, 1), 0)
-              : null;
-          
-          if (leavesPromise) {
-            try {
-              const leaves = await leavesPromise;
-              const ids = leaves
-                .map((leaf: any) => leaf?.properties?.id)
-                .filter((id: unknown): id is string => typeof id === "string" && id.length > 0);
-              
-              // Only zoom if single org; skip zoom for multiple orgs
-              if (ids.length === 1) {
-                map.easeTo({ center: [lng, lat], zoom });
-              }
-              
-              onClusterClick?.(ids, { count: count ?? ids.length, longitude: lng, latitude: lat });
-            } catch {}
-          } else {
-            // For large clusters (count > 3), still zoom as before
-            map.easeTo({ center: [lng, lat], zoom });
-          }
-        } catch {}
+        if (clusterConsumedTap) {
+          clusterConsumedTap = false;
+          return;
+        }
+        await triggerClusterInteraction(e.point);
+      };
+      let clusterTapStart: { point: maplibregl.PointLike; time: number } | null = null;
+      let clusterConsumedTap = false;
+      const onClustersTouchStart = (e: any) => {
+        if (!isMobile) return;
+        clusterTapStart = { point: e.point, time: Date.now() };
+        clusterConsumedTap = false;
+      };
+      const onClustersTouchEnd = (e: any) => {
+        if (!isMobile || !clusterTapStart) return;
+        const dt = Date.now() - clusterTapStart.time;
+        const dx = (e.point?.x ?? 0) - (clusterTapStart.point as any)?.x;
+        const dy = (e.point?.y ?? 0) - (clusterTapStart.point as any)?.y;
+        const distancePx = Math.sqrt((dx || 0) * (dx || 0) + (dy || 0) * (dy || 0));
+        if (dt < 500 && distancePx < 6) {
+          clusterConsumedTap = true;
+          void triggerClusterInteraction(e.point);
+        }
+        clusterTapStart = null;
       };
       map.on("mouseenter", LAYER_CLUSTERS_ID, onClustersMouseEnter);
       map.on("mouseleave", LAYER_CLUSTERS_ID, onClustersMouseLeave);
       map.on("mousemove", LAYER_CLUSTERS_ID, onClustersMouseMove);
       map.on("click", LAYER_CLUSTERS_ID, onClustersClick);
+      map.on("touchstart", LAYER_CLUSTERS_ID, onClustersTouchStart);
+      map.on("touchend", LAYER_CLUSTERS_ID, onClustersTouchEnd);
       return () => {
         map.off("mouseenter", LAYER_POINTS_ID, onPointsMouseEnter);
         map.off("mouseleave", LAYER_POINTS_ID, onPointsMouseLeave);
@@ -1699,6 +1728,8 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         map.off("click", LAYER_CLUSTERS_ID, onClustersClick);
         map.off("touchstart", LAYER_POINTS_ID, onPointsTouchStart);
         map.off("touchend", LAYER_POINTS_ID, onPointsTouchEnd);
+        map.off("touchstart", LAYER_CLUSTERS_ID, onClustersTouchStart);
+        map.off("touchend", LAYER_CLUSTERS_ID, onClustersTouchEnd);
       };
     })();
 
