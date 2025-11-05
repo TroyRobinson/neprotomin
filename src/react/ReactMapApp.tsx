@@ -52,6 +52,9 @@ const DEFAULT_PRIMARY_STAT_ID = "8383685c-2741-40a2-96ff-759c42ddd586";
 const DEFAULT_TOP_BAR_HEIGHT = 64;
 const MOBILE_MAX_WIDTH_QUERY = "(max-width: 767px)";
 const MOBILE_SHEET_PEEK_HEIGHT = 136;
+const MOBILE_PARTIAL_MIN_MAP_RATIO = 0.2;
+const MOBILE_PARTIAL_TARGET_SHEET_HEIGHT = 560;
+const MOBILE_PARTIAL_FOCUS_ANCHOR = 0.12;
 const MOBILE_SHEET_DRAG_THRESHOLD = 72;
 const MOBILE_TAP_THRESHOLD = 10; // pixels - movement below this is considered a tap, not a drag
 const ORGANIZATION_MATCH_THRESHOLD = 0.55;
@@ -146,7 +149,7 @@ export const ReactMapApp = () => {
   const [zipNeighborScopes, setZipNeighborScopes] = useState<string[]>([]);
   const isMobile = useMediaQuery(MOBILE_MAX_WIDTH_QUERY);
   const [topBarHeight, setTopBarHeight] = useState(DEFAULT_TOP_BAR_HEIGHT);
-  const [sheetState, setSheetState] = useState<"peek" | "expanded">("peek");
+  const [sheetState, setSheetState] = useState<"peek" | "partial" | "expanded">("peek");
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
   const [isDraggingSheet, setIsDraggingSheet] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -171,13 +174,23 @@ export const ReactMapApp = () => {
   }, [setTimeSelectionState]);
   const [expandMobileSearch, setExpandMobileSearch] = useState(false);
   const sheetPointerIdRef = useRef<number | null>(null);
-  const sheetDragStateRef = useRef<{ startY: number; startState: "peek" | "expanded" } | null>(null);
+  const sheetDragStateRef = useRef<{ startY: number; startState: "peek" | "partial" | "expanded" } | null>(null);
   const pendingContentDragRef = useRef<{ pointerId: number; startY: number } | null>(null);
   const sheetContentRef = useRef<HTMLDivElement | null>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
   const suppressAreaSelectionClearRef = useRef<{ ZIP: number; COUNTY: number }>({ ZIP: 0, COUNTY: 0 });
   const sheetAvailableHeight = Math.max(viewportHeight - topBarHeight, 0);
   const sheetPeekOffset = Math.max(sheetAvailableHeight - MOBILE_SHEET_PEEK_HEIGHT, 0);
+  const sheetPartialOffset = useMemo(() => {
+    if (sheetPeekOffset <= 0) return 0;
+    const minMapHeight = Math.round(Math.max(viewportHeight * MOBILE_PARTIAL_MIN_MAP_RATIO, 0));
+    const desiredMapHeight = Math.max(
+      minMapHeight,
+      sheetAvailableHeight - MOBILE_PARTIAL_TARGET_SHEET_HEIGHT,
+    );
+    const clampedMapHeight = Math.min(sheetPeekOffset, Math.max(desiredMapHeight, minMapHeight));
+    return Math.max(0, clampedMapHeight);
+  }, [sheetAvailableHeight, sheetPeekOffset, viewportHeight]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -265,6 +278,19 @@ export const ReactMapApp = () => {
     pendingContentDragRef.current = null;
   }, []);
 
+  const previewSheet = useCallback(() => {
+    if (sheetPartialOffset <= 0) {
+      expandSheet();
+      return;
+    }
+    setSheetState("partial");
+    setSheetDragOffset(0);
+    setIsDraggingSheet(false);
+    sheetPointerIdRef.current = null;
+    sheetDragStateRef.current = null;
+    pendingContentDragRef.current = null;
+  }, [expandSheet, sheetPartialOffset]);
+
   const buildBoundsAroundPoint = useCallback((lng: number, lat: number) => {
     const lngDelta = isMobile ? 0.075 : 0.18;
     const latDelta = isMobile ? 0.045 : 0.12;
@@ -300,7 +326,7 @@ export const ReactMapApp = () => {
         mapControllerRef.current?.setCamera(location.lng, location.lat, targetZoom);
       }
 
-      if (isMobile && sheetState === "expanded") {
+      if (isMobile && sheetState !== "peek") {
         collapseSheet();
       }
     },
@@ -381,7 +407,7 @@ export const ReactMapApp = () => {
   }, [focusOnLocation, requestUserLocation, userLocation, userLocationSource]);
 
   const startSheetDrag = useCallback(
-    (pointerId: number, clientY: number, startState: "peek" | "expanded") => {
+    (pointerId: number, clientY: number, startState: "peek" | "partial" | "expanded") => {
       if (sheetPeekOffset <= 0) {
         expandSheet();
         return;
@@ -408,8 +434,16 @@ export const ReactMapApp = () => {
       const delta = clientY - dragState.startY;
       if (dragState.startState === "expanded") {
         setSheetState(delta > MOBILE_SHEET_DRAG_THRESHOLD ? "peek" : "expanded");
-      } else {
+      } else if (dragState.startState === "peek") {
         setSheetState(delta < -MOBILE_SHEET_DRAG_THRESHOLD ? "expanded" : "peek");
+      } else {
+        if (delta < -MOBILE_SHEET_DRAG_THRESHOLD) {
+          setSheetState("expanded");
+        } else if (delta > MOBILE_SHEET_DRAG_THRESHOLD) {
+          setSheetState("peek");
+        } else {
+          setSheetState("partial");
+        }
       }
     },
     [expandSheet, sheetPeekOffset],
@@ -430,6 +464,8 @@ export const ReactMapApp = () => {
     if (!isMobile) return;
     if (sheetState === "peek") {
       expandSheet();
+    } else if (sheetState === "partial") {
+      expandSheet();
     } else {
       collapseSheet();
     }
@@ -437,7 +473,12 @@ export const ReactMapApp = () => {
 
   const handleContentPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (!isMobile || sheetState !== "expanded") return;
+      if (!isMobile) return;
+      if (sheetState === "partial") {
+        expandSheet();
+        return;
+      }
+      if (sheetState !== "expanded") return;
       if (event.pointerType === "mouse" && event.buttons !== 1) return;
       const content = sheetContentRef.current;
       if (!content) return;
@@ -447,7 +488,7 @@ export const ReactMapApp = () => {
       }
       pendingContentDragRef.current = { pointerId: event.pointerId, startY: event.clientY };
     },
-    [isMobile, sheetState],
+    [expandSheet, isMobile, sheetState],
   );
 
   const hydrateFromPersistedSelection = (sel: PersistedAreaSelection | null | undefined) => {
@@ -555,15 +596,28 @@ export const ReactMapApp = () => {
     }
   }, [expandSheet, isMobile, sheetPeekOffset, sheetState]);
 
+  useEffect(() => {
+    if (!isMobile) return;
+    if (sheetState !== "partial") return;
+    if (selectedOrgIds.length !== 1) {
+      collapseSheet();
+    }
+  }, [collapseSheet, isMobile, selectedOrgIds.length, sheetState]);
+
   const sheetTranslateY = useMemo(() => {
     if (!isMobile) return 0;
     if (sheetPeekOffset <= 0) return 0;
     if (sheetState === "expanded") {
       return Math.min(Math.max(sheetDragOffset, 0), sheetPeekOffset);
     }
+    if (sheetState === "partial") {
+      const maxDown = Math.max(0, sheetPeekOffset - sheetPartialOffset);
+      const adjustment = Math.max(-sheetPartialOffset, Math.min(sheetDragOffset, maxDown));
+      return sheetPartialOffset + adjustment;
+    }
     const adjustment = Math.max(-sheetPeekOffset, Math.min(sheetDragOffset, 0));
     return sheetPeekOffset + adjustment;
-  }, [isMobile, sheetState, sheetDragOffset, sheetPeekOffset]);
+  }, [isMobile, sheetState, sheetDragOffset, sheetPartialOffset, sheetPeekOffset]);
 
   const showMobileSheet = isMobile && activeScreen === "map";
 
@@ -625,8 +679,12 @@ export const ReactMapApp = () => {
       if (dragState.startState === "expanded") {
         const clamped = Math.max(0, Math.min(delta, sheetPeekOffset));
         setSheetDragOffset(clamped);
-      } else {
+      } else if (dragState.startState === "peek") {
         const clamped = Math.max(-sheetPeekOffset, Math.min(delta, 0));
+        setSheetDragOffset(clamped);
+      } else {
+        const maxDown = Math.max(0, sheetPeekOffset - sheetPartialOffset);
+        const clamped = Math.max(-sheetPartialOffset, Math.min(delta, maxDown));
         setSheetDragOffset(clamped);
       }
       event.preventDefault();
@@ -1298,10 +1356,10 @@ export const ReactMapApp = () => {
         );
       }
       if (isMobile) {
-        expandSheet();
+        previewSheet();
       }
     },
-    [expandSheet, isMobile],
+    [isMobile, previewSheet],
   );
 
   const handleCloseAddOrganization = useCallback(() => {
@@ -1350,10 +1408,10 @@ export const ReactMapApp = () => {
       setSelectedOrgIds([id]);
       setSelectedOrgIdsFromMap(fromMap);
       if (isMobile) {
-        expandSheet();
+        previewSheet();
       }
     },
-    [expandSheet, isMobile],
+    [isMobile, previewSheet],
   );
 
   const handleOrganizationClick = useCallback(
@@ -1398,10 +1456,14 @@ export const ReactMapApp = () => {
         setHighlightedOrganizationIds(uniqueIds);
       }
       if (isMobile) {
-        expandSheet();
+        if (uniqueIds.length === 1) {
+          previewSheet();
+        } else {
+          expandSheet();
+        }
       }
     },
-    [expandSheet, isMobile],
+    [expandSheet, isMobile, previewSheet],
   );
 
   const handleUpdateAreaSelection = (kind: AreaKind, selection: { selected: string[]; pinned: string[] }) => {
@@ -1592,7 +1654,7 @@ export const ReactMapApp = () => {
 
         setBoundaryMode("zips");
         setActiveScreen("map");
-        if (isMobile && sheetState === "expanded") {
+        if (isMobile && sheetState !== "peek") {
           collapseSheet();
         }
         return;
@@ -1643,7 +1705,7 @@ export const ReactMapApp = () => {
           setSelectedOrgIdsFromMap(false);
 
           if (isMobile) {
-            expandSheet();
+            previewSheet();
           }
 
           track("map_search_organization_match", {
@@ -1764,7 +1826,7 @@ export const ReactMapApp = () => {
 
       setBoundaryMode(targetKind === "ZIP" ? "zips" : "counties");
       setActiveScreen("map");
-      if (isMobile && sheetState === "expanded") {
+      if (isMobile && sheetState !== "peek") {
         collapseSheet();
       }
     },
@@ -1776,7 +1838,7 @@ export const ReactMapApp = () => {
       focusOnLocation,
       isMobile,
       sheetState,
-      expandSheet,
+      previewSheet,
       findOrganizationMatch,
       applyAreaSelection,
       setBoundaryMode,
@@ -2293,6 +2355,7 @@ export const ReactMapApp = () => {
   useEffect(() => {
     if (selectedOrgIdsFromMap) return;
     if (selectedOrgIds.length !== 1) return;
+    if (isMobile && sheetState === "partial") return;
     const controller = mapControllerRef.current;
     if (!controller) return;
     try {
@@ -2301,7 +2364,39 @@ export const ReactMapApp = () => {
         zoom: isMobile ? ORGANIZATION_FOCUS_ZOOM_MOBILE : ORGANIZATION_FOCUS_ZOOM_DESKTOP,
       });
     } catch {}
-  }, [isMobile, selectedOrgIds, selectedOrgIdsFromMap]);
+  }, [isMobile, selectedOrgIds, selectedOrgIdsFromMap, sheetState]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    if (sheetState !== "partial") return;
+    if (selectedOrgIds.length !== 1) return;
+    if (isDraggingSheet) return;
+    if (sheetAvailableHeight <= 0) return;
+    const visibleHeight = Math.max(0, Math.min(sheetTranslateY, sheetAvailableHeight));
+    if (visibleHeight <= 0) return;
+    const desiredY = topBarHeight + visibleHeight * MOBILE_PARTIAL_FOCUS_ANCHOR;
+    const offsetY = desiredY - viewportHeight / 2;
+    if (Math.abs(offsetY) < 4) return;
+    const offset: [number, number] = [0, Math.round(offsetY)];
+    const controller = mapControllerRef.current;
+    if (!controller) return;
+    try {
+      controller.centerOnOrganization(selectedOrgIds[0], {
+        animate: true,
+        zoom: ORGANIZATION_FOCUS_ZOOM_MOBILE,
+        offset,
+      });
+    } catch {}
+  }, [
+    isDraggingSheet,
+    isMobile,
+    selectedOrgIds,
+    sheetAvailableHeight,
+    sheetState,
+    sheetTranslateY,
+    topBarHeight,
+    viewportHeight,
+  ]);
 
   return (
     <div className="app-shell relative flex flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
@@ -2499,7 +2594,7 @@ export const ReactMapApp = () => {
                   className="group relative flex flex-col items-center gap-2 rounded-t-3xl border-b border-slate-200 bg-transparent px-4 pt-3 pb-5 text-sm font-semibold text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-slate-700 dark:text-slate-200"
                   onClick={handleHandleClick}
                   onPointerDown={handleHandlePointerDown}
-                  aria-expanded={sheetState === "expanded"}
+                  aria-expanded={sheetState !== "peek"}
                 >
                   {/* Back control on full-height sheet */}
                   {sheetState === "expanded" && (

@@ -91,7 +91,7 @@ export interface MapViewController {
   element: HTMLElement;
   setOrganizations: (organizations: Organization[]) => void;
   setActiveOrganization: (id: string | null) => void;
-  centerOnOrganization: (id: string, options?: { animate?: boolean; zoom?: number }) => void;
+  centerOnOrganization: (id: string, options?: { animate?: boolean; zoom?: number; offset?: [number, number] }) => void;
   setSelectedOrgIds: (ids: string[]) => void;
   setCategoryFilter: (categoryId: string | null) => void;
   setSelectedStat: (statId: string | null) => void;
@@ -2276,7 +2276,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
 
   const centerOnOrganization = (
     id: string,
-    options: { animate?: boolean; zoom?: number } = {},
+    options: { animate?: boolean; zoom?: number; offset?: [number, number] } = {},
   ) => {
     if (!id) return;
     const org = allOrganizations.find((o) => o.id === id);
@@ -2288,15 +2288,17 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     const targetZoom = typeof options.zoom === "number" ? options.zoom : map.getZoom();
 
     const center: [number, number] = [longitude, latitude];
-    if (animate) {
-      try {
-        map.easeTo({ center, zoom: targetZoom, duration: 600 });
-      } catch {}
-    } else {
-      try {
-        map.jumpTo({ center, zoom: targetZoom });
-      } catch {}
+    const easeOptions: maplibregl.EaseToOptions = {
+      center,
+      zoom: targetZoom,
+      duration: animate ? 600 : 0,
+    };
+    if (options.offset) {
+      easeOptions.offset = options.offset;
     }
+    try {
+      map.easeTo(easeOptions);
+    } catch {}
   };
 
   const setSelectedOrgIds = (ids: string[]) => {
