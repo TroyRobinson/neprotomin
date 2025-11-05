@@ -2383,9 +2383,6 @@ export const ReactMapApp = () => {
     if (!controller) return;
     try {
       const focusOptions: { animate: boolean; zoom?: number } = { animate: true };
-      if (!isMobile) {
-        focusOptions.zoom = ORGANIZATION_FOCUS_ZOOM_DESKTOP;
-      }
       controller.centerOnOrganization(selectedOrgIds[0], focusOptions);
     } catch {}
   }, [isMobile, selectedOrgIds, selectedOrgIdsFromMap, sheetState]);
