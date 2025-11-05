@@ -176,6 +176,7 @@ export const Sidebar = ({
 
   const highlightedIds = new Set(highlightedOrganizationIds ?? []);
   const selectedOrgIdsSet = new Set(selectedOrgIds);
+  const primarySelectedOrgId = selectedOrgIds.length > 0 ? selectedOrgIds[0] : null;
 
   const selectedZips = selectedAreas?.ZIP ?? [];
   const selectedCounties = selectedAreas?.COUNTY ?? [];
@@ -241,6 +242,7 @@ export const Sidebar = ({
     selectedZips.length,
     selectedCounties.length,
     selectedOrgIds.length,
+    primarySelectedOrgId,
     selectedOrgIdsFromMap,
     totalSelectedCount,
     activeTab,
@@ -255,7 +257,8 @@ export const Sidebar = ({
     const scrollContainer = orgsScrollRef.current;
     if (!scrollContainer) return;
 
-    const targetId = selectedOrgIds[0];
+    const targetId = primarySelectedOrgId;
+    if (!targetId) return;
     const alignSelection = () => {
       const targetEl = scrollContainer.querySelector<HTMLElement>(`[data-org-id="${targetId}"]`);
       if (!targetEl) return;
@@ -278,14 +281,15 @@ export const Sidebar = ({
     return () => {
       window.clearTimeout(timeout);
     };
-  }, [selectedOrgIds, selectedOrgIdsFromMap, activeTab]);
+  }, [selectedOrgIds, selectedOrgIdsFromMap, activeTab, primarySelectedOrgId]);
 
   useEffect(() => {
     if (variant !== "mobile") return;
     if (!selectedOrgIdsFromMap) return;
     if (selectedOrgIds.length !== 1) return;
 
-    const targetId = selectedOrgIds[0];
+    const targetId = primarySelectedOrgId;
+    if (!targetId) return;
     if (lastMapExpandedOrgRef.current === targetId && expandedOrgId === targetId) {
       return;
     }
@@ -306,6 +310,7 @@ export const Sidebar = ({
     inSelection,
     recent,
     selectedOrgIds,
+    primarySelectedOrgId,
     selectedOrgIdsFromMap,
     variant,
   ]);

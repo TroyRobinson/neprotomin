@@ -497,7 +497,7 @@ export const ReactMapApp = () => {
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (!isMobile) return;
       if (sheetState === "partial") {
-        expandSheet();
+        startSheetDrag(event.pointerId, event.clientY, "partial");
         return;
       }
       if (sheetState !== "expanded") return;
@@ -510,7 +510,7 @@ export const ReactMapApp = () => {
       }
       pendingContentDragRef.current = { pointerId: event.pointerId, startY: event.clientY };
     },
-    [expandSheet, isMobile, sheetState],
+    [isMobile, sheetState, startSheetDrag],
   );
 
   const hydrateFromPersistedSelection = (sel: PersistedAreaSelection | null | undefined) => {
@@ -1445,9 +1445,10 @@ export const ReactMapApp = () => {
 
   const handleSidebarOrganizationClick = useCallback(
     (id: string) => {
-      selectOrganization(id, false);
+      const treatAsMapSelection = isMobile;
+      selectOrganization(id, treatAsMapSelection);
     },
-    [selectOrganization],
+    [isMobile, selectOrganization],
   );
 
   const handleClusterClick = useCallback(
