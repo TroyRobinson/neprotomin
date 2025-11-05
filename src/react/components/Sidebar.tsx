@@ -120,6 +120,7 @@ export const Sidebar = ({
   const [issueModalOrg, setIssueModalOrg] = useState<Organization | null>(null);
   const [issueFeedback, setIssueFeedback] = useState<string | null>(null);
   const orgsScrollRef = useRef<HTMLDivElement>(null);
+  const lastMapExpandedOrgRef = useRef<string | null>(null);
   const { user } = db.useAuth();
 
   const handleOpenIssueModal = useCallback((org: Organization) => {
@@ -278,6 +279,36 @@ export const Sidebar = ({
       window.clearTimeout(timeout);
     };
   }, [selectedOrgIds, selectedOrgIdsFromMap, activeTab]);
+
+  useEffect(() => {
+    if (variant !== "mobile") return;
+    if (!selectedOrgIdsFromMap) return;
+    if (selectedOrgIds.length !== 1) return;
+
+    const targetId = selectedOrgIds[0];
+    if (lastMapExpandedOrgRef.current === targetId && expandedOrgId === targetId) {
+      return;
+    }
+
+    const targetOrg =
+      inSelection.find((org) => org.id === targetId) ??
+      all.find((org) => org.id === targetId) ??
+      recent.find((org) => org.id === targetId) ??
+      null;
+    if (!targetOrg) return;
+    if (formatHoursLines(targetOrg.hours).length === 0) return;
+
+    lastMapExpandedOrgRef.current = targetId;
+    setExpandedOrgId(targetId);
+  }, [
+    all,
+    expandedOrgId,
+    inSelection,
+    recent,
+    selectedOrgIds,
+    selectedOrgIdsFromMap,
+    variant,
+  ]);
 
   useEffect(() => {
     const visible = keepOrgsOnMap || activeTab === "orgs";
