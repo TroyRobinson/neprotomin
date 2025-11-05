@@ -2381,10 +2381,11 @@ export const ReactMapApp = () => {
     const controller = mapControllerRef.current;
     if (!controller) return;
     try {
-      controller.centerOnOrganization(selectedOrgIds[0], {
-        animate: true,
-        zoom: isMobile ? ORGANIZATION_FOCUS_ZOOM_MOBILE : ORGANIZATION_FOCUS_ZOOM_DESKTOP,
-      });
+      const focusOptions: { animate: boolean; zoom?: number } = { animate: true };
+      if (!isMobile) {
+        focusOptions.zoom = ORGANIZATION_FOCUS_ZOOM_DESKTOP;
+      }
+      controller.centerOnOrganization(selectedOrgIds[0], focusOptions);
     } catch {}
   }, [isMobile, selectedOrgIds, selectedOrgIdsFromMap, sheetState]);
 
@@ -2406,16 +2407,16 @@ export const ReactMapApp = () => {
     const controller = mapControllerRef.current;
     if (!controller) return;
     try {
-      controller.centerOnOrganization(selectedOrgIds[0], {
-        animate: true,
-        zoom: ORGANIZATION_FOCUS_ZOOM_MOBILE,
-        offset,
-      });
+      const focusOptions = selectedOrgIdsFromMap
+        ? { animate: true, offset }
+        : { animate: true, zoom: ORGANIZATION_FOCUS_ZOOM_MOBILE, offset };
+      controller.centerOnOrganization(selectedOrgIds[0], focusOptions);
     } catch {}
   }, [
     isDraggingSheet,
     isMobile,
     selectedOrgIds,
+    selectedOrgIdsFromMap,
     sheetAvailableHeight,
     mobilePartialFocusOffsetScale,
     sheetState,
