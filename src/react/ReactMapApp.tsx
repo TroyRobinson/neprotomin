@@ -2407,16 +2407,12 @@ export const ReactMapApp = () => {
     const controller = mapControllerRef.current;
     if (!controller) return;
     try {
-      const focusOptions = selectedOrgIdsFromMap
-        ? { animate: true, offset }
-        : { animate: true, zoom: ORGANIZATION_FOCUS_ZOOM_MOBILE, offset };
-      controller.centerOnOrganization(selectedOrgIds[0], focusOptions);
+      controller.centerOnOrganization(selectedOrgIds[0], { animate: true, offset });
     } catch {}
   }, [
     isDraggingSheet,
     isMobile,
     selectedOrgIds,
-    selectedOrgIdsFromMap,
     sheetAvailableHeight,
     mobilePartialFocusOffsetScale,
     sheetState,
