@@ -52,9 +52,11 @@ const DEFAULT_PRIMARY_STAT_ID = "8383685c-2741-40a2-96ff-759c42ddd586";
 const DEFAULT_TOP_BAR_HEIGHT = 64;
 const MOBILE_MAX_WIDTH_QUERY = "(max-width: 767px)";
 const MOBILE_SHEET_PEEK_HEIGHT = 136;
-const MOBILE_PARTIAL_MIN_MAP_RATIO = 0.2;
-const MOBILE_PARTIAL_TARGET_SHEET_HEIGHT = 560;
-const MOBILE_PARTIAL_FOCUS_ANCHOR = 0.12;
+const MOBILE_PARTIAL_MIN_MAP_RATIO = 0.05; // Min amount of viewport for the map when sheet is partial
+const MOBILE_PARTIAL_TARGET_SHEET_HEIGHT = 560; // Aim for this sheet height before applying other clamps
+const MOBILE_PARTIAL_MAP_HEIGHT_SCALE = 1; // Scale the computed map height when we have room above the minimum
+const MOBILE_PARTIAL_FOCUS_ANCHOR = 0.12; // Portion of visible sheet height to align with viewport center
+const MOBILE_PARTIAL_FOCUS_OFFSET_SCALE = 0.85; // Multiplier to tweak how aggressively we nudge the map when the sheet is partial
 const MOBILE_SHEET_DRAG_THRESHOLD = 72;
 const MOBILE_TAP_THRESHOLD = 10; // pixels - movement below this is considered a tap, not a drag
 const ORGANIZATION_MATCH_THRESHOLD = 0.55;
@@ -188,8 +190,12 @@ export const ReactMapApp = () => {
       minMapHeight,
       sheetAvailableHeight - MOBILE_PARTIAL_TARGET_SHEET_HEIGHT,
     );
-    const clampedMapHeight = Math.min(sheetPeekOffset, Math.max(desiredMapHeight, minMapHeight));
-    return Math.max(0, clampedMapHeight);
+    const baseMapHeight = Math.min(sheetPeekOffset, Math.max(desiredMapHeight, minMapHeight));
+    const adjustedMapHeight = Math.min(
+      sheetPeekOffset,
+      Math.max(minMapHeight, Math.round(baseMapHeight * MOBILE_PARTIAL_MAP_HEIGHT_SCALE)),
+    );
+    return Math.max(0, adjustedMapHeight);
   }, [sheetAvailableHeight, sheetPeekOffset, viewportHeight]);
 
   useEffect(() => {
@@ -2377,7 +2383,7 @@ export const ReactMapApp = () => {
     const desiredY = topBarHeight + visibleHeight * MOBILE_PARTIAL_FOCUS_ANCHOR;
     const offsetY = desiredY - viewportHeight / 2;
     if (Math.abs(offsetY) < 4) return;
-    const offset: [number, number] = [0, Math.round(offsetY)];
+    const offset: [number, number] = [0, Math.round(offsetY * MOBILE_PARTIAL_FOCUS_OFFSET_SCALE)];
     const controller = mapControllerRef.current;
     if (!controller) return;
     try {
