@@ -69,10 +69,25 @@ export const createRoadmapItem = async ({
   if (!createdBy) {
     throw new Error("Roadmap item requires creator id.");
   }
+  
+  // Query existing items to get their orders
+  const { data } = await db.queryOnce({
+    roadmapItems: {
+      $: {
+        fields: ["id", "order"],
+      },
+    },
+  });
+  
+  const existingItems = Array.isArray(data?.roadmapItems) ? (data!.roadmapItems as any[]) : [];
+  
+  // Prepare transactions: create new item with order 1, and increment all existing orders
   const newId = createId();
   const trimmedTitle = title.trim() || "Untitled roadmap item";
   const now = Date.now();
-  await db.transact(
+  
+  const txs: any[] = [
+    // Create new item with order 1 (top priority)
     db.tx.roadmapItems[newId].update({
       title: trimmedTitle,
       description: description?.trim() ? description.trim() : null,
@@ -82,8 +97,22 @@ export const createRoadmapItem = async ({
       targetCompletionAt: targetCompletionAt ?? null,
       imageUrl: imageUrl ?? null,
       createdBy,
+      order: 1,
     }),
-  );
+  ];
+  
+  // Increment order for all existing items that have an order
+  for (const item of existingItems) {
+    if (item?.id && typeof item.order === "number" && Number.isFinite(item.order)) {
+      txs.push(
+        db.tx.roadmapItems[item.id].update({
+          order: item.order + 1,
+        }),
+      );
+    }
+  }
+  
+  await db.transact(txs);
   return newId;
 };
 

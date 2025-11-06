@@ -156,6 +156,9 @@ export const RoadmapScreen = () => {
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
   const [isReordering, setIsReordering] = useState(false);
+  const descriptionRefs = useRef<Record<string, HTMLParagraphElement | null>>({});
+  const textareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const [descriptionHeights, setDescriptionHeights] = useState<Record<string, number>>({});
 
   const sortedItems = useMemo(() => sortItems(items, sortBy), [items, sortBy]);
   const isAdmin = useMemo(() => {
@@ -171,6 +174,19 @@ export const RoadmapScreen = () => {
       }
     };
   }, []);
+
+  // Resize textarea when description editing starts
+  useEffect(() => {
+    if (activeEdit?.field === "description" && activeEdit.itemId) {
+      const textarea = textareaRefs.current[activeEdit.itemId];
+      if (textarea) {
+        // Use requestAnimationFrame to ensure DOM has updated
+        requestAnimationFrame(() => {
+          handleTextareaResize(textarea, activeEdit.itemId);
+        });
+      }
+    }
+  }, [activeEdit, descriptionHeights]);
 
   const clearPendingToggle = () => {
     if (toggleTimerRef.current !== null) {
@@ -237,10 +253,35 @@ export const RoadmapScreen = () => {
     const currentValue = field === "title" ? item.title ?? "" : item.description ?? "";
     setActiveEdit({ itemId: item.id, field, value: currentValue });
     setEditError((prev) => ({ ...prev, [buildEditKey(item.id, field)]: null }));
+    
+    // Measure description height when starting to edit
+    if (field === "description") {
+      const descElement = descriptionRefs.current[item.id];
+      if (descElement) {
+        const height = descElement.offsetHeight;
+        setDescriptionHeights((prev) => ({ ...prev, [item.id]: height }));
+      }
+    }
   };
 
   const handleEditValueChange = (value: string) => {
     setActiveEdit((prev) => (prev ? { ...prev, value } : prev));
+  };
+
+  const handleTextareaResize = (textarea: HTMLTextAreaElement, itemId: string) => {
+    textarea.style.height = "auto";
+    const measuredHeight = descriptionHeights[itemId] ?? 0;
+    
+    // Calculate minimum height for 4 lines
+    const computedStyle = window.getComputedStyle(textarea);
+    const lineHeight = parseFloat(computedStyle.lineHeight) || parseFloat(computedStyle.fontSize) * 1.5;
+    const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
+    const paddingBottom = parseFloat(computedStyle.paddingBottom) || 0;
+    const minFourLines = lineHeight * 4 + paddingTop + paddingBottom;
+    
+    const minHeight = Math.max(measuredHeight, minFourLines);
+    const newHeight = Math.max(textarea.scrollHeight, minHeight);
+    textarea.style.height = `${newHeight}px`;
   };
 
   const handleCancelEdit = () => {
@@ -526,7 +567,7 @@ export const RoadmapScreen = () => {
       <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-10 sm:px-6 lg:px-8">
         <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Product Roadmap</h1>
+            <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Roadmap</h1>
             <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
               Track what we're exploring and actively building.
             </p>
@@ -577,13 +618,20 @@ export const RoadmapScreen = () => {
             No roadmap items yet. Check back soon!
           </div>
         ) : (
-          <ol className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {sortedItems.map((item) => {
+          <ol className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-stretch">
+            {sortedItems.map((item, index) => {
               const statusMeta = STATUS_META[item.status] ?? STATUS_META.suggested;
               const timeline = buildTimelineLabel(item);
               const isExpanded = expandedId === item.id;
               const voteLabel = `${item.voteCount} vote${item.voteCount === 1 ? "" : "s"}`;
               const commentLabel = `${item.comments.length} Comment${item.comments.length === 1 ? "" : "s"}`;
+
+              // Check if another card in the same row is expanded
+              const otherIndexInRow = index % 2 === 0 ? index + 1 : index - 1;
+              const otherItemInRow = otherIndexInRow >= 0 && otherIndexInRow < sortedItems.length ? sortedItems[otherIndexInRow] : null;
+              const otherInRowIsExpanded = otherItemInRow && expandedId === otherItemInRow.id;
+              // Don't stretch if another card in the same row is expanded (but this card isn't)
+              const shouldStretch = !otherInRowIsExpanded;
 
               const canEditItem =
                 isAdmin || (!!viewerId && item.createdBy && item.createdBy === viewerId);
@@ -605,7 +653,7 @@ export const RoadmapScreen = () => {
               const isItemBeingEdited = activeEdit?.itemId === item.id;
 
               return (
-                <li key={item.id}>
+                <li key={item.id} className={`flex transition-all duration-500 ease-out ${shouldStretch ? "" : "md:self-start"}`}>
                   <article
                     draggable={canDrag && !isDragging && !isItemBeingEdited}
                     onDragStart={(e) => handleDragStart(e, item)}
@@ -613,7 +661,7 @@ export const RoadmapScreen = () => {
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, item)}
                     onDragEnd={handleDragEnd}
-                    className={`relative rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 ${
+                    className={`relative flex h-full w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-500 ease-out hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 ${
                       isDragging ? "opacity-50 cursor-grabbing" : ""
                     } ${isDragOver ? "border-brand-400 ring-2 ring-brand-200 dark:border-brand-400 dark:ring-brand-500/40" : ""} ${
                       canDrag && !isDragging && !isItemBeingEdited ? "cursor-grab" : ""
@@ -630,7 +678,7 @@ export const RoadmapScreen = () => {
                           handleToggleExpand(item.id);
                         }
                       }}
-                      className="w-full rounded-2xl p-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      className="flex flex-1 flex-col w-full rounded-2xl p-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                       aria-expanded={isExpanded}
                     >
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -677,10 +725,18 @@ export const RoadmapScreen = () => {
                           {descriptionEditing ? (
                             <div data-roadmap-edit-control="true">
                               <textarea
-                                rows={3}
+                                ref={(textarea) => {
+                                  textareaRefs.current[item.id] = textarea;
+                                  if (textarea) {
+                                    handleTextareaResize(textarea, item.id);
+                                  }
+                                }}
                                 autoFocus
                                 value={activeEdit?.value ?? ""}
-                                onChange={(event) => handleEditValueChange(event.target.value)}
+                                onChange={(event) => {
+                                  handleEditValueChange(event.target.value);
+                                  handleTextareaResize(event.target, item.id);
+                                }}
                                 onKeyDown={(event) => handleEditKeyDown(event, item, "description")}
                                 onBlur={(event) =>
                                   handleEditBlur(item, "description", event.target.value)
@@ -694,6 +750,9 @@ export const RoadmapScreen = () => {
                             </div>
                           ) : item.description ? (
                             <p
+                              ref={(el) => {
+                                descriptionRefs.current[item.id] = el;
+                              }}
                               data-roadmap-editable={canEditItem ? "true" : undefined}
                               className={`text-sm text-slate-600 dark:text-slate-300 ${
                                 canEditItem ? "cursor-text" : ""
@@ -709,6 +768,9 @@ export const RoadmapScreen = () => {
                             </p>
                           ) : canEditItem ? (
                             <p
+                              ref={(el) => {
+                                descriptionRefs.current[item.id] = el;
+                              }}
                               data-roadmap-editable="true"
                               className="text-sm italic text-slate-400 dark:text-slate-500"
                               onDoubleClick={(event) => {
@@ -720,9 +782,6 @@ export const RoadmapScreen = () => {
                               Double-click to add more context.
                             </p>
                           ) : null}
-                          {timeline && (
-                            <p className="text-xs text-slate-400 dark:text-slate-500">{timeline}</p>
-                          )}
                         </div>
                         <div className="flex items-end justify-between gap-3 sm:flex-col sm:items-end">
                           <button
@@ -744,22 +803,29 @@ export const RoadmapScreen = () => {
                           </button>
                         </div>
                       </div>
+                      {!isExpanded && (
+                        <div className="mt-auto flex items-center justify-between gap-4 pt-4">
+                          {timeline ? (
+                            <p className="text-xs text-slate-400 dark:text-slate-500">{timeline}</p>
+                          ) : (
+                            <span />
+                          )}
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleToggleExpand(item.id);
+                            }}
+                            className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+                          >
+                            {commentLabel}
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    {!isExpanded && (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleToggleExpand(item.id);
-                        }}
-                        className="absolute bottom-4 right-4 rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-300"
-                      >
-                        {commentLabel}
-                      </button>
-                    )}
 
                     {isExpanded && (
-                      <div className="space-y-6 border-t border-slate-200 px-4 pb-4 pt-4 dark:border-slate-800">
+                      <div className="space-y-6 rounded-b-2xl border-t border-slate-200 bg-slate-50 px-4 pb-4 pt-4 dark:border-slate-800 dark:bg-slate-900/50">
                         {item.imageUrl ? (
                           <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
                             <img
@@ -843,7 +909,7 @@ export const RoadmapScreen = () => {
                                 disabled={itemDeleteBusy[item.id]}
                                 className="inline-flex items-center gap-2 rounded-full border border-rose-400 px-3 py-1.5 text-xs font-semibold text-rose-500 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500 dark:text-rose-300 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
                               >
-                                {itemDeleteBusy[item.id] ? "Deleting…" : "Delete roadmap item"}
+                                {itemDeleteBusy[item.id] ? "Deleting…" : "Delete item"}
                               </button>
                             )}
                             <div className="ml-auto flex items-center gap-3">
@@ -866,7 +932,7 @@ export const RoadmapScreen = () => {
                                 disabled={commentBusy[item.id]}
                                 className="inline-flex items-center justify-center rounded-full bg-brand-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-60"
                               >
-                                {commentBusy[item.id] ? "Sending…" : "Share comment"}
+                                {commentBusy[item.id] ? "Sending…" : "Share"}
                               </button>
                             </div>
                           </div>
