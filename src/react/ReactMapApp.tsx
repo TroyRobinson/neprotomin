@@ -32,6 +32,7 @@ import { parseFullAddress, geocodeAddress, looksLikeAddress } from "./lib/geocod
 import { normalizeForSearch, computeSimilarityFromNormalized } from "./lib/fuzzyMatch";
 import { useAuthSession } from "./hooks/useAuthSession";
 type SupportedAreaKind = "ZIP" | "COUNTY";
+type ScreenName = "map" | "report" | "roadmap" | "data" | "queue" | "addOrg";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
 const RoadmapScreen = lazy(() => import("./components/RoadmapScreen").then((m) => ({ default: m.default })));
@@ -64,6 +65,29 @@ const MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX_HEIGHT = 920; // Heights at or above
 const MOBILE_SHEET_DRAG_THRESHOLD = 72;
 const MOBILE_TAP_THRESHOLD = 10; // pixels - movement below this is considered a tap, not a drag
 const ORGANIZATION_MATCH_THRESHOLD = 0.55;
+
+const HASH_TO_SCREEN: Record<string, ScreenName> = {
+  "#roadmap": "roadmap",
+  "#queue": "queue",
+};
+
+const screenFromHash = (hash: string): ScreenName | null => {
+  if (!hash) return null;
+  return HASH_TO_SCREEN[hash.toLowerCase()] ?? null;
+};
+
+const hashForScreen = (screen: ScreenName): string | null => {
+  switch (screen) {
+    case "roadmap":
+      return "#roadmap";
+    case "queue":
+      return "#queue";
+    default:
+      return null;
+  }
+};
+
+const isHashRoutedScreen = (screen: ScreenName): boolean => screen === "roadmap" || screen === "queue";
 
 interface AreaSelectionState {
   selected: string[];
@@ -145,7 +169,10 @@ export const ReactMapApp = () => {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [hasAppliedDefaultStat, setHasAppliedDefaultStat] = useState(false);
   const [hasSyncedDefaultCategory, setHasSyncedDefaultCategory] = useState(false);
-  const [activeScreen, setActiveScreen] = useState<"map" | "report" | "roadmap" | "data" | "queue" | "addOrg">("map");
+  const [activeScreen, setActiveScreen] = useState<ScreenName>(() => {
+    if (typeof window === "undefined") return "map";
+    return screenFromHash(window.location.hash) ?? "map";
+  });
   const [authOpen, setAuthOpen] = useState(false);
   const [cameraState, setCameraState] = useState<{ center: [number, number]; zoom: number } | null>(null);
   const [hasInteractedWithMap, setHasInteractedWithMap] = useState(false);
@@ -212,6 +239,55 @@ export const ReactMapApp = () => {
     const range = MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX - MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MIN;
     return MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX - progress * range;
   }, [isMobile, viewportHeight]);
+
+  const { user, authReady } = useAuthSession();
+  const isAdmin = useMemo(() => {
+    if (!user || user.isGuest) return false;
+    if (typeof user.email !== "string" || user.email.trim().length === 0) return false;
+    return isAdminEmail(user.email);
+  }, [user]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      const next = screenFromHash(hash);
+      if (!next) {
+        setActiveScreen((prev) => (isHashRoutedScreen(prev) ? "map" : prev));
+        return;
+      }
+      if (next === "queue" && authReady && !isAdmin) {
+        setActiveScreen("map");
+        return;
+      }
+      setActiveScreen((prev) => (prev === next ? prev : next));
+    };
+
+    handleHashChange();
+    window.addEventListener("hashchange", handleHashChange);
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange);
+    };
+  }, [authReady, isAdmin]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const targetHash = hashForScreen(activeScreen);
+    const currentHash = window.location.hash.toLowerCase();
+    if (targetHash) {
+      if (activeScreen === "queue" && (!authReady || !isAdmin)) {
+        return;
+      }
+      if (currentHash !== targetHash) {
+        window.location.hash = targetHash.slice(1);
+      }
+      return;
+    }
+    if (currentHash && HASH_TO_SCREEN[currentHash]) {
+      const url = `${window.location.pathname}${window.location.search}`;
+      window.history.replaceState(null, "", url);
+    }
+  }, [activeScreen, authReady, isAdmin]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -551,20 +627,12 @@ export const ReactMapApp = () => {
     setBoundaryControlMode("auto");
   };
 
-  const { user, authReady } = useAuthSession();
-  const isAdmin = useMemo(() => {
-    if (!user || user.isGuest) return false;
-    if (typeof user.email !== "string" || user.email.trim().length === 0) return false;
-    return isAdminEmail(user.email);
-  }, [user]);
   useEffect(() => {
-    if (!isAdmin && activeScreen === "queue") {
+    if (!authReady) return;
+    if (!isAdmin && (activeScreen === "queue" || activeScreen === "data")) {
       setActiveScreen("map");
     }
-    if (!isAdmin && activeScreen === "data") {
-      setActiveScreen("map");
-    }
-  }, [isAdmin, activeScreen]);
+  }, [authReady, isAdmin, activeScreen]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
