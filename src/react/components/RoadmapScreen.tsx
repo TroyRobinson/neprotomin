@@ -13,7 +13,7 @@ import {
   updateRoadmapItemsOrder,
 } from "../lib/roadmapActions";
 import { db } from "../../lib/reactDb";
-import { isAdminEmail } from "../../lib/admin";
+import { isAdminEmail, isAdminEmailOnly } from "../../lib/admin";
 
 const STATUS_META: Record<
   RoadmapStatus,
@@ -165,6 +165,10 @@ export const RoadmapScreen = () => {
     if (!user || user.isGuest) return false;
     return isAdminEmail(user.email ?? null);
   }, [user]);
+  const isEmailAdmin = useMemo(() => {
+    if (!user || user.isGuest) return false;
+    return isAdminEmailOnly(user.email ?? null);
+  }, [user]);
 
   useEffect(() => {
     return () => {
@@ -247,7 +251,7 @@ export const RoadmapScreen = () => {
   };
 
   const handleStartEdit = (item: RoadmapItemWithRelations, field: EditableField) => {
-    const canEdit = isAdmin || (!!viewerId && item.createdBy && item.createdBy === viewerId);
+    const canEdit = isEmailAdmin || (!!viewerId && item.createdBy && item.createdBy === viewerId);
     if (!canEdit) return;
     clearPendingToggle();
     const currentValue = field === "title" ? item.title ?? "" : item.description ?? "";
@@ -449,7 +453,7 @@ export const RoadmapScreen = () => {
   };
 
   const handleDeleteItem = async (item: RoadmapItemWithRelations) => {
-    const canDelete = isAdmin || (!!viewerId && item.createdBy && item.createdBy === viewerId);
+    const canDelete = isEmailAdmin || (!!viewerId && item.createdBy && item.createdBy === viewerId);
     if (!canDelete) {
       alert("Only the creator or an admin can delete this roadmap item.");
       return;
@@ -481,7 +485,7 @@ export const RoadmapScreen = () => {
   };
 
   const handleDragStart = (event: React.DragEvent, item: RoadmapItemWithRelations) => {
-    if (!isAdmin || sortBy !== "custom") return;
+    if (!isEmailAdmin || sortBy !== "custom") return;
     if (activeEdit && activeEdit.itemId === item.id) {
       event.preventDefault();
       return;
@@ -493,7 +497,7 @@ export const RoadmapScreen = () => {
   };
 
   const handleDragOver = (event: React.DragEvent, item: RoadmapItemWithRelations) => {
-    if (!isAdmin || sortBy !== "custom" || !draggedItemId || draggedItemId === item.id) {
+    if (!isEmailAdmin || sortBy !== "custom" || !draggedItemId || draggedItemId === item.id) {
       return;
     }
     event.preventDefault();
@@ -506,7 +510,7 @@ export const RoadmapScreen = () => {
   };
 
   const handleDrop = async (event: React.DragEvent, targetItem: RoadmapItemWithRelations) => {
-    if (!isAdmin || sortBy !== "custom" || !draggedItemId || draggedItemId === targetItem.id) {
+    if (!isEmailAdmin || sortBy !== "custom" || !draggedItemId || draggedItemId === targetItem.id) {
       return;
     }
     event.preventDefault();
@@ -600,7 +604,7 @@ export const RoadmapScreen = () => {
                 </svg>
               </div>
             </div>
-            {viewerId ? (
+            {isEmailAdmin ? (
               <button
                 type="button"
                 onClick={handleCreateItem}
@@ -634,7 +638,7 @@ export const RoadmapScreen = () => {
               const shouldStretch = !otherInRowIsExpanded;
 
               const canEditItem =
-                isAdmin || (!!viewerId && item.createdBy && item.createdBy === viewerId);
+                isEmailAdmin || (!!viewerId && item.createdBy && item.createdBy === viewerId);
               const canDeleteItem = canEditItem;
               const titleKey = buildEditKey(item.id, "title");
               const descriptionKey = buildEditKey(item.id, "description");
@@ -649,7 +653,7 @@ export const RoadmapScreen = () => {
 
               const isDragging = draggedItemId === item.id;
               const isDragOver = dragOverItemId === item.id;
-              const canDrag = isAdmin && sortBy === "custom";
+              const canDrag = isEmailAdmin && sortBy === "custom";
               const isItemBeingEdited = activeEdit?.itemId === item.id;
 
               return (
@@ -951,3 +955,5 @@ export const RoadmapScreen = () => {
 };
 
 export default RoadmapScreen;
+
+

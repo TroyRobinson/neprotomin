@@ -42,6 +42,13 @@ export const isAdminEmail = (email: string | null | undefined): boolean => {
   return false;
 };
 
+export const isAdminEmailOnly = (email: string | null | undefined): boolean => {
+  if (!email) return false;
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return false;
+  return ADMIN_EMAILS.has(normalized);
+};
+
 export const adminConfig = {
   emails: ADMIN_EMAILS,
   domains: ADMIN_DOMAINS,
