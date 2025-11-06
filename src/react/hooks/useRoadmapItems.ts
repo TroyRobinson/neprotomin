@@ -115,6 +115,7 @@ export const useRoadmapItems = () => {
       }
 
       const status = isRoadmapStatus((row as any).status) ? ((row as any).status as RoadmapStatus) : "suggested";
+      const createdBy = normalizeString((row as any).createdBy);
       const votes = votesByItem.get(row.id) ?? [];
       const comments = commentsByItem.get(row.id) ?? [];
 
@@ -140,6 +141,7 @@ export const useRoadmapItems = () => {
         statusChangedAt,
         targetCompletionAt,
         imageUrl,
+        createdBy,
         votes,
         comments,
         viewerHasVoted,

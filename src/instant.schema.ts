@@ -74,6 +74,7 @@ const _schema = i.schema({
       statusChangedAt: i.number().indexed().optional(),
       targetCompletionAt: i.number().indexed().optional(),
       imageUrl: i.string().optional(),
+      createdBy: i.string().indexed().optional(),
     }),
     roadmapItemVotes: i.entity({
       roadmapItemId: i.string().indexed(),

@@ -9,6 +9,7 @@ export interface RoadmapItem {
   statusChangedAt?: number | null;
   targetCompletionAt?: number | null;
   imageUrl?: string | null;
+  createdBy?: string | null;
 }
 
 export interface RoadmapVote {

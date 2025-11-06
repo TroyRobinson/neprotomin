@@ -1,5 +1,6 @@
 import { id as createId } from "@instantdb/react";
 import { db } from "../../lib/reactDb";
+import type { RoadmapStatus } from "../../types/roadmap";
 
 export const addRoadmapVote = async (roadmapItemId: string, voterId: string): Promise<void> => {
   if (!roadmapItemId || !voterId) {
@@ -41,5 +42,85 @@ export const addRoadmapComment = async (
       createdAt: Date.now(),
     }),
   );
+};
+
+export const removeRoadmapComment = async (commentId: string): Promise<void> => {
+  if (!commentId) {
+    throw new Error("Missing commentId for removal.");
+  }
+  await db.transact(db.tx.roadmapItemComments[commentId].delete());
+};
+
+export const createRoadmapItem = async ({
+  title,
+  description,
+  status = "suggested",
+  createdBy,
+  targetCompletionAt = null,
+  imageUrl = null,
+}: {
+  title: string;
+  description?: string | null;
+  status?: RoadmapStatus;
+  createdBy: string;
+  targetCompletionAt?: number | null;
+  imageUrl?: string | null;
+}): Promise<string> => {
+  if (!createdBy) {
+    throw new Error("Roadmap item requires creator id.");
+  }
+  const newId = createId();
+  const trimmedTitle = title.trim() || "Untitled roadmap item";
+  const now = Date.now();
+  await db.transact(
+    db.tx.roadmapItems[newId].update({
+      title: trimmedTitle,
+      description: description?.trim() ? description.trim() : null,
+      status,
+      createdAt: now,
+      statusChangedAt: now,
+      targetCompletionAt: targetCompletionAt ?? null,
+      imageUrl: imageUrl ?? null,
+      createdBy,
+    }),
+  );
+  return newId;
+};
+
+export const updateRoadmapItem = async (
+  itemId: string,
+  patch: Partial<{
+    title: string;
+    description: string | null;
+    status: RoadmapStatus;
+    targetCompletionAt: number | null;
+    imageUrl: string | null;
+  }>,
+): Promise<void> => {
+  if (!itemId) {
+    throw new Error("Missing roadmap item id.");
+  }
+  if (!patch || Object.keys(patch).length === 0) {
+    return;
+  }
+  const payload: Record<string, unknown> = {};
+  if (patch.title !== undefined) {
+    payload.title = patch.title;
+  }
+  if (patch.description !== undefined) {
+    payload.description = patch.description;
+  }
+  if (patch.status !== undefined) {
+    payload.status = patch.status;
+    payload.statusChangedAt = Date.now();
+  }
+  if (patch.targetCompletionAt !== undefined) {
+    payload.targetCompletionAt = patch.targetCompletionAt;
+  }
+  if (patch.imageUrl !== undefined) {
+    payload.imageUrl = patch.imageUrl;
+  }
+  if (Object.keys(payload).length === 0) return;
+  await db.transact(db.tx.roadmapItems[itemId].update(payload));
 };
 

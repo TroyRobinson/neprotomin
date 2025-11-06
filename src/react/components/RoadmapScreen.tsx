@@ -1,8 +1,17 @@
 import { useMemo, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { useRoadmapItems } from "../hooks/useRoadmapItems";
-import type { RoadmapItemWithRelations, RoadmapStatus } from "../../types/roadmap";
-import { addRoadmapVote, removeRoadmapVote, addRoadmapComment } from "../lib/roadmapActions";
+import type { RoadmapItemWithRelations, RoadmapStatus, RoadmapComment } from "../../types/roadmap";
+import {
+  addRoadmapVote,
+  removeRoadmapVote,
+  addRoadmapComment,
+  removeRoadmapComment,
+  createRoadmapItem,
+  updateRoadmapItem,
+} from "../lib/roadmapActions";
 import { db } from "../../lib/reactDb";
+import { isAdminEmail } from "../../lib/admin";
 
 const STATUS_META: Record<
   RoadmapStatus,
@@ -55,6 +64,9 @@ const buildTimelineLabel = (item: RoadmapItemWithRelations): string => {
   return parts.join(" • ");
 };
 
+type EditableField = "title" | "description";
+const buildEditKey = (itemId: string, field: EditableField) => `${itemId}:${field}`;
+
 export const RoadmapScreen = () => {
   const { items, isLoading, error, viewerId } = useRoadmapItems();
   const { user } = db.useAuth();
@@ -63,12 +75,127 @@ export const RoadmapScreen = () => {
   const [voteBusy, setVoteBusy] = useState<Record<string, boolean>>({});
   const [commentBusy, setCommentBusy] = useState<Record<string, boolean>>({});
   const [commentError, setCommentError] = useState<Record<string, string | null>>({});
+  const [deleteBusy, setDeleteBusy] = useState<Record<string, boolean>>({});
+  const [deleteError, setDeleteError] = useState<Record<string, string | null>>({});
+  const [createBusy, setCreateBusy] = useState(false);
+  const [activeEdit, setActiveEdit] = useState<{ itemId: string; field: EditableField; value: string } | null>(null);
+  const [editBusy, setEditBusy] = useState<Record<string, boolean>>({});
+  const [editError, setEditError] = useState<Record<string, string | null>>({});
 
   const sortedItems = useMemo(() => items.slice().sort((a, b) => b.createdAt - a.createdAt), [items]);
+  const isAdmin = useMemo(() => {
+    if (!user || user.isGuest) return false;
+    return isAdminEmail(user.email ?? null);
+  }, [user]);
 
   const handleToggleExpand = (itemId: string) => {
     setExpandedId((prev) => (prev === itemId ? null : itemId));
     setCommentError((prev) => ({ ...prev, [itemId]: null }));
+    setActiveEdit((prev) => (prev?.itemId === itemId ? null : prev));
+  };
+
+  const handleCreateItem = async () => {
+    if (!viewerId) {
+      alert("Please sign in or continue as guest to create roadmap items.");
+      return;
+    }
+    if (createBusy) return;
+    setCreateBusy(true);
+    try {
+      const newId = await createRoadmapItem({
+        title: "New roadmap item",
+        createdBy: viewerId,
+      });
+      setExpandedId(newId);
+      setActiveEdit({ itemId: newId, field: "title", value: "New roadmap item" });
+    } catch (err) {
+      console.error("[roadmap] Failed to create item", err);
+      alert("Sorry, we couldn't create that roadmap item. Please try again.");
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const handleStartEdit = (item: RoadmapItemWithRelations, field: EditableField) => {
+    const canEdit = isAdmin || (!!viewerId && item.createdBy && item.createdBy === viewerId);
+    if (!canEdit) return;
+    const currentValue = field === "title" ? item.title ?? "" : item.description ?? "";
+    setActiveEdit({ itemId: item.id, field, value: currentValue });
+    setEditError((prev) => ({ ...prev, [buildEditKey(item.id, field)]: null }));
+  };
+
+  const handleEditValueChange = (value: string) => {
+    setActiveEdit((prev) => (prev ? { ...prev, value } : prev));
+  };
+
+  const handleCancelEdit = () => {
+    setActiveEdit(null);
+  };
+
+  const handleCommitEdit = async (
+    item: RoadmapItemWithRelations,
+    field: EditableField,
+    rawValue: string,
+  ) => {
+    const key = buildEditKey(item.id, field);
+    if (editBusy[key]) return;
+    const currentValue = field === "title" ? item.title : (item.description ?? "");
+    if (currentValue === rawValue) {
+      setActiveEdit(null);
+      setEditError((prev) => ({ ...prev, [key]: null }));
+      return;
+    }
+    const trimmed = rawValue.trim();
+    if (field === "title" && trimmed.length === 0) {
+      setEditError((prev) => ({ ...prev, [key]: "Title is required." }));
+      return;
+    }
+    setEditBusy((prev) => ({ ...prev, [key]: true }));
+    try {
+      if (field === "title") {
+        await updateRoadmapItem(item.id, { title: trimmed });
+      } else {
+        await updateRoadmapItem(item.id, { description: trimmed.length > 0 ? trimmed : null });
+      }
+      setActiveEdit(null);
+      setEditError((prev) => ({ ...prev, [key]: null }));
+    } catch (error) {
+      console.error("[roadmap] Failed to update item", error);
+      setEditError((prev) => ({
+        ...prev,
+        [key]: "Unable to save changes. Please try again.",
+      }));
+    } finally {
+      setEditBusy((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  };
+
+  const handleEditKeyDown = (
+    event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+    item: RoadmapItemWithRelations,
+    field: EditableField,
+  ) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      handleCommitEdit(item, field, event.currentTarget.value);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      handleCancelEdit();
+    }
+  };
+
+  const handleEditBlur = (
+    item: RoadmapItemWithRelations,
+    field: EditableField,
+    value: string,
+  ) => {
+    if (activeEdit && activeEdit.itemId === item.id && activeEdit.field === field) {
+      handleCommitEdit(item, field, value);
+    }
   };
 
   const handleToggleVote = async (item: RoadmapItemWithRelations) => {
@@ -135,6 +262,36 @@ export const RoadmapScreen = () => {
     }
   };
 
+  const handleDeleteComment = async (comment: RoadmapComment) => {
+    const canDelete = isAdmin || (!!viewerId && comment.authorId === viewerId);
+    if (!canDelete) {
+      alert("Only the comment author or an admin can delete this comment.");
+      return;
+    }
+    if (deleteBusy[comment.id]) return;
+    if (typeof window !== "undefined") {
+      const confirmDelete = window.confirm("Remove this comment?");
+      if (!confirmDelete) return;
+    }
+    setDeleteBusy((prev) => ({ ...prev, [comment.id]: true }));
+    setDeleteError((prev) => ({ ...prev, [comment.id]: null }));
+    try {
+      await removeRoadmapComment(comment.id);
+    } catch (err) {
+      console.error("[roadmap] Failed to delete comment", err);
+      setDeleteError((prev) => ({
+        ...prev,
+        [comment.id]: "Unable to delete right now. Please try again.",
+      }));
+    } finally {
+      setDeleteBusy((prev) => {
+        const next = { ...prev };
+        delete next[comment.id];
+        return next;
+      });
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center bg-white px-6 pb-safe text-sm text-slate-500 dark:bg-slate-900 dark:text-slate-400">
@@ -154,12 +311,24 @@ export const RoadmapScreen = () => {
   return (
     <div className="flex h-full w-full flex-col overflow-auto bg-slate-50 pb-safe dark:bg-slate-950">
       <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-10 sm:px-6 lg:px-8">
-        <header className="mb-8">
-          <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Product Roadmap</h1>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-            Track what we’re exploring, actively building, and learning from. Click a card to see
-            community feedback and share your own.
-          </p>
+        <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Product Roadmap</h1>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+              Track what we’re exploring, actively building, and learning from. Click a card to see
+              community feedback and share your own.
+            </p>
+          </div>
+          {viewerId ? (
+            <button
+              type="button"
+              onClick={handleCreateItem}
+              disabled={createBusy}
+              className="inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {createBusy ? "Creating…" : "+ New"}
+            </button>
+          ) : null}
         </header>
 
         {sortedItems.length === 0 ? (
@@ -174,13 +343,41 @@ export const RoadmapScreen = () => {
               const isExpanded = expandedId === item.id;
               const voteLabel = `${item.voteCount} vote${item.voteCount === 1 ? "" : "s"}`;
 
+              const canEditItem =
+                isAdmin || (!!viewerId && item.createdBy && item.createdBy === viewerId);
+              const titleKey = buildEditKey(item.id, "title");
+              const descriptionKey = buildEditKey(item.id, "description");
+              const titleEditing =
+                activeEdit?.itemId === item.id && activeEdit.field === "title";
+              const descriptionEditing =
+                activeEdit?.itemId === item.id && activeEdit.field === "description";
+              const isTitleSaving = !!editBusy[titleKey];
+              const isDescriptionSaving = !!editBusy[descriptionKey];
+              const titleError = editError[titleKey];
+              const descriptionError = editError[descriptionKey];
+
               return (
                 <li key={item.id}>
                   <article className="rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleExpand(item.id)}
-                      className="w-full rounded-2xl p-6 text-left"
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        if (
+                          (event.target as HTMLElement).closest("[data-roadmap-edit-control='true']")
+                        ) {
+                          return;
+                        }
+                        handleToggleExpand(item.id);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          if (activeEdit && activeEdit.itemId === item.id) return;
+                          event.preventDefault();
+                          handleToggleExpand(item.id);
+                        }
+                      }}
+                      className="w-full rounded-2xl p-6 text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                       aria-expanded={isExpanded}
                     >
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -196,12 +393,78 @@ export const RoadmapScreen = () => {
                               {statusMeta.description}
                             </span>
                           </div>
-                          <h2 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
-                            {item.title}
-                          </h2>
-                          {item.description ? (
-                            <p className="text-sm text-slate-600 dark:text-slate-300">
+                          {titleEditing ? (
+                            <div data-roadmap-edit-control="true" className="max-w-xl">
+                              <input
+                                autoFocus
+                                value={activeEdit?.value ?? ""}
+                                onChange={(event) => handleEditValueChange(event.target.value)}
+                                onKeyDown={(event) => handleEditKeyDown(event, item, "title")}
+                                onBlur={(event) => handleEditBlur(item, "title", event.target.value)}
+                                disabled={isTitleSaving}
+                                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:focus:border-brand-400 dark:focus:ring-brand-500/40"
+                              />
+                              {titleError ? (
+                                <p className="mt-1 text-xs text-rose-500">{titleError}</p>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <h2
+                              className={`text-lg font-semibold text-slate-900 dark:text-white sm:text-xl ${
+                                canEditItem ? "cursor-text" : ""
+                              }`}
+                              onDoubleClick={(event) => {
+                                if (!canEditItem) return;
+                                event.preventDefault();
+                                event.stopPropagation();
+                                handleStartEdit(item, "title");
+                              }}
+                            >
+                              {item.title}
+                            </h2>
+                          )}
+                          {descriptionEditing ? (
+                            <div data-roadmap-edit-control="true">
+                              <textarea
+                                rows={3}
+                                autoFocus
+                                value={activeEdit?.value ?? ""}
+                                onChange={(event) => handleEditValueChange(event.target.value)}
+                                onKeyDown={(event) => handleEditKeyDown(event, item, "description")}
+                                onBlur={(event) =>
+                                  handleEditBlur(item, "description", event.target.value)
+                                }
+                                disabled={isDescriptionSaving}
+                                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-brand-400 dark:focus:ring-brand-500/40"
+                              />
+                              {descriptionError ? (
+                                <p className="mt-1 text-xs text-rose-500">{descriptionError}</p>
+                              ) : null}
+                            </div>
+                          ) : item.description ? (
+                            <p
+                              className={`text-sm text-slate-600 dark:text-slate-300 ${
+                                canEditItem ? "cursor-text" : ""
+                              }`}
+                              onDoubleClick={(event) => {
+                                if (!canEditItem) return;
+                                event.preventDefault();
+                                event.stopPropagation();
+                                handleStartEdit(item, "description");
+                              }}
+                            >
                               {item.description}
+                            </p>
+                          ) : canEditItem ? (
+                            <p
+                              className="text-sm italic text-slate-400 dark:text-slate-500"
+                              onDoubleClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                handleStartEdit(item, "description");
+                              }}
+                            >
+                              Double-click to add more context.
                             </p>
                           ) : null}
                           {timeline && (
@@ -231,7 +494,7 @@ export const RoadmapScreen = () => {
                           </span>
                         </div>
                       </div>
-                    </button>
+                    </div>
 
                     {isExpanded && (
                       <div className="space-y-6 border-t border-slate-200 px-6 pb-6 pt-5 dark:border-slate-800">
@@ -267,13 +530,29 @@ export const RoadmapScreen = () => {
                                   key={comment.id}
                                   className="rounded-lg border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
                                 >
-                                  <div className="flex items-center justify-between text-xs text-slate-400 dark:text-slate-500">
-                                    <span>{comment.authorName ?? "Community member"}</span>
-                                    <time dateTime={new Date(comment.createdAt).toISOString()}>
-                                      {formatShortDate(comment.createdAt) ?? "Just now"}
-                                    </time>
+                                  <div className="flex items-start justify-between gap-3 text-xs text-slate-400 dark:text-slate-500">
+                                    <div className="flex flex-col">
+                                      <span>{comment.authorName ?? "Community member"}</span>
+                                      <time dateTime={new Date(comment.createdAt).toISOString()}>
+                                        {formatShortDate(comment.createdAt) ?? "Just now"}
+                                      </time>
+                                    </div>
+                                    {(isAdmin || (!!viewerId && comment.authorId === viewerId)) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteComment(comment)}
+                                        disabled={deleteBusy[comment.id]}
+                                        className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:border-rose-300 hover:text-rose-500 disabled:opacity-50 dark:border-slate-700 dark:text-slate-400 dark:hover:border-rose-400 dark:hover:text-rose-300"
+                                        aria-label="Delete comment"
+                                      >
+                                        {deleteBusy[comment.id] ? "Removing…" : "Delete"}
+                                      </button>
+                                    )}
                                   </div>
                                   <p className="mt-2 whitespace-pre-line">{comment.body}</p>
+                                  {deleteError[comment.id] ? (
+                                    <p className="mt-2 text-xs text-rose-500">{deleteError[comment.id]}</p>
+                                  ) : null}
                                 </li>
                               ))}
                             </ul>

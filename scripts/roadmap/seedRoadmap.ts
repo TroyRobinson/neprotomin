@@ -21,6 +21,7 @@ type RoadmapSeed = {
     voterId: string;
     createdAt?: number;
   }>;
+  createdBy?: string;
 };
 
 const resolveEnv = (key: string): string | undefined => {
@@ -54,6 +55,7 @@ const seeds: RoadmapSeed[] = [
     statusChangedAt: Date.now() - 1000 * 60 * 60 * 24 * 5,
     targetCompletionAt: Date.now() + 1000 * 60 * 60 * 24 * 30,
     imageUrl: null,
+    createdBy: "seed-user-erica",
     comments: [
       {
         authorId: "seed-user-erica",
@@ -73,6 +75,7 @@ const seeds: RoadmapSeed[] = [
     status: "considering",
     createdAt: Date.now() - 1000 * 60 * 60 * 24 * 9,
     imageUrl: null,
+    createdBy: "seed-user-andre",
     votes: [{ voterId: "seed-user-andre" }],
   },
   {
@@ -82,6 +85,7 @@ const seeds: RoadmapSeed[] = [
     status: "suggested",
     createdAt: Date.now() - 1000 * 60 * 60 * 24 * 2,
     imageUrl: null,
+    createdBy: "seed-user-planning",
   },
 ];
 
@@ -115,6 +119,7 @@ const ensureSeeded = async () => {
         statusChangedAt: seed.statusChangedAt ?? null,
         targetCompletionAt: seed.targetCompletionAt ?? null,
         imageUrl: seed.imageUrl ?? null,
+        createdBy: seed.createdBy ?? "seed-user-admin",
       }),
     );
 
