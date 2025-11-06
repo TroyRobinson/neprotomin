@@ -53,12 +53,17 @@ const formatShortDate = (value?: number | null): string | null => {
 const buildTimelineLabel = (item: RoadmapItemWithRelations): string => {
   const added = formatShortDate(item.createdAt);
   const changed = formatShortDate(item.statusChangedAt);
-  const target = formatShortDate(item.targetCompletionAt);
-  const parts: string[] = [];
-  if (added) parts.push(`Added ${added}`);
-  if (changed) parts.push(`Updated ${changed}`);
-  if (target) parts.push(`Targeting ${target}`);
-  return parts.join(" • ");
+  const hasBeenUpdated = changed && item.statusChangedAt && item.statusChangedAt !== item.createdAt;
+  
+  if (hasBeenUpdated) {
+    return `Updated ${changed}`;
+  }
+  
+  if (added) {
+    return `Added ${added}`;
+  }
+  
+  return "";
 };
 
 type EditableField = "title" | "description";
@@ -145,7 +150,6 @@ export const RoadmapScreen = () => {
         createdBy: viewerId,
       });
       clearPendingToggle();
-      setExpandedId(newId);
       setActiveEdit({ itemId: newId, field: "title", value: "New roadmap item" });
     } catch (err) {
       console.error("[roadmap] Failed to create item", err);
@@ -382,12 +386,12 @@ export const RoadmapScreen = () => {
 
   return (
     <div className="flex h-full w-full flex-col overflow-auto bg-slate-50 pb-safe dark:bg-slate-950">
-      <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-10 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-10 sm:px-6 lg:px-8">
         <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Product Roadmap</h1>
             <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-              Track what we’re exploring and actively building.
+              Track what we're exploring and actively building.
             </p>
           </div>
           {viewerId ? (
@@ -407,7 +411,7 @@ export const RoadmapScreen = () => {
             No roadmap items yet. Check back soon!
           </div>
         ) : (
-          <ol className="space-y-4">
+          <ol className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {sortedItems.map((item) => {
               const statusMeta = STATUS_META[item.status] ?? STATUS_META.suggested;
               const timeline = buildTimelineLabel(item);
@@ -443,7 +447,7 @@ export const RoadmapScreen = () => {
                           handleToggleExpand(item.id);
                         }
                       }}
-                      className="w-full rounded-2xl p-6 text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      className="w-full rounded-2xl p-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                       aria-expanded={isExpanded}
                     >
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -565,14 +569,14 @@ export const RoadmapScreen = () => {
                           event.stopPropagation();
                           handleToggleExpand(item.id);
                         }}
-                        className="absolute bottom-6 right-6 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-brand-400 dark:hover:bg-brand-500/10 dark:hover:text-brand-300"
+                        className="absolute bottom-4 right-4 rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-300"
                       >
                         {commentLabel}
                       </button>
                     )}
 
                     {isExpanded && (
-                      <div className="space-y-6 border-t border-slate-200 px-6 pb-6 pt-5 dark:border-slate-800">
+                      <div className="space-y-6 border-t border-slate-200 px-4 pb-4 pt-4 dark:border-slate-800">
                         {item.imageUrl ? (
                           <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
                             <img
