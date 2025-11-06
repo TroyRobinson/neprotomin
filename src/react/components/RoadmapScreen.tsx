@@ -159,6 +159,10 @@ export const RoadmapScreen = () => {
   const descriptionRefs = useRef<Record<string, HTMLParagraphElement | null>>({});
   const textareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const [descriptionHeights, setDescriptionHeights] = useState<Record<string, number>>({});
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState<string | null>(null);
+  const [statusUpdateBusy, setStatusUpdateBusy] = useState<Record<string, boolean>>({});
+  const [statusUpdateError, setStatusUpdateError] = useState<Record<string, string | null>>({});
+  const statusDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const sortedItems = useMemo(() => sortItems(items, sortBy), [items, sortBy]);
   const isAdmin = useMemo(() => {
@@ -178,6 +182,23 @@ export const RoadmapScreen = () => {
       }
     };
   }, []);
+
+  // Close status dropdown when clicking outside
+  useEffect(() => {
+    if (!statusDropdownOpen) return;
+
+    const handleClickOutside = (event: globalThis.MouseEvent) => {
+      const dropdownElement = statusDropdownRefs.current[statusDropdownOpen];
+      if (dropdownElement && !dropdownElement.contains(event.target as Node)) {
+        setStatusDropdownOpen(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [statusDropdownOpen]);
 
   // Resize textarea when description editing starts
   useEffect(() => {
@@ -220,6 +241,7 @@ export const RoadmapScreen = () => {
     if (isReordering) return;
     if ((event.target as HTMLElement).closest("[data-roadmap-edit-control='true']")) return;
     if ((event.target as HTMLElement).closest("[data-roadmap-editable='true']")) return;
+    if ((event.target as HTMLElement).closest("[data-status-dropdown='true']")) return;
     if (activeEdit && activeEdit.itemId === item.id) return;
     if (event.detail > 1) {
       clearPendingToggle();
@@ -550,6 +572,41 @@ export const RoadmapScreen = () => {
     setIsReordering(false);
   };
 
+  const handleStatusClick = (event: MouseEvent<HTMLSpanElement>, itemId: string) => {
+    if (!isEmailAdmin) return;
+    event.stopPropagation();
+    setStatusDropdownOpen((prev) => (prev === itemId ? null : itemId));
+    setStatusUpdateError((prev) => ({ ...prev, [itemId]: null }));
+  };
+
+  const handleStatusSelect = async (item: RoadmapItemWithRelations, newStatus: RoadmapStatus) => {
+    if (!isEmailAdmin) return;
+    if (item.status === newStatus) {
+      setStatusDropdownOpen(null);
+      return;
+    }
+    if (statusUpdateBusy[item.id]) return;
+
+    setStatusUpdateBusy((prev) => ({ ...prev, [item.id]: true }));
+    setStatusUpdateError((prev) => ({ ...prev, [item.id]: null }));
+    try {
+      await updateRoadmapItem(item.id, { status: newStatus });
+      setStatusDropdownOpen(null);
+    } catch (error) {
+      console.error("[roadmap] Failed to update status", error);
+      setStatusUpdateError((prev) => ({
+        ...prev,
+        [item.id]: "Unable to update status. Please try again.",
+      }));
+    } finally {
+      setStatusUpdateBusy((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center bg-white px-6 pb-safe text-sm text-slate-500 dark:bg-slate-900 dark:text-slate-400">
@@ -688,12 +745,62 @@ export const RoadmapScreen = () => {
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div className="flex flex-1 flex-col gap-2">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span
-                              className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.badgeClass}`}
+                            <div
+                              className="relative"
+                              data-status-dropdown="true"
+                              ref={(el) => {
+                                statusDropdownRefs.current[item.id] = el;
+                              }}
                             >
-                              <span className={`h-2 w-2 rounded-full ${statusMeta.dotClass}`} />
-                              {statusMeta.label}
-                            </span>
+                              <span
+                                onClick={(e) => handleStatusClick(e, item.id)}
+                                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition ${
+                                  isEmailAdmin ? "cursor-pointer hover:opacity-80" : ""
+                                } ${statusMeta.badgeClass}`}
+                              >
+                                <span className={`h-2 w-2 rounded-full ${statusMeta.dotClass}`} />
+                                {statusMeta.label}
+                              </span>
+                              {statusDropdownOpen === item.id && isEmailAdmin && (
+                                <div className="absolute left-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                                  <div className="py-1">
+                                    {(Object.keys(STATUS_META) as RoadmapStatus[]).map((status) => {
+                                      const optionMeta = STATUS_META[status];
+                                      const isSelected = item.status === status;
+                                      return (
+                                        <button
+                                          key={status}
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleStatusSelect(item, status);
+                                          }}
+                                          disabled={statusUpdateBusy[item.id]}
+                                          className={`w-full px-3 py-2 text-left text-xs font-semibold transition hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                                            isSelected
+                                              ? `${optionMeta.badgeClass}`
+                                              : "text-slate-700 dark:text-slate-300"
+                                          } ${statusUpdateBusy[item.id] ? "opacity-60 cursor-not-allowed" : ""}`}
+                                        >
+                                          <div className="flex items-center gap-2">
+                                            <span className={`h-2 w-2 rounded-full ${optionMeta.dotClass}`} />
+                                            <span>{optionMeta.label}</span>
+                                            {statusUpdateBusy[item.id] && isSelected && (
+                                              <span className="ml-auto text-xs">Updating…</span>
+                                            )}
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  {statusUpdateError[item.id] && (
+                                    <div className="border-t border-slate-200 px-3 py-2 dark:border-slate-700">
+                                      <p className="text-xs text-rose-500">{statusUpdateError[item.id]}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </div>
                           {titleEditing ? (
                             <div data-roadmap-edit-control="true" className="max-w-xl">
