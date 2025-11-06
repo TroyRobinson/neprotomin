@@ -21,23 +21,28 @@ const STATUS_META: Record<
 > = {
   suggested: {
     label: "Suggested",
-    badgeClass: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
+    badgeClass: "bg-slate-100 text-slate-600 dark:bg-slate-800/80 dark:text-slate-300",
     dotClass: "bg-slate-400 dark:bg-slate-500",
   },
   considering: {
     label: "Evaluating",
-    badgeClass: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-200",
-    dotClass: "bg-indigo-500 dark:bg-indigo-300",
+    badgeClass: "bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-200",
+    dotClass: "bg-amber-500 dark:bg-amber-300",
   },
   inProcess: {
     label: "In Progress",
-    badgeClass: "bg-green-100 text-green-700 dark:bg-green-900/60 dark:text-green-200",
-    dotClass: "bg-green-500 dark:bg-green-300",
+    badgeClass: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-200",
+    dotClass: "bg-indigo-500 dark:bg-indigo-300",
   },
   postponed: {
     label: "Postponed",
-    badgeClass: "bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-200",
-    dotClass: "bg-amber-500 dark:bg-amber-300",
+    badgeClass: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+    dotClass: "bg-gray-400 dark:bg-gray-500",
+  },
+  completed: {
+    label: "Completed",
+    badgeClass: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200",
+    dotClass: "bg-emerald-500 dark:bg-emerald-300",
   },
 };
 
@@ -162,6 +167,7 @@ export const RoadmapScreen = () => {
   const [statusDropdownOpen, setStatusDropdownOpen] = useState<string | null>(null);
   const [statusUpdateBusy, setStatusUpdateBusy] = useState<Record<string, boolean>>({});
   const [statusUpdateError, setStatusUpdateError] = useState<Record<string, string | null>>({});
+  const [statusDropdownPosition, setStatusDropdownPosition] = useState<Record<string, "above" | "below">>({});
   const statusDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const sortedItems = useMemo(() => sortItems(items, sortBy), [items, sortBy]);
@@ -575,8 +581,31 @@ export const RoadmapScreen = () => {
   const handleStatusClick = (event: MouseEvent<HTMLSpanElement>, itemId: string) => {
     if (!isEmailAdmin) return;
     event.stopPropagation();
+    const wasOpen = statusDropdownOpen === itemId;
     setStatusDropdownOpen((prev) => (prev === itemId ? null : itemId));
     setStatusUpdateError((prev) => ({ ...prev, [itemId]: null }));
+    
+    // Calculate position after opening
+    if (!wasOpen) {
+      requestAnimationFrame(() => {
+        const dropdownContainer = statusDropdownRefs.current[itemId];
+        if (!dropdownContainer) return;
+        
+        const rect = dropdownContainer.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const spaceBelow = viewportHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        const estimatedDropdownHeight = 220; // Approximate height for 5 options + padding
+        
+        // Position above if not enough space below, but enough space above
+        // Default to below if there's reasonable space, or if above doesn't have enough space
+        if (spaceBelow < estimatedDropdownHeight && spaceAbove >= estimatedDropdownHeight) {
+          setStatusDropdownPosition((prev) => ({ ...prev, [itemId]: "above" }));
+        } else {
+          setStatusDropdownPosition((prev) => ({ ...prev, [itemId]: "below" }));
+        }
+      });
+    }
   };
 
   const handleStatusSelect = async (item: RoadmapItemWithRelations, newStatus: RoadmapStatus) => {
@@ -722,7 +751,7 @@ export const RoadmapScreen = () => {
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, item)}
                     onDragEnd={handleDragEnd}
-                    className={`relative flex h-full w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-500 ease-out hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 ${
+                    className={`relative flex h-full w-full flex-col overflow-visible rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-500 ease-out hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 ${
                       isDragging ? "opacity-50 cursor-grabbing" : ""
                     } ${isDragOver ? "border-brand-400 ring-2 ring-brand-200 dark:border-brand-400 dark:ring-brand-500/40" : ""} ${
                       canDrag && !isDragging && !isItemBeingEdited ? "cursor-grab" : ""
@@ -762,7 +791,14 @@ export const RoadmapScreen = () => {
                                 {statusMeta.label}
                               </span>
                               {statusDropdownOpen === item.id && isEmailAdmin && (
-                                <div className="absolute left-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                                <div
+                                  className={`absolute left-0 min-w-[160px] rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900 ${
+                                    statusDropdownPosition[item.id] === "above"
+                                      ? "bottom-full mb-1"
+                                      : "top-full mt-1"
+                                  }`}
+                                  style={{ zIndex: 9999 }}
+                                >
                                   <div className="py-1">
                                     {(Object.keys(STATUS_META) as RoadmapStatus[]).map((status) => {
                                       const optionMeta = STATUS_META[status];

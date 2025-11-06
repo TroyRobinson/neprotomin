@@ -13,7 +13,8 @@ const isRoadmapStatus = (value: unknown): value is RoadmapStatus => {
     value === "suggested" ||
     value === "considering" ||
     value === "inProcess" ||
-    value === "postponed"
+    value === "postponed" ||
+    value === "completed"
   );
 };
 

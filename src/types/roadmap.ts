@@ -1,4 +1,4 @@
-export type RoadmapStatus = "suggested" | "considering" | "inProcess" | "postponed";
+export type RoadmapStatus = "suggested" | "considering" | "inProcess" | "postponed" | "completed";
 
 export interface RoadmapItem {
   id: string;
