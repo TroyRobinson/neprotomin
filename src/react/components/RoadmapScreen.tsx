@@ -1040,7 +1040,7 @@ export const RoadmapScreen = () => {
                                 [item.id]: event.target.value,
                               }))
                             }
-                            placeholder="How would this help Tulsa neighbors?"
+                            placeholder="How would this help Oklahoma neighbors?"
                             className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-brand-300 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-brand-400 dark:focus:ring-brand-500/40"
                           />
                           {(commentError[item.id] || itemDeleteError[item.id]) && (
