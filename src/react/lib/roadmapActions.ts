@@ -95,6 +95,7 @@ export const updateRoadmapItem = async (
     status: RoadmapStatus;
     targetCompletionAt: number | null;
     imageUrl: string | null;
+    order: number | null;
   }>,
 ): Promise<void> => {
   if (!itemId) {
@@ -120,8 +121,37 @@ export const updateRoadmapItem = async (
   if (patch.imageUrl !== undefined) {
     payload.imageUrl = patch.imageUrl;
   }
+  if (patch.order !== undefined) {
+    payload.order = patch.order;
+  }
   if (Object.keys(payload).length === 0) return;
   await db.transact(db.tx.roadmapItems[itemId].update(payload));
+};
+
+export const updateRoadmapItemOrder = async (
+  itemId: string,
+  order: number | null,
+): Promise<void> => {
+  if (!itemId) {
+    throw new Error("Missing roadmap item id.");
+  }
+  await db.transact(
+    db.tx.roadmapItems[itemId].update({
+      order: order ?? null,
+    }),
+  );
+};
+
+export const updateRoadmapItemsOrder = async (
+  updates: Array<{ itemId: string; order: number | null }>,
+): Promise<void> => {
+  if (!updates || updates.length === 0) {
+    return;
+  }
+  const txs = updates.map(({ itemId, order }) =>
+    db.tx.roadmapItems[itemId].update({ order: order ?? null }),
+  );
+  await db.transact(txs);
 };
 
 export const deleteRoadmapItem = async (itemId: string): Promise<void> => {

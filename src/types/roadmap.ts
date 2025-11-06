@@ -10,6 +10,7 @@ export interface RoadmapItem {
   targetCompletionAt?: number | null;
   imageUrl?: string | null;
   createdBy?: string | null;
+  order?: number | null;
 }
 
 export interface RoadmapVote {

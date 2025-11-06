@@ -10,6 +10,7 @@ import {
   createRoadmapItem,
   updateRoadmapItem,
   deleteRoadmapItem,
+  updateRoadmapItemsOrder,
 } from "../lib/roadmapActions";
 import { db } from "../../lib/reactDb";
 import { isAdminEmail } from "../../lib/admin";
@@ -69,6 +70,71 @@ const buildTimelineLabel = (item: RoadmapItemWithRelations): string => {
 type EditableField = "title" | "description";
 const buildEditKey = (itemId: string, field: EditableField) => `${itemId}:${field}`;
 
+type SortOption = "custom" | "updated" | "created" | "votes" | "comments" | "oldest";
+
+const SORT_OPTIONS: Array<{ value: SortOption; label: string }> = [
+  { value: "custom", label: "Priority  order" },
+  { value: "updated", label: "Most recently updated" },
+  { value: "created", label: "Most recently created" },
+  { value: "votes", label: "Most votes" },
+  { value: "comments", label: "Most comments" },
+  { value: "oldest", label: "Oldest first" },
+];
+
+const sortItems = (items: RoadmapItemWithRelations[], sortBy: SortOption): RoadmapItemWithRelations[] => {
+  const sorted = items.slice();
+  
+  switch (sortBy) {
+    case "custom": {
+      sorted.sort((a, b) => {
+        const aOrder = a.order ?? Infinity;
+        const bOrder = b.order ?? Infinity;
+        if (aOrder !== bOrder) {
+          return aOrder - bOrder;
+        }
+        return b.createdAt - a.createdAt;
+      });
+      break;
+    }
+    case "updated": {
+      sorted.sort((a, b) => {
+        const aTime = a.statusChangedAt ?? a.createdAt;
+        const bTime = b.statusChangedAt ?? b.createdAt;
+        return bTime - aTime;
+      });
+      break;
+    }
+    case "created": {
+      sorted.sort((a, b) => b.createdAt - a.createdAt);
+      break;
+    }
+    case "votes": {
+      sorted.sort((a, b) => {
+        if (b.voteCount !== a.voteCount) {
+          return b.voteCount - a.voteCount;
+        }
+        return b.createdAt - a.createdAt;
+      });
+      break;
+    }
+    case "comments": {
+      sorted.sort((a, b) => {
+        if (b.comments.length !== a.comments.length) {
+          return b.comments.length - a.comments.length;
+        }
+        return b.createdAt - a.createdAt;
+      });
+      break;
+    }
+    case "oldest": {
+      sorted.sort((a, b) => a.createdAt - b.createdAt);
+      break;
+    }
+  }
+  
+  return sorted;
+};
+
 export const RoadmapScreen = () => {
   const { items, isLoading, error, viewerId } = useRoadmapItems();
   const { user } = db.useAuth();
@@ -86,8 +152,12 @@ export const RoadmapScreen = () => {
   const toggleTimerRef = useRef<number | null>(null);
   const [itemDeleteBusy, setItemDeleteBusy] = useState<Record<string, boolean>>({});
   const [itemDeleteError, setItemDeleteError] = useState<Record<string, string | null>>({});
+  const [sortBy, setSortBy] = useState<SortOption>("custom");
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
+  const [isReordering, setIsReordering] = useState(false);
 
-  const sortedItems = useMemo(() => items.slice().sort((a, b) => b.createdAt - a.createdAt), [items]);
+  const sortedItems = useMemo(() => sortItems(items, sortBy), [items, sortBy]);
   const isAdmin = useMemo(() => {
     if (!user || user.isGuest) return false;
     return isAdminEmail(user.email ?? null);
@@ -127,6 +197,7 @@ export const RoadmapScreen = () => {
   };
 
   const handleCardClick = (event: MouseEvent<HTMLDivElement>, item: RoadmapItemWithRelations) => {
+    if (isReordering) return;
     if ((event.target as HTMLElement).closest("[data-roadmap-edit-control='true']")) return;
     if ((event.target as HTMLElement).closest("[data-roadmap-editable='true']")) return;
     if (activeEdit && activeEdit.itemId === item.id) return;
@@ -368,6 +439,72 @@ export const RoadmapScreen = () => {
     }
   };
 
+  const handleDragStart = (event: React.DragEvent, item: RoadmapItemWithRelations) => {
+    if (!isAdmin || sortBy !== "custom") return;
+    if (activeEdit && activeEdit.itemId === item.id) {
+      event.preventDefault();
+      return;
+    }
+    setDraggedItemId(item.id);
+    setIsReordering(true);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/html", item.id);
+  };
+
+  const handleDragOver = (event: React.DragEvent, item: RoadmapItemWithRelations) => {
+    if (!isAdmin || sortBy !== "custom" || !draggedItemId || draggedItemId === item.id) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragOverItemId(item.id);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverItemId(null);
+  };
+
+  const handleDrop = async (event: React.DragEvent, targetItem: RoadmapItemWithRelations) => {
+    if (!isAdmin || sortBy !== "custom" || !draggedItemId || draggedItemId === targetItem.id) {
+      return;
+    }
+    event.preventDefault();
+    setDragOverItemId(null);
+    setIsReordering(false);
+
+    const draggedIndex = sortedItems.findIndex((item) => item.id === draggedItemId);
+    const targetIndex = sortedItems.findIndex((item) => item.id === targetItem.id);
+
+    if (draggedIndex === -1 || targetIndex === -1) {
+      setDraggedItemId(null);
+      return;
+    }
+
+    const newOrder = [...sortedItems];
+    const [draggedItem] = newOrder.splice(draggedIndex, 1);
+    newOrder.splice(targetIndex, 0, draggedItem);
+
+    const updates = newOrder.map((item, index) => ({
+      itemId: item.id,
+      order: index + 1,
+    }));
+
+    try {
+      await updateRoadmapItemsOrder(updates);
+    } catch (error) {
+      console.error("[roadmap] Failed to update item order", error);
+      alert("Unable to save new order. Please try again.");
+    } finally {
+      setDraggedItemId(null);
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDraggedItemId(null);
+    setDragOverItemId(null);
+    setIsReordering(false);
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center bg-white px-6 pb-safe text-sm text-slate-500 dark:bg-slate-900 dark:text-slate-400">
@@ -394,16 +531,45 @@ export const RoadmapScreen = () => {
               Track what we're exploring and actively building.
             </p>
           </div>
-          {viewerId ? (
-            <button
-              type="button"
-              onClick={handleCreateItem}
-              disabled={createBusy}
-              className="inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {createBusy ? "Creating…" : "New"}
-            </button>
-          ) : null}
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                className="appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-8 text-sm font-medium text-slate-700 outline-none transition focus:border-brand-300 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-brand-400 dark:focus:ring-brand-500/40"
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                <svg
+                  className="h-4 w-4 text-slate-400 dark:text-slate-500"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+            </div>
+            {viewerId ? (
+              <button
+                type="button"
+                onClick={handleCreateItem}
+                disabled={createBusy}
+                className="inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {createBusy ? "Creating…" : "New"}
+              </button>
+            ) : null}
+          </div>
         </header>
 
         {sortedItems.length === 0 ? (
@@ -433,9 +599,26 @@ export const RoadmapScreen = () => {
               const titleError = editError[titleKey];
               const descriptionError = editError[descriptionKey];
 
+              const isDragging = draggedItemId === item.id;
+              const isDragOver = dragOverItemId === item.id;
+              const canDrag = isAdmin && sortBy === "custom";
+              const isItemBeingEdited = activeEdit?.itemId === item.id;
+
               return (
                 <li key={item.id}>
-                  <article className="relative rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700">
+                  <article
+                    draggable={canDrag && !isDragging && !isItemBeingEdited}
+                    onDragStart={(e) => handleDragStart(e, item)}
+                    onDragOver={(e) => handleDragOver(e, item)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, item)}
+                    onDragEnd={handleDragEnd}
+                    className={`relative rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 ${
+                      isDragging ? "opacity-50 cursor-grabbing" : ""
+                    } ${isDragOver ? "border-brand-400 ring-2 ring-brand-200 dark:border-brand-400 dark:ring-brand-500/40" : ""} ${
+                      canDrag && !isDragging && !isItemBeingEdited ? "cursor-grab" : ""
+                    }`}
+                  >
                     <div
                       role="button"
                       tabIndex={0}

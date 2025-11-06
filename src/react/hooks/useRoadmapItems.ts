@@ -122,6 +122,7 @@ export const useRoadmapItems = () => {
       const createdAt = normalizeTimestamp((row as any).createdAt) ?? 0;
       const statusChangedAt = normalizeTimestamp((row as any).statusChangedAt);
       const targetCompletionAt = normalizeTimestamp((row as any).targetCompletionAt);
+      const order = normalizeTimestamp((row as any).order);
       const imageUrl =
         typeof (row as any).imageUrl === "string" ? ((row as any).imageUrl as string) : null;
       const description =
@@ -142,6 +143,7 @@ export const useRoadmapItems = () => {
         targetCompletionAt,
         imageUrl,
         createdBy,
+        order,
         votes,
         comments,
         viewerHasVoted,
