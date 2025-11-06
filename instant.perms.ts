@@ -112,6 +112,33 @@ const rules = {
     },
     bind: ["isAdmin", adminCondition],
   },
+  roadmapItems: {
+    allow: {
+      view: "true",
+      create: "isAdmin",
+      update: "isAdmin",
+      delete: "isAdmin",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
+  roadmapItemVotes: {
+    allow: {
+      view: "true",
+      create: "auth.id != null",
+      update: "false",
+      delete: "isAdmin || (auth.id != null && data.voterId == auth.id)",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
+  roadmapItemComments: {
+    allow: {
+      view: "true",
+      create: "auth.id != null",
+      update: "auth.id != null && data.authorId == auth.id",
+      delete: "isAdmin || (auth.id != null && data.authorId == auth.id)",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
   $files: {
     allow: {
       view: "true",

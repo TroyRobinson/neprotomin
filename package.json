@@ -47,6 +47,7 @@
     "census:load:dry": "tsx scripts/census/load.ts --dry=1",
     "admin:reset": "tsx scripts/admin/resetData.ts",
     "admin:update-org-zips": "tsx scripts/admin/updateOrgPostalCodes.ts",
+    "roadmap:seed": "tsx scripts/roadmap/seedRoadmap.ts",
     "data:download": "node scripts/data/download-data.js"
   },
   "devDependencies": {

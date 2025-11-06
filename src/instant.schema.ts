@@ -66,6 +66,28 @@ const _schema = i.schema({
         }>()
         .optional(),
     }),
+    roadmapItems: i.entity({
+      title: i.string().indexed(),
+      description: i.string().optional(),
+      status: i.string().indexed(),
+      createdAt: i.number().indexed(),
+      statusChangedAt: i.number().indexed().optional(),
+      targetCompletionAt: i.number().indexed().optional(),
+      imageUrl: i.string().optional(),
+    }),
+    roadmapItemVotes: i.entity({
+      roadmapItemId: i.string().indexed(),
+      voterId: i.string().indexed(),
+      createdAt: i.number().indexed(),
+    }),
+    roadmapItemComments: i.entity({
+      roadmapItemId: i.string().indexed(),
+      authorId: i.string().indexed(),
+      authorName: i.string().optional(),
+      body: i.string(),
+      createdAt: i.number().indexed(),
+      updatedAt: i.number().indexed().optional(),
+    }),
     areas: i.entity({
       code: i.string().unique().indexed(), // e.g., ZIP / county FIPS
       kind: i.string().indexed(), // matches AreaKind
@@ -126,7 +148,16 @@ const _schema = i.schema({
       updatedAt: i.number().indexed(),
     }),
   },
-  links: {},
+  links: {
+    roadmapItemVotesByItem: {
+      forward: { on: "roadmapItemVotes", has: "one", label: "item" },
+      reverse: { on: "roadmapItems", has: "many", label: "votes" },
+    },
+    roadmapItemCommentsByItem: {
+      forward: { on: "roadmapItemComments", has: "one", label: "item" },
+      reverse: { on: "roadmapItems", has: "many", label: "comments" },
+    },
+  },
   rooms: {},
 });
 

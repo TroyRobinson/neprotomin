@@ -34,6 +34,7 @@ import { useAuthSession } from "./hooks/useAuthSession";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
+const RoadmapScreen = lazy(() => import("./components/RoadmapScreen").then((m) => ({ default: m.default })));
 const AddOrganizationScreen = lazy(() =>
   import("./components/AddOrganizationScreen").then((m) => ({ default: m.AddOrganizationScreen })),
 );
@@ -144,7 +145,7 @@ export const ReactMapApp = () => {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [hasAppliedDefaultStat, setHasAppliedDefaultStat] = useState(false);
   const [hasSyncedDefaultCategory, setHasSyncedDefaultCategory] = useState(false);
-  const [activeScreen, setActiveScreen] = useState<"map" | "report" | "data" | "queue" | "addOrg">("map");
+  const [activeScreen, setActiveScreen] = useState<"map" | "report" | "roadmap" | "data" | "queue" | "addOrg">("map");
   const [authOpen, setAuthOpen] = useState(false);
   const [cameraState, setCameraState] = useState<{ center: [number, number]; zoom: number } | null>(null);
   const [hasInteractedWithMap, setHasInteractedWithMap] = useState(false);
@@ -2308,7 +2309,7 @@ export const ReactMapApp = () => {
   const mobileOrganizationsCount = visibleCount;
 
   const handleTopBarNavigate = useCallback(
-    (screen: "map" | "report" | "data" | "queue") => {
+    (screen: "map" | "report" | "roadmap" | "data" | "queue") => {
       if (screen === "queue" && !isAdmin) {
         setActiveScreen("map");
         return;
@@ -2430,6 +2431,8 @@ export const ReactMapApp = () => {
         active={
           activeScreen === "report"
             ? "report"
+            : activeScreen === "roadmap"
+            ? "roadmap"
             : activeScreen === "data"
             ? "data"
             : activeScreen === "queue"
@@ -2714,6 +2717,18 @@ export const ReactMapApp = () => {
               </div>
             </div>
           </div>
+        )}
+      </div>
+      {/* Roadmap overlay */}
+      <div
+        aria-hidden={activeScreen !== "roadmap"}
+        style={{ visibility: activeScreen === "roadmap" ? "visible" : "hidden", top: topBarHeight }}
+        className="absolute left-0 right-0 bottom-0 z-30"
+      >
+        {activeScreen === "roadmap" && (
+          <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-slate-500">Loading roadmap…</div>}>
+            <RoadmapScreen />
+          </Suspense>
         )}
       </div>
       {/* Report overlay (hidden via aria/visibility to ensure map stays laid out) */}
