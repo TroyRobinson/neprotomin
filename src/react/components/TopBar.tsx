@@ -463,6 +463,19 @@ export const TopBar = ({
                     ) : null}
                   </a>
                 )}
+                {showRoadmapLink && (
+                  <button
+                    type="button"
+                    onClick={() => handleNavigate("roadmap")}
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 transition hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white whitespace-nowrap ${
+                      active === "roadmap"
+                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                        : ""
+                    }`}
+                  >
+                    Roadmap
+                  </button>
+                )}
                 <a
                   href="https://www.neighborhoodexplorer.org/statistics/"
                   target="_blank"
@@ -508,19 +521,6 @@ export const TopBar = ({
                 >
                   About
                 </a>
-                {showRoadmapLink && (
-                  <button
-                    type="button"
-                    onClick={() => handleNavigate("roadmap")}
-                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 transition hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white whitespace-nowrap ${
-                      active === "roadmap"
-                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                        : ""
-                    }`}
-                  >
-                    Roadmap
-                  </button>
-                )}
                 <a
                   href={`https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=${neHomeRedirectDisabled ? "1" : "0"}`}
                   onClick={(e) => {
@@ -774,16 +774,6 @@ export const TopBar = ({
               >
                 Food Map
               </button>
-              {showRoadmapLink && (
-                <button
-                  type="button"
-                  onClick={() => handleNavigate("roadmap")}
-                  className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 whitespace-nowrap ${active === "roadmap" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
-                  aria-current={active === "roadmap" ? "page" : undefined}
-                >
-                  Roadmap
-                </button>
-              )}
               {ENABLE_REPORT_MENU && (
                 <button
                   type="button"
@@ -817,6 +807,16 @@ export const TopBar = ({
                       {queueBadgeLabel}
                     </span>
                   ) : null}
+                </button>
+              )}
+              {showRoadmapLink && (
+                <button
+                  type="button"
+                  onClick={() => handleNavigate("roadmap")}
+                  className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 whitespace-nowrap ${active === "roadmap" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
+                  aria-current={active === "roadmap" ? "page" : undefined}
+                >
+                  Roadmap
                 </button>
               )}
               <a
