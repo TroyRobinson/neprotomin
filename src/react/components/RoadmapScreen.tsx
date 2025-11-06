@@ -106,8 +106,6 @@ export const RoadmapScreen = () => {
         title: "New roadmap item",
         createdBy: viewerId,
       });
-      setExpandedId(newId);
-      setActiveEdit({ itemId: newId, field: "title", value: "New roadmap item" });
     } catch (err) {
       console.error("[roadmap] Failed to create item", err);
       alert("Sorry, we couldn't create that roadmap item. Please try again.");
@@ -326,7 +324,7 @@ export const RoadmapScreen = () => {
               disabled={createBusy}
               className="inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {createBusy ? "Creating…" : "+ New"}
+              {createBusy ? "Creating…" : "New"}
             </button>
           ) : null}
         </header>
@@ -365,6 +363,12 @@ export const RoadmapScreen = () => {
                       onClick={(event) => {
                         if (
                           (event.target as HTMLElement).closest("[data-roadmap-edit-control='true']")
+                        ) {
+                          return;
+                        }
+                        // Prevent toggling when clicking on editable title/description elements
+                        if (
+                          (event.target as HTMLElement).closest("[data-roadmap-editable='true']")
                         ) {
                           return;
                         }
@@ -410,6 +414,7 @@ export const RoadmapScreen = () => {
                             </div>
                           ) : (
                             <h2
+                              data-roadmap-editable={canEditItem ? "true" : undefined}
                               className={`text-lg font-semibold text-slate-900 dark:text-white sm:text-xl ${
                                 canEditItem ? "cursor-text" : ""
                               }`}
@@ -443,6 +448,7 @@ export const RoadmapScreen = () => {
                             </div>
                           ) : item.description ? (
                             <p
+                              data-roadmap-editable={canEditItem ? "true" : undefined}
                               className={`text-sm text-slate-600 dark:text-slate-300 ${
                                 canEditItem ? "cursor-text" : ""
                               }`}
@@ -457,6 +463,7 @@ export const RoadmapScreen = () => {
                             </p>
                           ) : canEditItem ? (
                             <p
+                              data-roadmap-editable="true"
                               className="text-sm italic text-slate-400 dark:text-slate-500"
                               onDoubleClick={(event) => {
                                 event.preventDefault();
