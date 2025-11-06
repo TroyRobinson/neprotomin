@@ -124,3 +124,44 @@ export const updateRoadmapItem = async (
   await db.transact(db.tx.roadmapItems[itemId].update(payload));
 };
 
+export const deleteRoadmapItem = async (itemId: string): Promise<void> => {
+  if (!itemId) {
+    throw new Error("Missing roadmap item id.");
+  }
+
+  const { data } = await db.queryOnce({
+    roadmapItemVotes: {
+      $: {
+        where: { roadmapItemId: itemId },
+        fields: ["id"],
+      },
+    },
+    roadmapItemComments: {
+      $: {
+        where: { roadmapItemId: itemId },
+        fields: ["id"],
+      },
+    },
+  });
+
+  const txs: any[] = [];
+  const voteRows = Array.isArray(data?.roadmapItemVotes) ? (data!.roadmapItemVotes as any[]) : [];
+  for (const vote of voteRows) {
+    if (vote?.id) {
+      txs.push(db.tx.roadmapItemVotes[vote.id as string].delete());
+    }
+  }
+
+  const commentRows = Array.isArray(data?.roadmapItemComments)
+    ? (data!.roadmapItemComments as any[])
+    : [];
+  for (const comment of commentRows) {
+    if (comment?.id) {
+      txs.push(db.tx.roadmapItemComments[comment.id as string].delete());
+    }
+  }
+
+  txs.push(db.tx.roadmapItems[itemId].delete());
+  await db.transact(txs);
+};
+

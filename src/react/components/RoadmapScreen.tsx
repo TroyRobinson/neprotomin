@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import type { KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent, MouseEvent } from "react";
 import { useRoadmapItems } from "../hooks/useRoadmapItems";
 import type { RoadmapItemWithRelations, RoadmapStatus, RoadmapComment } from "../../types/roadmap";
 import {
@@ -9,6 +9,7 @@ import {
   removeRoadmapComment,
   createRoadmapItem,
   updateRoadmapItem,
+  deleteRoadmapItem,
 } from "../lib/roadmapActions";
 import { db } from "../../lib/reactDb";
 import { isAdminEmail } from "../../lib/admin";
@@ -81,6 +82,9 @@ export const RoadmapScreen = () => {
   const [activeEdit, setActiveEdit] = useState<{ itemId: string; field: EditableField; value: string } | null>(null);
   const [editBusy, setEditBusy] = useState<Record<string, boolean>>({});
   const [editError, setEditError] = useState<Record<string, string | null>>({});
+  const toggleTimerRef = useRef<number | null>(null);
+  const [itemDeleteBusy, setItemDeleteBusy] = useState<Record<string, boolean>>({});
+  const [itemDeleteError, setItemDeleteError] = useState<Record<string, string | null>>({});
 
   const sortedItems = useMemo(() => items.slice().sort((a, b) => b.createdAt - a.createdAt), [items]);
   const isAdmin = useMemo(() => {
@@ -88,10 +92,48 @@ export const RoadmapScreen = () => {
     return isAdminEmail(user.email ?? null);
   }, [user]);
 
+  useEffect(() => {
+    return () => {
+      if (toggleTimerRef.current !== null) {
+        window.clearTimeout(toggleTimerRef.current);
+        toggleTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const clearPendingToggle = () => {
+    if (toggleTimerRef.current !== null) {
+      window.clearTimeout(toggleTimerRef.current);
+      toggleTimerRef.current = null;
+    }
+  };
+
   const handleToggleExpand = (itemId: string) => {
+    clearPendingToggle();
     setExpandedId((prev) => (prev === itemId ? null : itemId));
     setCommentError((prev) => ({ ...prev, [itemId]: null }));
     setActiveEdit((prev) => (prev?.itemId === itemId ? null : prev));
+  };
+
+  const scheduleToggle = (itemId: string) => {
+    clearPendingToggle();
+    toggleTimerRef.current = window.setTimeout(() => {
+      toggleTimerRef.current = null;
+      setExpandedId((prev) => (prev === itemId ? null : itemId));
+      setCommentError((prev) => ({ ...prev, [itemId]: null }));
+      setActiveEdit((prev) => (prev?.itemId === itemId ? null : prev));
+    }, 160);
+  };
+
+  const handleCardClick = (event: MouseEvent<HTMLDivElement>, item: RoadmapItemWithRelations) => {
+    if ((event.target as HTMLElement).closest("[data-roadmap-edit-control='true']")) return;
+    if ((event.target as HTMLElement).closest("[data-roadmap-editable='true']")) return;
+    if (activeEdit && activeEdit.itemId === item.id) return;
+    if (event.detail > 1) {
+      clearPendingToggle();
+      return;
+    }
+    scheduleToggle(item.id);
   };
 
   const handleCreateItem = async () => {
@@ -106,6 +148,9 @@ export const RoadmapScreen = () => {
         title: "New roadmap item",
         createdBy: viewerId,
       });
+      clearPendingToggle();
+      setExpandedId(newId);
+      setActiveEdit({ itemId: newId, field: "title", value: "New roadmap item" });
     } catch (err) {
       console.error("[roadmap] Failed to create item", err);
       alert("Sorry, we couldn't create that roadmap item. Please try again.");
@@ -117,6 +162,7 @@ export const RoadmapScreen = () => {
   const handleStartEdit = (item: RoadmapItemWithRelations, field: EditableField) => {
     const canEdit = isAdmin || (!!viewerId && item.createdBy && item.createdBy === viewerId);
     if (!canEdit) return;
+    clearPendingToggle();
     const currentValue = field === "title" ? item.title ?? "" : item.description ?? "";
     setActiveEdit({ itemId: item.id, field, value: currentValue });
     setEditError((prev) => ({ ...prev, [buildEditKey(item.id, field)]: null }));
@@ -290,6 +336,38 @@ export const RoadmapScreen = () => {
     }
   };
 
+  const handleDeleteItem = async (item: RoadmapItemWithRelations) => {
+    const canDelete = isAdmin || (!!viewerId && item.createdBy && item.createdBy === viewerId);
+    if (!canDelete) {
+      alert("Only the creator or an admin can delete this roadmap item.");
+      return;
+    }
+    if (itemDeleteBusy[item.id]) return;
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm("Delete this roadmap item and all associated feedback?");
+      if (!confirmed) return;
+    }
+    clearPendingToggle();
+    setItemDeleteBusy((prev) => ({ ...prev, [item.id]: true }));
+    setItemDeleteError((prev) => ({ ...prev, [item.id]: null }));
+    try {
+      await deleteRoadmapItem(item.id);
+      setExpandedId((prev) => (prev === item.id ? null : prev));
+    } catch (error) {
+      console.error("[roadmap] Failed to delete roadmap item", error);
+      setItemDeleteError((prev) => ({
+        ...prev,
+        [item.id]: "Unable to delete item right now. Please try again.",
+      }));
+    } finally {
+      setItemDeleteBusy((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center bg-white px-6 pb-safe text-sm text-slate-500 dark:bg-slate-900 dark:text-slate-400">
@@ -324,7 +402,7 @@ export const RoadmapScreen = () => {
               disabled={createBusy}
               className="inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {createBusy ? "Creating…" : "New"}
+              {createBusy ? "Creating…" : "+ New"}
             </button>
           ) : null}
         </header>
@@ -343,6 +421,7 @@ export const RoadmapScreen = () => {
 
               const canEditItem =
                 isAdmin || (!!viewerId && item.createdBy && item.createdBy === viewerId);
+              const canDeleteItem = canEditItem;
               const titleKey = buildEditKey(item.id, "title");
               const descriptionKey = buildEditKey(item.id, "description");
               const titleEditing =
@@ -360,20 +439,7 @@ export const RoadmapScreen = () => {
                     <div
                       role="button"
                       tabIndex={0}
-                      onClick={(event) => {
-                        if (
-                          (event.target as HTMLElement).closest("[data-roadmap-edit-control='true']")
-                        ) {
-                          return;
-                        }
-                        // Prevent toggling when clicking on editable title/description elements
-                        if (
-                          (event.target as HTMLElement).closest("[data-roadmap-editable='true']")
-                        ) {
-                          return;
-                        }
-                        handleToggleExpand(item.id);
-                      }}
+                      onClick={(event) => handleCardClick(event, item)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           if (activeEdit && activeEdit.itemId === item.id) return;
@@ -609,6 +675,26 @@ export const RoadmapScreen = () => {
                             </button>
                           </div>
                         </section>
+
+                        {canDeleteItem && (
+                          <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:gap-4">
+                            {itemDeleteError[item.id] ? (
+                              <p className="text-xs text-rose-500">{itemDeleteError[item.id]}</p>
+                            ) : (
+                              <p className="text-xs text-slate-400 dark:text-slate-500">
+                                Removing this item will also delete its votes and comments.
+                              </p>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteItem(item)}
+                              disabled={itemDeleteBusy[item.id]}
+                              className="inline-flex w-fit items-center gap-2 rounded-full border border-rose-400 px-3 py-1.5 text-xs font-semibold text-rose-500 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500 dark:text-rose-300 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
+                            >
+                              {itemDeleteBusy[item.id] ? "Deleting…" : "Delete roadmap item"}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </article>
