@@ -16,31 +16,27 @@ import { isAdminEmail } from "../../lib/admin";
 
 const STATUS_META: Record<
   RoadmapStatus,
-  { label: string; badgeClass: string; dotClass: string; description: string }
+  { label: string; badgeClass: string; dotClass: string }
 > = {
   suggested: {
     label: "Suggested",
     badgeClass: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
     dotClass: "bg-slate-400 dark:bg-slate-500",
-    description: "Ideas surfaced by residents, partners, and the team.",
   },
   considering: {
     label: "Evaluating",
     badgeClass: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-200",
     dotClass: "bg-indigo-500 dark:bg-indigo-300",
-    description: "We’re sizing effort, exploring dependencies, and collecting feedback.",
   },
   inProcess: {
     label: "In Progress",
     badgeClass: "bg-green-100 text-green-700 dark:bg-green-900/60 dark:text-green-200",
     dotClass: "bg-green-500 dark:bg-green-300",
-    description: "Actively being designed, prototyped, or built.",
   },
   postponed: {
     label: "Postponed",
     badgeClass: "bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-200",
     dotClass: "bg-amber-500 dark:bg-amber-300",
-    description: "Paused for now—waiting on partners, funding, or deeper learnings.",
   },
 };
 
@@ -391,8 +387,7 @@ export const RoadmapScreen = () => {
           <div>
             <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Product Roadmap</h1>
             <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-              Track what we’re exploring, actively building, and learning from. Click a card to see
-              community feedback and share your own.
+              Track what we’re exploring and actively building.
             </p>
           </div>
           {viewerId ? (
@@ -402,7 +397,7 @@ export const RoadmapScreen = () => {
               disabled={createBusy}
               className="inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {createBusy ? "Creating…" : "+ New"}
+              {createBusy ? "Creating…" : "New"}
             </button>
           ) : null}
         </header>
@@ -418,6 +413,7 @@ export const RoadmapScreen = () => {
               const timeline = buildTimelineLabel(item);
               const isExpanded = expandedId === item.id;
               const voteLabel = `${item.voteCount} vote${item.voteCount === 1 ? "" : "s"}`;
+              const commentLabel = `${item.comments.length} Comment${item.comments.length === 1 ? "" : "s"}`;
 
               const canEditItem =
                 isAdmin || (!!viewerId && item.createdBy && item.createdBy === viewerId);
@@ -435,7 +431,7 @@ export const RoadmapScreen = () => {
 
               return (
                 <li key={item.id}>
-                  <article className="rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700">
+                  <article className="relative rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700">
                     <div
                       role="button"
                       tabIndex={0}
@@ -458,9 +454,6 @@ export const RoadmapScreen = () => {
                             >
                               <span className={`h-2 w-2 rounded-full ${statusMeta.dotClass}`} />
                               {statusMeta.label}
-                            </span>
-                            <span className="text-xs text-slate-400 dark:text-slate-500">
-                              {statusMeta.description}
                             </span>
                           </div>
                           {titleEditing ? (
@@ -562,12 +555,21 @@ export const RoadmapScreen = () => {
                             <span className="inline-flex h-2.5 w-2.5 rounded-full bg-current" />
                             {voteLabel}
                           </button>
-                          <span className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                            {isExpanded ? "Hide details" : "View details"}
-                          </span>
                         </div>
                       </div>
                     </div>
+                    {!isExpanded && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleToggleExpand(item.id);
+                        }}
+                        className="absolute bottom-6 right-6 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-brand-400 dark:hover:bg-brand-500/10 dark:hover:text-brand-300"
+                      >
+                        {commentLabel}
+                      </button>
+                    )}
 
                     {isExpanded && (
                       <div className="space-y-6 border-t border-slate-200 px-6 pb-6 pt-5 dark:border-slate-800">
@@ -592,11 +594,7 @@ export const RoadmapScreen = () => {
                             </span>
                           </header>
 
-                          {item.comments.length === 0 ? (
-                            <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-                              Be the first to share why this matters to you or your neighbors.
-                            </p>
-                          ) : (
+                          {item.comments.length > 0 && (
                             <ul className="space-y-3">
                               {item.comments.map((comment) => (
                                 <li
@@ -633,9 +631,6 @@ export const RoadmapScreen = () => {
                         </section>
 
                         <section aria-label="Add comment" className="space-y-2">
-                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                            Share feedback
-                          </label>
                           <textarea
                             rows={3}
                             value={drafts[item.id] ?? ""}
@@ -648,53 +643,47 @@ export const RoadmapScreen = () => {
                             placeholder="How would this help Tulsa neighbors?"
                             className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-brand-300 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-brand-400 dark:focus:ring-brand-500/40"
                           />
-                          {commentError[item.id] ? (
-                            <p className="text-xs text-rose-500">{commentError[item.id]}</p>
-                          ) : null}
-                          <div className="flex items-center justify-end gap-3">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setDrafts((prev) => ({
-                                  ...prev,
-                                  [item.id]: "",
-                                }))
-                              }
-                              className="text-xs font-semibold text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
-                              disabled={commentBusy[item.id]}
-                            >
-                              Clear
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleSubmitComment(item)}
-                              disabled={commentBusy[item.id]}
-                              className="inline-flex items-center justify-center rounded-full bg-brand-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-60"
-                            >
-                              {commentBusy[item.id] ? "Sending…" : "Share comment"}
-                            </button>
+                          {(commentError[item.id] || itemDeleteError[item.id]) && (
+                            <p className="text-xs text-rose-500">
+                              {commentError[item.id] || itemDeleteError[item.id]}
+                            </p>
+                          )}
+                          <div className="flex items-center justify-between gap-3">
+                            {canDeleteItem && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteItem(item)}
+                                disabled={itemDeleteBusy[item.id]}
+                                className="inline-flex items-center gap-2 rounded-full border border-rose-400 px-3 py-1.5 text-xs font-semibold text-rose-500 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500 dark:text-rose-300 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
+                              >
+                                {itemDeleteBusy[item.id] ? "Deleting…" : "Delete roadmap item"}
+                              </button>
+                            )}
+                            <div className="ml-auto flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setDrafts((prev) => ({
+                                    ...prev,
+                                    [item.id]: "",
+                                  }))
+                                }
+                                className="text-xs font-semibold text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+                                disabled={commentBusy[item.id]}
+                              >
+                                Clear
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSubmitComment(item)}
+                                disabled={commentBusy[item.id]}
+                                className="inline-flex items-center justify-center rounded-full bg-brand-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-60"
+                              >
+                                {commentBusy[item.id] ? "Sending…" : "Share comment"}
+                              </button>
+                            </div>
                           </div>
                         </section>
-
-                        {canDeleteItem && (
-                          <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:gap-4">
-                            {itemDeleteError[item.id] ? (
-                              <p className="text-xs text-rose-500">{itemDeleteError[item.id]}</p>
-                            ) : (
-                              <p className="text-xs text-slate-400 dark:text-slate-500">
-                                Removing this item will also delete its votes and comments.
-                              </p>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteItem(item)}
-                              disabled={itemDeleteBusy[item.id]}
-                              className="inline-flex w-fit items-center gap-2 rounded-full border border-rose-400 px-3 py-1.5 text-xs font-semibold text-rose-500 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500 dark:text-rose-300 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
-                            >
-                              {itemDeleteBusy[item.id] ? "Deleting…" : "Delete roadmap item"}
-                            </button>
-                          </div>
-                        )}
                       </div>
                     )}
                   </article>
