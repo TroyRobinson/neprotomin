@@ -62,37 +62,37 @@ const TAG_COLOR_STYLES = [
   {
     key: "rose",
     name: "Rose",
-    chipClass: "bg-rose-50 text-rose-900 dark:bg-rose-900/40 dark:text-rose-100",
+    chipClass: "",
     shapeColorClass: "text-rose-500 dark:text-rose-300",
   },
   {
     key: "amber",
     name: "Amber",
-    chipClass: "bg-amber-50 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100",
+    chipClass: "",
     shapeColorClass: "text-amber-500 dark:text-amber-300",
   },
   {
     key: "emerald",
     name: "Emerald",
-    chipClass: "bg-emerald-50 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-100",
+    chipClass: "",
     shapeColorClass: "text-emerald-500 dark:text-emerald-300",
   },
   {
     key: "sky",
     name: "Sky",
-    chipClass: "bg-sky-50 text-sky-900 dark:bg-sky-900/40 dark:text-sky-100",
+    chipClass: "",
     shapeColorClass: "text-sky-500 dark:text-sky-300",
   },
   {
     key: "indigo",
     name: "Indigo",
-    chipClass: "bg-indigo-50 text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-100",
+    chipClass: "",
     shapeColorClass: "text-indigo-500 dark:text-indigo-300",
   },
   {
     key: "slate",
     name: "Slate",
-    chipClass: "bg-slate-50 text-slate-800 dark:bg-slate-900/40 dark:text-slate-100",
+    chipClass: "",
     shapeColorClass: "text-slate-500 dark:text-slate-300",
   },
 ] as const;
@@ -1325,6 +1325,7 @@ export const RoadmapScreen = () => {
               const hasEffortValue =
                 typeof item.effort === "string" && item.effort.trim().length > 0;
               const effortDisplay = hasEffortValue ? (item.effort as string).trim() : "—";
+              const showEffortSuffix = effortDisplay !== "—";
               const showTagSection = canManageTags || hasTagValues;
               const showEffortSection = canEditEffort || hasEffortValue;
 
@@ -1375,6 +1376,14 @@ export const RoadmapScreen = () => {
                       onClick={(event) => handleCardClick(event, item)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
+                          const target = event.target as HTMLElement;
+                          if (
+                            target.closest("[data-roadmap-edit-control='true']") ||
+                            target.closest("[data-roadmap-editable='true']") ||
+                            target.closest("[data-status-dropdown='true']")
+                          ) {
+                            return;
+                          }
                           if (activeEdit && activeEdit.itemId === item.id) return;
                           event.preventDefault();
                           handleToggleExpand(item.id);
@@ -1485,7 +1494,7 @@ export const RoadmapScreen = () => {
                                     return (
                                       <span
                                         key={`${tagLabel}-${tagIndex}`}
-                                        className={`inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold tracking-wide text-slate-700 dark:border-slate-700 dark:text-slate-100 ${visuals.chipClass}`}
+                                        className="inline-flex items-center gap-1 rounded-full border border-slate-200/70 px-3 py-1 text-xs font-semibold tracking-wide text-slate-700 dark:border-slate-600/60 dark:text-slate-100"
                                       >
                                         <TagShapeIcon shape={visuals.shape} colorClass={visuals.shapeColorClass} />
                                         {tagLabel}
@@ -1563,7 +1572,7 @@ export const RoadmapScreen = () => {
                                                 }`}
                                               >
                                                 <span
-                                                  className={`inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold tracking-wide text-slate-700 dark:border-slate-700 dark:text-slate-100 ${visuals.chipClass}`}
+                                                  className="inline-flex items-center gap-1 rounded-full border border-slate-200/70 px-3 py-1 text-xs font-semibold tracking-wide text-slate-700 dark:border-slate-600/60 dark:text-slate-100"
                                                 >
                                                   <TagShapeIcon
                                                     shape={visuals.shape}
@@ -1772,7 +1781,7 @@ export const RoadmapScreen = () => {
                             {showEffortSection && (
                               <div className="relative" data-roadmap-edit-control="true">
                                 {activeEffortEdit?.itemId === item.id ? (
-                                  <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                                  <div className="flex items-center gap-2 rounded-full border border-slate-200/70 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm dark:border-slate-600/60 dark:bg-slate-900 dark:text-slate-100">
                                     <span className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
                                       Effort
                                     </span>
@@ -1794,7 +1803,7 @@ export const RoadmapScreen = () => {
                                     type="button"
                                     onClick={() => handleStartEffortEdit(item)}
                                     disabled={!canEditEffort}
-                                    className={`inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-wide transition dark:border-slate-700 ${
+                                    className={`inline-flex items-center gap-2 rounded-full border border-slate-200/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide transition dark:border-slate-600/60 ${
                                       canEditEffort
                                         ? "text-slate-600 hover:border-slate-400 hover:text-slate-800 dark:text-slate-200 dark:hover:border-slate-500"
                                         : "cursor-default text-slate-400 dark:text-slate-500"
@@ -1803,6 +1812,9 @@ export const RoadmapScreen = () => {
                                     <span>Effort</span>
                                     <span className="text-xs font-bold text-slate-700 dark:text-slate-100">
                                       {effortDisplay}
+                                      {showEffortSuffix ? (
+                                        <span className="ml-1 font-normal text-slate-400 dark:text-slate-500">HRS</span>
+                                      ) : null}
                                     </span>
                                   </button>
                                 )}
