@@ -781,7 +781,8 @@ export const RoadmapScreen = () => {
 
   const handleStartEffortEdit = (item: RoadmapItemWithRelations) => {
     if (!canEditEffort) return;
-    setActiveEffortEdit({ itemId: item.id, value: typeof item.effort === "number" ? `${item.effort}` : "" });
+    const currentValue = typeof item.effort === "string" ? item.effort : "";
+    setActiveEffortEdit({ itemId: item.id, value: currentValue });
     setEffortError((prev) => ({ ...prev, [item.id]: null }));
     resetTagDropdownState();
   };
@@ -793,19 +794,8 @@ export const RoadmapScreen = () => {
   const handleEffortCommit = async (item: RoadmapItemWithRelations, rawValue: string) => {
     if (!canEditEffort) return;
     const trimmed = rawValue.trim();
-    let nextValue: number | null = null;
-    if (trimmed.length > 0) {
-      const parsed = Number(trimmed);
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        setEffortError((prev) => ({
-          ...prev,
-          [item.id]: "Enter a non-negative number.",
-        }));
-        return;
-      }
-      nextValue = parsed;
-    }
-    const currentValue = typeof item.effort === "number" ? item.effort : null;
+    const nextValue = trimmed.length > 0 ? trimmed : null;
+    const currentValue = typeof item.effort === "string" ? item.effort : null;
     if (currentValue === nextValue) {
       setActiveEffortEdit(null);
       return;
@@ -1332,7 +1322,9 @@ export const RoadmapScreen = () => {
               const commentLabel = `${item.comments.length} Comment${item.comments.length === 1 ? "" : "s"}`;
               const orderedTagLabels = sortTagLabels(item.tags);
               const hasTagValues = orderedTagLabels.length > 0;
-              const hasEffortValue = typeof item.effort === "number" && Number.isFinite(item.effort);
+              const hasEffortValue =
+                typeof item.effort === "string" && item.effort.trim().length > 0;
+              const effortDisplay = hasEffortValue ? (item.effort as string).trim() : "—";
               const showTagSection = canManageTags || hasTagValues;
               const showEffortSection = canEditEffort || hasEffortValue;
 
@@ -1784,18 +1776,18 @@ export const RoadmapScreen = () => {
                                     <span className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
                                       Effort
                                     </span>
-                                    <input
-                                      autoFocus
-                                      type="number"
-                                      min="0"
-                                      step="0.5"
-                                      value={activeEffortEdit.value}
-                                      onChange={(event) => handleEffortInputChange(event.target.value)}
-                                      onKeyDown={(event) => handleEffortKeyDown(event, item)}
-                                      onBlur={(event) => handleEffortBlur(event, item)}
-                                      disabled={!!effortBusy[item.id]}
-                                      className="w-16 bg-transparent text-right text-sm text-slate-700 outline-none dark:text-slate-100"
-                                    />
+                                  <input
+                                    autoFocus
+                                    type="text"
+                                    inputMode="text"
+                                    value={activeEffortEdit.value}
+                                    onChange={(event) => handleEffortInputChange(event.target.value)}
+                                    onKeyDown={(event) => handleEffortKeyDown(event, item)}
+                                    onBlur={(event) => handleEffortBlur(event, item)}
+                                    disabled={!!effortBusy[item.id]}
+                                    placeholder="e.g. 2-4 HRS"
+                                    className="w-28 bg-transparent text-right text-sm uppercase tracking-wide text-slate-700 outline-none dark:text-slate-100"
+                                  />
                                   </div>
                                 ) : (
                                   <button
@@ -1810,14 +1802,7 @@ export const RoadmapScreen = () => {
                                   >
                                     <span>Effort</span>
                                     <span className="text-xs font-bold text-slate-700 dark:text-slate-100">
-                                      {hasEffortValue ? (
-                                        <>
-                                          {item.effort}
-                                          <span className="ml-1 font-normal text-slate-400 dark:text-slate-500">HRS</span>
-                                        </>
-                                      ) : (
-                                        "—"
-                                      )}
+                                      {effortDisplay}
                                     </span>
                                   </button>
                                 )}

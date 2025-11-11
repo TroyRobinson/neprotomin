@@ -68,7 +68,7 @@ export const createRoadmapItem = async ({
   targetCompletionAt?: number | null;
   imageUrl?: string | null;
   tags?: string[] | null;
-  effort?: number | null;
+  effort?: string | null;
 }): Promise<string> => {
   if (!createdBy) {
     throw new Error("Roadmap item requires creator id.");
@@ -90,6 +90,8 @@ export const createRoadmapItem = async ({
   const trimmedTitle = title.trim() || "Untitled roadmap item";
   const now = Date.now();
   
+  const normalizedEffort =
+    typeof effort === "string" ? effort.trim() || null : effort ?? null;
   const txs: any[] = [
     // Create new item with order 1 (top priority)
     db.tx.roadmapItems[newId].update({
@@ -103,7 +105,7 @@ export const createRoadmapItem = async ({
       createdBy,
       order: 1,
       tags: Array.isArray(tags) ? tags : [],
-      effort: effort ?? null,
+      effort: normalizedEffort,
     }),
   ];
   
@@ -132,7 +134,7 @@ export const updateRoadmapItem = async (
     imageUrl: string | null;
     order: number | null;
     tags: string[] | null;
-    effort: number | null;
+    effort: string | null;
   }>,
 ): Promise<void> => {
   if (!itemId) {
@@ -165,7 +167,11 @@ export const updateRoadmapItem = async (
     payload.tags = Array.isArray(patch.tags) ? patch.tags : patch.tags ?? null;
   }
   if (patch.effort !== undefined) {
-    payload.effort = patch.effort;
+    const normalized =
+      typeof patch.effort === "string"
+        ? patch.effort.trim() || null
+        : patch.effort ?? null;
+    payload.effort = normalized;
   }
   if (Object.keys(payload).length === 0) return;
   await db.transact(db.tx.roadmapItems[itemId].update(payload));

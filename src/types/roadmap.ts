@@ -12,7 +12,7 @@ export interface RoadmapItem {
   createdBy?: string | null;
   order?: number | null;
   tags?: string[] | null;
-  effort?: number | null;
+  effort?: string | null;
 }
 
 export interface RoadmapVote {

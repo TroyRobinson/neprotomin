@@ -77,7 +77,7 @@ const _schema = i.schema({
       createdBy: i.string().indexed().optional(),
       order: i.number().indexed().optional(),
       tags: i.json<string[]>().optional(),
-      effort: i.number().optional(),
+      effort: i.string().optional(),
     }),
     roadmapItemVotes: i.entity({
       roadmapItemId: i.string().indexed(),

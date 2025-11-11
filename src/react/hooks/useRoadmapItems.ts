@@ -48,6 +48,17 @@ const normalizeNumberValue = (value: unknown): number | null => {
   return null;
 };
 
+const normalizeEffortValue = (value: unknown): string | null => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return `${value}`;
+  }
+  return null;
+};
+
 const normalizeTags = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   const tags: string[] = [];
@@ -194,7 +205,7 @@ export const useRoadmapItems = () => {
       const description =
         typeof (row as any).description === "string" ? ((row as any).description as string) : null;
       const tags = normalizeTags((row as any).tags);
-      const effort = normalizeNumberValue((row as any).effort);
+      const effort = normalizeEffortValue((row as any).effort);
 
       const viewerHasVoted =
         !!viewerId && votes.some((vote) => vote.voterId === viewerId);
