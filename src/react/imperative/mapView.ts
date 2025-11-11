@@ -124,6 +124,8 @@ type ThemeName = "light" | "dark";
 
 const MAP_STYLE_LIGHT = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 const MAP_STYLE_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+const DEFAULT_GLOW_COLOR = "#fdba74";
+const SELECTED_GLOW_COLOR = "#8a93ff"; // Tailwind brand-400 indigo
 
 const getMapStyle = (theme: ThemeName): string =>
   theme === "dark" ? MAP_STYLE_DARK : MAP_STYLE_LIGHT;
@@ -2063,28 +2065,37 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       const filter = ["all", baseFilter, ["in", ["get", "id"], ["literal", highlightIds]]];
       map.setFilter(LAYER_HIGHLIGHT_ID, filter as any);
       
-      // Use data-driven properties: selected orgs get orange glow ring, hover gets white stroke
+      // Use data-driven properties: selected orgs get indigo glow, hover keeps white stroke
       if (hasSelectedOrgs) {
         const selectedIdsArray = Array.from(selectedOrgIds);
-        // Conditional: if ID is in selected set, use orange glow; otherwise white stroke for hover
+        const selectionMatchExpr: any = ["in", ["get", "id"], ["literal", selectedIdsArray]];
+        // Conditional: if ID is in selected set, use brand glow; otherwise white stroke for hover
         const strokeColorExpr: any = [
           "case",
-          ["in", ["get", "id"], ["literal", selectedIdsArray]],
-          "#fdba74", // Orange stroke for selected orgs
+          selectionMatchExpr,
+          SELECTED_GLOW_COLOR,
           "#ffffff"  // White stroke for hover-only orgs
+        ];
+        const fillColorExpr: any = [
+          "case",
+          selectionMatchExpr,
+          SELECTED_GLOW_COLOR,
+          DEFAULT_GLOW_COLOR,
         ];
         const opacityExpr: any = [
           "case",
-          ["in", ["get", "id"], ["literal", selectedIdsArray]],
+          selectionMatchExpr,
           0.35, // Semi-transparent for selected (glow effect)
           1     // Fully opaque for hover
         ];
+        map.setPaintProperty(LAYER_HIGHLIGHT_ID, "circle-color", fillColorExpr);
         map.setPaintProperty(LAYER_HIGHLIGHT_ID, "circle-stroke-color", strokeColorExpr);
         map.setPaintProperty(LAYER_HIGHLIGHT_ID, "circle-opacity", opacityExpr);
       } else {
         // Just hover - use white stroke, fully opaque
         map.setPaintProperty(LAYER_HIGHLIGHT_ID, "circle-stroke-color", "#ffffff");
         map.setPaintProperty(LAYER_HIGHLIGHT_ID, "circle-opacity", 1);
+        map.setPaintProperty(LAYER_HIGHLIGHT_ID, "circle-color", DEFAULT_GLOW_COLOR);
       }
     } else {
       // No highlights
@@ -2098,13 +2109,17 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     // Update cluster highlight - show BOTH selected clusters AND hover cluster (if different)
     // Selection persists even when hovering over other clusters
     const clusterIdsToHighlight: number[] = [];
+    const primarySelectedClusterIds =
+      selectedClusterIds.length > 0
+        ? selectedClusterIds
+        : selectedClusterId !== null
+        ? [selectedClusterId]
+        : [];
+    const hasSelectedClusters = primarySelectedClusterIds.length > 0;
     
     // Add all selected clusters (supports multiple when orgs split across clusters)
-    if (selectedClusterIds.length > 0) {
-      clusterIdsToHighlight.push(...selectedClusterIds);
-    } else if (selectedClusterId !== null) {
-      // Fallback to single cluster ID for backward compatibility
-      clusterIdsToHighlight.push(selectedClusterId);
+    if (hasSelectedClusters) {
+      clusterIdsToHighlight.push(...primarySelectedClusterIds);
     }
     
     // Add hover cluster if different from selected clusters
@@ -2120,6 +2135,35 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       }
     } else {
       extSetClusterHighlight(map, LAYER_CLUSTER_HIGHLIGHT_ID, null);
+    }
+
+    if (map.getLayer(LAYER_CLUSTER_HIGHLIGHT_ID)) {
+      if (hasSelectedClusters) {
+        const clusterSelectionExpr: any = [
+          "in",
+          ["get", "cluster_id"],
+          ["literal", primarySelectedClusterIds],
+        ];
+        const clusterColorExpr: any = [
+          "case",
+          clusterSelectionExpr,
+          SELECTED_GLOW_COLOR,
+          DEFAULT_GLOW_COLOR,
+        ];
+        const clusterOpacityExpr: any = [
+          "case",
+          clusterSelectionExpr,
+          0.45,
+          0.35,
+        ];
+        map.setPaintProperty(LAYER_CLUSTER_HIGHLIGHT_ID, "circle-color", clusterColorExpr);
+        map.setPaintProperty(LAYER_CLUSTER_HIGHLIGHT_ID, "circle-stroke-color", clusterColorExpr);
+        map.setPaintProperty(LAYER_CLUSTER_HIGHLIGHT_ID, "circle-opacity", clusterOpacityExpr);
+      } else {
+        map.setPaintProperty(LAYER_CLUSTER_HIGHLIGHT_ID, "circle-color", DEFAULT_GLOW_COLOR);
+        map.setPaintProperty(LAYER_CLUSTER_HIGHLIGHT_ID, "circle-stroke-color", DEFAULT_GLOW_COLOR);
+        map.setPaintProperty(LAYER_CLUSTER_HIGHLIGHT_ID, "circle-opacity", 0.35);
+      }
     }
   }
 
