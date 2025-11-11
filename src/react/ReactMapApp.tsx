@@ -176,6 +176,40 @@ export const ReactMapApp = () => {
   const [authOpen, setAuthOpen] = useState(false);
   const [cameraState, setCameraState] = useState<{ center: [number, number]; zoom: number } | null>(null);
   const [hasInteractedWithMap, setHasInteractedWithMap] = useState(false);
+  const [sidebarFollowsMap, setSidebarFollowsMap] = useState(true);
+  const [orgPinsVisible, setOrgPinsVisible] = useState(true);
+  const [orgsVisibleIds, setOrgsVisibleIds] = useState<string[]>([]);
+  const [orgsAllSourceIds, setOrgsAllSourceIds] = useState<string[]>([]);
+  const latestVisibleIdsRef = useRef<{ visible: string[]; all: string[] }>({ visible: [], all: [] });
+  const sidebarFollowsMapRef = useRef(sidebarFollowsMap);
+  useEffect(() => {
+    sidebarFollowsMapRef.current = sidebarFollowsMap;
+    if (sidebarFollowsMap) {
+      const snapshot = latestVisibleIdsRef.current;
+      setOrgsVisibleIds(snapshot.visible);
+      setOrgsAllSourceIds(snapshot.all);
+    }
+  }, [sidebarFollowsMap]);
+  const applyMapVisibleIds = useCallback(
+    (ids: string[], allSourceIds: string[]) => {
+      const snapshot = {
+        visible: [...ids],
+        all: [...allSourceIds],
+      };
+      latestVisibleIdsRef.current = snapshot;
+      if (sidebarFollowsMapRef.current) {
+        setOrgsVisibleIds(snapshot.visible);
+        setOrgsAllSourceIds(snapshot.all);
+      }
+    },
+    [setOrgsAllSourceIds, setOrgsVisibleIds],
+  );
+  const setSidebarFollowMode = useCallback((mode: "map" | "sidebar") => {
+    setSidebarFollowsMap((prev) => {
+      const next = mode === "map";
+      return prev === next ? prev : next;
+    });
+  }, []);
   const [zipScope, setZipScope] = useState<string>(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
   const [zipNeighborScopes, setZipNeighborScopes] = useState<string[]>([]);
   const isMobile = useMediaQuery(MOBILE_MAX_WIDTH_QUERY);
@@ -821,6 +855,7 @@ export const ReactMapApp = () => {
   // Track map interaction: detect when user pans/zooms away from initial position
   useEffect(() => {
     if (!cameraState || hasInteractedWithMap) return;
+    if (!sidebarFollowsMapRef.current) return;
     
     const initialCenter: [number, number] = [OKLAHOMA_CENTER.longitude, OKLAHOMA_CENTER.latitude];
     const initialZoom = OKLAHOMA_DEFAULT_ZOOM;
@@ -840,10 +875,14 @@ export const ReactMapApp = () => {
 
   // Mark as interacted when user selects areas or orgs
   useEffect(() => {
-    if (selectedZips.length > 0 || selectedCounties.length > 0 || selectedOrgIds.length > 0) {
+    if (selectedZips.length > 0 || selectedCounties.length > 0) {
+      setHasInteractedWithMap(true);
+      return;
+    }
+    if (selectedOrgIdsFromMap && selectedOrgIds.length > 0) {
       setHasInteractedWithMap(true);
     }
-  }, [selectedZips.length, selectedCounties.length, selectedOrgIds.length]);
+  }, [selectedZips.length, selectedCounties.length, selectedOrgIds.length, selectedOrgIdsFromMap]);
 
   // Persisted UI state: load on auth ready
   useEffect(() => {
@@ -1399,9 +1438,6 @@ export const ReactMapApp = () => {
     previousSelectedStatIdRef.current = selectedStatId ?? null;
   }, [selectedStatId, selectedOrgIdsFromMap, selectedOrgIds.length]);
 
-  const [orgPinsVisible, setOrgPinsVisible] = useState(true);
-  const [orgsVisibleIds, setOrgsVisibleIds] = useState<string[]>([]);
-  const [orgsAllSourceIds, setOrgsAllSourceIds] = useState<string[]>([]);
   const [zoomOutNonce, setZoomOutNonce] = useState(0);
   // Nonce to explicitly clear map category chips when clearing stat from sidebar
   const [clearMapCategoryNonce, setClearMapCategoryNonce] = useState(0);
@@ -1492,6 +1528,7 @@ export const ReactMapApp = () => {
     (id: string, options: SelectOrganizationOptions = {}) => {
       if (!id) return;
       const { treatAsMapSelection = false, source = "map" } = options;
+      setSidebarFollowMode(source === "sidebar" ? "sidebar" : "map");
       
       // Check if clicking the same organization that's already selected (second click)
       const isAlreadySelected = selectedOrgIds.length === 1 && selectedOrgIds[0] === id;
@@ -1543,7 +1580,7 @@ export const ReactMapApp = () => {
         previewSheet();
       }
     },
-    [cameraState, collapseSheet, isMobile, previewSheet, selectedOrgIds],
+    [cameraState, collapseSheet, isMobile, previewSheet, selectedOrgIds, setSidebarFollowMode],
   );
 
   const handleOrganizationClick = useCallback(
@@ -1555,13 +1592,14 @@ export const ReactMapApp = () => {
 
   const handleSidebarOrganizationClick = useCallback(
     (id: string) => {
-      selectOrganization(id, { treatAsMapSelection: isMobile, source: "sidebar" });
+      selectOrganization(id, { treatAsMapSelection: false, source: "sidebar" });
     },
-    [isMobile, selectOrganization],
+    [selectOrganization],
   );
 
   const handleZoomToOrg = useCallback(
     (id: string) => {
+      setSidebarFollowMode("sidebar");
       const controller = mapControllerRef.current;
       if (controller && cameraState) {
         // Calculate target zoom: zoom in by 2-3 levels, but cap at reasonable maximum
@@ -1587,12 +1625,13 @@ export const ReactMapApp = () => {
         }
       }
     },
-    [cameraState, collapseSheet, isMobile],
+    [cameraState, collapseSheet, isMobile, setSidebarFollowMode],
   );
 
   const handleClusterClick = useCallback(
     (ids: string[], _meta: { count: number; longitude: number; latitude: number }) => {
       if (!Array.isArray(ids) || ids.length === 0) return;
+      setSidebarFollowMode("map");
       const uniqueIds = dedupeIds(ids);
       track("map_cluster_click", {
         organizationCount: uniqueIds.length,
@@ -1627,7 +1666,7 @@ export const ReactMapApp = () => {
         }
       }
     },
-    [expandSheet, isMobile, previewSheet],
+    [expandSheet, isMobile, previewSheet, setSidebarFollowMode],
   );
 
   const handleUpdateAreaSelection = (kind: AreaKind, selection: { selected: string[]; pinned: string[] }) => {
@@ -1649,6 +1688,7 @@ export const ReactMapApp = () => {
   };
 
   const handleAreaSelectionChange = (change: { kind: AreaKind; selected: string[]; pinned: string[]; transient: string[] }) => {
+    setSidebarFollowMode("map");
     const current = areaSelections[change.kind];
     const hasChanged =
       !current ||
@@ -2336,7 +2376,7 @@ export const ReactMapApp = () => {
     // Direct org selection (from clicking org centroids or small clusters)
     // moves to the inSelection section only when originating from the map.
     // Sidebar-driven selections stay in-place within the "All" section.
-    if (selectedOrgIds.length > 0 && selectedOrgIdsFromMap) {
+    if (selectedOrgIds.length > 0 && selectedOrgIdsFromMap && sidebarFollowsMap) {
       inSelection = visible.filter((o) => selectedOrgSet.has(o.id));
     } else if (selectedOrgIds.length === 0) {
       // No direct org selection - use area-based selection
@@ -2635,8 +2675,7 @@ export const ReactMapApp = () => {
                 onSecondaryStatChange={setSecondaryStatId}
                 onCategorySelectionChange={setCategoryFilter}
                 onVisibleIdsChange={(ids, _totalInSource, allSourceIds) => {
-                  setOrgsVisibleIds(ids);
-                  setOrgsAllSourceIds(allSourceIds);
+                  applyMapVisibleIds(ids, allSourceIds);
                 }}
                 onBoundaryModeChange={handleMapBoundaryModeChange}
                 onZipScopeChange={(scope, neighbors) => {
@@ -2645,6 +2684,7 @@ export const ReactMapApp = () => {
                 }}
                 onCameraChange={setCameraState}
                 onMapDragStart={() => {
+                  setSidebarFollowMode("map");
                   track("map_interaction", { type: "drag", device: isMobile ? "mobile" : "desktop" });
                   if (isMobile) collapseSheet();
                 }}
