@@ -34,11 +34,6 @@ const normalizeString = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-const BLOCKED_TAG_LABELS = new Set(["food map"]);
-const isBlockedTagLabel = (label: string): boolean => {
-  return BLOCKED_TAG_LABELS.has(label.trim().toLowerCase());
-};
-
 const normalizeNumberValue = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -65,7 +60,7 @@ const normalizeTags = (value: unknown): string[] => {
   for (const entry of value) {
     if (typeof entry !== "string") continue;
     const trimmed = entry.trim();
-    if (trimmed && !isBlockedTagLabel(trimmed)) {
+    if (trimmed) {
       tags.push(trimmed);
     }
   }
@@ -80,7 +75,7 @@ const normalizeRoadmapTags = (rows: unknown): RoadmapTag[] => {
       continue;
     }
     const label = (raw as any).label.trim();
-    if (!label || isBlockedTagLabel(label)) continue;
+    if (!label) continue;
     const createdAt = normalizeTimestamp((raw as any).createdAt) ?? Date.now();
     output.push({
       id: (raw as any).id,

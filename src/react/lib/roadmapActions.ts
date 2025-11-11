@@ -318,6 +318,54 @@ export const updateRoadmapTag = async (
   await db.transact(db.tx.roadmapTags[tagId].update(payload));
 };
 
+export const renameRoadmapTag = async (
+  tagId: string,
+  oldLabel: string,
+  newLabel: string,
+): Promise<void> => {
+  if (!tagId) throw new Error("Missing roadmap tag id.");
+  const trimmed = newLabel.trim();
+  if (!trimmed) throw new Error("Tag label cannot be empty.");
+  const previous = oldLabel.trim();
+  if (!previous) throw new Error("Original label is required.");
+
+  const { data } = await db.queryOnce({
+    roadmapItems: {
+      $: {
+        fields: ["id", "tags"],
+      },
+    },
+  });
+
+  const txs: any[] = [
+    db.tx.roadmapTags[tagId].update({ label: trimmed, updatedAt: Date.now() }),
+  ];
+
+  const items = Array.isArray(data?.roadmapItems) ? (data!.roadmapItems as any[]) : [];
+  for (const item of items) {
+    if (!item?.id || !Array.isArray(item.tags)) continue;
+    const tags = item.tags.filter((value): value is string => typeof value === "string");
+    if (tags.length === 0) continue;
+    let changed = false;
+    const next = tags.map((value) => {
+      if (typeof value === "string" && value.trim() === previous) {
+        changed = true;
+        return trimmed;
+      }
+      return value;
+    });
+    if (changed) {
+      txs.push(
+        db.tx.roadmapItems[item.id as string].update({
+          tags: next,
+        }),
+      );
+    }
+  }
+
+  await db.transact(txs);
+};
+
 export const deleteRoadmapTag = async (tagId: string): Promise<void> => {
   if (!tagId) {
     throw new Error("Missing roadmap tag id.");

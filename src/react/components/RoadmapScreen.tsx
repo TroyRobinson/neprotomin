@@ -20,6 +20,7 @@ import {
   updateRoadmapTag,
   updateRoadmapTagsOrder,
   deleteRoadmapTag,
+  renameRoadmapTag,
 } from "../lib/roadmapActions";
 import { db } from "../../lib/reactDb";
 import { isAdminEmail, isAdminEmailOnly } from "../../lib/admin";
@@ -327,6 +328,9 @@ export const RoadmapScreen = () => {
   const [tagDragSourceId, setTagDragSourceId] = useState<string | null>(null);
   const [tagDragOverId, setTagDragOverId] = useState<string | null>(null);
   const [tagOrderSaving, setTagOrderSaving] = useState(false);
+  const [tagLabelDrafts, setTagLabelDrafts] = useState<Record<string, string>>({});
+  const [tagLabelBusy, setTagLabelBusy] = useState<Record<string, boolean>>({});
+  const [tagLabelError, setTagLabelError] = useState<Record<string, string | null>>({});
 
   const sortedItems = useMemo(() => sortItems(items, sortBy), [items, sortBy]);
   const isAdmin = useMemo(() => {
@@ -692,6 +696,16 @@ export const RoadmapScreen = () => {
         delete next[tag.id];
         return next;
       });
+      setTagLabelDrafts((prev) => {
+        const next = { ...prev };
+        delete next[tag.id];
+        return next;
+      });
+      setTagLabelError((prev) => {
+        const next = { ...prev };
+        delete next[tag.id];
+        return next;
+      });
     } catch (error) {
       console.error("[roadmap] Failed to delete roadmap tag", error);
       setTagDeleteError((prev) => ({
@@ -707,8 +721,64 @@ export const RoadmapScreen = () => {
     }
   };
 
-  const handleTagSettingsToggle = (tagId: string) => {
-    setTagSettingsOpen((prev) => (prev === tagId ? null : tagId));
+  const handleTagSettingsToggle = (tagId: string, label: string) => {
+    setTagSettingsOpen((prev) => {
+      const next = prev === tagId ? null : tagId;
+      if (next === tagId) {
+        setTagLabelDrafts((drafts) => ({
+          ...drafts,
+          [tagId]: drafts[tagId] ?? label,
+        }));
+        setTagLabelError((errors) => ({
+          ...errors,
+          [tagId]: null,
+        }));
+      }
+      return next;
+    });
+  };
+
+  const handleTagLabelDraftChange = (tagId: string, value: string) => {
+    setTagLabelDrafts((prev) => ({ ...prev, [tagId]: value }));
+  };
+
+  const handleTagLabelSave = async (tag: RoadmapTag) => {
+    if (!canManageTags) return;
+    const draft = (tagLabelDrafts[tag.id] ?? tag.label).trim();
+    if (!draft) {
+      setTagLabelError((prev) => ({
+        ...prev,
+        [tag.id]: "Enter a tag name.",
+      }));
+      return;
+    }
+    if (draft === tag.label) {
+      setTagLabelError((prev) => {
+        const next = { ...prev };
+        delete next[tag.id];
+        return next;
+      });
+      return;
+    }
+    if (tagLabelBusy[tag.id]) return;
+    setTagLabelBusy((prev) => ({ ...prev, [tag.id]: true }));
+    setTagLabelError((prev) => ({ ...prev, [tag.id]: null }));
+    try {
+      await renameRoadmapTag(tag.id, tag.label, draft);
+      setTagLabelDrafts((prev) => ({ ...prev, [tag.id]: draft }));
+    } catch (error) {
+      console.error("[roadmap] Failed to rename tag", error);
+      setTagLabelError((prev) => ({
+        ...prev,
+        [tag.id]: "Unable to rename tag right now.",
+      }));
+    } finally {
+      setTagLabelBusy((prev) => {
+        const next = { ...prev };
+        delete next[tag.id];
+        return next;
+      });
+    }
   };
 
   const handleShowAddTagForm = () => {
@@ -1593,7 +1663,7 @@ export const RoadmapScreen = () => {
                                                   type="button"
                                                   onClick={(event) => {
                                                     event.stopPropagation();
-                                                    handleTagSettingsToggle(definition.id);
+                                                    handleTagSettingsToggle(definition.id, definition.label);
                                                   }}
                                                   className={`rounded-full p-1 text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200 ${
                                                     tagSettingsOpen === definition.id ? "text-slate-600 dark:text-slate-100" : ""
@@ -1610,6 +1680,36 @@ export const RoadmapScreen = () => {
                                             ) : tagSettingsOpen === definition.id ? (
                                               <div className="border-t border-slate-200 px-2 py-2 text-[11px] uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
                                                 <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                                  Name
+                                                  <div className="flex gap-2">
+                                                    <input
+                                                      type="text"
+                                                      className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-medium text-slate-700 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-brand-400 dark:focus:ring-brand-500/40"
+                                                      value={tagLabelDrafts[definition.id] ?? definition.label}
+                                                      onChange={(event) => {
+                                                        event.stopPropagation();
+                                                        handleTagLabelDraftChange(definition.id, event.target.value);
+                                                      }}
+                                                    />
+                                                    <button
+                                                      type="button"
+                                                      className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 disabled:opacity-60"
+                                                      onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        handleTagLabelSave(definition);
+                                                      }}
+                                                      disabled={!!tagLabelBusy[definition.id]}
+                                                    >
+                                                      {tagLabelBusy[definition.id] ? "Saving…" : "Save"}
+                                                    </button>
+                                                  </div>
+                                                  {tagLabelError[definition.id] && (
+                                                    <p className="text-[10px] font-normal normal-case text-rose-500">
+                                                      {tagLabelError[definition.id]}
+                                                    </p>
+                                                  )}
+                                                </label>
+                                                <label className="mt-2 flex flex-col gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
                                                   Color
                                                   <select
                                                     className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-brand-400 dark:focus:ring-brand-500/40"
