@@ -563,11 +563,9 @@ export const Sidebar = ({
                         <OrganizationListItem
                           key={org.id}
                           org={org}
-                          isActive={
-                            org.id === activeOrganizationId || 
-                            highlightedIds.has(org.id) || 
-                            selectedOrgIdsSet.has(org.id)
-                          }
+                          isSelected={selectedOrgIdsSet.has(org.id)}
+                          isActive={org.id === activeOrganizationId}
+                          isHighlighted={highlightedIds.has(org.id)}
                           isExpanded={expandedOrgId === org.id}
                           onHover={onHover}
                           onCategoryClick={onCategoryClick}
@@ -595,11 +593,9 @@ export const Sidebar = ({
                         <OrganizationListItem
                           key={org.id}
                           org={org}
-                          isActive={
-                            org.id === activeOrganizationId || 
-                            highlightedIds.has(org.id) || 
-                            selectedOrgIdsSet.has(org.id)
-                          }
+                          isSelected={selectedOrgIdsSet.has(org.id)}
+                          isActive={org.id === activeOrganizationId}
+                          isHighlighted={highlightedIds.has(org.id)}
                           isExpanded={expandedOrgId === org.id}
                           onHover={onHover}
                           onCategoryClick={onCategoryClick}
@@ -627,11 +623,9 @@ export const Sidebar = ({
                     <OrganizationListItem
                       key={org.id}
                       org={org}
-                      isActive={
-                        org.id === activeOrganizationId ||
-                        highlightedIds.has(org.id) ||
-                        selectedOrgIdsSet.has(org.id)
-                      }
+                      isSelected={selectedOrgIdsSet.has(org.id)}
+                      isActive={org.id === activeOrganizationId}
+                      isHighlighted={highlightedIds.has(org.id)}
                       onHover={onHover}
                       onCategoryClick={onCategoryClick}
                       onOrganizationClick={onOrganizationClick}
@@ -676,7 +670,9 @@ export const Sidebar = ({
 
 interface OrganizationListItemProps {
   org: Organization;
+  isSelected: boolean;
   isActive: boolean;
+  isHighlighted?: boolean;
   isExpanded: boolean;
   onHover?: (idOrIds: string | string[] | null) => void;
   onCategoryClick?: (categoryId: string) => void;
@@ -837,7 +833,9 @@ const renderHours = (hours: OrganizationHours | null | undefined) => {
 
 const OrganizationListItem = ({
   org,
+  isSelected,
   isActive,
+  isHighlighted = false,
   isExpanded,
   onHover,
   onCategoryClick,
@@ -868,7 +866,7 @@ const OrganizationListItem = ({
     // If card is already expanded and selected, and this is a quick second click (double-click),
     // don't toggle the expand state - just trigger selection (which will zoom if already selected)
     // This keeps the hours/card expanded when zooming
-    if (isExpanded && isActive && isDoubleClick) {
+    if (isExpanded && isSelected && isDoubleClick) {
       // Just select (which will trigger zoom if already selected)
       onOrganizationClick?.(org.id);
       lastClickTimeRef.current = now;
@@ -903,16 +901,18 @@ const OrganizationListItem = ({
     }
   };
 
+  const cardStateClass = isSelected
+    ? "border border-brand-300 ring-2 ring-brand-200/80 bg-brand-50/70 dark:bg-slate-800"
+    : isExpanded
+    ? "border border-brand-200 bg-brand-50/60 dark:border-slate-700 dark:bg-slate-800/50"
+    : isActive || isHighlighted
+    ? "border-0 bg-brand-50/70 dark:bg-slate-800/50"
+    : "border-0 bg-slate-100/40 hover:bg-brand-50 dark:bg-slate-800/20 dark:hover:bg-slate-800/70";
+
   return (
     <li
       data-org-id={org.id}
-      className={`group relative rounded-xl border px-4 py-3 transition duration-200 ease-out ${
-        isActive
-          ? "border-brand-300 ring-2 ring-brand-200/80 bg-brand-50/70 dark:bg-slate-800"
-          : isExpanded
-          ? "border-brand-200 bg-brand-50/60 dark:border-slate-700 dark:bg-slate-800/50"
-          : "border-transparent bg-slate-100/40 hover:border-brand-200 hover:bg-brand-50 dark:bg-slate-800/20 dark:hover:border-slate-700 dark:hover:bg-slate-800/70"
-      }`}
+      className={`group relative rounded-xl px-4 py-3 transition duration-200 ease-out ${cardStateClass}`}
       onMouseEnter={handleMouseEnter}
       onFocus={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
