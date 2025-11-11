@@ -11,6 +11,8 @@ export interface RoadmapItem {
   imageUrl?: string | null;
   createdBy?: string | null;
   order?: number | null;
+  tags?: string[] | null;
+  effort?: number | null;
 }
 
 export interface RoadmapVote {
@@ -36,4 +38,15 @@ export interface RoadmapItemWithRelations extends RoadmapItem {
   viewerHasVoted: boolean;
   voteCount: number;
   viewerVoteId?: string | null;
+}
+
+export interface RoadmapTag {
+  id: string;
+  label: string;
+  colorKey?: string | null;
+  shape?: string | null;
+  order?: number | null;
+  createdAt: number;
+  updatedAt?: number | null;
+  createdBy?: string | null;
 }

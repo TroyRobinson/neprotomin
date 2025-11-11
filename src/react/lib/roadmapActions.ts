@@ -58,6 +58,8 @@ export const createRoadmapItem = async ({
   createdBy,
   targetCompletionAt = null,
   imageUrl = null,
+  tags = [],
+  effort = null,
 }: {
   title: string;
   description?: string | null;
@@ -65,6 +67,8 @@ export const createRoadmapItem = async ({
   createdBy: string;
   targetCompletionAt?: number | null;
   imageUrl?: string | null;
+  tags?: string[] | null;
+  effort?: number | null;
 }): Promise<string> => {
   if (!createdBy) {
     throw new Error("Roadmap item requires creator id.");
@@ -98,6 +102,8 @@ export const createRoadmapItem = async ({
       imageUrl: imageUrl ?? null,
       createdBy,
       order: 1,
+      tags: Array.isArray(tags) ? tags : [],
+      effort: effort ?? null,
     }),
   ];
   
@@ -125,6 +131,8 @@ export const updateRoadmapItem = async (
     targetCompletionAt: number | null;
     imageUrl: string | null;
     order: number | null;
+    tags: string[] | null;
+    effort: number | null;
   }>,
 ): Promise<void> => {
   if (!itemId) {
@@ -152,6 +160,12 @@ export const updateRoadmapItem = async (
   }
   if (patch.order !== undefined) {
     payload.order = patch.order;
+  }
+  if (patch.tags !== undefined) {
+    payload.tags = Array.isArray(patch.tags) ? patch.tags : patch.tags ?? null;
+  }
+  if (patch.effort !== undefined) {
+    payload.effort = patch.effort;
   }
   if (Object.keys(payload).length === 0) return;
   await db.transact(db.tx.roadmapItems[itemId].update(payload));
@@ -224,3 +238,135 @@ export const deleteRoadmapItem = async (itemId: string): Promise<void> => {
   await db.transact(txs);
 };
 
+export const createRoadmapTag = async ({
+  label,
+  colorKey = null,
+  shape = null,
+  createdBy = null,
+}: {
+  label: string;
+  colorKey?: string | null;
+  shape?: string | null;
+  createdBy?: string | null;
+}): Promise<string> => {
+  const trimmedLabel = label.trim();
+  if (!trimmedLabel) {
+    throw new Error("Tag label is required.");
+  }
+  const { data } = await db.queryOnce({
+    roadmapTags: {
+      $: {
+        fields: ["id", "order"],
+      },
+    },
+  });
+  const existingTags = Array.isArray(data?.roadmapTags) ? (data!.roadmapTags as any[]) : [];
+  let maxOrder = 0;
+  for (const tag of existingTags) {
+    const value = typeof tag?.order === "number" && Number.isFinite(tag.order) ? tag.order : null;
+    if (value && value > maxOrder) {
+      maxOrder = value;
+    }
+  }
+  const nextOrder = maxOrder + 1;
+  const newId = createId();
+  const now = Date.now();
+  await db.transact(
+    db.tx.roadmapTags[newId].update({
+      label: trimmedLabel,
+      colorKey: colorKey ?? null,
+      shape: shape ?? null,
+      order: nextOrder,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: createdBy ?? null,
+    }),
+  );
+  return newId;
+};
+
+export const updateRoadmapTag = async (
+  tagId: string,
+  patch: Partial<{ label: string; colorKey: string | null; shape: string | null }>,
+): Promise<void> => {
+  if (!tagId) {
+    throw new Error("Missing roadmap tag id.");
+  }
+  if (!patch || Object.keys(patch).length === 0) return;
+  const payload: Record<string, unknown> = {};
+  if (patch.label !== undefined) {
+    const trimmed = patch.label?.trim() ?? "";
+    if (!trimmed) {
+      throw new Error("Tag label cannot be empty.");
+    }
+    payload.label = trimmed;
+  }
+  if (patch.colorKey !== undefined) {
+    payload.colorKey = patch.colorKey ?? null;
+  }
+  if (patch.shape !== undefined) {
+    payload.shape = patch.shape ?? null;
+  }
+  if (Object.keys(payload).length === 0) return;
+  payload.updatedAt = Date.now();
+  await db.transact(db.tx.roadmapTags[tagId].update(payload));
+};
+
+export const deleteRoadmapTag = async (tagId: string): Promise<void> => {
+  if (!tagId) {
+    throw new Error("Missing roadmap tag id.");
+  }
+
+  const { data } = await db.queryOnce({
+    roadmapTags: {
+      $: {
+        where: { id: tagId },
+        fields: ["id", "label"],
+      },
+    },
+    roadmapItems: {
+      $: {
+        fields: ["id", "tags"],
+      },
+    },
+  });
+
+  const tagRow = Array.isArray(data?.roadmapTags) ? data!.roadmapTags[0] : null;
+  if (!tagRow) {
+    return;
+  }
+  const label = typeof tagRow.label === "string" ? tagRow.label.trim() : "";
+  const txs: any[] = [db.tx.roadmapTags[tagId].delete()];
+
+  if (label) {
+    const itemRows = Array.isArray(data?.roadmapItems) ? (data!.roadmapItems as any[]) : [];
+    for (const item of itemRows) {
+      if (!item?.id) continue;
+      const tags = Array.isArray(item.tags)
+        ? (item.tags as unknown[]).filter((value): value is string => typeof value === "string")
+        : [];
+      if (tags.length === 0) continue;
+      const nextTags = tags.filter((value) => value !== label);
+      if (nextTags.length === tags.length) continue;
+      txs.push(
+        db.tx.roadmapItems[item.id as string].update({
+          tags: nextTags.length > 0 ? nextTags : [],
+        }),
+      );
+    }
+  }
+
+  await db.transact(txs);
+};
+
+export const updateRoadmapTagsOrder = async (
+  updates: Array<{ tagId: string; order: number }>,
+): Promise<void> => {
+  if (!updates || updates.length === 0) {
+    return;
+  }
+  const txs = updates.map(({ tagId, order }) =>
+    db.tx.roadmapTags[tagId].update({ order }),
+  );
+  await db.transact(txs);
+};

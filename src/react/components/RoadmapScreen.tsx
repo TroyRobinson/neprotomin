@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { DragEvent, FocusEvent, KeyboardEvent, MouseEvent } from "react";
 import { useRoadmapItems } from "../hooks/useRoadmapItems";
-import type { RoadmapItemWithRelations, RoadmapStatus, RoadmapComment } from "../../types/roadmap";
+import type {
+  RoadmapItemWithRelations,
+  RoadmapStatus,
+  RoadmapComment,
+  RoadmapTag,
+} from "../../types/roadmap";
 import {
   addRoadmapVote,
   removeRoadmapVote,
@@ -11,9 +16,14 @@ import {
   updateRoadmapItem,
   deleteRoadmapItem,
   updateRoadmapItemsOrder,
+  createRoadmapTag,
+  updateRoadmapTag,
+  updateRoadmapTagsOrder,
+  deleteRoadmapTag,
 } from "../lib/roadmapActions";
 import { db } from "../../lib/reactDb";
 import { isAdminEmail, isAdminEmailOnly } from "../../lib/admin";
+import { Cog6ToothIcon } from "@heroicons/react/24/outline";
 
 const STATUS_META: Record<
   RoadmapStatus,
@@ -44,6 +54,131 @@ const STATUS_META: Record<
     badgeClass: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200",
     dotClass: "bg-emerald-500 dark:bg-emerald-300",
   },
+};
+
+type TagShapeKind = "circle" | "triangle" | "diamond" | "square" | "hexagon";
+
+const TAG_COLOR_STYLES = [
+  {
+    key: "rose",
+    name: "Rose",
+    chipClass: "bg-rose-50 text-rose-900 dark:bg-rose-900/40 dark:text-rose-100",
+    shapeColorClass: "text-rose-500 dark:text-rose-300",
+  },
+  {
+    key: "amber",
+    name: "Amber",
+    chipClass: "bg-amber-50 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100",
+    shapeColorClass: "text-amber-500 dark:text-amber-300",
+  },
+  {
+    key: "emerald",
+    name: "Emerald",
+    chipClass: "bg-emerald-50 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-100",
+    shapeColorClass: "text-emerald-500 dark:text-emerald-300",
+  },
+  {
+    key: "sky",
+    name: "Sky",
+    chipClass: "bg-sky-50 text-sky-900 dark:bg-sky-900/40 dark:text-sky-100",
+    shapeColorClass: "text-sky-500 dark:text-sky-300",
+  },
+  {
+    key: "indigo",
+    name: "Indigo",
+    chipClass: "bg-indigo-50 text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-100",
+    shapeColorClass: "text-indigo-500 dark:text-indigo-300",
+  },
+  {
+    key: "slate",
+    name: "Slate",
+    chipClass: "bg-slate-50 text-slate-800 dark:bg-slate-900/40 dark:text-slate-100",
+    shapeColorClass: "text-slate-500 dark:text-slate-300",
+  },
+] as const;
+
+type TagColorKey = (typeof TAG_COLOR_STYLES)[number]["key"];
+
+const TAG_COLOR_STYLE_MAP: Record<TagColorKey, (typeof TAG_COLOR_STYLES)[number]> = TAG_COLOR_STYLES.reduce(
+  (acc, style) => {
+    acc[style.key] = style;
+    return acc;
+  },
+  {} as Record<TagColorKey, (typeof TAG_COLOR_STYLES)[number]>,
+);
+
+const isTagColorKey = (value: string): value is TagColorKey => {
+  return TAG_COLOR_STYLES.some((style) => style.key === value);
+};
+
+const TAG_SHAPES: TagShapeKind[] = ["circle", "triangle", "diamond", "square", "hexagon"];
+const TAG_SHAPE_SET = new Set<TagShapeKind>(TAG_SHAPES);
+
+const hashString = (value: string): number => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+};
+
+const getHashedVisual = (tag: string) => {
+  const normalized = tag.toLowerCase();
+  const hash = hashString(normalized);
+  const colorMeta = TAG_COLOR_STYLES[hash % TAG_COLOR_STYLES.length];
+  const shape = TAG_SHAPES[(hash >> 3) % TAG_SHAPES.length];
+  return { colorMeta, shape };
+};
+
+const getTagVisual = (tag: string, definition?: RoadmapTag | null) => {
+  const fallback = getHashedVisual(tag);
+  const colorMeta =
+    definition?.colorKey && TAG_COLOR_STYLE_MAP[definition.colorKey as TagColorKey]
+      ? TAG_COLOR_STYLE_MAP[definition.colorKey as TagColorKey]
+      : fallback.colorMeta;
+  const shape =
+    definition?.shape && TAG_SHAPE_SET.has(definition.shape as TagShapeKind)
+      ? (definition.shape as TagShapeKind)
+      : fallback.shape;
+  return { chipClass: colorMeta.chipClass, shapeColorClass: colorMeta.shapeColorClass, shape };
+};
+
+const TagShapeIcon = ({ shape, colorClass }: { shape: TagShapeKind; colorClass: string }) => {
+  switch (shape) {
+    case "circle":
+      return (
+        <svg className={`h-2.5 w-2.5 ${colorClass}`} viewBox="0 0 12 12" aria-hidden="true">
+          <circle cx="6" cy="6" r="5" fill="currentColor" />
+        </svg>
+      );
+    case "triangle":
+      return (
+        <svg className={`h-2.5 w-2.5 ${colorClass}`} viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M6 1.5 10.5 10.5H1.5z" fill="currentColor" />
+        </svg>
+      );
+    case "diamond":
+      return (
+        <svg className={`h-2.5 w-2.5 ${colorClass}`} viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M6 0.75 10.5 5.25 6 9.75 1.5 5.25z" fill="currentColor" />
+        </svg>
+      );
+    case "square":
+      return (
+        <svg className={`h-2.5 w-2.5 ${colorClass}`} viewBox="0 0 12 12" aria-hidden="true">
+          <rect x="2" y="2" width="8" height="8" rx="1.5" fill="currentColor" />
+        </svg>
+      );
+    case "hexagon":
+      return (
+        <svg className={`h-2.5 w-2.5 ${colorClass}`} viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M6 0.75 10.5 3v6L6 11.25 1.5 9V3z" fill="currentColor" />
+        </svg>
+      );
+    default:
+      return null;
+  }
 };
 
 const formatShortDate = (value?: number | null): string | null => {
@@ -141,7 +276,7 @@ const sortItems = (items: RoadmapItemWithRelations[], sortBy: SortOption): Roadm
 };
 
 export const RoadmapScreen = () => {
-  const { items, isLoading, error, viewerId } = useRoadmapItems();
+  const { items, tags, isLoading, error, viewerId } = useRoadmapItems();
   const { user } = db.useAuth();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -169,6 +304,29 @@ export const RoadmapScreen = () => {
   const [statusUpdateError, setStatusUpdateError] = useState<Record<string, string | null>>({});
   const [statusDropdownPosition, setStatusDropdownPosition] = useState<Record<string, "above" | "below">>({});
   const statusDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [tagSelectorOpen, setTagSelectorOpen] = useState<string | null>(null);
+  const [tagUpdateBusy, setTagUpdateBusy] = useState<Record<string, boolean>>({});
+  const [tagUpdateError, setTagUpdateError] = useState<Record<string, string | null>>({});
+  const tagSelectorRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [activeEffortEdit, setActiveEffortEdit] = useState<{ itemId: string; value: string } | null>(null);
+  const [effortBusy, setEffortBusy] = useState<Record<string, boolean>>({});
+  const [effortError, setEffortError] = useState<Record<string, string | null>>({});
+  const [tagStyleBusy, setTagStyleBusy] = useState<Record<string, boolean>>({});
+  const [tagStyleError, setTagStyleError] = useState<Record<string, string | null>>({});
+  const [tagCreateBusy, setTagCreateBusy] = useState(false);
+  const [newTagDraft, setNewTagDraft] = useState<{ label: string; colorKey: TagColorKey; shape: TagShapeKind }>({
+    label: "",
+    colorKey: TAG_COLOR_STYLES[0].key,
+    shape: TAG_SHAPES[0],
+  });
+  const [newTagError, setNewTagError] = useState<string | null>(null);
+  const [tagDeleteBusy, setTagDeleteBusy] = useState<Record<string, boolean>>({});
+  const [tagDeleteError, setTagDeleteError] = useState<Record<string, string | null>>({});
+  const [tagSettingsOpen, setTagSettingsOpen] = useState<string | null>(null);
+  const [isAddTagFormVisible, setIsAddTagFormVisible] = useState(false);
+  const [tagDragSourceId, setTagDragSourceId] = useState<string | null>(null);
+  const [tagDragOverId, setTagDragOverId] = useState<string | null>(null);
+  const [tagOrderSaving, setTagOrderSaving] = useState(false);
 
   const sortedItems = useMemo(() => sortItems(items, sortBy), [items, sortBy]);
   const isAdmin = useMemo(() => {
@@ -179,6 +337,66 @@ export const RoadmapScreen = () => {
     if (!user || user.isGuest) return false;
     return isAdminEmailOnly(user.email ?? null);
   }, [user]);
+  const canManageTags = isEmailAdmin;
+  const canEditEffort = isEmailAdmin;
+  const tagRecordByLabel = useMemo(() => {
+    const map = new Map<string, RoadmapTag>();
+    for (const tag of tags) {
+      map.set(tag.label.toLowerCase(), tag);
+    }
+    return map;
+  }, [tags]);
+
+  const tagOrderLookup = useMemo(() => {
+    const map = new Map<string, number>();
+    tags.forEach((tag, index) => {
+      const value = tag.order ?? index + 1;
+      map.set(tag.label.toLowerCase(), value);
+    });
+    return map;
+  }, [tags]);
+
+  const tagOptions = useMemo(() => {
+    type TagOption = { label: string; record: RoadmapTag | null; isDefined: boolean };
+    const options: TagOption[] = tags.map((tag) => ({
+      label: tag.label,
+      record: tag,
+      isDefined: true,
+    }));
+    const seen = new Set(options.map((option) => option.label.toLowerCase()));
+    const orphanOptions: TagOption[] = [];
+    items.forEach((item) => {
+      (item.tags ?? []).forEach((label) => {
+        const normalized = label?.trim();
+        if (!normalized) return;
+        const key = normalized.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        orphanOptions.push({ label: normalized, record: null, isDefined: false });
+      });
+    });
+    orphanOptions.sort((a, b) => a.label.localeCompare(b.label));
+    return [...options, ...orphanOptions];
+  }, [items, tags]);
+
+  const sortTagLabels = useCallback(
+    (labels?: string[] | null): string[] => {
+      if (!labels) return [];
+      return [...labels].sort((a, b) => {
+        const keyA = a.toLowerCase();
+        const keyB = b.toLowerCase();
+        const orderA = tagOrderLookup.get(keyA);
+        const orderB = tagOrderLookup.get(keyB);
+        if (orderA != null && orderB != null && orderA !== orderB) {
+          return orderA - orderB;
+        }
+        if (orderA != null) return -1;
+        if (orderB != null) return 1;
+        return a.localeCompare(b);
+      });
+    },
+    [tagOrderLookup],
+  );
 
   useEffect(() => {
     return () => {
@@ -206,6 +424,35 @@ export const RoadmapScreen = () => {
     };
   }, [statusDropdownOpen]);
 
+  const resetTagDropdownState = useCallback(() => {
+    setTagSelectorOpen(null);
+    setTagSettingsOpen(null);
+    setIsAddTagFormVisible(false);
+    setTagDragSourceId(null);
+    setTagDragOverId(null);
+    setNewTagDraft({ label: "", colorKey: TAG_COLOR_STYLES[0].key, shape: TAG_SHAPES[0] });
+    setNewTagError(null);
+  }, []);
+
+  useEffect(() => {
+    if (!tagSelectorOpen) {
+      resetTagDropdownState();
+      return;
+    }
+
+    const handleClickOutside = (event: globalThis.MouseEvent) => {
+      const dropdownElement = tagSelectorRefs.current[tagSelectorOpen];
+      if (dropdownElement && !dropdownElement.contains(event.target as Node)) {
+        resetTagDropdownState();
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [tagSelectorOpen, resetTagDropdownState]);
+
   // Resize textarea when description editing starts
   useEffect(() => {
     if (activeEdit?.field === "description" && activeEdit.itemId) {
@@ -231,6 +478,8 @@ export const RoadmapScreen = () => {
     setExpandedId((prev) => (prev === itemId ? null : itemId));
     setCommentError((prev) => ({ ...prev, [itemId]: null }));
     setActiveEdit((prev) => (prev?.itemId === itemId ? null : prev));
+    setActiveEffortEdit((prev) => (prev?.itemId === itemId ? null : prev));
+    resetTagDropdownState();
   };
 
   const scheduleToggle = (itemId: string) => {
@@ -240,7 +489,373 @@ export const RoadmapScreen = () => {
       setExpandedId((prev) => (prev === itemId ? null : itemId));
       setCommentError((prev) => ({ ...prev, [itemId]: null }));
       setActiveEdit((prev) => (prev?.itemId === itemId ? null : prev));
+      setActiveEffortEdit((prev) => (prev?.itemId === itemId ? null : prev));
+      resetTagDropdownState();
     }, 160);
+  };
+
+  const handleTagMenuToggle = (itemId: string) => {
+    if (!canManageTags) return;
+    setTagSettingsOpen(null);
+    setIsAddTagFormVisible(false);
+    setTagSelectorOpen((prev) => (prev === itemId ? null : itemId));
+    setTagUpdateError((prev) => ({ ...prev, [itemId]: null }));
+  };
+
+  const handleTagToggle = async (item: RoadmapItemWithRelations, label: string) => {
+    if (!canManageTags) return;
+    if (tagUpdateBusy[item.id]) return;
+    const existing = Array.isArray(item.tags) && item.tags ? [...item.tags] : [];
+    const hasLabel = existing.includes(label);
+    const next = hasLabel ? existing.filter((value) => value !== label) : [...existing, label];
+    setTagUpdateBusy((prev) => ({ ...prev, [item.id]: true }));
+    setTagUpdateError((prev) => ({ ...prev, [item.id]: null }));
+    try {
+      await updateRoadmapItem(item.id, { tags: next.length > 0 ? next : [] });
+    } catch (error) {
+      console.error("[roadmap] Failed to update tags", error);
+      setTagUpdateError((prev) => ({
+        ...prev,
+        [item.id]: "Unable to update tags right now.",
+      }));
+    } finally {
+      setTagUpdateBusy((prev) => {
+        const nextBusy = { ...prev };
+        delete nextBusy[item.id];
+        return nextBusy;
+      });
+    }
+  };
+
+  const handleClearTags = async (item: RoadmapItemWithRelations) => {
+    if (!canManageTags) return;
+    if (tagUpdateBusy[item.id]) return;
+    if (!item.tags || item.tags.length === 0) {
+      resetTagDropdownState();
+      return;
+    }
+    setTagUpdateBusy((prev) => ({ ...prev, [item.id]: true }));
+    setTagUpdateError((prev) => ({ ...prev, [item.id]: null }));
+    try {
+      await updateRoadmapItem(item.id, { tags: [] });
+    } catch (error) {
+      console.error("[roadmap] Failed to clear tags", error);
+      setTagUpdateError((prev) => ({
+        ...prev,
+        [item.id]: "Unable to clear tags right now.",
+      }));
+    } finally {
+      setTagUpdateBusy((prev) => {
+        const nextBusy = { ...prev };
+        delete nextBusy[item.id];
+        return nextBusy;
+      });
+    }
+  };
+
+  const handleTagStyleChange = async (
+    tag: RoadmapTag,
+    patch: Partial<{ colorKey: string | null; shape: string | null }>,
+  ) => {
+    if (!canManageTags) return;
+    const payload: Record<string, string | null> = {};
+    if (patch.colorKey !== undefined) {
+      let normalized: string | null = null;
+      if (patch.colorKey && isTagColorKey(patch.colorKey)) {
+        normalized = patch.colorKey;
+      }
+      if ((tag.colorKey ?? null) !== normalized) {
+        payload.colorKey = normalized;
+      }
+    }
+    if (patch.shape !== undefined) {
+      let normalized: string | null = null;
+      if (patch.shape && TAG_SHAPE_SET.has(patch.shape as TagShapeKind)) {
+        normalized = patch.shape as TagShapeKind;
+      }
+      if ((tag.shape ?? null) !== normalized) {
+        payload.shape = normalized;
+      }
+    }
+    if (Object.keys(payload).length === 0) return;
+    setTagStyleBusy((prev) => ({ ...prev, [tag.id]: true }));
+    setTagStyleError((prev) => ({ ...prev, [tag.id]: null }));
+    try {
+      await updateRoadmapTag(tag.id, payload);
+    } catch (error) {
+      console.error("[roadmap] Failed to update tag style", error);
+      setTagStyleError((prev) => ({
+        ...prev,
+        [tag.id]: "Unable to update style right now.",
+      }));
+    } finally {
+      setTagStyleBusy((prev) => {
+        const next = { ...prev };
+        delete next[tag.id];
+        return next;
+      });
+    }
+  };
+
+  const handleTagColorSelect = (tag: RoadmapTag, value: string) => {
+    if (!canManageTags) return;
+    if (value === "") {
+      void handleTagStyleChange(tag, { colorKey: null });
+      return;
+    }
+    if (!isTagColorKey(value)) return;
+    void handleTagStyleChange(tag, { colorKey: value });
+  };
+
+  const handleTagShapeSelect = (tag: RoadmapTag, value: string) => {
+    if (!canManageTags) return;
+    if (value === "") {
+      void handleTagStyleChange(tag, { shape: null });
+      return;
+    }
+    if (!TAG_SHAPE_SET.has(value as TagShapeKind)) return;
+    void handleTagStyleChange(tag, { shape: value });
+  };
+
+  const handleNewTagDraftChange = (
+    field: "label" | "colorKey" | "shape",
+    value: string,
+  ) => {
+    if (!canManageTags) return;
+    setNewTagDraft((prev) => {
+      if (field === "label") {
+        return { ...prev, label: value };
+      }
+      if (field === "colorKey" && isTagColorKey(value)) {
+        return { ...prev, colorKey: value };
+      }
+      if (field === "shape" && TAG_SHAPE_SET.has(value as TagShapeKind)) {
+        return { ...prev, shape: value as TagShapeKind };
+      }
+      return prev;
+    });
+  };
+
+  const handleCreateTagDefinition = async () => {
+    if (!canManageTags) return;
+    const label = newTagDraft.label.trim();
+    if (!label) {
+      setNewTagError("Enter a tag name.");
+      return;
+    }
+    if (tagRecordByLabel.has(label.toLowerCase())) {
+      setNewTagError("That tag already exists.");
+      return;
+    }
+    if (tagCreateBusy) return;
+    setTagCreateBusy(true);
+    setNewTagError(null);
+    try {
+      await createRoadmapTag({
+        label,
+        colorKey: newTagDraft.colorKey,
+        shape: newTagDraft.shape,
+        createdBy: viewerId ?? null,
+      });
+      setNewTagDraft((prev) => ({ ...prev, label: "" }));
+    } catch (error) {
+      console.error("[roadmap] Failed to create roadmap tag", error);
+      setNewTagError(error instanceof Error ? error.message : "Unable to add tag right now.");
+    } finally {
+      setTagCreateBusy(false);
+    }
+  };
+
+  const handleCancelNewTag = () => {
+    if (!canManageTags) return;
+    setIsAddTagFormVisible(false);
+    setNewTagDraft({ label: "", colorKey: TAG_COLOR_STYLES[0].key, shape: TAG_SHAPES[0] });
+    setNewTagError(null);
+  };
+
+  const handleDeleteTagDefinition = async (tag: RoadmapTag) => {
+    if (!canManageTags) return;
+    if (tagDeleteBusy[tag.id]) return;
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(
+        `Delete the "${tag.label}" tag? It will be removed from all roadmap items.`,
+      );
+      if (!confirmed) return;
+    }
+    setTagDeleteBusy((prev) => ({ ...prev, [tag.id]: true }));
+    setTagDeleteError((prev) => ({ ...prev, [tag.id]: null }));
+    try {
+      await deleteRoadmapTag(tag.id);
+      setTagSettingsOpen((prev) => (prev === tag.id ? null : prev));
+      setTagDeleteError((prev) => {
+        const next = { ...prev };
+        delete next[tag.id];
+        return next;
+      });
+    } catch (error) {
+      console.error("[roadmap] Failed to delete roadmap tag", error);
+      setTagDeleteError((prev) => ({
+        ...prev,
+        [tag.id]: "Unable to delete tag right now.",
+      }));
+    } finally {
+      setTagDeleteBusy((prev) => {
+        const next = { ...prev };
+        delete next[tag.id];
+        return next;
+      });
+    }
+  };
+
+  const handleTagSettingsToggle = (tagId: string) => {
+    setTagSettingsOpen((prev) => (prev === tagId ? null : tagId));
+  };
+
+  const handleShowAddTagForm = () => {
+    if (!canManageTags) return;
+    setIsAddTagFormVisible(true);
+    setNewTagError(null);
+  };
+
+  const handleTagDragStart = (event: DragEvent<HTMLDivElement>, tagId: string) => {
+    if (!canManageTags || tagOrderSaving) return;
+    setTagDragSourceId(tagId);
+    setTagDragOverId(tagId);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", tagId);
+  };
+
+  const handleTagDragOver = (event: DragEvent<HTMLDivElement>, tagId: string) => {
+    if (!canManageTags || tagOrderSaving || !tagDragSourceId || tagId === tagDragSourceId) {
+      return;
+    }
+    event.preventDefault();
+    setTagDragOverId(tagId);
+  };
+
+  const handleTagDragLeave = () => {
+    setTagDragOverId(null);
+  };
+
+  const handleTagDragEnd = () => {
+    setTagDragSourceId(null);
+    setTagDragOverId(null);
+  };
+
+  const handleTagDrop = async (event: DragEvent<HTMLDivElement>, tagId: string) => {
+    if (!canManageTags || tagOrderSaving || !tagDragSourceId || tagDragSourceId === tagId) {
+      return;
+    }
+    event.preventDefault();
+    setTagDragOverId(null);
+
+    const sourceIndex = tags.findIndex((tag) => tag.id === tagDragSourceId);
+    const targetIndex = tags.findIndex((tag) => tag.id === tagId);
+
+    if (sourceIndex === -1 || targetIndex === -1) {
+      setTagDragSourceId(null);
+      return;
+    }
+
+    const nextOrder = [...tags];
+    const [moved] = nextOrder.splice(sourceIndex, 1);
+    nextOrder.splice(targetIndex, 0, moved);
+
+    const updates = nextOrder.map((tag, index) => ({
+      tagId: tag.id,
+      order: index + 1,
+    }));
+
+    setTagOrderSaving(true);
+    try {
+      await updateRoadmapTagsOrder(updates);
+    } catch (error) {
+      console.error("[roadmap] Failed to reorder tags", error);
+      alert("Unable to reorder tags right now. Please try again.");
+    } finally {
+      setTagOrderSaving(false);
+      setTagDragSourceId(null);
+      setTagDragOverId(null);
+    }
+  };
+
+  const handleStartEffortEdit = (item: RoadmapItemWithRelations) => {
+    if (!canEditEffort) return;
+    setActiveEffortEdit({ itemId: item.id, value: typeof item.effort === "number" ? `${item.effort}` : "" });
+    setEffortError((prev) => ({ ...prev, [item.id]: null }));
+    resetTagDropdownState();
+  };
+
+  const handleEffortInputChange = (value: string) => {
+    setActiveEffortEdit((prev) => (prev ? { ...prev, value } : prev));
+  };
+
+  const handleEffortCommit = async (item: RoadmapItemWithRelations, rawValue: string) => {
+    if (!canEditEffort) return;
+    const trimmed = rawValue.trim();
+    let nextValue: number | null = null;
+    if (trimmed.length > 0) {
+      const parsed = Number(trimmed);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        setEffortError((prev) => ({
+          ...prev,
+          [item.id]: "Enter a non-negative number.",
+        }));
+        return;
+      }
+      nextValue = parsed;
+    }
+    const currentValue = typeof item.effort === "number" ? item.effort : null;
+    if (currentValue === nextValue) {
+      setActiveEffortEdit(null);
+      return;
+    }
+    if (effortBusy[item.id]) return;
+    setEffortBusy((prev) => ({ ...prev, [item.id]: true }));
+    setEffortError((prev) => ({ ...prev, [item.id]: null }));
+    try {
+      await updateRoadmapItem(item.id, { effort: nextValue });
+      setActiveEffortEdit(null);
+    } catch (error) {
+      console.error("[roadmap] Failed to update effort", error);
+      setEffortError((prev) => ({
+        ...prev,
+        [item.id]: "Unable to update effort right now.",
+      }));
+    } finally {
+      setEffortBusy((prev) => {
+        const nextBusy = { ...prev };
+        delete nextBusy[item.id];
+        return nextBusy;
+      });
+    }
+  };
+
+  const handleEffortKeyDown = (
+    event: KeyboardEvent<HTMLInputElement>,
+    item: RoadmapItemWithRelations,
+  ) => {
+    if (!canEditEffort) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      handleEffortCommit(item, activeEffortEdit?.value ?? "");
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setActiveEffortEdit(null);
+      setEffortError((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+    }
+  };
+
+  const handleEffortBlur = (
+    event: FocusEvent<HTMLInputElement>,
+    item: RoadmapItemWithRelations,
+  ) => {
+    if (!canEditEffort) return;
+    handleEffortCommit(item, event.target.value);
   };
 
   const handleCardClick = (event: MouseEvent<HTMLDivElement>, item: RoadmapItemWithRelations) => {
@@ -715,6 +1330,11 @@ export const RoadmapScreen = () => {
               const isExpanded = expandedId === item.id;
               const voteLabel = `${item.voteCount} vote${item.voteCount === 1 ? "" : "s"}`;
               const commentLabel = `${item.comments.length} Comment${item.comments.length === 1 ? "" : "s"}`;
+              const orderedTagLabels = sortTagLabels(item.tags);
+              const hasTagValues = orderedTagLabels.length > 0;
+              const hasEffortValue = typeof item.effort === "number" && Number.isFinite(item.effort);
+              const showTagSection = canManageTags || hasTagValues;
+              const showEffortSection = canEditEffort || hasEffortValue;
 
               // Check if another card in the same row is expanded
               const otherIndexInRow = index % 2 === 0 ? index + 1 : index - 1;
@@ -773,7 +1393,7 @@ export const RoadmapScreen = () => {
                     >
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div className="flex flex-1 flex-col gap-2">
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-1">
                             <div
                               className="relative"
                               data-status-dropdown="true"
@@ -837,6 +1457,375 @@ export const RoadmapScreen = () => {
                                 </div>
                               )}
                             </div>
+                            {showTagSection && (
+                              <div
+                                className="relative"
+                                data-roadmap-edit-control={canManageTags ? "true" : undefined}
+                                ref={(el) => {
+                                  tagSelectorRefs.current[item.id] = el;
+                                }}
+                              >
+                              <div
+                                role={canManageTags ? "button" : undefined}
+                                tabIndex={canManageTags ? 0 : undefined}
+                                onClick={() => {
+                                  if (!canManageTags) return;
+                                  handleTagMenuToggle(item.id);
+                                }}
+                                onKeyDown={(event) => {
+                                  if (!canManageTags) return;
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    handleTagMenuToggle(item.id);
+                                  }
+                                }}
+                                className={`inline-flex flex-wrap items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition ${
+                                  canManageTags
+                                    ? "border border-slate-200 cursor-pointer hover:border-slate-400 focus-visible:ring-2 focus-visible:ring-brand-300 text-slate-600 dark:border-slate-700 dark:text-slate-200"
+                                    : "cursor-default text-slate-600 dark:text-slate-200"
+                                }`}
+                              >
+                                {orderedTagLabels.length > 0 ? (
+                                  orderedTagLabels.map((tagLabel, tagIndex) => {
+                                    if (!tagLabel) return null;
+                                    const definition = tagRecordByLabel.get(tagLabel.toLowerCase()) ?? null;
+                                    const visuals = getTagVisual(tagLabel, definition);
+                                    return (
+                                      <span
+                                        key={`${tagLabel}-${tagIndex}`}
+                                        className={`inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold tracking-wide text-slate-700 dark:border-slate-700 dark:text-slate-100 ${visuals.chipClass}`}
+                                      >
+                                        <TagShapeIcon shape={visuals.shape} colorClass={visuals.shapeColorClass} />
+                                        {tagLabel}
+                                      </span>
+                                    );
+                                  })
+                                ) : (
+                                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                                    Tags
+                                  </span>
+                                )}
+                                {canManageTags && (
+                                  <svg
+                                    className="h-3 w-3 text-slate-400"
+                                    viewBox="0 0 20 20"
+                                    fill="none"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M6 8l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                                  </svg>
+                                )}
+                              </div>
+                              {tagSelectorOpen === item.id && canManageTags && (
+                                <div className="absolute left-0 z-30 mt-2 w-80 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                                  <p className="pb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                                    Manage tags
+                                  </p>
+                                  <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+                                    {tagOptions.length === 0 ? (
+                                      <p className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">
+                                        No tags yet. Add one below.
+                                      </p>
+                                    ) : (
+                                      tagOptions.map((option) => {
+                                        const definition = option.record;
+                                        const selected = (item.tags ?? []).includes(option.label);
+                                        const visuals = getTagVisual(option.label, definition);
+                                        const key = definition ? definition.id : `orphan-${option.label}`;
+                                        const canDragTag =
+                                          !!definition && option.isDefined && canManageTags && !tagOrderSaving;
+                                        const isDragOver =
+                                          !!definition && tagDragOverId === definition.id && tagDragSourceId !== null;
+
+                                        return (
+                                          <div
+                                            key={key}
+                                            draggable={canDragTag}
+                                            onDragStart={
+                                              canDragTag ? (event) => handleTagDragStart(event, definition!.id) : undefined
+                                            }
+                                            onDragOver={
+                                              canDragTag ? (event) => handleTagDragOver(event, definition!.id) : undefined
+                                            }
+                                            onDrop={
+                                              canDragTag ? (event) => handleTagDrop(event, definition!.id) : undefined
+                                            }
+                                            onDragEnd={canDragTag ? handleTagDragEnd : undefined}
+                                            onDragLeave={canDragTag ? handleTagDragLeave : undefined}
+                                            className={`rounded-xl border border-slate-200 bg-white transition dark:border-slate-700 dark:bg-slate-900/70 ${
+                                              isDragOver ? "border-brand-400 ring-2 ring-brand-300/40" : ""
+                                            } ${canDragTag ? "cursor-grab" : ""}`}
+                                          >
+                                            <div className="flex items-center gap-2 px-2 py-1.5">
+                                              <button
+                                                type="button"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  handleTagToggle(item, option.label);
+                                                }}
+                                                disabled={!!tagUpdateBusy[item.id]}
+                                                className={`flex flex-1 items-center gap-2 rounded-full px-2 py-0.5 text-sm font-semibold ${
+                                                  tagUpdateBusy[item.id]
+                                                    ? "opacity-60"
+                                                    : "text-slate-700 dark:text-slate-200"
+                                                }`}
+                                              >
+                                                <span
+                                                  className={`inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold tracking-wide text-slate-700 dark:border-slate-700 dark:text-slate-100 ${visuals.chipClass}`}
+                                                >
+                                                  <TagShapeIcon
+                                                    shape={visuals.shape}
+                                                    colorClass={visuals.shapeColorClass}
+                                                  />
+                                                  {option.label}
+                                                </span>
+                                              </button>
+                                              <span
+                                                className={`h-3 w-3 rounded-full border ${
+                                                  selected
+                                                    ? "border-transparent bg-brand-500"
+                                                    : "border-slate-300 dark:border-slate-600"
+                                                }`}
+                                              />
+                                              {option.isDefined && definition && (
+                                                <button
+                                                  type="button"
+                                                  onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    handleTagSettingsToggle(definition.id);
+                                                  }}
+                                                  className={`rounded-full p-1 text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200 ${
+                                                    tagSettingsOpen === definition.id ? "text-slate-600 dark:text-slate-100" : ""
+                                                  }`}
+                                                >
+                                                  <Cog6ToothIcon className="h-4 w-4" />
+                                                </button>
+                                              )}
+                                            </div>
+                                            {!option.isDefined || !definition ? (
+                                              <div className="border-t border-dashed border-slate-200 px-2 py-2 text-[11px] text-slate-500 dark:border-slate-700">
+                                                Define this tag to customize its visuals.
+                                              </div>
+                                            ) : tagSettingsOpen === definition.id ? (
+                                              <div className="border-t border-slate-200 px-2 py-2 text-[11px] uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                                                <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                                  Color
+                                                  <select
+                                                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-brand-400 dark:focus:ring-brand-500/40"
+                                                    value={definition.colorKey ?? ""}
+                                                    onChange={(event) => {
+                                                      event.stopPropagation();
+                                                      handleTagColorSelect(definition, event.target.value);
+                                                    }}
+                                                    disabled={!!tagStyleBusy[definition.id]}
+                                                  >
+                                                    <option value="">Auto</option>
+                                                    {TAG_COLOR_STYLES.map((style) => (
+                                                      <option key={style.key} value={style.key}>
+                                                        {style.name}
+                                                      </option>
+                                                    ))}
+                                                  </select>
+                                                </label>
+                                                <label className="mt-2 flex flex-col gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                                  Shape
+                                                  <select
+                                                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-brand-400 dark:focus:ring-brand-500/40"
+                                                    value={definition.shape ?? ""}
+                                                    onChange={(event) => {
+                                                      event.stopPropagation();
+                                                      handleTagShapeSelect(definition, event.target.value);
+                                                    }}
+                                                    disabled={!!tagStyleBusy[definition.id]}
+                                                  >
+                                                    <option value="">Auto</option>
+                                                    {TAG_SHAPES.map((shape) => (
+                                                      <option key={shape} value={shape}>
+                                                        {shape.charAt(0).toUpperCase() + shape.slice(1)}
+                                                      </option>
+                                                    ))}
+                                                  </select>
+                                                </label>
+                                                {tagStyleError[definition.id] && (
+                                                  <p className="mt-2 text-[11px] normal-case text-rose-500">
+                                                    {tagStyleError[definition.id]}
+                                                  </p>
+                                                )}
+                                                <button
+                                                  type="button"
+                                                  className="mt-3 w-full rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/60 dark:text-rose-300 dark:hover:bg-rose-500/20"
+                                                  onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    handleDeleteTagDefinition(definition);
+                                                  }}
+                                                  disabled={!!tagDeleteBusy[definition.id]}
+                                                >
+                                                  {tagDeleteBusy[definition.id] ? "Deleting…" : "Delete tag"}
+                                                </button>
+                                                {tagDeleteError[definition.id] && (
+                                                  <p className="mt-1 text-[11px] normal-case text-rose-500">
+                                                    {tagDeleteError[definition.id]}
+                                                  </p>
+                                                )}
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                        );
+                                      })
+                                    )}
+                                  </div>
+                                  {canManageTags && (
+                                    <div className="mt-3 space-y-2">
+                                      {isAddTagFormVisible ? (
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-900/40">
+                                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                            New tag
+                                          </p>
+                                          <input
+                                            type="text"
+                                            value={newTagDraft.label}
+                                            onChange={(event) => handleNewTagDraftChange("label", event.target.value)}
+                                            placeholder="e.g. Outreach"
+                                            className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-200 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-brand-400 dark:focus:ring-brand-500/40"
+                                          />
+                                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                            <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                              Color
+                                              <select
+                                                value={newTagDraft.colorKey}
+                                                onChange={(event) => handleNewTagDraftChange("colorKey", event.target.value)}
+                                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-medium text-slate-700 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-200 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-brand-400 dark:focus:ring-brand-500/40"
+                                              >
+                                                {TAG_COLOR_STYLES.map((style) => (
+                                                  <option key={style.key} value={style.key}>
+                                                    {style.name}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </label>
+                                            <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                              Shape
+                                              <select
+                                                value={newTagDraft.shape}
+                                                onChange={(event) => handleNewTagDraftChange("shape", event.target.value)}
+                                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-medium text-slate-700 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-200 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-brand-400 dark:focus:ring-brand-500/40"
+                                              >
+                                                {TAG_SHAPES.map((shape) => (
+                                                  <option key={shape} value={shape}>
+                                                    {shape.charAt(0).toUpperCase() + shape.slice(1)}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </label>
+                                          </div>
+                                          <div className="mt-3 flex flex-wrap gap-2">
+                                            <button
+                                              type="button"
+                                              className="flex-1 rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                handleCreateTagDefinition();
+                                              }}
+                                              disabled={tagCreateBusy}
+                                            >
+                                              {tagCreateBusy ? "Saving…" : "Save tag"}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                handleCancelNewTag();
+                                              }}
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                          {newTagError && (
+                                            <p className="mt-2 text-xs text-rose-500">{newTagError}</p>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="w-full rounded-full border border-dashed border-slate-300 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 transition hover:border-slate-400 hover:text-slate-700 dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-400 dark:hover:text-slate-100"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            handleShowAddTagForm();
+                                          }}
+                                        >
+                                          + Add tag
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        className="w-full rounded-full border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-60"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleClearTags(item);
+                                        }}
+                                        disabled={!!tagUpdateBusy[item.id]}
+                                      >
+                                        Clear all
+                                      </button>
+                                    </div>
+                                  )}
+                                  {tagUpdateError[item.id] && (
+                                    <p className="mt-2 text-xs text-rose-500">{tagUpdateError[item.id]}</p>
+                                  )}
+                                </div>
+                              )}
+                              </div>
+                            )}
+                            {showEffortSection && (
+                              <div className="relative" data-roadmap-edit-control="true">
+                                {activeEffortEdit?.itemId === item.id ? (
+                                  <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                                    <span className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                                      Effort
+                                    </span>
+                                    <input
+                                      autoFocus
+                                      type="number"
+                                      min="0"
+                                      step="0.5"
+                                      value={activeEffortEdit.value}
+                                      onChange={(event) => handleEffortInputChange(event.target.value)}
+                                      onKeyDown={(event) => handleEffortKeyDown(event, item)}
+                                      onBlur={(event) => handleEffortBlur(event, item)}
+                                      disabled={!!effortBusy[item.id]}
+                                      className="w-16 bg-transparent text-right text-sm text-slate-700 outline-none dark:text-slate-100"
+                                    />
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEffortEdit(item)}
+                                    disabled={!canEditEffort}
+                                    className={`inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-wide transition dark:border-slate-700 ${
+                                      canEditEffort
+                                        ? "text-slate-600 hover:border-slate-400 hover:text-slate-800 dark:text-slate-200 dark:hover:border-slate-500"
+                                        : "cursor-default text-slate-400 dark:text-slate-500"
+                                    }`}
+                                  >
+                                    <span>Effort</span>
+                                    <span className="text-xs font-bold text-slate-700 dark:text-slate-100">
+                                      {hasEffortValue ? (
+                                        <>
+                                          {item.effort}
+                                          <span className="ml-1 font-normal text-slate-400 dark:text-slate-500">HRS</span>
+                                        </>
+                                      ) : (
+                                        "—"
+                                      )}
+                                    </span>
+                                  </button>
+                                )}
+                                {effortError[item.id] && (
+                                  <p className="mt-1 text-xs text-rose-500">{effortError[item.id]}</p>
+                                )}
+                              </div>
+                            )}
                           </div>
                           {titleEditing ? (
                             <div data-roadmap-edit-control="true" className="max-w-xl">
@@ -1098,5 +2087,3 @@ export const RoadmapScreen = () => {
 };
 
 export default RoadmapScreen;
-
-

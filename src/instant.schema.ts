@@ -76,6 +76,8 @@ const _schema = i.schema({
       imageUrl: i.string().optional(),
       createdBy: i.string().indexed().optional(),
       order: i.number().indexed().optional(),
+      tags: i.json<string[]>().optional(),
+      effort: i.number().optional(),
     }),
     roadmapItemVotes: i.entity({
       roadmapItemId: i.string().indexed(),
@@ -89,6 +91,15 @@ const _schema = i.schema({
       body: i.string(),
       createdAt: i.number().indexed(),
       updatedAt: i.number().indexed().optional(),
+    }),
+    roadmapTags: i.entity({
+      label: i.string().unique().indexed(),
+      colorKey: i.string().indexed().optional(),
+      shape: i.string().indexed().optional(),
+      order: i.number().indexed().optional(),
+      createdAt: i.number().indexed(),
+      updatedAt: i.number().indexed().optional(),
+      createdBy: i.string().indexed().optional(),
     }),
     areas: i.entity({
       code: i.string().unique().indexed(), // e.g., ZIP / county FIPS

@@ -139,6 +139,15 @@ const rules = {
     },
     bind: ["isAdmin", adminCondition],
   },
+  roadmapTags: {
+    allow: {
+      view: "true",
+      create: "isAdmin",
+      update: "isAdmin",
+      delete: "isAdmin",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
   $files: {
     allow: {
       view: "true",
