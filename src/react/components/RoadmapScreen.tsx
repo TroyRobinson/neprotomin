@@ -1462,11 +1462,12 @@ export const RoadmapScreen = () => {
                       className="flex flex-1 flex-col w-full rounded-2xl p-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                       aria-expanded={isExpanded}
                     >
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="flex flex-1 flex-col gap-2">
-                          <div className="flex flex-wrap items-center gap-1">
-                            <div
-                              className="relative"
+                      <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+                          <div className="flex w-full min-w-0 flex-1 flex-col gap-2">
+                            <div className="flex flex-wrap items-center gap-1">
+                              <div
+                                className="relative"
                               data-status-dropdown="true"
                               ref={(el) => {
                                 statusDropdownRefs.current[item.id] = el;
@@ -1921,6 +1922,28 @@ export const RoadmapScreen = () => {
                               </div>
                             )}
                           </div>
+                          </div>
+                          <div className="flex flex-none items-start justify-end gap-3 sm:ml-auto sm:flex-col sm:items-end">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleToggleVote(item);
+                              }}
+                              disabled={voteBusy[item.id]}
+                              className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-brand-300 ${
+                                item.viewerHasVoted
+                                  ? "border-brand-500 bg-brand-500 text-white hover:bg-brand-600"
+                                  : "border-slate-300 text-slate-600 hover:border-brand-300 hover:text-brand-600 dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-400"
+                              } ${voteBusy[item.id] ? "opacity-60" : ""}`}
+                              aria-pressed={item.viewerHasVoted}
+                            >
+                              <span className="inline-flex h-2.5 w-2.5 rounded-full bg-current" />
+                              {voteLabel}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex min-w-0 flex-col gap-2">
                           {titleEditing ? (
                             <div data-roadmap-edit-control="true" className="max-w-xl">
                               <input
@@ -1984,7 +2007,7 @@ export const RoadmapScreen = () => {
                                 descriptionRefs.current[item.id] = el;
                               }}
                               data-roadmap-editable={canEditItem ? "true" : undefined}
-                              className={`text-sm text-slate-600 dark:text-slate-300 ${
+                              className={`text-sm text-slate-600 break-words dark:text-slate-300 ${
                                 canEditItem ? "cursor-text" : ""
                               }`}
                               onDoubleClick={(event) => {
@@ -2012,25 +2035,6 @@ export const RoadmapScreen = () => {
                               Double-click to add more context.
                             </p>
                           ) : null}
-                        </div>
-                        <div className="flex items-end justify-between gap-3 sm:flex-col sm:items-end">
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleToggleVote(item);
-                            }}
-                            disabled={voteBusy[item.id]}
-                            className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-brand-300 ${
-                              item.viewerHasVoted
-                                ? "border-brand-500 bg-brand-500 text-white hover:bg-brand-600"
-                                : "border-slate-300 text-slate-600 hover:border-brand-300 hover:text-brand-600 dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-400"
-                            } ${voteBusy[item.id] ? "opacity-60" : ""}`}
-                            aria-pressed={item.viewerHasVoted}
-                          >
-                            <span className="inline-flex h-2.5 w-2.5 rounded-full bg-current" />
-                            {voteLabel}
-                          </button>
                         </div>
                       </div>
                       {!isExpanded && (
