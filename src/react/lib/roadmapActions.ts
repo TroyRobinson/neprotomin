@@ -344,10 +344,10 @@ export const renameRoadmapTag = async (
   const items = Array.isArray(data?.roadmapItems) ? (data!.roadmapItems as any[]) : [];
   for (const item of items) {
     if (!item?.id || !Array.isArray(item.tags)) continue;
-    const tags = item.tags.filter((value): value is string => typeof value === "string");
+    const tags = item.tags.filter((value: unknown): value is string => typeof value === "string");
     if (tags.length === 0) continue;
     let changed = false;
-    const next = tags.map((value) => {
+    const next = tags.map((value: string) => {
       if (typeof value === "string" && value.trim() === previous) {
         changed = true;
         return trimmed;
