@@ -1483,9 +1483,15 @@ export const ReactMapApp = () => {
     setActiveOrganizationId(idOrIds);
   }, []);
 
+  type SelectOrganizationOptions = {
+    treatAsMapSelection?: boolean;
+    source?: "map" | "sidebar";
+  };
+
   const selectOrganization = useCallback(
-    (id: string, fromMap: boolean) => {
+    (id: string, options: SelectOrganizationOptions = {}) => {
       if (!id) return;
+      const { treatAsMapSelection = false, source = "map" } = options;
       
       // Check if clicking the same organization that's already selected (second click)
       const isAlreadySelected = selectedOrgIds.length === 1 && selectedOrgIds[0] === id;
@@ -1509,10 +1515,14 @@ export const ReactMapApp = () => {
           track("map_organization_double_click_zoom", {
             organizationId: id,
             device: isMobile ? "mobile" : "desktop",
-            source: fromMap ? "map" : "sidebar",
+            source,
             fromZoom: currentZoom,
             toZoom: targetZoom,
           });
+          if (isMobile && source === "sidebar") {
+            // Collapse the sheet so the zoom change is visible on mobile sidebar interactions
+            collapseSheet();
+          }
           return;
         }
       }
@@ -1521,32 +1531,31 @@ export const ReactMapApp = () => {
       track("map_organization_click", {
         organizationId: id,
         device: isMobile ? "mobile" : "desktop",
-        source: fromMap ? "map" : "sidebar",
+        source,
       });
       setActiveScreen("map");
       setActiveOrganizationId(id);
       setHighlightedOrganizationIds(null);
       // Set this org as the only selected org (direct selection takes priority over area selection)
       setSelectedOrgIds([id]);
-      setSelectedOrgIdsFromMap(fromMap);
+      setSelectedOrgIdsFromMap(treatAsMapSelection);
       if (isMobile) {
         previewSheet();
       }
     },
-    [cameraState, isMobile, organizations, previewSheet, selectedOrgIds],
+    [cameraState, collapseSheet, isMobile, previewSheet, selectedOrgIds],
   );
 
   const handleOrganizationClick = useCallback(
     (id: string, _meta?: { source: "point" | "centroid" }) => {
-      selectOrganization(id, true);
+      selectOrganization(id, { treatAsMapSelection: true, source: "map" });
     },
     [selectOrganization],
   );
 
   const handleSidebarOrganizationClick = useCallback(
     (id: string) => {
-      const treatAsMapSelection = isMobile;
-      selectOrganization(id, treatAsMapSelection);
+      selectOrganization(id, { treatAsMapSelection: isMobile, source: "sidebar" });
     },
     [isMobile, selectOrganization],
   );
@@ -1572,9 +1581,13 @@ export const ReactMapApp = () => {
           fromZoom: currentZoom,
           toZoom: targetZoom,
         });
+        if (isMobile) {
+          // Zoom button is in the sidebar; collapsing reveals the map on mobile
+          collapseSheet();
+        }
       }
     },
-    [cameraState, isMobile],
+    [cameraState, collapseSheet, isMobile],
   );
 
   const handleClusterClick = useCallback(
