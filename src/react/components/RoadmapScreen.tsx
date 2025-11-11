@@ -1424,9 +1424,16 @@ export const RoadmapScreen = () => {
               const isDragOver = dragOverItemId === item.id;
               const canDrag = isEmailAdmin && sortBy === "custom";
               const isItemBeingEdited = activeEdit?.itemId === item.id;
+              const hasTopBarOverlay =
+                statusDropdownOpen === item.id || tagSelectorOpen === item.id;
 
               return (
-                <li key={item.id} className={`flex transition-all duration-500 ease-out ${shouldStretch ? "" : "md:self-start"}`}>
+                <li
+                  key={item.id}
+                  className={`flex transition-all duration-500 ease-out ${
+                    shouldStretch ? "" : "md:self-start"
+                  }`}
+                >
                   <article
                     draggable={canDrag && !isDragging && !isItemBeingEdited}
                     onDragStart={(e) => handleDragStart(e, item)}
@@ -1464,10 +1471,18 @@ export const RoadmapScreen = () => {
                     >
                       <div className="flex flex-col gap-4">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
-                          <div className="flex w-full min-w-0 flex-1 flex-col gap-2">
-                            <div className="flex flex-wrap items-center gap-1">
+                          <div
+                            className={`relative flex w-full min-w-0 flex-1 flex-nowrap items-center gap-2 ${
+                              hasTopBarOverlay ? "" : "overflow-hidden"
+                            }`}
+                          >
+                            <div
+                              className={`flex flex-nowrap items-center gap-1 min-w-0 flex-1 ${
+                                hasTopBarOverlay ? "" : "overflow-hidden"
+                              }`}
+                            >
                               <div
-                                className="relative"
+                                className="relative flex-shrink-0"
                               data-status-dropdown="true"
                               ref={(el) => {
                                 statusDropdownRefs.current[item.id] = el;
@@ -1531,7 +1546,7 @@ export const RoadmapScreen = () => {
                             </div>
                             {showTagSection && (
                               <div
-                                className="relative"
+                                className="relative flex-shrink-0"
                                 data-roadmap-edit-control={canManageTags ? "true" : undefined}
                                 ref={(el) => {
                                   tagSelectorRefs.current[item.id] = el;
@@ -1880,7 +1895,7 @@ export const RoadmapScreen = () => {
                               </div>
                             )}
                             {showEffortSection && (
-                              <div className="relative" data-roadmap-edit-control="true">
+                              <div className="relative flex-shrink-0" data-roadmap-edit-control="true">
                                 {activeEffortEdit?.itemId === item.id ? (
                                   <div className="flex items-center gap-2 rounded-full border border-slate-200/70 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm dark:border-slate-600/60 dark:bg-slate-900 dark:text-slate-100">
                                   <input
@@ -1921,26 +1936,28 @@ export const RoadmapScreen = () => {
                                 )}
                               </div>
                             )}
-                          </div>
-                          </div>
-                          <div className="flex flex-none items-start justify-end gap-3 sm:ml-auto sm:flex-col sm:items-end">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleToggleVote(item);
-                              }}
-                              disabled={voteBusy[item.id]}
-                              className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-brand-300 ${
-                                item.viewerHasVoted
-                                  ? "border-brand-500 bg-brand-500 text-white hover:bg-brand-600"
-                                  : "border-slate-300 text-slate-600 hover:border-brand-300 hover:text-brand-600 dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-400"
-                              } ${voteBusy[item.id] ? "opacity-60" : ""}`}
-                              aria-pressed={item.viewerHasVoted}
-                            >
-                              <span className="inline-flex h-2.5 w-2.5 rounded-full bg-current" />
-                              {voteLabel}
-                            </button>
+                            </div>
+                            {/* Fade gradient overlay */}
+                            <div className="pointer-events-none absolute right-0 top-0 z-0 h-full w-16 bg-gradient-to-l from-white via-white/80 to-transparent dark:from-slate-900 dark:via-slate-900/80" />
+                            <div className="relative z-10 ml-auto flex flex-shrink-0 items-center bg-white pl-2 dark:bg-slate-900">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleToggleVote(item);
+                                }}
+                                disabled={voteBusy[item.id]}
+                                className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-brand-300 ${
+                                  item.viewerHasVoted
+                                    ? "border-brand-500 bg-brand-500 text-white hover:bg-brand-600"
+                                    : "border-slate-300 text-slate-600 hover:border-brand-300 hover:text-brand-600 dark:border-slate-700 dark:text-slate-300 dark:hover:border-brand-400"
+                                } ${voteBusy[item.id] ? "opacity-60" : ""}`}
+                                aria-pressed={item.viewerHasVoted}
+                              >
+                                <span className="inline-flex h-2.5 w-2.5 rounded-full bg-current" />
+                                {voteLabel}
+                              </button>
+                            </div>
                           </div>
                         </div>
                         <div className="flex min-w-0 flex-col gap-2">
