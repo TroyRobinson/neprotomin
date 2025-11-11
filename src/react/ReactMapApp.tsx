@@ -1486,6 +1486,38 @@ export const ReactMapApp = () => {
   const selectOrganization = useCallback(
     (id: string, fromMap: boolean) => {
       if (!id) return;
+      
+      // Check if clicking the same organization that's already selected (second click)
+      const isAlreadySelected = selectedOrgIds.length === 1 && selectedOrgIds[0] === id;
+      
+      // On second click of already-selected org: zoom in further
+      if (isAlreadySelected && cameraState) {
+        const controller = mapControllerRef.current;
+        if (controller) {
+          // Calculate target zoom: zoom in by 2-3 levels, but cap at reasonable maximum
+          const currentZoom = cameraState.zoom;
+          const zoomIncrement = 2.5;
+          const maxZoom = isMobile ? 14.5 : 13.5;
+          const targetZoom = Math.min(currentZoom + zoomIncrement, maxZoom);
+          
+          // Ensure the org is treated as map selection so it appears in the top section and scrolls to top
+          setSelectedOrgIds([id]);
+          setSelectedOrgIdsFromMap(true);
+          
+          // Use centerOnOrganization for smooth animated zoom
+          controller.centerOnOrganization(id, { animate: true, zoom: targetZoom });
+          track("map_organization_double_click_zoom", {
+            organizationId: id,
+            device: isMobile ? "mobile" : "desktop",
+            source: fromMap ? "map" : "sidebar",
+            fromZoom: currentZoom,
+            toZoom: targetZoom,
+          });
+          return;
+        }
+      }
+      
+      // First click: select the organization normally
       track("map_organization_click", {
         organizationId: id,
         device: isMobile ? "mobile" : "desktop",
@@ -1501,7 +1533,7 @@ export const ReactMapApp = () => {
         previewSheet();
       }
     },
-    [isMobile, previewSheet],
+    [cameraState, isMobile, organizations, previewSheet, selectedOrgIds],
   );
 
   const handleOrganizationClick = useCallback(
@@ -1517,6 +1549,32 @@ export const ReactMapApp = () => {
       selectOrganization(id, treatAsMapSelection);
     },
     [isMobile, selectOrganization],
+  );
+
+  const handleZoomToOrg = useCallback(
+    (id: string) => {
+      const controller = mapControllerRef.current;
+      if (controller && cameraState) {
+        // Calculate target zoom: zoom in by 2-3 levels, but cap at reasonable maximum
+        const currentZoom = cameraState.zoom;
+        const zoomIncrement = 2.5;
+        const maxZoom = isMobile ? 14.5 : 13.5;
+        const targetZoom = Math.min(currentZoom + zoomIncrement, maxZoom);
+        
+        // Ensure the org is selected and treated as map selection so it appears in the top section
+        setSelectedOrgIds([id]);
+        setSelectedOrgIdsFromMap(true);
+        
+        controller.centerOnOrganization(id, { animate: true, zoom: targetZoom });
+        track("map_organization_zoom_button_click", {
+          organizationId: id,
+          device: isMobile ? "mobile" : "desktop",
+          fromZoom: currentZoom,
+          toZoom: targetZoom,
+        });
+      }
+    },
+    [cameraState, isMobile],
   );
 
   const handleClusterClick = useCallback(
@@ -2670,6 +2728,8 @@ export const ReactMapApp = () => {
               timeSelection={timeSelection}
               onClearTimeFilter={handleClearTimeFilter}
               onChangeTimeFilter={handleChangeTimeFilter}
+              cameraState={cameraState}
+              onZoomToOrg={handleZoomToOrg}
               variant="desktop"
             />
           )}
@@ -2777,6 +2837,8 @@ export const ReactMapApp = () => {
                     timeSelection={timeSelection}
                     onClearTimeFilter={handleClearTimeFilter}
                     onChangeTimeFilter={handleChangeTimeFilter}
+                    cameraState={cameraState}
+                    onZoomToOrg={handleZoomToOrg}
                     variant="mobile"
                     showInsights={false}
                     className="h-full"

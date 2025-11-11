@@ -74,6 +74,10 @@ interface SidebarProps {
   onClearTimeFilter?: () => void;
   // Callback to change the time filter (open time selector)
   onChangeTimeFilter?: () => void;
+  // Current camera state for zoom level detection
+  cameraState?: { center: [number, number]; zoom: number } | null;
+  // Callback to zoom to a specific organization
+  onZoomToOrg?: (organizationId: string) => void;
 }
 
 type TabType = "stats" | "orgs";
@@ -113,6 +117,8 @@ export const Sidebar = ({
   timeSelection,
   onClearTimeFilter,
   onChangeTimeFilter,
+  cameraState,
+  onZoomToOrg,
 }: SidebarProps) => {
   const [activeTab, setActiveTab] = useState<TabType>("orgs");
   const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(true);
@@ -177,6 +183,23 @@ export const Sidebar = ({
   const highlightedIds = new Set(highlightedOrganizationIds ?? []);
   const selectedOrgIdsSet = new Set(selectedOrgIds);
   const primarySelectedOrgId = selectedOrgIds.length > 0 ? selectedOrgIds[0] : null;
+  
+  // Helper to determine if zoom button should be shown for an org
+  // Show zoom button when org is selected, but hide if already at max zoom
+  const shouldShowZoomButton = useCallback((orgId: string) => {
+    if (!selectedOrgIdsSet.has(orgId)) return false;
+    
+    // Check if already at maximum zoom level
+    if (!cameraState) return true; // Show if we don't know the zoom level
+    
+    const currentZoom = cameraState.zoom;
+    const maxZoom = variant === "mobile" ? 14.5 : 13.5;
+    
+    // Hide button if we're already at or very close to max zoom (within 0.1)
+    // This accounts for floating point precision and ensures the button disappears
+    // when further zooming isn't possible
+    return currentZoom < maxZoom - 0.1;
+  }, [selectedOrgIdsSet, cameraState, variant]);
 
   const selectedZips = selectedAreas?.ZIP ?? [];
   const selectedCounties = selectedAreas?.COUNTY ?? [];
@@ -553,6 +576,8 @@ export const Sidebar = ({
                             setExpandedOrgId((prev) => (prev === id ? null : id))
                           }
                           onIssueClick={handleOpenIssueModal}
+                          showZoomButton={shouldShowZoomButton(org.id)}
+                          onZoomClick={onZoomToOrg}
                         />
                       ))}
                     </ul>
@@ -583,6 +608,8 @@ export const Sidebar = ({
                             setExpandedOrgId((prev) => (prev === id ? null : id))
                           }
                           onIssueClick={handleOpenIssueModal}
+                          showZoomButton={shouldShowZoomButton(org.id)}
+                          onZoomClick={onZoomToOrg}
                         />
                       ))}
                     </ul>
@@ -613,6 +640,8 @@ export const Sidebar = ({
                         setExpandedOrgId((prev) => (prev === id ? null : id))
                       }
                       onIssueClick={handleOpenIssueModal}
+                      showZoomButton={shouldShowZoomButton(org.id)}
+                      onZoomClick={onZoomToOrg}
                     />
                   ))}
 
@@ -654,6 +683,9 @@ interface OrganizationListItemProps {
   onOrganizationClick?: (organizationId: string) => void;
   onToggleExpand?: (id: string) => void;
   onIssueClick?: (org: Organization) => void;
+  // Show zoom button when in county zoom range and org is selected
+  showZoomButton?: boolean;
+  onZoomClick?: (organizationId: string) => void;
 }
 
 const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
@@ -812,7 +844,11 @@ const OrganizationListItem = ({
   onOrganizationClick,
   onToggleExpand,
   onIssueClick,
+  showZoomButton = false,
+  onZoomClick,
 }: OrganizationListItemProps) => {
+  const lastClickTimeRef = useRef<number>(0);
+
   const handleMouseEnter = () => onHover?.(org.id);
   const handleMouseLeave = () => onHover?.(null);
 
@@ -825,8 +861,33 @@ const OrganizationListItem = ({
   };
 
   const handleToggle = () => {
+    const now = Date.now();
+    const timeSinceLastClick = now - lastClickTimeRef.current;
+    const isDoubleClick = timeSinceLastClick < 300; // 300ms threshold for double-click
+    
+    // If card is already expanded and selected, and this is a quick second click (double-click),
+    // don't toggle the expand state - just trigger selection (which will zoom if already selected)
+    // This keeps the hours/card expanded when zooming
+    if (isExpanded && isActive && isDoubleClick) {
+      // Just select (which will trigger zoom if already selected)
+      onOrganizationClick?.(org.id);
+      lastClickTimeRef.current = now;
+      return;
+    }
+    
+    // If card is already expanded, don't collapse it - just select it
+    // Only collapse when clicking a different card (handled by onToggleExpand)
+    if (isExpanded) {
+      // Just select without toggling expand state
+      onOrganizationClick?.(org.id);
+      lastClickTimeRef.current = now;
+      return;
+    }
+    
+    lastClickTimeRef.current = now;
+    
+    // Normal click behavior: expand and select (only collapses if clicking a different card)
     onToggleExpand?.(org.id);
-    // Also select the org when clicked/tapped
     onOrganizationClick?.(org.id);
   };
 
@@ -944,6 +1005,19 @@ const OrganizationListItem = ({
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {showZoomButton && (
+            <button
+              type="button"
+              className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-[2px] text-[10px] font-medium text-indigo-700 transition-colors group-hover:bg-indigo-200 group-hover:text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-300 dark:group-hover:bg-indigo-800/60 dark:group-hover:text-indigo-100"
+              onClick={(event) => {
+                event.stopPropagation();
+                onZoomClick?.(org.id);
+              }}
+              aria-label="Zoom to location"
+            >
+              Zoom
+            </button>
+          )}
           <button
             type="button"
             className="inline-flex items-center rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-500 transition-colors group-hover:bg-red-100 group-hover:text-brand-900 dark:bg-slate-800/60 dark:text-slate-300 dark:group-hover:bg-red-900/30 dark:group-hover:text-slate-100"
