@@ -697,7 +697,6 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   };
   
   map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   // Create a single bottom-row for legends so they share space evenly with right-side controls
   legendRowEl = document.createElement("div");
   legendRowEl.className = "pointer-events-none absolute left-4 right-4 z-10 flex items-center gap-3 justify-between";

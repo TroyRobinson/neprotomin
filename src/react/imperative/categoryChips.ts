@@ -8,7 +8,7 @@ const TIME_OPEN_CHIP_CLASSES =
   "border-orange-200/60 bg-orange-50/50 text-orange-800 hover:border-orange-300/80 hover:bg-orange-50/80 hover:text-orange-900 dark:border-orange-800/40 dark:bg-orange-950/30 dark:text-orange-300 dark:hover:border-orange-700/60 dark:hover:text-orange-200";
 
 const SEARCH_ICON = `
-  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px] text-slate-400 dark:text-slate-500">
+  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px] text-slate-500 dark:text-slate-400">
     <path
       fill-rule="evenodd"
       d="M9 3.5a5.5 5.5 0 013.894 9.394l3.703 3.703a.75.75 0 11-1.06 1.06l-3.703-3.703A5.5 5.5 0 119 3.5zm0 1.5a4 4 0 100 8 4 4 0 000-8z"
@@ -130,10 +130,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   const isMobile = options.isMobile ?? false;
   const wrapper = document.createElement("div");
   wrapper.className =
-    "pointer-events-none absolute left-4 top-4 z-10 flex flex-nowrap items-start gap-2";
+    "pointer-events-none absolute left-4 top-4 z-10 flex flex-nowrap items-center gap-2";
 
   const list = document.createElement("div");
-  list.className = "flex flex-wrap gap-2 pointer-events-auto transition-all duration-300";
+  list.className = "flex flex-wrap items-center gap-2 pointer-events-auto transition-all duration-300";
   wrapper.appendChild(list);
 
   let searchExpanded = false;
@@ -367,7 +367,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     searchButton = document.createElement("button");
     searchButton.type = "button";
     searchButton.className =
-      "inline-flex h-8 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white";
+      "inline-flex h-8 w-9 items-center justify-center rounded-full border-2 border-brand-500 bg-white text-slate-600 transition hover:border-brand-600 hover:text-brand-600 dark:border-brand-500 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-brand-400 dark:hover:text-white";
     searchButton.setAttribute("aria-label", "Open search");
     searchButton.setAttribute("aria-expanded", "false");
     searchButton.innerHTML = SEARCH_ICON;
