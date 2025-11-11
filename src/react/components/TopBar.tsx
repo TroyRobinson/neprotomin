@@ -140,7 +140,9 @@ export const TopBar = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [mobileSearchValue, setMobileSearchValue] = useState("");
   const [isCompactMobileSearch, setIsCompactMobileSearch] = useState(false);
-  const [isMobileSearchExpanded, setIsMobileSearchExpanded] = useState(true);
+  // Default to collapsed (icon button) on mobile; will be updated by ResizeObserver based on screen width
+  const [isMobileSearchExpanded, setIsMobileSearchExpanded] = useState(false);
+  const [isMobileSearchFocused, setIsMobileSearchFocused] = useState(false);
   const [neHomeRedirectDisabled, setNeHomeRedirectDisabled] = useState(getNeHomeRedirectState);
   const [showLocationTextMobile, setShowLocationTextMobile] = useState(true);
   const [showThemeButtonMobile, setShowThemeButtonMobile] = useState(true);
@@ -180,11 +182,27 @@ export const TopBar = ({
     const updateCompactState = () => {
       // Collapse the search UI into an icon when the mobile row gets narrow.
       const width = node.getBoundingClientRect().width;
+      const shouldBeCompact = width < MOBILE_SEARCH_AUTO_EXPAND_THRESHOLD;
+      
       setIsCompactMobileSearch((prev) => {
-        const next = width < MOBILE_SEARCH_AUTO_EXPAND_THRESHOLD;
+        const next = shouldBeCompact;
+        // When transitioning to/from compact mode, update expanded state:
+        // - Wide screen (>= 380px): always expanded
+        // - Narrow screen (< 380px): collapsed (icon button) by default, but user can manually expand
         if (prev !== next) {
-          setIsMobileSearchExpanded(!next);
+          // Transitioning between modes
+          if (next) {
+            // Becoming compact (narrow): collapse to icon button
+            setIsMobileSearchExpanded(false);
+          } else {
+            // Becoming wide: always show expanded search bar
+            setIsMobileSearchExpanded(true);
+          }
+        } else if (!next) {
+          // Already in wide mode: ensure it's always expanded
+          setIsMobileSearchExpanded(true);
         }
+        // When staying in compact mode, don't change expanded state (user may have manually expanded it)
         return next;
       });
       
@@ -637,7 +655,7 @@ export const TopBar = ({
           <button
             type="button"
             onClick={() => onBrandClick?.()}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500 font-display text-lg font-semibold tracking-wider text-white shadow-floating"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-500 font-display text-lg font-semibold tracking-wider text-white shadow-floating"
             aria-label="Return to home"
           >
             NE
@@ -658,13 +676,25 @@ export const TopBar = ({
                 ref={mobileSearchFormRef}
                 onSubmit={handleMobileSearchSubmit}
                 className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white pl-3 pr-2 py-2 shadow-sm transition focus-within:border-brand-300 focus-within:ring-2 focus-within:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:focus-within:border-slate-500"
+                style={{ minWidth: 0 }}
               >
-                {!isCompactMobileSearch && <SearchIcon />}
+                {!isCompactMobileSearch && (
+                  <button
+                    type="button"
+                    onClick={() => mobileSearchInputRef.current?.focus()}
+                    className="flex shrink-0 items-center justify-center text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+                    aria-label="Focus search"
+                  >
+                    <SearchIcon />
+                  </button>
+                )}
                 <input
                   ref={mobileSearchInputRef}
                   type="search"
                   value={mobileSearchValue}
                   onChange={(e) => setMobileSearchValue(e.target.value)}
+                  onFocus={() => setIsMobileSearchFocused(true)}
+                  onBlur={() => setIsMobileSearchFocused(false)}
                   onPointerDown={() =>
                     track("mobile_search_bar_tap", {
                       compact: isCompactMobileSearch,
@@ -673,7 +703,7 @@ export const TopBar = ({
                     })
                   }
                   placeholder="City, Org, ZIP, Address, ..."
-                  className="w-full min-w-0 bg-transparent text-base text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
+                  className="flex-1 min-w-0 bg-transparent text-base text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
                   enterKeyHint="search"
                 />
                 <button
@@ -693,11 +723,11 @@ export const TopBar = ({
           </div>
           {(!isCompactMobileSearch || !isMobileSearchExpanded) && (
             <>
-              {showThemeButtonMobile && (
+              {showThemeButtonMobile && !isMobileSearchFocused && (
                 <button
                   type="button"
                   onClick={handleThemeToggle}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
                   aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
                   aria-pressed={theme === "dark"}
                 >
@@ -708,15 +738,15 @@ export const TopBar = ({
                 <button
                   type="button"
                   onClick={handleAddOrganization}
-                  className={`inline-flex h-11 items-center justify-center rounded-full bg-brand-100 text-brand-700 shadow-sm transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900 ${
-                    showLocationTextMobile && (!isCompactMobileSearch || !isMobileSearchExpanded)
+                  className={`inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 shadow-sm transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900 ${
+                    showLocationTextMobile && (!isCompactMobileSearch || !isMobileSearchExpanded) && !isMobileSearchFocused
                       ? "gap-2 w-auto px-3"
                       : "w-11 px-0"
                   }`}
                   aria-label="Add organization"
                 >
                   <PlusIcon />
-                  {showLocationTextMobile && (!isCompactMobileSearch || !isMobileSearchExpanded) && (
+                  {showLocationTextMobile && (!isCompactMobileSearch || !isMobileSearchExpanded) && !isMobileSearchFocused && (
                     <span className="text-sm font-medium">Location</span>
                   )}
                 </button>
@@ -727,7 +757,7 @@ export const TopBar = ({
             <button
               type="button"
               onClick={handleMobileMenuToggle}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
               aria-label="Open menu"
               aria-expanded={isMobileMenuOpen}
             >
