@@ -1055,7 +1055,7 @@ const OrganizationListItem = ({
               className="inline-flex items-center gap-1 text-xs font-medium text-slate-400 transition-colors hover:text-brand-900 dark:text-slate-300 dark:hover:text-slate-100"
               onClick={(event) => event.stopPropagation()}
             >
-              Site
+              Website
               <span aria-hidden="true" className="text-[1em] leading-none">
                 ↗
               </span>
