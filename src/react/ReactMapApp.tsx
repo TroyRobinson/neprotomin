@@ -1109,6 +1109,7 @@ export const ReactMapApp = () => {
   );
   const searchSelectionLabel = useMemo(() => {
     if (!searchSelectionMeta) return null;
+    if (searchSelectionMeta.ids.length === 1) return "SELECTED";
     const rawTerm = searchSelectionMeta.term?.trim();
     if (!rawTerm) return "RESULTS";
     const MAX_LEN = 36;
