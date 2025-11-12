@@ -1068,44 +1068,41 @@ export const ReactMapApp = () => {
     [organizations],
   );
 
-  const findOrganizationMatch = useCallback(
-    (query: string) => {
+  const findOrganizationMatches = useCallback(
+    (query: string, maxResults = 5) => {
       const normalizedQuery = normalizeForSearch(query);
-      if (!normalizedQuery) return null;
-      if (normalizedQuery.length < 2) return null;
+      if (!normalizedQuery || normalizedQuery.length < 2) return [];
 
-      const directMatch =
-        organizationSearchIndex.find((entry) => {
-          if (entry.normalizedPrimary === normalizedQuery) return true;
-          if (entry.normalizedPrimary.includes(normalizedQuery)) return true;
-          if (normalizedQuery.includes(entry.normalizedPrimary)) return true;
-          return entry.normalizedNames.some((name) => {
-            if (name === normalizedQuery) return true;
-            if (name.includes(normalizedQuery)) return true;
-            if (normalizedQuery.includes(name)) return true;
-            return false;
-          });
-        }) ?? null;
+      const matches: { org: Organization; score: number }[] = [];
 
-      if (directMatch) {
-        return { org: directMatch.org, score: 1 } as const;
-      }
-
-      let best: { org: Organization; score: number } | null = null;
       for (const entry of organizationSearchIndex) {
         let entryScore = 0;
-        for (const name of entry.normalizedNames) {
-          const score = computeSimilarityFromNormalized(name, normalizedQuery);
-          if (score > entryScore) entryScore = score;
+
+        if (entry.normalizedPrimary === normalizedQuery) {
+          entryScore = 1.2;
+        } else if (
+          entry.normalizedPrimary.includes(normalizedQuery) ||
+          normalizedQuery.includes(entry.normalizedPrimary)
+        ) {
+          entryScore = 1.05;
+        } else {
+          for (const name of entry.normalizedNames) {
+            const score = computeSimilarityFromNormalized(name, normalizedQuery);
+            if (score > entryScore) entryScore = score;
+          }
         }
-        if (!best || entryScore > best.score) {
-          best = { org: entry.org, score: entryScore };
+
+        if (entryScore >= ORGANIZATION_MATCH_THRESHOLD) {
+          matches.push({ org: entry.org, score: entryScore });
         }
       }
-      if (best && best.score >= ORGANIZATION_MATCH_THRESHOLD) {
-        return best;
-      }
-      return null;
+
+      matches.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.org.name.localeCompare(b.org.name);
+      });
+
+      return matches.slice(0, Math.max(1, maxResults));
     },
     [organizationSearchIndex],
   );
@@ -1966,30 +1963,42 @@ export const ReactMapApp = () => {
       }
 
       if (!targetRecord) {
-        const orgMatch = findOrganizationMatch(query);
-        if (orgMatch) {
-          const match = orgMatch.org;
+        const orgMatches = findOrganizationMatches(query, 6);
+        if (orgMatches.length > 0) {
           suppressAreaSelectionClearRef.current.ZIP += 1;
           suppressAreaSelectionClearRef.current.COUNTY += 1;
           applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
           applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
 
+          const matchIds = orgMatches.map((entry) => entry.org.id);
           setActiveScreen("map");
           setOrgPinsVisible(true);
-          setActiveOrganizationId(match.id);
-          setHighlightedOrganizationIds(null);
+          setActiveOrganizationId(matchIds[0]);
+          setHighlightedOrganizationIds(matchIds.length > 1 ? matchIds : null);
           setSidebarFollowMode("map");
-          setSelectedOrgIds([match.id]);
+          setSelectedOrgIds(matchIds);
           setSelectedOrgIdsFromMap(true);
 
+          const controller = mapControllerRef.current;
+          if (controller) {
+            try {
+              controller.centerOnOrganization(matchIds[0], { animate: true });
+            } catch {}
+          }
+
           if (isMobile) {
-            previewSheet();
+            if (matchIds.length <= 3) {
+              previewSheet();
+            } else {
+              expandSheet();
+            }
           }
 
           track("map_search_organization_match", {
             query,
-            organizationId: match.id,
-            score: Number(orgMatch.score.toFixed(3)),
+            matchCount: matchIds.length,
+            topOrganizationId: matchIds[0],
+            topScore: Number(orgMatches[0].score.toFixed(3)),
           });
           setHasInteractedWithMap(true);
           return;
@@ -2120,7 +2129,8 @@ export const ReactMapApp = () => {
       isMobile,
       sheetState,
       previewSheet,
-      findOrganizationMatch,
+      expandSheet,
+      findOrganizationMatches,
       applyAreaSelection,
       setBoundaryMode,
       setHasInteractedWithMap,
