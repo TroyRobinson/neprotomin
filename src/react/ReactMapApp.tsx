@@ -1115,6 +1115,8 @@ export const ReactMapApp = () => {
     const displayTerm = rawTerm.length > MAX_LEN ? `${rawTerm.slice(0, MAX_LEN - 1)}…` : rawTerm;
     return `RESULTS (${displayTerm})`;
   }, [searchSelectionMeta]);
+  const selectionStyleVariant: "default" | "searchResults" =
+    searchSelectionMeta && searchSelectionMeta.ids.length > 1 ? "searchResults" : "default";
 
   const areaNameLookup = useMemo(
     () => (kind: SupportedAreaKind, code: string) => getAreaLabel(kind, code) ?? code,
@@ -1572,7 +1574,7 @@ export const ReactMapApp = () => {
     (id: string, options: SelectOrganizationOptions = {}) => {
       if (!id) return;
       const { treatAsMapSelection = false, source = "map" } = options;
-      if (source !== "search" && searchSelectionMeta) {
+      if (searchSelectionMeta) {
         setSearchSelectionMeta(null);
       }
       const shouldFollowMap = treatAsMapSelection || source === "map";
@@ -2953,6 +2955,7 @@ export const ReactMapApp = () => {
               onZoomToOrg={handleZoomToOrg}
               variant="desktop"
               selectionLabelOverride={searchSelectionLabel}
+              selectionStyleVariant={selectionStyleVariant}
             />
           )}
         </main>
@@ -3068,6 +3071,7 @@ export const ReactMapApp = () => {
                     cameraState={cameraState}
                     onZoomToOrg={handleZoomToOrg}
                     selectionLabelOverride={searchSelectionLabel}
+                    selectionStyleVariant={selectionStyleVariant}
                     variant="mobile"
                     showInsights={false}
                     className="h-full"

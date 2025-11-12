@@ -86,6 +86,7 @@ interface SidebarProps {
   // Callback to zoom to a specific organization
   onZoomToOrg?: (organizationId: string) => void;
   selectionLabelOverride?: string | null;
+  selectionStyleVariant?: "default" | "searchResults";
 }
 
 type TabType = "stats" | "orgs";
@@ -133,6 +134,7 @@ export const Sidebar = ({
   cameraState,
   onZoomToOrg,
   selectionLabelOverride = null,
+  selectionStyleVariant = "default",
 }: SidebarProps) => {
   const [activeTab, setActiveTab] = useState<TabType>("orgs");
   const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(true);
@@ -688,6 +690,7 @@ export const Sidebar = ({
                           showZoomButton={shouldShowZoomButton(org.id)}
                           onZoomClick={onZoomToOrg}
                           hideCategoryTag={hideCategoryTags}
+                          selectionStyleVariant={selectionStyleVariant}
                         />
                       ))}
                     </ul>
@@ -718,6 +721,7 @@ export const Sidebar = ({
                           showZoomButton={shouldShowZoomButton(org.id)}
                           onZoomClick={onZoomToOrg}
                           hideCategoryTag={hideCategoryTags}
+                          selectionStyleVariant={selectionStyleVariant}
                         />
                       ))}
                     </ul>
@@ -748,6 +752,7 @@ export const Sidebar = ({
                       showZoomButton={shouldShowZoomButton(org.id)}
                       onZoomClick={onZoomToOrg}
                       hideCategoryTag={hideCategoryTags}
+                      selectionStyleVariant={selectionStyleVariant}
                     />
                   ))}
 
@@ -810,6 +815,7 @@ interface OrganizationListItemProps {
   showZoomButton?: boolean;
   onZoomClick?: (organizationId: string) => void;
   hideCategoryTag?: boolean;
+  selectionStyleVariant?: "default" | "searchResults";
 }
 
 const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
@@ -1012,6 +1018,7 @@ const OrganizationListItem = ({
   showZoomButton = false,
   onZoomClick,
   hideCategoryTag = false,
+  selectionStyleVariant = "default",
 }: OrganizationListItemProps) => {
   const lastClickTimeRef = useRef<number>(0);
   const categoryLabel = typeof org.category === "string" ? getCategoryLabel(org.category) : null;
@@ -1071,8 +1078,12 @@ const OrganizationListItem = ({
     }
   };
 
+  const selectedClass =
+    selectionStyleVariant === "searchResults"
+      ? "border-0 bg-brand-50/70 dark:bg-slate-800/60"
+      : "border border-brand-300 ring-2 ring-brand-200/80 bg-brand-50/70 dark:bg-slate-800";
   const cardStateClass = isSelected
-    ? "border border-brand-300 ring-2 ring-brand-200/80 bg-brand-50/70 dark:bg-slate-800"
+    ? selectedClass
     : isHighlighted
     ? "border-0 bg-brand-50/70 dark:bg-slate-800/50"
     : "border-0 bg-slate-100/40 hover:bg-brand-50 dark:bg-slate-800/20 dark:hover:bg-slate-800/70";
