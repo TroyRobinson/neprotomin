@@ -1933,6 +1933,7 @@ export const ReactMapApp = () => {
         if (isMobile && sheetState !== "peek") {
           collapseSheet();
         }
+        setHasInteractedWithMap(true);
         return;
       }
 
@@ -1989,6 +1990,7 @@ export const ReactMapApp = () => {
             organizationId: match.id,
             score: Number(orgMatch.score.toFixed(3)),
           });
+          setHasInteractedWithMap(true);
           return;
         }
       }
@@ -2037,6 +2039,7 @@ export const ReactMapApp = () => {
             setUserLocationSource("search");
             setUserLocationError(null);
             focusOnLocation(cachedLocation);
+            setHasInteractedWithMap(true);
             return;
           }
         }
@@ -2105,6 +2108,7 @@ export const ReactMapApp = () => {
       if (isMobile && sheetState !== "peek") {
         collapseSheet();
       }
+      setHasInteractedWithMap(true);
     },
     [
       areasByKindAndCode,
@@ -2118,6 +2122,7 @@ export const ReactMapApp = () => {
       findOrganizationMatch,
       applyAreaSelection,
       setBoundaryMode,
+      setHasInteractedWithMap,
       setActiveOrganizationId,
       setActiveScreen,
       setHighlightedOrganizationIds,

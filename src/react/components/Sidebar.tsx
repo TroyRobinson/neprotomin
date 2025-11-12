@@ -143,6 +143,7 @@ export const Sidebar = ({
     active: false,
     selectionKey: null,
   });
+  const lastNonMapSelectionKeyRef = useRef<string | null>(null);
   const scrollOrgIntoView = useCallback((orgId: string, options?: { alignTop?: boolean; padding?: number }) => {
     const container = orgsScrollRef.current;
     if (!container) return;
@@ -421,6 +422,27 @@ export const Sidebar = ({
     primarySelectedOrgId,
     selectedOrgIdsFromMap,
     variant,
+  ]);
+
+  useEffect(() => {
+    if (selectedOrgIds.length === 0) {
+      lastNonMapSelectionKeyRef.current = null;
+      return;
+    }
+    if (activeTab !== "orgs") return;
+    if (selectedOrgIdsFromMap) return;
+    if (!primarySelectedOrgId) return;
+
+    const selectionKey = selectedOrgIds.join("|");
+    if (lastNonMapSelectionKeyRef.current === selectionKey) return;
+    lastNonMapSelectionKeyRef.current = selectionKey;
+    scrollOrgIntoView(primarySelectedOrgId, { padding: 24 });
+  }, [
+    activeTab,
+    primarySelectedOrgId,
+    scrollOrgIntoView,
+    selectedOrgIds,
+    selectedOrgIdsFromMap,
   ]);
 
   useEffect(() => {
