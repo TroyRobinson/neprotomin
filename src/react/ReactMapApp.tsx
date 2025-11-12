@@ -1530,10 +1530,26 @@ export const ReactMapApp = () => {
       if (!id) return;
       const { treatAsMapSelection = false, source = "map" } = options;
       setSidebarFollowMode(source === "sidebar" ? "sidebar" : "map");
-      
+
       // Check if clicking the same organization that's already selected (second click)
       const isAlreadySelected = selectedOrgIds.length === 1 && selectedOrgIds[0] === id;
-      
+
+      // On mobile, re-open the sheet if it's hidden (peek state) even when reselecting the same org
+      if (
+        isAlreadySelected &&
+        isMobile &&
+        sheetState === "peek" &&
+        treatAsMapSelection
+      ) {
+        setActiveScreen("map");
+        setActiveOrganizationId(id);
+        setHighlightedOrganizationIds(null);
+        setSelectedOrgIds([id]);
+        setSelectedOrgIdsFromMap(true);
+        previewSheet();
+        return;
+      }
+
       // On second click of already-selected org: zoom in further
       if (isAlreadySelected && cameraState) {
         const controller = mapControllerRef.current;
@@ -1543,11 +1559,11 @@ export const ReactMapApp = () => {
           const zoomIncrement = 2.5;
           const maxZoom = isMobile ? 14.5 : 13.5;
           const targetZoom = Math.min(currentZoom + zoomIncrement, maxZoom);
-          
+
           // Ensure the org stays selected while preserving whether the interaction came from the map or sidebar
           setSelectedOrgIds([id]);
           setSelectedOrgIdsFromMap(treatAsMapSelection);
-          
+
           // Use centerOnOrganization for smooth animated zoom
           if (source === "sidebar") {
             skipSidebarCenteringRef.current = true;
@@ -1567,7 +1583,7 @@ export const ReactMapApp = () => {
           return;
         }
       }
-      
+
       // First click: select the organization normally
       track("map_organization_click", {
         organizationId: id,
@@ -1584,7 +1600,15 @@ export const ReactMapApp = () => {
         previewSheet();
       }
     },
-    [cameraState, collapseSheet, isMobile, previewSheet, selectedOrgIds, setSidebarFollowMode],
+    [
+      cameraState,
+      collapseSheet,
+      isMobile,
+      previewSheet,
+      selectedOrgIds,
+      setSidebarFollowMode,
+      sheetState,
+    ],
   );
 
   const handleOrganizationClick = useCallback(
