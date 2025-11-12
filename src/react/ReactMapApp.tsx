@@ -1978,8 +1978,9 @@ export const ReactMapApp = () => {
           setOrgPinsVisible(true);
           setActiveOrganizationId(match.id);
           setHighlightedOrganizationIds(null);
+          setSidebarFollowMode("map");
           setSelectedOrgIds([match.id]);
-          setSelectedOrgIdsFromMap(false);
+          setSelectedOrgIdsFromMap(true);
 
           if (isMobile) {
             previewSheet();
@@ -2123,6 +2124,7 @@ export const ReactMapApp = () => {
       applyAreaSelection,
       setBoundaryMode,
       setHasInteractedWithMap,
+      setSidebarFollowMode,
       setActiveOrganizationId,
       setActiveScreen,
       setHighlightedOrganizationIds,
