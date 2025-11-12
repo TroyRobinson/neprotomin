@@ -1684,6 +1684,9 @@ export const ReactMapApp = () => {
   const handleZoomToOrg = useCallback(
     (id: string) => {
       const preserveMapSelection = selectedOrgIdsFromMap && selectedOrgIds.includes(id);
+      if (searchSelectionMeta) {
+        setSearchSelectionMeta(null);
+      }
       setSidebarFollowMode(preserveMapSelection ? "map" : "sidebar");
       const controller = mapControllerRef.current;
       if (controller && cameraState) {
@@ -1717,7 +1720,9 @@ export const ReactMapApp = () => {
       isMobile,
       selectedOrgIds,
       selectedOrgIdsFromMap,
+      searchSelectionMeta,
       setSidebarFollowMode,
+      setSearchSelectionMeta,
     ],
   );
 
