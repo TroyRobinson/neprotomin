@@ -1632,7 +1632,8 @@ export const ReactMapApp = () => {
 
   const handleZoomToOrg = useCallback(
     (id: string) => {
-      setSidebarFollowMode("sidebar");
+      const preserveMapSelection = selectedOrgIdsFromMap && selectedOrgIds.includes(id);
+      setSidebarFollowMode(preserveMapSelection ? "map" : "sidebar");
       const controller = mapControllerRef.current;
       if (controller && cameraState) {
         // Calculate target zoom: zoom in by 2-3 levels, but cap at reasonable maximum
@@ -1640,14 +1641,13 @@ export const ReactMapApp = () => {
         const zoomIncrement = 2.5;
         const maxZoom = isMobile ? 14.5 : 13.5;
         const targetZoom = Math.min(currentZoom + zoomIncrement, maxZoom);
-        
+
         // Ensure the org is selected so the sidebar reflects the zoom target
-      const preserveMapSelection = selectedOrgIdsFromMap && selectedOrgIds.includes(id);
-      setSelectedOrgIds([id]);
-      setSelectedOrgIdsFromMap(preserveMapSelection);
-      
-      skipSidebarCenteringRef.current = true;
-      controller.centerOnOrganization(id, { animate: true, zoom: targetZoom });
+        setSelectedOrgIds([id]);
+        setSelectedOrgIdsFromMap(preserveMapSelection);
+
+        skipSidebarCenteringRef.current = true;
+        controller.centerOnOrganization(id, { animate: true, zoom: targetZoom });
         track("map_organization_zoom_button_click", {
           organizationId: id,
           device: isMobile ? "mobile" : "desktop",
