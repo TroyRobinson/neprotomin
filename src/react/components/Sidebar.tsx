@@ -127,6 +127,44 @@ export const Sidebar = ({
   const [issueFeedback, setIssueFeedback] = useState<string | null>(null);
   const orgsScrollRef = useRef<HTMLDivElement>(null);
   const lastMapExpandedOrgRef = useRef<string | null>(null);
+  const scrollOrgIntoView = useCallback((orgId: string, options?: { alignTop?: boolean; padding?: number }) => {
+    const container = orgsScrollRef.current;
+    if (!container) return;
+    const safeOrgId =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function" ? CSS.escape(orgId) : orgId;
+    const target = container.querySelector<HTMLElement>(`[data-org-id="${safeOrgId}"]`);
+    if (!target) return;
+
+    const padding = typeof options?.padding === "number" ? options.padding : 12;
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+
+    if (options?.alignTop) {
+      const offset = targetRect.top - containerRect.top - padding;
+      container.scrollTo({
+        top: container.scrollTop + offset,
+        behavior: "smooth",
+      });
+      return;
+    }
+
+    if (targetRect.top < containerRect.top + padding) {
+      const offset = targetRect.top - containerRect.top - padding;
+      container.scrollTo({
+        top: container.scrollTop + offset,
+        behavior: "smooth",
+      });
+    } else if (targetRect.bottom > containerRect.bottom - padding) {
+      const offset = targetRect.bottom - containerRect.bottom + padding;
+      container.scrollTo({
+        top: container.scrollTop + offset,
+        behavior: "smooth",
+      });
+    }
+  }, []);
+  const scrollSelectedOrgToTop = useCallback((orgId: string) => {
+    scrollOrgIntoView(orgId, { alignTop: true, padding: 0 });
+  }, [scrollOrgIntoView]);
   const { user } = db.useAuth();
 
   const handleOpenIssueModal = useCallback((org: Organization) => {
@@ -251,60 +289,33 @@ export const Sidebar = ({
   const totalCount = typeof totalSourceCount === "number" ? totalSourceCount : visibleCount;
   const countForTab = totalSelectedCount > 0 ? inSelection.length : visibleCount;
   const missingCount = Math.max(totalCount - visibleCount, 0);
+  const viewportFilterStateRef = useRef({
+    missingCount,
+    visibleCount,
+    filtered: missingCount > 0,
+  });
 
-  // Scroll to top when selection changes due to area selections or map-based org selections
+  // Keep automatic scrolling disabled except when the map filters the list to the current viewport.
   useEffect(() => {
-    if (orgsScrollRef.current && activeTab === "orgs") {
-      const shouldScroll =
-        totalSelectedCount > 0 || (selectedOrgIdsFromMap && selectedOrgIds.length > 0);
-      if (shouldScroll) {
-        orgsScrollRef.current.scrollTop = 0;
-      }
-    }
-  }, [
-    selectedZips.length,
-    selectedCounties.length,
-    selectedOrgIds.length,
-    primarySelectedOrgId,
-    selectedOrgIdsFromMap,
-    totalSelectedCount,
-    activeTab,
-  ]);
+    const prev = viewportFilterStateRef.current;
+    const isFiltered = missingCount > 0;
+    const prevFiltered = prev.filtered;
+    const filterActivated = !prevFiltered && isFiltered;
+    const visibleShrank = isFiltered && visibleCount < prev.visibleCount;
+    viewportFilterStateRef.current = { missingCount, visibleCount, filtered: isFiltered };
 
-  // When an organization is selected from the sidebar, keep it aligned at the top of the viewport
-  useEffect(() => {
-    if (selectedOrgIdsFromMap) return; // Only handle sidebar-driven selections
-    if (selectedOrgIds.length !== 1) return;
     if (activeTab !== "orgs") return;
+    if (!primarySelectedOrgId) return;
+    if (!(filterActivated || visibleShrank)) return;
 
-    const scrollContainer = orgsScrollRef.current;
-    if (!scrollContainer) return;
+    scrollSelectedOrgToTop(primarySelectedOrgId);
+  }, [activeTab, missingCount, primarySelectedOrgId, scrollSelectedOrgToTop, visibleCount]);
 
-    const targetId = primarySelectedOrgId;
-    if (!targetId) return;
-    const alignSelection = () => {
-      const targetEl = scrollContainer.querySelector<HTMLElement>(`[data-org-id="${targetId}"]`);
-      if (!targetEl) return;
-
-      const containerRect = scrollContainer.getBoundingClientRect();
-      const targetRect = targetEl.getBoundingClientRect();
-
-      // Account for the tab bar and padding above the scroll container
-      const TAB_OFFSET = 18; // approx. height of tab selector + spacing
-      const delta = targetRect.top - containerRect.top;
-      const targetScrollTop = scrollContainer.scrollTop + delta - TAB_OFFSET;
-
-      scrollContainer.scrollTo({ top: Math.max(targetScrollTop, 0), behavior: "smooth" });
-    };
-
-    const timeout = window.setTimeout(() => {
-      window.requestAnimationFrame(alignSelection);
-    }, 650);
-
-    return () => {
-      window.clearTimeout(timeout);
-    };
-  }, [selectedOrgIds, selectedOrgIdsFromMap, activeTab, primarySelectedOrgId]);
+  useEffect(() => {
+    if (!expandedOrgId) return;
+    if (activeTab !== "orgs") return;
+    scrollOrgIntoView(expandedOrgId, { padding: 24 });
+  }, [activeTab, expandedOrgId, scrollOrgIntoView]);
 
   useEffect(() => {
     if (variant !== "mobile") return;

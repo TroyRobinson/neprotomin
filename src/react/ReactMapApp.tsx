@@ -243,6 +243,7 @@ export const ReactMapApp = () => {
   const pendingContentDragRef = useRef<{ pointerId: number; startY: number } | null>(null);
   const sheetContentRef = useRef<HTMLDivElement | null>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
+  const skipSidebarCenteringRef = useRef(false);
   const suppressAreaSelectionClearRef = useRef<{ ZIP: number; COUNTY: number }>({ ZIP: 0, COUNTY: 0 });
   const sheetAvailableHeight = Math.max(viewportHeight - topBarHeight, 0);
   const sheetPeekOffset = Math.max(sheetAvailableHeight - MOBILE_SHEET_PEEK_HEIGHT, 0);
@@ -1543,11 +1544,14 @@ export const ReactMapApp = () => {
           const maxZoom = isMobile ? 14.5 : 13.5;
           const targetZoom = Math.min(currentZoom + zoomIncrement, maxZoom);
           
-          // Ensure the org is treated as map selection so it appears in the top section and scrolls to top
+          // Ensure the org stays selected while preserving whether the interaction came from the map or sidebar
           setSelectedOrgIds([id]);
-          setSelectedOrgIdsFromMap(true);
+          setSelectedOrgIdsFromMap(treatAsMapSelection);
           
           // Use centerOnOrganization for smooth animated zoom
+          if (source === "sidebar") {
+            skipSidebarCenteringRef.current = true;
+          }
           controller.centerOnOrganization(id, { animate: true, zoom: targetZoom });
           track("map_organization_double_click_zoom", {
             organizationId: id,
@@ -1608,10 +1612,10 @@ export const ReactMapApp = () => {
         const maxZoom = isMobile ? 14.5 : 13.5;
         const targetZoom = Math.min(currentZoom + zoomIncrement, maxZoom);
         
-        // Ensure the org is selected and treated as map selection so it appears in the top section
+        // Ensure the org is selected so the sidebar reflects the zoom target
         setSelectedOrgIds([id]);
-        setSelectedOrgIdsFromMap(true);
         
+        skipSidebarCenteringRef.current = true;
         controller.centerOnOrganization(id, { animate: true, zoom: targetZoom });
         track("map_organization_zoom_button_click", {
           organizationId: id,
@@ -2367,11 +2371,12 @@ export const ReactMapApp = () => {
     let inSelection: Organization[] = [];
     const selectedOrgSet = new Set(selectedOrgIds);
     
-    // Show recent organizations when map hasn't been interacted with and no selections are active
-    const shouldShowRecent = !hasInteractedWithMap && 
-      selectedZips.length === 0 && 
-      selectedCounties.length === 0 && 
-      selectedOrgIds.length === 0;
+    // Show recent organizations until the user meaningfully interacts with the map.
+    // Sidebar-driven selections should not hide this section; only map-driven picks or area filters should.
+    const shouldShowRecent = !hasInteractedWithMap &&
+      selectedZips.length === 0 &&
+      selectedCounties.length === 0 &&
+      (!selectedOrgIdsFromMap || selectedOrgIds.length === 0);
 
     // Direct org selection (from clicking org centroids or small clusters)
     // moves to the inSelection section only when originating from the map.
@@ -2558,6 +2563,10 @@ export const ReactMapApp = () => {
   // Center the map on sidebar-selected organization(s)
   useEffect(() => {
     if (selectedOrgIdsFromMap) return;
+    if (skipSidebarCenteringRef.current) {
+      skipSidebarCenteringRef.current = false;
+      return;
+    }
     if (selectedOrgIds.length !== 1) return;
     if (isMobile && sheetState === "partial") return;
     const controller = mapControllerRef.current;
