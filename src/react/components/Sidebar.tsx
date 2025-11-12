@@ -292,6 +292,7 @@ export const Sidebar = ({
   const totalCount = typeof totalSourceCount === "number" ? totalSourceCount : visibleCount;
   const countForTab = totalSelectedCount > 0 ? inSelection.length : visibleCount;
   const missingCount = Math.max(totalCount - visibleCount, 0);
+  const hideCategoryTags = Boolean(categoryFilter);
   const viewportFilterStateRef = useRef({
     missingCount,
     visibleCount,
@@ -620,6 +621,7 @@ export const Sidebar = ({
                           onIssueClick={handleOpenIssueModal}
                           showZoomButton={shouldShowZoomButton(org.id)}
                           onZoomClick={onZoomToOrg}
+                          hideCategoryTag={hideCategoryTags}
                         />
                       ))}
                     </ul>
@@ -649,6 +651,7 @@ export const Sidebar = ({
                           onIssueClick={handleOpenIssueModal}
                           showZoomButton={shouldShowZoomButton(org.id)}
                           onZoomClick={onZoomToOrg}
+                          hideCategoryTag={hideCategoryTags}
                         />
                       ))}
                     </ul>
@@ -678,6 +681,7 @@ export const Sidebar = ({
                       onIssueClick={handleOpenIssueModal}
                       showZoomButton={shouldShowZoomButton(org.id)}
                       onZoomClick={onZoomToOrg}
+                      hideCategoryTag={hideCategoryTags}
                     />
                   ))}
 
@@ -723,6 +727,7 @@ interface OrganizationListItemProps {
   // Show zoom button when in county zoom range and org is selected
   showZoomButton?: boolean;
   onZoomClick?: (organizationId: string) => void;
+  hideCategoryTag?: boolean;
 }
 
 const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
@@ -924,8 +929,11 @@ const OrganizationListItem = ({
   onIssueClick,
   showZoomButton = false,
   onZoomClick,
+  hideCategoryTag = false,
 }: OrganizationListItemProps) => {
   const lastClickTimeRef = useRef<number>(0);
+  const categoryLabel = typeof org.category === "string" ? getCategoryLabel(org.category) : null;
+  const showCategoryChip = Boolean(!hideCategoryTag && categoryLabel);
 
   const handleMouseEnter = () => onHover?.(org.id);
   const handleMouseLeave = () => onHover?.(null);
@@ -1061,20 +1069,22 @@ const OrganizationListItem = ({
               </span>
             </a>
           )}
-          <span
-            role="button"
-            tabIndex={0}
-            className="inline-flex items-center rounded-full bg-slate-50 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-800/70 dark:text-slate-300 cursor-pointer"
-            onClick={(event) => handleCategoryClick(event)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                handleCategoryClick(e);
-              }
-            }}
-          >
-            {getCategoryLabel(org.category)}
-          </span>
+          {showCategoryChip ? (
+            <span
+              role="button"
+              tabIndex={0}
+              className="inline-flex items-center rounded-full bg-slate-50 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-800/70 dark:text-slate-300 cursor-pointer"
+              onClick={(event) => handleCategoryClick(event)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleCategoryClick(e);
+                }
+              }}
+            >
+              {categoryLabel}
+            </span>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           {showZoomButton && (
