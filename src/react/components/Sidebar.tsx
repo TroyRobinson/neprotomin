@@ -610,7 +610,6 @@ export const Sidebar = ({
                           key={org.id}
                           org={org}
                           isSelected={selectedOrgIdsSet.has(org.id)}
-                          isActive={org.id === activeOrganizationId}
                           isHighlighted={highlightedIds.has(org.id)}
                           isExpanded={expandedOrgId === org.id}
                           onHover={onHover}
@@ -640,7 +639,6 @@ export const Sidebar = ({
                           key={org.id}
                           org={org}
                           isSelected={selectedOrgIdsSet.has(org.id)}
-                          isActive={org.id === activeOrganizationId}
                           isHighlighted={highlightedIds.has(org.id)}
                           isExpanded={expandedOrgId === org.id}
                           onHover={onHover}
@@ -670,7 +668,6 @@ export const Sidebar = ({
                       key={org.id}
                       org={org}
                       isSelected={selectedOrgIdsSet.has(org.id)}
-                      isActive={org.id === activeOrganizationId}
                       isHighlighted={highlightedIds.has(org.id)}
                       onHover={onHover}
                       onCategoryClick={onCategoryClick}
@@ -717,7 +714,6 @@ export const Sidebar = ({
 interface OrganizationListItemProps {
   org: Organization;
   isSelected: boolean;
-  isActive: boolean;
   isHighlighted?: boolean;
   isExpanded: boolean;
   onHover?: (idOrIds: string | string[] | null) => void;
@@ -880,7 +876,6 @@ const renderHours = (hours: OrganizationHours | null | undefined) => {
 const OrganizationListItem = ({
   org,
   isSelected,
-  isActive,
   isHighlighted = false,
   isExpanded,
   onHover,
@@ -949,9 +944,7 @@ const OrganizationListItem = ({
 
   const cardStateClass = isSelected
     ? "border border-brand-300 ring-2 ring-brand-200/80 bg-brand-50/70 dark:bg-slate-800"
-    : isExpanded
-    ? "border border-brand-200 bg-brand-50/60 dark:border-slate-700 dark:bg-slate-800/50"
-    : isActive || isHighlighted
+    : isHighlighted
     ? "border-0 bg-brand-50/70 dark:bg-slate-800/50"
     : "border-0 bg-slate-100/40 hover:bg-brand-50 dark:bg-slate-800/20 dark:hover:bg-slate-800/70";
 
