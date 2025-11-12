@@ -127,6 +127,10 @@ export const Sidebar = ({
   const [issueFeedback, setIssueFeedback] = useState<string | null>(null);
   const orgsScrollRef = useRef<HTMLDivElement>(null);
   const lastMapExpandedOrgRef = useRef<string | null>(null);
+  const directSelectionStateRef = useRef<{ active: boolean; selectionKey: string | null }>({
+    active: false,
+    selectionKey: null,
+  });
   const scrollOrgIntoView = useCallback((orgId: string, options?: { alignTop?: boolean; padding?: number }) => {
     const container = orgsScrollRef.current;
     if (!container) return;
@@ -306,10 +310,41 @@ export const Sidebar = ({
 
     if (activeTab !== "orgs") return;
     if (!primarySelectedOrgId) return;
+    if (directOrgSelectionActive) return;
     if (!(filterActivated || visibleShrank)) return;
 
     scrollSelectedOrgToTop(primarySelectedOrgId);
-  }, [activeTab, missingCount, primarySelectedOrgId, scrollSelectedOrgToTop, visibleCount]);
+  }, [
+    activeTab,
+    missingCount,
+    primarySelectedOrgId,
+    scrollSelectedOrgToTop,
+    visibleCount,
+    directOrgSelectionActive,
+  ]);
+
+  // Jump to the list top whenever the map triggers a direct org selection.
+  useEffect(() => {
+    const container = orgsScrollRef.current;
+    if (!container) return;
+
+    const selectionKey = directOrgSelectionActive ? selectedOrgIds.join("|") : null;
+    const prev = directSelectionStateRef.current;
+    const shouldScroll =
+      directOrgSelectionActive && (!prev.active || prev.selectionKey !== selectionKey);
+
+    directSelectionStateRef.current = {
+      active: directOrgSelectionActive,
+      selectionKey,
+    };
+
+    if (!shouldScroll) return;
+
+    container.scrollTo({
+      top: 0,
+      behavior: variant === "mobile" ? "auto" : "smooth",
+    });
+  }, [directOrgSelectionActive, selectedOrgIds, variant]);
 
   useEffect(() => {
     if (!expandedOrgId) return;
