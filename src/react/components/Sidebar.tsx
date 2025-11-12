@@ -799,6 +799,46 @@ const buildMapsUrl = (org: Organization): string | null => {
   return `https://www.google.com/maps/search/?api=1&query=${query}`;
 };
 
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const stripAddressTail = (value: string): string =>
+  value
+    // Remove trailing country markers
+    .replace(/,\s*(?:USA|United States(?: of America)?)\.?$/i, "")
+    // Remove trailing state + zip (e.g., ", OK 74145" or ", OK")
+    .replace(/,\s*[A-Z]{2}(?:\s*\d{5}(?:-\d{4})?)?$/i, "")
+    .trim()
+    // Collapse duplicate whitespace that can appear after replacements
+    .replace(/\s{2,}/g, " ");
+
+const formatShortAddress = (org: Organization): string | null => {
+  const street = typeof org.address === "string" ? org.address.trim() : "";
+  const city = typeof org.city === "string" ? org.city.trim() : "";
+
+  if (!street && !city) {
+    return null;
+  }
+
+  if (street && city) {
+    const cityPattern = new RegExp(`,\\s*${escapeRegExp(city)}(?:,.*)?$`, "i");
+    const streetWithoutCity = street.replace(cityPattern, "").trim();
+    const baseStreet = streetWithoutCity.length > 0 ? streetWithoutCity : street;
+    const cleanedStreet = stripAddressTail(baseStreet).replace(/,\s*$/, "").trim();
+
+    if (cleanedStreet.length === 0) {
+      return city;
+    }
+
+    return `${cleanedStreet}, ${city}`;
+  }
+
+  if (street) {
+    return stripAddressTail(street);
+  }
+
+  return city;
+};
+
 const formatHoursLines = (hours: OrganizationHours | null | undefined): string[] => {
   if (!hours) return [];
   if (Array.isArray(hours.weekdayText) && hours.weekdayText.length > 0) {
@@ -946,6 +986,7 @@ const OrganizationListItem = ({
     : isHighlighted
     ? "border-0 bg-brand-50/70 dark:bg-slate-800/50"
     : "border-0 bg-slate-100/40 hover:bg-brand-50 dark:bg-slate-800/20 dark:hover:bg-slate-800/70";
+  const shortAddress = formatShortAddress(org);
 
   return (
     <li
@@ -969,18 +1010,11 @@ const OrganizationListItem = ({
           </span>
         )}
       </div>
-      {(org.address || org.city || org.state || org.postalCode) && (
+      {shortAddress && (
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           {(() => {
-            const addressText = [
-              org.address,
-              [org.city, org.state].filter(Boolean).join(", ") || null,
-              org.postalCode ?? null,
-            ]
-              .filter(Boolean)
-              .join(" · ");
             const mapsUrl = buildMapsUrl(org);
-            
+
             if (mapsUrl) {
               return (
                 <a
@@ -990,11 +1024,11 @@ const OrganizationListItem = ({
                   className="hover:underline"
                   onClick={(event) => event.stopPropagation()}
                 >
-                  {addressText}
+                  {shortAddress}
                 </a>
               );
             }
-            return addressText;
+            return shortAddress;
           })()}
         </p>
       )}
