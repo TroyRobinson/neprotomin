@@ -2900,6 +2900,7 @@ export const ReactMapApp = () => {
               onHoverArea={handleAreaHoverChange}
               onZoomOutAll={handleZoomOutAll}
               onZoomToCounty={handleZoomToCounty}
+              onRequestCollapseSheet={isMobile ? collapseSheet : undefined}
               onStatSelect={handleStatSelect}
               onOrgPinsVisibleChange={setOrgPinsVisible}
               forceHideOrgsNonce={forceHideOrgsNonce}
@@ -3014,6 +3015,7 @@ export const ReactMapApp = () => {
                     onHoverArea={handleAreaHoverChange}
                     onZoomOutAll={handleZoomOutAll}
                     onZoomToCounty={handleZoomToCounty}
+                    onRequestCollapseSheet={collapseSheet}
                     onStatSelect={handleStatSelect}
                     onOrgPinsVisibleChange={setOrgPinsVisible}
                     forceHideOrgsNonce={forceHideOrgsNonce}

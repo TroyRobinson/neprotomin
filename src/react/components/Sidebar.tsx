@@ -65,6 +65,7 @@ interface SidebarProps {
   onOrganizationClick?: (organizationId: string) => void;
   onZoomOutAll?: () => void;
   onZoomToCounty?: (countyCode: string) => void;
+  onRequestCollapseSheet?: () => void;
   onCategoryClick?: (categoryId: string) => void;
   onHoverArea?: (area: AreaId | null) => void;
   onStatSelect?: (statId: string | null, meta?: { shiftKey?: boolean; clear?: boolean }) => void;
@@ -116,6 +117,7 @@ export const Sidebar = ({
   onOrganizationClick,
   onZoomOutAll,
   onZoomToCounty,
+  onRequestCollapseSheet,
   onCategoryClick,
   onHoverArea,
   onStatSelect,
@@ -731,9 +733,15 @@ export const Sidebar = ({
                         onClick={() => {
                           if (countyZoomContext && onZoomToCounty) {
                             onZoomToCounty(countyZoomContext.countyCode);
+                            if (variant === "mobile") {
+                              onRequestCollapseSheet?.();
+                            }
                             return;
                           }
                           onZoomOutAll?.();
+                          if (variant === "mobile") {
+                            onRequestCollapseSheet?.();
+                          }
                         }}
                       >
                         {countyZoomContext
