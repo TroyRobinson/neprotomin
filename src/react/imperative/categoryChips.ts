@@ -491,6 +491,30 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       }
     });
 
+    // Select all text when clicking on the input if it already has text
+    searchInput.addEventListener("click", () => {
+      if (searchInput && searchInput.value) {
+        // Use setTimeout to ensure the input is focused after the click
+        setTimeout(() => {
+          if (document.activeElement === searchInput && searchInput.value) {
+            searchInput.select();
+          }
+        }, 0);
+      }
+    });
+
+    // Also select text when the input receives focus if it already has text
+    searchInput.addEventListener("focus", () => {
+      if (searchInput && searchInput.value) {
+        // Use setTimeout to ensure selection happens after focus
+        setTimeout(() => {
+          if (document.activeElement === searchInput && searchInput.value) {
+            searchInput.select();
+          }
+        }, 0);
+      }
+    });
+
     // Desktop UX: start with the search pill expanded + focused for immediate typing.
     requestAnimationFrame(() => {
       openSearch();

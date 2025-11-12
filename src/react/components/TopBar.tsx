@@ -693,8 +693,25 @@ export const TopBar = ({
                   type="search"
                   value={mobileSearchValue}
                   onChange={(e) => setMobileSearchValue(e.target.value)}
-                  onFocus={() => setIsMobileSearchFocused(true)}
+                  onFocus={(e) => {
+                    setIsMobileSearchFocused(true);
+                    // Select all text if input already has a value when focused
+                    if (mobileSearchValue) {
+                      e.target.select();
+                    }
+                  }}
                   onBlur={() => setIsMobileSearchFocused(false)}
+                  onClick={(e) => {
+                    // Select all text when clicking on an input that already has text
+                    // Use setTimeout to ensure the input is focused after the click
+                    if (mobileSearchValue) {
+                      setTimeout(() => {
+                        if (document.activeElement === e.currentTarget && mobileSearchValue) {
+                          e.currentTarget.select();
+                        }
+                      }, 0);
+                    }
+                  }}
                   onPointerDown={() =>
                     track("mobile_search_bar_tap", {
                       compact: isCompactMobileSearch,
