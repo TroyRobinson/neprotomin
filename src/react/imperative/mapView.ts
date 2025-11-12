@@ -110,7 +110,7 @@ export interface MapViewController {
   setOrganizationPinsVisible: (visible: boolean) => void;
   setUserLocation: (location: { lng: number; lat: number } | null) => void;
   fitBounds: (bounds: BoundsArray, options?: { padding?: number; maxZoom?: number; duration?: number }) => void;
-  setCamera: (centerLng: number, centerLat: number, zoom: number) => void;
+  setCamera: (centerLng: number, centerLat: number, zoom: number, options?: { animate?: boolean }) => void;
   onCameraChange: (fn: (centerLng: number, centerLat: number, zoom: number) => void) => () => void;
   setLegendInset: (pixels: number) => void;
   setLegendTop: (topPx: number) => void;
@@ -2686,8 +2686,17 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         duration: options?.duration ?? 400,
       });
     },
-    setCamera: (centerLng: number, centerLat: number, zoom: number) => {
-      map.jumpTo({ center: [centerLng, centerLat], zoom });
+    setCamera: (centerLng: number, centerLat: number, zoom: number, options?: { animate?: boolean }) => {
+      const animate = options?.animate ?? false;
+      if (animate) {
+        map.easeTo({
+          center: [centerLng, centerLat],
+          zoom,
+          duration: 600,
+        });
+      } else {
+        map.jumpTo({ center: [centerLng, centerLat], zoom });
+      }
     },
     onCameraChange: (fn: (lng: number, lat: number, zoom: number) => void) => {
       cameraListeners.push(fn);

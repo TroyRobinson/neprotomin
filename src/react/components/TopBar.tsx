@@ -414,7 +414,7 @@ export const TopBar = ({
                   }`}
                   aria-current={active === "map" ? "page" : undefined}
                 >
-                  Food Map
+                  OK Food Map
                 </a>
                 {ENABLE_REPORT_MENU && (
                   <a
@@ -802,7 +802,7 @@ export const TopBar = ({
                 className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 whitespace-nowrap ${active === "map" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
                 aria-current={active === "map" ? "page" : undefined}
               >
-                Food Map
+                OK Food Map
               </button>
               {ENABLE_REPORT_MENU && (
                 <button

@@ -963,6 +963,22 @@ export const ReactMapApp = () => {
     () => Array.from(areasByKindAndCode.get("ZIP")?.values() ?? []),
     [areasByKindAndCode],
   );
+  const viewportCountyRecord = useMemo(() => {
+    if (!cameraState || countyRecords.length === 0) return null;
+    if (boundaryMode !== "zips") return null;
+    const { center } = cameraState;
+    const [lng, lat] = center;
+    const containsPoint = (bounds: [[number, number], [number, number]] | null | undefined): boolean => {
+      if (!bounds) return false;
+      const [[minLng, minLat], [maxLng, maxLat]] = bounds;
+      return lng >= minLng && lng <= maxLng && lat >= minLat && lat <= maxLat;
+    };
+    for (const record of countyRecords) {
+      const bounds = record.bounds ?? getCountyBounds(record.code);
+      if (containsPoint(bounds)) return record;
+    }
+    return null;
+  }, [boundaryMode, cameraState, countyRecords]);
 
   const defaultAreaContext = useMemo(() => {
     if (!cameraState || countyRecords.length === 0) return null;
@@ -1309,6 +1325,20 @@ export const ReactMapApp = () => {
     },
     [activeOrganizations, timeSelection],
   );
+  const orgCountsByCounty = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const org of availableOrganizations) {
+      const county = orgCountyById.get(org.id);
+      if (!county) continue;
+      counts.set(county, (counts.get(county) ?? 0) + 1);
+    }
+    return counts;
+  }, [availableOrganizations, orgCountyById]);
+  const viewportCountyOrgCount = viewportCountyRecord
+    ? orgCountsByCounty.get(viewportCountyRecord.code) ?? 0
+    : null;
+  const viewportCountyCode = viewportCountyRecord?.code ?? null;
+  const viewportCountyName = viewportCountyRecord?.name ?? null;
 
   const inactiveOrganizations = useMemo(
     () => organizations.filter((org) => org.status && org.status !== "active"),
@@ -2362,6 +2392,38 @@ export const ReactMapApp = () => {
   const handleZoomOutAll = () => {
     setZoomOutNonce((n) => n + 1);
   };
+  const handleZoomToCounty = useCallback(
+    (countyCode: string) => {
+      const mapController = mapControllerRef.current;
+      if (!mapController) return;
+      const countyMap = areasByKindAndCode.get("COUNTY");
+      const record = countyMap?.get(countyCode) ?? null;
+      const bounds = record?.bounds ?? getCountyBounds(countyCode);
+      const centerFromBounds = bounds
+        ? [
+            (bounds[0][0] + bounds[1][0]) / 2,
+            (bounds[0][1] + bounds[1][1]) / 2,
+          ]
+        : null;
+      const center =
+        record?.centroid ??
+        centerFromBounds ??
+        [OKLAHOMA_CENTER.longitude, OKLAHOMA_CENTER.latitude];
+      if (!center) {
+        setZoomOutNonce((n) => n + 1);
+        return;
+      }
+      const [lng, lat] = center;
+      const currentZoom = cameraState?.zoom ?? 10.6;
+      const preferredZoom = Math.min(currentZoom - 0.6, 10.3);
+      const targetZoom = Math.max(preferredZoom, 10.0);
+      mapController.setCamera(lng, lat, targetZoom, { animate: true });
+      setBoundaryMode("zips");
+      setSidebarFollowMode("map");
+      setHasInteractedWithMap(true);
+    },
+    [areasByKindAndCode, cameraState, setBoundaryMode, setHasInteractedWithMap, setSidebarFollowMode, setZoomOutNonce],
+  );
 
   const handleStatSelect = (
     statId: string | null,
@@ -2404,6 +2466,12 @@ export const ReactMapApp = () => {
     const visibleIds = new Set(orgsVisibleIds);
     const fromSource = availableOrganizations.filter((o) => sourceIds.size === 0 || sourceIds.has(o.id));
     const visible = fromSource.filter((o) => visibleIds.size === 0 || visibleIds.has(o.id));
+    const visibleCountByCounty = new Map<string, number>();
+    for (const org of visible) {
+      const county = orgCountyById.get(org.id);
+      if (!county) continue;
+      visibleCountByCounty.set(county, (visibleCountByCounty.get(county) ?? 0) + 1);
+    }
     const zipSel = new Set(selectedZips);
     const countySel = new Set(selectedCounties);
     let inSelection: Organization[] = [];
@@ -2519,7 +2587,8 @@ export const ReactMapApp = () => {
       all: allOrgs, 
       recent: recentOrgsToShow,
       totalSourceCount, 
-      visibleInViewport 
+      visibleInViewport,
+      visibleCountByCounty,
     };
   })();
 
@@ -2527,6 +2596,10 @@ export const ReactMapApp = () => {
     typeof sidebarOrganizations.visibleInViewport === "number"
       ? sidebarOrganizations.visibleInViewport
       : sidebarOrganizations.inSelection.length + sidebarOrganizations.all.length;
+  const viewportCountyVisibleCount =
+    viewportCountyCode && sidebarOrganizations.visibleCountByCounty
+      ? sidebarOrganizations.visibleCountByCounty.get(viewportCountyCode) ?? 0
+      : 0;
   // Always show viewport count in mobile peek mode, regardless of area selection
   const mobileOrganizationsCount = visibleCount;
 
@@ -2814,6 +2887,10 @@ export const ReactMapApp = () => {
               selectedOrgIdsFromMap={selectedOrgIdsFromMap}
               zipScopeDisplayName={zipScopeDisplayName}
               countyScopeDisplayName={countyScopeDisplayName}
+              viewportCountyOrgCount={viewportCountyOrgCount}
+              viewportCountyName={viewportCountyName}
+              viewportCountyCode={viewportCountyCode}
+              viewportCountyVisibleCount={viewportCountyVisibleCount}
               hoveredArea={hoveredArea}
               selectedStatId={selectedStatId}
               secondaryStatId={secondaryStatId}
@@ -2822,6 +2899,7 @@ export const ReactMapApp = () => {
               onOrganizationClick={handleSidebarOrganizationClick}
               onHoverArea={handleAreaHoverChange}
               onZoomOutAll={handleZoomOutAll}
+              onZoomToCounty={handleZoomToCounty}
               onStatSelect={handleStatSelect}
               onOrgPinsVisibleChange={setOrgPinsVisible}
               forceHideOrgsNonce={forceHideOrgsNonce}
@@ -2923,6 +3001,10 @@ export const ReactMapApp = () => {
                     selectedOrgIdsFromMap={selectedOrgIdsFromMap}
                     zipScopeDisplayName={zipScopeDisplayName}
                     countyScopeDisplayName={countyScopeDisplayName}
+                    viewportCountyOrgCount={viewportCountyOrgCount}
+                    viewportCountyName={viewportCountyName}
+                    viewportCountyCode={viewportCountyCode}
+                    viewportCountyVisibleCount={viewportCountyVisibleCount}
                     hoveredArea={hoveredArea}
                     selectedStatId={selectedStatId}
                     secondaryStatId={secondaryStatId}
@@ -2931,6 +3013,7 @@ export const ReactMapApp = () => {
                     onOrganizationClick={handleSidebarOrganizationClick}
                     onHoverArea={handleAreaHoverChange}
                     onZoomOutAll={handleZoomOutAll}
+                    onZoomToCounty={handleZoomToCounty}
                     onStatSelect={handleStatSelect}
                     onOrgPinsVisibleChange={setOrgPinsVisible}
                     forceHideOrgsNonce={forceHideOrgsNonce}

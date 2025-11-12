@@ -33,6 +33,7 @@ interface SidebarProps {
     recent?: Organization[];
     totalSourceCount?: number;
     visibleInViewport?: number;
+    visibleCountByCounty?: Map<string, number>;
   };
   activeOrganizationId?: string | null;
   highlightedOrganizationIds?: string[] | null;
@@ -52,6 +53,10 @@ interface SidebarProps {
   selectedOrgIdsFromMap?: boolean;
   zipScopeDisplayName?: string | null;
   countyScopeDisplayName?: string | null;
+  viewportCountyOrgCount?: number | null;
+  viewportCountyName?: string | null;
+  viewportCountyCode?: string | null;
+  viewportCountyVisibleCount?: number | null;
   selectedStatId?: string | null;
   secondaryStatId?: string | null;
   categoryFilter?: string | null;
@@ -59,6 +64,7 @@ interface SidebarProps {
   onHover?: (idOrIds: string | string[] | null) => void;
   onOrganizationClick?: (organizationId: string) => void;
   onZoomOutAll?: () => void;
+  onZoomToCounty?: (countyCode: string) => void;
   onCategoryClick?: (categoryId: string) => void;
   onHoverArea?: (area: AreaId | null) => void;
   onStatSelect?: (statId: string | null, meta?: { shiftKey?: boolean; clear?: boolean }) => void;
@@ -98,6 +104,10 @@ export const Sidebar = ({
   selectedOrgIdsFromMap = false,
   zipScopeDisplayName = null,
   countyScopeDisplayName = null,
+  viewportCountyOrgCount = null,
+  viewportCountyName = null,
+  viewportCountyCode = null,
+  viewportCountyVisibleCount = null,
   selectedStatId = null,
   secondaryStatId = null,
   categoryFilter = null,
@@ -105,6 +115,7 @@ export const Sidebar = ({
   onHover,
   onOrganizationClick,
   onZoomOutAll,
+  onZoomToCounty,
   onCategoryClick,
   onHoverArea,
   onStatSelect,
@@ -289,9 +300,35 @@ export const Sidebar = ({
 
   const visibleCount =
     typeof visibleInViewport === "number" ? visibleInViewport : inSelection.length + all.length;
-  const totalCount = typeof totalSourceCount === "number" ? totalSourceCount : visibleCount;
+  const baseTotalCount = typeof totalSourceCount === "number" ? totalSourceCount : visibleCount;
   const countForTab = totalSelectedCount > 0 ? inSelection.length : visibleCount;
-  const missingCount = Math.max(totalCount - visibleCount, 0);
+  const countyVisibleCount =
+    typeof viewportCountyVisibleCount === "number" ? viewportCountyVisibleCount : visibleCount;
+  const countyZoomContext = useMemo(() => {
+    if (!cameraState) return null;
+    if (!viewportCountyCode) return null;
+    if (typeof viewportCountyOrgCount !== "number" || viewportCountyOrgCount <= 0) return null;
+    const hiddenCount = Math.max(viewportCountyOrgCount - countyVisibleCount, 0);
+    if (hiddenCount <= 0) return null;
+    const label =
+      viewportCountyName ??
+      (zipScopeDisplayName ? `${zipScopeDisplayName} County` : "County");
+    return {
+      countyCode: viewportCountyCode,
+      countyLabel: label,
+      totalCount: viewportCountyOrgCount,
+      hiddenCount,
+    };
+  }, [
+    cameraState,
+    viewportCountyCode,
+    viewportCountyOrgCount,
+    viewportCountyName,
+    countyVisibleCount,
+    zipScopeDisplayName,
+  ]);
+  const totalCount = countyZoomContext?.totalCount ?? baseTotalCount;
+  const missingCount = countyZoomContext?.hiddenCount ?? Math.max(totalCount - visibleCount, 0);
   const hideCategoryTags = Boolean(categoryFilter);
   const viewportFilterStateRef = useRef({
     missingCount,
@@ -686,14 +723,24 @@ export const Sidebar = ({
                   ))}
 
                   {/* Zoom Out Link */}
-                  {missingCount > 0 && (
+                  {(countyZoomContext || missingCount > 0) && (
                     <li className="px-0 pt-0 pb-0">
                       <button
                         type="button"
                         className="block w-full text-left text-xs font-normal text-brand-300 hover:text-brand-800 dark:text-brand-400 dark:hover:text-brand-200 px-4 pb-4 pt-2 transition-colors"
-                        onClick={onZoomOutAll}
+                        onClick={() => {
+                          if (countyZoomContext && onZoomToCounty) {
+                            onZoomToCounty(countyZoomContext.countyCode);
+                            return;
+                          }
+                          onZoomOutAll?.();
+                        }}
                       >
-                        {missingCount} more not visible (Zoom out)
+                        {countyZoomContext
+                          ? `See all ${countyZoomContext.totalCount} ${countyZoomContext.countyLabel} org${
+                              countyZoomContext.totalCount === 1 ? "" : "s"
+                            } (Zoom out)`
+                          : `${missingCount} more not visible (Zoom out)`}
                       </button>
                     </li>
                   )}
