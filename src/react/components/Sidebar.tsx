@@ -1064,7 +1064,7 @@ const OrganizationListItem = ({
           <span
             role="button"
             tabIndex={0}
-            className="ml-2 inline-flex items-center rounded-full bg-slate-50 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-800/70 dark:text-slate-300 cursor-pointer"
+            className="inline-flex items-center rounded-full bg-slate-50 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-800/70 dark:text-slate-300 cursor-pointer"
             onClick={(event) => handleCategoryClick(event)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
