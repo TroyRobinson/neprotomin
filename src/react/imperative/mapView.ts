@@ -366,6 +366,7 @@ export const createMapView = ({
   let secondaryStatId: string | null = null;
   let dragStartCenter: maplibregl.LngLat | null = null;
   let dragCollapseTriggered = false;
+  let zipGeometryHiddenDueToZoom = false;
 
 let statDataStoreMap: StatDataStoreMap = new Map();
 let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
@@ -717,7 +718,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
 
   // Right-side slot for consumer-provided controls (e.g., My Location)
   legendRightSlotEl = document.createElement("div");
-  legendRightSlotEl.className = "pointer-events-auto ml-3 flex min-w-0"; // Allow flex to fill space, but can shrink
+  legendRightSlotEl.className = "pointer-events-auto ml-auto flex min-w-0 pl-3"; // Keep controls pinned right even if legends hide
   legendRowEl.appendChild(legendRightSlotEl);
 
   // Wire up momentary stat name display on legend tap/click
@@ -1071,34 +1072,49 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     COUNTY_STATDATA_FILL_LAYER_ID,
   }, currentTheme);
 
-  const updateBoundaryVisibility = () => extUpdateBoundaryVisibility(map, {
-    BOUNDARY_SOURCE_ID,
-    BOUNDARY_FILL_LAYER_ID,
-    BOUNDARY_LINE_LAYER_ID,
-    BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
-    BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
-    BOUNDARY_PINNED_FILL_LAYER_ID,
-    BOUNDARY_PINNED_LINE_LAYER_ID,
-    BOUNDARY_HOVER_LINE_LAYER_ID,
-    BOUNDARY_HOVER_FILL_LAYER_ID,
-    BOUNDARY_STATDATA_FILL_LAYER_ID,
-    ZIP_CENTROIDS_SOURCE_ID,
-    SECONDARY_STAT_LAYER_ID,
-    SECONDARY_STAT_HOVER_LAYER_ID,
-    COUNTY_CENTROIDS_SOURCE_ID,
-    COUNTY_SECONDARY_LAYER_ID,
-    COUNTY_SECONDARY_HOVER_LAYER_ID,
-    COUNTY_BOUNDARY_SOURCE_ID,
-    COUNTY_BOUNDARY_FILL_LAYER_ID,
-    COUNTY_BOUNDARY_LINE_LAYER_ID,
-    COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
-    COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
-    COUNTY_BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
-    COUNTY_BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
-    COUNTY_BOUNDARY_PINNED_FILL_LAYER_ID,
-    COUNTY_BOUNDARY_PINNED_LINE_LAYER_ID,
-    COUNTY_STATDATA_FILL_LAYER_ID,
-  }, boundaryMode);
+  const shouldHideZipGeometry = () => boundaryMode === "zips" && map.getZoom() >= CHOROPLETH_HIDE_ZOOM;
+
+  const updateBoundaryVisibility = (options?: { force?: boolean }): boolean => {
+    const hideZipGeometry = shouldHideZipGeometry();
+    if (!options?.force && hideZipGeometry === zipGeometryHiddenDueToZoom) {
+      return false;
+    }
+    zipGeometryHiddenDueToZoom = hideZipGeometry;
+    extUpdateBoundaryVisibility(map, {
+      BOUNDARY_SOURCE_ID,
+      BOUNDARY_FILL_LAYER_ID,
+      BOUNDARY_LINE_LAYER_ID,
+      BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+      BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+      BOUNDARY_PINNED_FILL_LAYER_ID,
+      BOUNDARY_PINNED_LINE_LAYER_ID,
+      BOUNDARY_HOVER_LINE_LAYER_ID,
+      BOUNDARY_HOVER_FILL_LAYER_ID,
+      BOUNDARY_STATDATA_FILL_LAYER_ID,
+      ZIP_CENTROIDS_SOURCE_ID,
+      SECONDARY_STAT_LAYER_ID,
+      SECONDARY_STAT_HOVER_LAYER_ID,
+      COUNTY_CENTROIDS_SOURCE_ID,
+      COUNTY_SECONDARY_LAYER_ID,
+      COUNTY_SECONDARY_HOVER_LAYER_ID,
+      COUNTY_BOUNDARY_SOURCE_ID,
+      COUNTY_BOUNDARY_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_LINE_LAYER_ID,
+      COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
+      COUNTY_BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+      COUNTY_BOUNDARY_PINNED_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_PINNED_LINE_LAYER_ID,
+      COUNTY_STATDATA_FILL_LAYER_ID,
+    }, boundaryMode, { hideZipGeometry });
+    return true;
+  };
+
+  const applyLabelVisibility = () => {
+    try { zipLabels?.setVisible?.(boundaryMode === "zips" && !zipGeometryHiddenDueToZoom); } catch {}
+    try { countyLabels?.setVisible?.(boundaryMode === "counties"); } catch {}
+  };
 
   const updateZipSelectionHighlight = () => extUpdateZipSelectionHighlight(map, {
     BOUNDARY_SOURCE_ID,
@@ -1306,6 +1322,20 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     map.off("moveend", evaluateBoundaryModeForZoom);
   });
 
+  const handleZipGeometryVisibilityChange = () => {
+    const didChange = updateBoundaryVisibility();
+    if (!didChange) return;
+    applyLabelVisibility();
+    if (zipGeometryHiddenDueToZoom) {
+      zipFloatingTitle?.hide();
+    }
+    refreshStatVisuals();
+  };
+  map.on("zoom", handleZipGeometryVisibilityChange);
+  destroyFns.push(() => {
+    map.off("zoom", handleZipGeometryVisibilityChange);
+  });
+
   const handleViewportSettled = () => {
     void ensureZctasForCurrentView();
     // Check if selected orgs are still visible after viewport change
@@ -1510,7 +1540,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
 
     updateHighlight();
     updateBoundaryPaint();
-    updateBoundaryVisibility();
+    updateBoundaryVisibility({ force: true });
     zipSelection.refresh();
     countySelection.refresh();
     updateStatDataChoropleth();
@@ -1518,8 +1548,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     updateOrganizationPinsVisibility();
     // visibility will be emitted by the wired tracker on next move/zoom end
     // Toggle label visibility according to boundary mode
-    try { zipLabels?.setVisible?.(boundaryMode === 'zips'); } catch {}
-    try { countyLabels?.setVisible?.(boundaryMode === 'counties'); } catch {}
+    applyLabelVisibility();
     if (pendingUserLocationUpdate || userLocation) {
       updateUserLocationSource();
     }
@@ -2234,7 +2263,8 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     if (mode === "zips") {
       void ensureZctasForCurrentView({ force: true });
     }
-    updateBoundaryVisibility();
+    updateBoundaryVisibility({ force: true });
+    applyLabelVisibility();
     refreshStatVisuals();
     onBoundaryModeChange?.(boundaryMode);
   };

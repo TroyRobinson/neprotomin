@@ -517,6 +517,7 @@ export const updateBoundaryVisibility = (
   map: maplibregl.Map,
   ids: BoundaryLayerIds,
   boundaryMode: BoundaryMode,
+  options?: { hideZipGeometry?: boolean },
 ) => {
   const {
     BOUNDARY_FILL_LAYER_ID,
@@ -542,7 +543,8 @@ export const updateBoundaryVisibility = (
     COUNTY_BOUNDARY_PINNED_LINE_LAYER_ID,
     COUNTY_STATDATA_FILL_LAYER_ID,
   } = ids;
-  const zipVisibility = boundaryMode === "zips" ? "visible" : "none";
+  const hideZipGeometry = Boolean(options?.hideZipGeometry);
+  const zipVisibility = boundaryMode === "zips" && !hideZipGeometry ? "visible" : "none";
   const countyVisibility = boundaryMode === "counties" ? "visible" : "none";
   const setVis = (layerId: string, visibility: "visible" | "none") => {
     if (map.getLayer(layerId)) map.setLayoutProperty(layerId, "visibility", visibility);
