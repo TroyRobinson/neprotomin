@@ -85,6 +85,7 @@ interface SidebarProps {
   cameraState?: { center: [number, number]; zoom: number } | null;
   // Callback to zoom to a specific organization
   onZoomToOrg?: (organizationId: string) => void;
+  selectionLabelOverride?: string | null;
 }
 
 type TabType = "stats" | "orgs";
@@ -131,6 +132,7 @@ export const Sidebar = ({
   onChangeTimeFilter,
   cameraState,
   onZoomToOrg,
+  selectionLabelOverride = null,
 }: SidebarProps) => {
   const [activeTab, setActiveTab] = useState<TabType>("orgs");
   const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(true);
@@ -270,6 +272,9 @@ export const Sidebar = ({
 
   // Determine the "IN SELECTION" label - show area name if only one area is selected
   const inSelectionLabel = useMemo(() => {
+    if (selectionLabelOverride && directOrgSelectionActive) {
+      return selectionLabelOverride;
+    }
     // Direct org selection mode (clicked org centroids or small clusters)
     if (directOrgSelectionActive) {
       if (inSelection.length === 1) {

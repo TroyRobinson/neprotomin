@@ -169,6 +169,7 @@ export const ReactMapApp = () => {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [hasAppliedDefaultStat, setHasAppliedDefaultStat] = useState(false);
   const [hasSyncedDefaultCategory, setHasSyncedDefaultCategory] = useState(false);
+  const [searchSelectionMeta, setSearchSelectionMeta] = useState<{ term: string; ids: string[] } | null>(null);
   const [activeScreen, setActiveScreen] = useState<ScreenName>(() => {
     if (typeof window === "undefined") return "map";
     return screenFromHash(window.location.hash) ?? "map";
@@ -1106,6 +1107,14 @@ export const ReactMapApp = () => {
     },
     [organizationSearchIndex],
   );
+  const searchSelectionLabel = useMemo(() => {
+    if (!searchSelectionMeta) return null;
+    const rawTerm = searchSelectionMeta.term?.trim();
+    if (!rawTerm) return "RESULTS";
+    const MAX_LEN = 36;
+    const displayTerm = rawTerm.length > MAX_LEN ? `${rawTerm.slice(0, MAX_LEN - 1)}…` : rawTerm;
+    return `RESULTS (${displayTerm})`;
+  }, [searchSelectionMeta]);
 
   const areaNameLookup = useMemo(
     () => (kind: SupportedAreaKind, code: string) => getAreaLabel(kind, code) ?? code,
@@ -1466,6 +1475,13 @@ export const ReactMapApp = () => {
     previousSelectedStatIdRef.current = selectedStatId ?? null;
   }, [selectedStatId, selectedOrgIdsFromMap, selectedOrgIds.length]);
 
+  useEffect(() => {
+    if (!searchSelectionMeta) return;
+    if (!arraysEqual(searchSelectionMeta.ids, selectedOrgIds)) {
+      setSearchSelectionMeta(null);
+    }
+  }, [searchSelectionMeta, selectedOrgIds]);
+
   const [zoomOutNonce, setZoomOutNonce] = useState(0);
   // Nonce to explicitly clear map category chips when clearing stat from sidebar
   const [clearMapCategoryNonce, setClearMapCategoryNonce] = useState(0);
@@ -1556,6 +1572,9 @@ export const ReactMapApp = () => {
     (id: string, options: SelectOrganizationOptions = {}) => {
       if (!id) return;
       const { treatAsMapSelection = false, source = "map" } = options;
+      if (source !== "search" && searchSelectionMeta) {
+        setSearchSelectionMeta(null);
+      }
       const shouldFollowMap = treatAsMapSelection || source === "map";
       setSidebarFollowMode(shouldFollowMap ? "map" : "sidebar");
 
@@ -1631,11 +1650,13 @@ export const ReactMapApp = () => {
     [
       cameraState,
       collapseSheet,
+      searchSelectionMeta,
       isMobile,
       previewSheet,
       selectedOrgIds,
       setSidebarFollowMode,
       sheetState,
+      setSearchSelectionMeta,
     ],
   );
 
@@ -1978,6 +1999,10 @@ export const ReactMapApp = () => {
           setSidebarFollowMode("map");
           setSelectedOrgIds(matchIds);
           setSelectedOrgIdsFromMap(true);
+          setSearchSelectionMeta({
+            term: query,
+            ids: matchIds,
+          });
 
           const controller = mapControllerRef.current;
           if (controller) {
@@ -2927,6 +2952,7 @@ export const ReactMapApp = () => {
               cameraState={cameraState}
               onZoomToOrg={handleZoomToOrg}
               variant="desktop"
+              selectionLabelOverride={searchSelectionLabel}
             />
           )}
         </main>
@@ -3041,6 +3067,7 @@ export const ReactMapApp = () => {
                     onChangeTimeFilter={handleChangeTimeFilter}
                     cameraState={cameraState}
                     onZoomToOrg={handleZoomToOrg}
+                    selectionLabelOverride={searchSelectionLabel}
                     variant="mobile"
                     showInsights={false}
                     className="h-full"
