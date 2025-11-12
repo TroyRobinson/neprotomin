@@ -490,6 +490,11 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
         searchButton?.focus();
       }
     });
+
+    // Desktop UX: start with the search pill expanded + focused for immediate typing.
+    requestAnimationFrame(() => {
+      openSearch();
+    });
   }
 
   const setSelected = (categoryId: string | null) => {
