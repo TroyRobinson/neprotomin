@@ -483,37 +483,40 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       options.onSearch?.(query);
     });
 
-    searchInput.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeSearch();
-        searchButton?.focus();
-      }
-    });
+    if (searchInput) {
+      const searchInputEl = searchInput;
+      searchInputEl.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeSearch();
+          searchButton?.focus();
+        }
+      });
 
-    // Select all text when clicking on the input if it already has text
-    searchInput.addEventListener("click", () => {
-      if (searchInput && searchInput.value) {
-        // Use setTimeout to ensure the input is focused after the click
-        setTimeout(() => {
-          if (document.activeElement === searchInput && searchInput.value) {
-            searchInput.select();
-          }
-        }, 0);
-      }
-    });
+      // Select all text when clicking on the input if it already has text
+      searchInputEl.addEventListener("click", () => {
+        if (searchInputEl.value) {
+          // Use setTimeout to ensure the input is focused after the click
+          setTimeout(() => {
+            if (document.activeElement === searchInputEl && searchInputEl.value) {
+              searchInputEl.select();
+            }
+          }, 0);
+        }
+      });
 
-    // Also select text when the input receives focus if it already has text
-    searchInput.addEventListener("focus", () => {
-      if (searchInput && searchInput.value) {
-        // Use setTimeout to ensure selection happens after focus
-        setTimeout(() => {
-          if (document.activeElement === searchInput && searchInput.value) {
-            searchInput.select();
-          }
-        }, 0);
-      }
-    });
+      // Also select text when the input receives focus if it already has text
+      searchInputEl.addEventListener("focus", () => {
+        if (searchInputEl.value) {
+          // Use setTimeout to ensure selection happens after focus
+          setTimeout(() => {
+            if (document.activeElement === searchInputEl && searchInputEl.value) {
+              searchInputEl.select();
+            }
+          }, 0);
+        }
+      });
+    }
 
     // Desktop UX: start with the search pill expanded + focused for immediate typing.
     requestAnimationFrame(() => {
