@@ -84,7 +84,6 @@ type TabType = "stats" | "orgs";
 
 export const Sidebar = ({
   organizations = { inSelection: [], all: [], totalSourceCount: 0 },
-  activeOrganizationId = null,
   highlightedOrganizationIds = null,
   demographicsSnapshot = null,
   statsById = new Map(),
