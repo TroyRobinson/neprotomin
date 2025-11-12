@@ -1529,7 +1529,8 @@ export const ReactMapApp = () => {
     (id: string, options: SelectOrganizationOptions = {}) => {
       if (!id) return;
       const { treatAsMapSelection = false, source = "map" } = options;
-      setSidebarFollowMode(source === "sidebar" ? "sidebar" : "map");
+      const shouldFollowMap = treatAsMapSelection || source === "map";
+      setSidebarFollowMode(shouldFollowMap ? "map" : "sidebar");
 
       // Check if clicking the same organization that's already selected (second click)
       const isAlreadySelected = selectedOrgIds.length === 1 && selectedOrgIds[0] === id;
@@ -1620,9 +1621,13 @@ export const ReactMapApp = () => {
 
   const handleSidebarOrganizationClick = useCallback(
     (id: string) => {
-      selectOrganization(id, { treatAsMapSelection: false, source: "sidebar" });
+      const preserveMapSelection = selectedOrgIdsFromMap && selectedOrgIds.includes(id);
+      selectOrganization(id, {
+        treatAsMapSelection: preserveMapSelection,
+        source: "sidebar",
+      });
     },
-    [selectOrganization],
+    [selectOrganization, selectedOrgIds, selectedOrgIdsFromMap],
   );
 
   const handleZoomToOrg = useCallback(
@@ -1637,10 +1642,12 @@ export const ReactMapApp = () => {
         const targetZoom = Math.min(currentZoom + zoomIncrement, maxZoom);
         
         // Ensure the org is selected so the sidebar reflects the zoom target
-        setSelectedOrgIds([id]);
-        
-        skipSidebarCenteringRef.current = true;
-        controller.centerOnOrganization(id, { animate: true, zoom: targetZoom });
+      const preserveMapSelection = selectedOrgIdsFromMap && selectedOrgIds.includes(id);
+      setSelectedOrgIds([id]);
+      setSelectedOrgIdsFromMap(preserveMapSelection);
+      
+      skipSidebarCenteringRef.current = true;
+      controller.centerOnOrganization(id, { animate: true, zoom: targetZoom });
         track("map_organization_zoom_button_click", {
           organizationId: id,
           device: isMobile ? "mobile" : "desktop",
@@ -1653,7 +1660,14 @@ export const ReactMapApp = () => {
         }
       }
     },
-    [cameraState, collapseSheet, isMobile, setSidebarFollowMode],
+    [
+      cameraState,
+      collapseSheet,
+      isMobile,
+      selectedOrgIds,
+      selectedOrgIdsFromMap,
+      setSidebarFollowMode,
+    ],
   );
 
   const handleClusterClick = useCallback(
