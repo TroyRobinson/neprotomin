@@ -18,7 +18,7 @@ import { db } from "../../lib/reactDb";
 // ============================================================================
 // Enable Features
 // ============================================================================
-const ENABLE_DEMOGRAPHICS_SECTION = false;
+const ENABLE_DEMOGRAPHICS_SECTION = true;
 const ENABLE_STATISTICS_VISUALIZATION_SECTION = false;
 
 type SupportedAreaKind = "ZIP" | "COUNTY";
@@ -72,6 +72,7 @@ interface SidebarProps {
   onOrgPinsVisibleChange?: (visible: boolean) => void;
   variant?: "desktop" | "mobile";
   showInsights?: boolean;
+  showAdvanced?: boolean;
   className?: string;
   // When incremented, force switch to Statistics tab and hide orgs toggle
   forceHideOrgsNonce?: number;
@@ -126,6 +127,7 @@ export const Sidebar = ({
   onOrgPinsVisibleChange,
   variant = "desktop",
   showInsights = true,
+  showAdvanced = false,
   className = "",
   forceHideOrgsNonce,
   timeSelection,
@@ -187,6 +189,10 @@ export const Sidebar = ({
     scrollOrgIntoView(orgId, { alignTop: true, padding: 0 });
   }, [scrollOrgIntoView]);
   const { user } = db.useAuth();
+  const isLoggedIn = Boolean(user && !user.isGuest);
+  const canShowInsights = Boolean(showInsights && showAdvanced && isLoggedIn);
+  const shouldShowDemographicsBar = ENABLE_DEMOGRAPHICS_SECTION && canShowInsights;
+  const shouldShowStatVisualization = ENABLE_STATISTICS_VISUALIZATION_SECTION && canShowInsights;
 
   const handleOpenIssueModal = useCallback((org: Organization) => {
     setIssueModalOrg(org);
@@ -524,15 +530,15 @@ export const Sidebar = ({
           {issueFeedback}
         </div>
       ) : null}
-      {showInsights && (
+      {canShowInsights && (
         <>
           {/* Demographics Bar */}
-          {ENABLE_DEMOGRAPHICS_SECTION && (
+          {shouldShowDemographicsBar && (
             <DemographicsBar snapshot={demographicsSnapshot ?? null} />
           )}
 
           {/* Stat Visualization */}
-          {ENABLE_STATISTICS_VISUALIZATION_SECTION && (
+          {shouldShowStatVisualization && (
             <StatViz
               statsById={statsById}
               seriesByStatIdByKind={seriesByStatIdByKind}

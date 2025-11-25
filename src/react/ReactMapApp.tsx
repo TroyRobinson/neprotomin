@@ -2962,6 +2962,7 @@ export const ReactMapApp = () => {
               variant="desktop"
               selectionLabelOverride={searchSelectionLabel}
               selectionStyleVariant={selectionStyleVariant}
+              showAdvanced={showAdvanced}
             />
           )}
         </main>
@@ -3080,6 +3081,7 @@ export const ReactMapApp = () => {
                     selectionStyleVariant={selectionStyleVariant}
                     variant="mobile"
                     showInsights={false}
+                    showAdvanced={showAdvanced}
                     className="h-full"
                   />
                 </div>
