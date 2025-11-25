@@ -73,6 +73,8 @@ const pluralLabelForKind = (kind: SupportedAreaKind): string =>
 const isBreakdownGroupKey = (value: unknown): value is BreakdownGroupKey =>
   typeof value === "string" && (BREAKDOWN_KEYS as string[]).includes(value);
 
+type ParentAreaFilter = string | string[] | null | undefined;
+
 type RootEntry = {
   data: Record<string, number>;
   date: string | null;
@@ -134,51 +136,74 @@ export interface CombinedDemographicsSnapshot {
   missingAreaCount: number;
 }
 
+const normalizeParentAreas = (value: ParentAreaFilter, fallback: string | null | undefined): string[] => {
+  const base = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  const normalized = base
+    .map((entry) => normalizeScopeLabel(entry) ?? null)
+    .filter((entry): entry is string => Boolean(entry));
+  if (normalized.length > 0) return normalized;
+  const normalizedFallback = normalizeScopeLabel(fallback ?? null);
+  return normalizedFallback ? [normalizedFallback] : [];
+};
+
 const collectLatestRootRows = (
   rows: any[] | undefined,
   statId: string | null,
-  parentAreaOverride: Partial<Record<SupportedAreaKind, string | null>>,
+  parentAreaOverride: Partial<Record<SupportedAreaKind, ParentAreaFilter>>,
+  selectedByKind: Partial<Record<SupportedAreaKind, string[]>>,
 ): Map<SupportedAreaKind, RootEntry> => {
   const map = new Map<SupportedAreaKind, RootEntry>();
   if (!rows || !statId) return map;
-
-  const grouped = new Map<string, any[]>();
 
   for (const row of rows) {
     if (!row || row.statId !== statId) continue;
     if (row.name !== "root") continue;
     const kind = row.boundaryType as SupportedAreaKind | undefined;
     if (!kind || !SUPPORTED_AREA_KINDS.includes(kind)) continue;
-    const expectedParent = parentAreaOverride[kind] ?? DEFAULT_PARENT_AREA_BY_KIND[kind];
-    const aliases = buildScopeLabelAliases(expectedParent);
-    const normalizedActual = normalizeScopeLabel(
-      typeof row.parentArea === "string" ? (row.parentArea as string) : null,
-    );
-    if (aliases.length > 0) {
-      if (!normalizedActual || !aliases.includes(normalizedActual)) continue;
-    }
-    const key = `${kind}::${expectedParent ?? ""}`;
-    const list = grouped.get(key) ?? [];
-    list.push(row);
-    grouped.set(key, list);
-  }
+    const selection = dedupe(selectedByKind[kind]);
+    const hasSelection = selection.length > 0;
 
-  for (const [, list] of grouped) {
-    if (!list.length) continue;
-    list.sort((a, b) => {
-      const da = parseDate(a?.date) ?? "";
-      const db = parseDate(b?.date) ?? "";
-      return da.localeCompare(db);
-    });
-    const latest = list[list.length - 1];
-    const kind = latest?.boundaryType as SupportedAreaKind | undefined;
-    if (!kind || !SUPPORTED_AREA_KINDS.includes(kind)) continue;
-    map.set(kind, {
-      data: (latest?.data ?? {}) as Record<string, number>,
-      date: parseDate(latest?.date),
-      type: typeof latest?.type === "string" ? (latest.type as string) : null,
-      parentArea: typeof latest?.parentArea === "string" ? (latest.parentArea as string) : null,
-    });
+    if (!hasSelection) {
+      const expectedParents = normalizeParentAreas(
+        parentAreaOverride[kind],
+        DEFAULT_PARENT_AREA_BY_KIND[kind],
+      );
+      const aliasSets = expectedParents.map((parent) => buildScopeLabelAliases(parent));
+      const normalizedActual = normalizeScopeLabel(
+        typeof row.parentArea === "string" ? (row.parentArea as string) : null,
+      );
+
+      if (aliasSets.length > 0) {
+        const matches = aliasSets.some((aliases) => {
+          if (aliases.length === 0) return false;
+          if (!normalizedActual) return false;
+          return aliases.includes(normalizedActual);
+        });
+        if (!matches) continue;
+      }
+    }
+
+    const incoming: RootEntry = {
+      data: (row?.data ?? {}) as Record<string, number>,
+      date: parseDate(row?.date),
+      type: typeof row?.type === "string" ? (row.type as string) : null,
+      parentArea: typeof row?.parentArea === "string" ? (row.parentArea as string) : null,
+    };
+    const existing = map.get(kind);
+    if (!existing) {
+      map.set(kind, { ...incoming, data: { ...incoming.data } });
+      continue;
+    }
+    const incomingDate = incoming.date ?? "";
+    const existingDate = existing.date ?? "";
+    if (incomingDate > existingDate) {
+      map.set(kind, { ...incoming, data: { ...incoming.data } });
+    } else if (incomingDate === existingDate) {
+      map.set(kind, {
+        ...existing,
+        data: { ...existing.data, ...incoming.data },
+      });
+    }
   }
 
   return map;
@@ -188,7 +213,8 @@ const collectBreakdownSources = (
   rows: any[] | undefined,
   statId: string | null,
   latestDates: Map<SupportedAreaKind, string | null>,
-  parentAreaOverride: Partial<Record<SupportedAreaKind, string | null>>,
+  parentAreaOverride: Partial<Record<SupportedAreaKind, ParentAreaFilter>>,
+  selectedByKind: Partial<Record<SupportedAreaKind, string[]>>,
 ): BreakdownSourceMap => {
   const map: BreakdownSourceMap = new Map();
   if (!rows || !statId) return map;
@@ -198,13 +224,26 @@ const collectBreakdownSources = (
     if (row.name === "root") continue;
     const kind = row.boundaryType as SupportedAreaKind | undefined;
     if (!kind || !SUPPORTED_AREA_KINDS.includes(kind)) continue;
-    const expectedParent = parentAreaOverride[kind] ?? DEFAULT_PARENT_AREA_BY_KIND[kind];
-    const aliases = buildScopeLabelAliases(expectedParent);
-    const normalizedActual = normalizeScopeLabel(
-      typeof row.parentArea === "string" ? (row.parentArea as string) : null,
-    );
-    if (aliases.length > 0) {
-      if (!normalizedActual || !aliases.includes(normalizedActual)) continue;
+    const selection = dedupe(selectedByKind[kind]);
+    const hasSelection = selection.length > 0;
+
+    if (!hasSelection) {
+      const expectedParents = normalizeParentAreas(
+        parentAreaOverride[kind],
+        DEFAULT_PARENT_AREA_BY_KIND[kind],
+      );
+      const aliasSets = expectedParents.map((parent) => buildScopeLabelAliases(parent));
+      const normalizedActual = normalizeScopeLabel(
+        typeof row.parentArea === "string" ? (row.parentArea as string) : null,
+      );
+      if (aliasSets.length > 0) {
+        const matches = aliasSets.some((aliases) => {
+          if (aliases.length === 0) return false;
+          if (!normalizedActual) return false;
+          return aliases.includes(normalizedActual);
+        });
+        if (!matches) continue;
+      }
     }
     const latestDate = latestDates.get(kind);
     const rowDate = parseDate(row?.date);
@@ -305,27 +344,55 @@ export const useDemographics = ({
     [data?.stats],
   );
 
-  const normalizedZipScope =
-    normalizeScopeLabel(zipScope) ??
-    (normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma") ?? "Oklahoma");
-  const parentAreaOverride = useMemo<Partial<Record<SupportedAreaKind, string | null>>>(
+  const fallbackZipScope =
+    normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma") ?? "Oklahoma";
+
+  const zipSelectionParents = useMemo(() => {
+    // When specific ZIPs are selected, pin the stat scope to their parent counties
+    // so viewport-based scope changes don't swap in the wrong aggregate.
+    const parents = new Set<string>();
+    const zipRecords = areasByKindAndCode.get("ZIP");
+    const countyRecords = areasByKindAndCode.get("COUNTY");
+    for (const zip of dedupe(selectedByKind.ZIP)) {
+      const zipRecord = zipRecords?.get(zip);
+      const countyCode = zipRecord?.parentCode ?? null;
+      const countyRecord = countyCode ? countyRecords?.get(countyCode) : null;
+      const parentLabel = normalizeScopeLabel(
+        countyRecord?.name ?? countyRecord?.code ?? zipRecord?.parentCode ?? null,
+      );
+      if (parentLabel) parents.add(parentLabel);
+    }
+    return Array.from(parents);
+  }, [areasByKindAndCode, selectedByKind.ZIP]);
+
+  const normalizedZipScope = useMemo<ParentAreaFilter>(() => {
+    if (zipSelectionParents.length > 0) {
+      return zipSelectionParents;
+    }
+    return normalizeScopeLabel(zipScope) ?? fallbackZipScope;
+  }, [fallbackZipScope, zipScope, zipSelectionParents]);
+
+  const primaryZipScopeLabel =
+    Array.isArray(normalizedZipScope) ? normalizedZipScope[0] ?? null : normalizedZipScope;
+
+  const parentAreaOverride = useMemo<Partial<Record<SupportedAreaKind, ParentAreaFilter>>>(
     () => ({ ZIP: normalizedZipScope }),
     [normalizedZipScope],
   );
 
   const populationRoots = useMemo(
-    () => collectLatestRootRows(data?.statData, populationStatId, parentAreaOverride),
-    [data?.statData, populationStatId, parentAreaOverride],
+    () => collectLatestRootRows(data?.statData, populationStatId, parentAreaOverride, selectedByKind),
+    [data?.statData, populationStatId, parentAreaOverride, selectedByKind],
   );
 
   const avgAgeRoots = useMemo(
-    () => collectLatestRootRows(data?.statData, avgAgeStatId, parentAreaOverride),
-    [data?.statData, avgAgeStatId, parentAreaOverride],
+    () => collectLatestRootRows(data?.statData, avgAgeStatId, parentAreaOverride, selectedByKind),
+    [data?.statData, avgAgeStatId, parentAreaOverride, selectedByKind],
   );
 
   const marriedRoots = useMemo(
-    () => collectLatestRootRows(data?.statData, marriedPercentStatId, parentAreaOverride),
-    [data?.statData, marriedPercentStatId, parentAreaOverride],
+    () => collectLatestRootRows(data?.statData, marriedPercentStatId, parentAreaOverride, selectedByKind),
+    [data?.statData, marriedPercentStatId, parentAreaOverride, selectedByKind],
   );
 
   const latestPopulationDates = useMemo(() => {
@@ -340,8 +407,14 @@ export const useDemographics = ({
     if (!ENABLE_DEMOGRAPHIC_BREAKDOWNS) {
       return new Map<SupportedAreaKind, Map<BreakdownGroupKey, BreakdownSourceSegment[]>>();
     }
-    return collectBreakdownSources(data?.statData, populationStatId, latestPopulationDates, parentAreaOverride);
-  }, [data?.statData, populationStatId, latestPopulationDates, parentAreaOverride]);
+    return collectBreakdownSources(
+      data?.statData,
+      populationStatId,
+      latestPopulationDates,
+      parentAreaOverride,
+      selectedByKind,
+    );
+  }, [data?.statData, populationStatId, latestPopulationDates, parentAreaOverride, selectedByKind]);
 
   const getAreaName = (kind: SupportedAreaKind, code: string): string | null => {
     const byCode = areasByKindAndCode.get(kind);
@@ -398,7 +471,7 @@ export const useDemographics = ({
 
       let stats: AggregatedStats | null = null;
       if (populationEntry && (totalPopulation > 0 || populationCount > 0)) {
-      const label = buildAreaLabel(kind, resolvedSelection, targetIds, getAreaName, normalizedZipScope);
+      const label = buildAreaLabel(kind, resolvedSelection, targetIds, getAreaName, primaryZipScopeLabel);
         stats = {
           selectedCount: rawSelection.length,
           label,
@@ -490,6 +563,7 @@ export const useDemographics = ({
     avgAgeRoots,
     marriedRoots,
     breakdownSources,
+    primaryZipScopeLabel,
   ]);
 
   const combinedSnapshot = useMemo(() => {
