@@ -660,7 +660,9 @@ export const StatViz = ({
 
   const subtitle = useMemo(() => {
     if (collapsed) {
-      return latestSummaryValue == null ? "" : String(Math.round(latestSummaryValue));
+      if (latestSummaryValue == null) return "";
+      const statType = stat?.type ?? "count";
+      return formatStatValue(latestSummaryValue, statType);
     }
     if (chartData?.mode === "bar") {
       return "";

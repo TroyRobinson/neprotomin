@@ -3076,16 +3076,16 @@ export const ReactMapApp = () => {
                     onClearTimeFilter={handleClearTimeFilter}
                     onChangeTimeFilter={handleChangeTimeFilter}
                     cameraState={cameraState}
-                    onZoomToOrg={handleZoomToOrg}
-                    selectionLabelOverride={searchSelectionLabel}
-                    selectionStyleVariant={selectionStyleVariant}
-                    variant="mobile"
-                    showInsights={false}
-                    showAdvanced={showAdvanced}
-                    className="h-full"
-                  />
-                </div>
+                  onZoomToOrg={handleZoomToOrg}
+                  selectionLabelOverride={searchSelectionLabel}
+                  selectionStyleVariant={selectionStyleVariant}
+                  variant="mobile"
+                  showInsights={true}
+                  showAdvanced={showAdvanced}
+                  className="h-full"
+                />
               </div>
+            </div>
             </div>
           </div>
         )}

@@ -19,7 +19,7 @@ import { db } from "../../lib/reactDb";
 // Enable Features
 // ============================================================================
 const ENABLE_DEMOGRAPHICS_SECTION = true;
-const ENABLE_STATISTICS_VISUALIZATION_SECTION = false;
+const ENABLE_STATISTICS_VISUALIZATION_SECTION = true;
 
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type SelectedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
