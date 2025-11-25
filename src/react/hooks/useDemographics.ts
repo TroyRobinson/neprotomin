@@ -33,7 +33,7 @@ const BREAKDOWN_KEYS: BreakdownGroupKey[] = ["ethnicity", "income", "education"]
 
 // Hide demographic breakdowns until we ingest real data, so synthetic legacy rows
 // don't appear in the UI and confuse users.
-const ENABLE_DEMOGRAPHIC_BREAKDOWNS = false;
+const ENABLE_DEMOGRAPHIC_BREAKDOWNS = true;
 
 export interface BreakdownSegment {
   key: string;
@@ -516,7 +516,7 @@ export const useDemographics = ({
               }
             }
             const avg = aggregate / denom;
-            const valuePercent = Math.max(0, Math.min(100, Math.round(avg)));
+            const valuePercent = Math.max(0, Math.min(100, Math.round(avg * 100)));
             const colorToken = match?.colorToken ?? BRAND_SHADE_TOKENS[Math.min(index, BRAND_SHADE_TOKENS.length - 1)];
             const label = match?.label ?? SEGMENT_LABELS[groupKey][segKey] ?? segKey;
             return { key: segKey, label, colorToken, valuePercent };
@@ -664,7 +664,7 @@ export const useDemographics = ({
           const order = SEGMENT_ORDER[typedGroupKey] ?? [];
           const segments: BreakdownSegment[] = order.map((segKey, index) => {
             const sum = acc.totals.get(segKey) ?? 0;
-            const percent = acc.weight > 0 ? Math.round(sum / acc.weight) : 0;
+            const percent = acc.weight > 0 ? Math.round((sum / acc.weight) * 100) : 0;
             return {
               key: segKey,
               label: SEGMENT_LABELS[typedGroupKey]?.[segKey] ?? segKey,

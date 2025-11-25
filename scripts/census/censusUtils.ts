@@ -616,6 +616,7 @@ interface StatDataPayload {
   censusUniverse?: string;
   censusTableUrl: string;
   year: number;
+  name?: string; // optional statData row name; defaults to "root"
 }
 
 const mergeNumberMaps = (
@@ -630,10 +631,10 @@ const mergeNumberMaps = (
 };
 
 const buildPayloadKey = (payload: StatDataPayload): string =>
-  `${payload.boundaryType}::${payload.parentArea}::${payload.year}`;
+  `${payload.boundaryType}::${payload.parentArea}::${payload.year}::${payload.name ?? 'root'}`;
 
 const buildExistingKey = (row: any): string =>
-  `${row.boundaryType}::${row.parentArea}::${row.date}`;
+  `${row.boundaryType}::${row.parentArea}::${row.date}::${row.name ?? 'root'}`;
 
 const fetchExistingStatDataMap = async (
   db: ReturnType<typeof createInstantClient>,
@@ -677,7 +678,7 @@ export const applyStatDataPayloads = async (
     const existingRow = existing.get(key);
     const baseFields = {
       statId: payload.statId,
-      name: 'root',
+      name: payload.name ?? 'root',
       statTitle: payload.statName,
       statNameHint: payload.statName,
       parentArea: payload.parentArea,
@@ -742,8 +743,10 @@ export const buildStatDataPayloads = (
     censusTableUrl: string;
     year: number;
   },
+  options?: { name?: string },
 ): StatDataPayload[] => {
   const payloads: StatDataPayload[] = [];
+  const payloadName = options?.name;
   payloads.push({
     statId,
     statName,
@@ -757,6 +760,7 @@ export const buildStatDataPayloads = (
     censusUniverse: meta.censusUniverse,
     censusTableUrl: meta.censusTableUrl,
     year: meta.year,
+    name: payloadName,
   });
   for (const [key, bucket] of maps.countyZipBuckets.entries()) {
     const [countyId, countyName] = key.split('::');
@@ -775,6 +779,7 @@ export const buildStatDataPayloads = (
       censusUniverse: meta.censusUniverse,
       censusTableUrl: meta.censusTableUrl,
       year: meta.year,
+      name: payloadName,
     });
   }
   payloads.push({
@@ -790,6 +795,7 @@ export const buildStatDataPayloads = (
     censusUniverse: meta.censusUniverse,
     censusTableUrl: meta.censusTableUrl,
     year: meta.year,
+    name: payloadName,
   });
   return payloads;
 };
