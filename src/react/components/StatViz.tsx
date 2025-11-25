@@ -569,19 +569,30 @@ export const StatViz = ({
     return map;
   }, [statDataByKind]);
 
-  const latestSummaryValue = useMemo(() => {
+  const { latestSummaryValue, latestSummaryType } = useMemo(() => {
+    const primaryKind = areaEntries[0]?.kind ?? activeAreaKind ?? "ZIP";
+    const summaryType = statDataByKind[primaryKind]?.type ?? stat?.type ?? "count";
+
     const values: number[] = [];
     for (const entry of areaEntries) {
       const boundary = statDataByKind[entry.kind];
       const raw = boundary?.data?.[entry.id];
       if (typeof raw === "number" && Number.isFinite(raw)) values.push(raw);
     }
+
     if (values.length === 0) {
       const fallback = cityAvgByKind.get("ZIP") ?? cityAvgByKind.get("COUNTY") ?? 0;
-      return fallback;
+      return { latestSummaryValue: fallback, latestSummaryType: summaryType };
     }
-    return values.reduce((sum, v) => sum + v, 0) / values.length;
-  }, [areaEntries, statDataByKind, cityAvgByKind]);
+
+    if (summaryType === "percent") {
+      const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+      return { latestSummaryValue: avg, latestSummaryType: summaryType };
+    }
+
+    const total = values.reduce((sum, v) => sum + v, 0);
+    return { latestSummaryValue: total, latestSummaryType: summaryType };
+  }, [areaEntries, statDataByKind, cityAvgByKind, stat, activeAreaKind]);
 
   const chartMode = areaEntries.length >= 4 ? "bar" : "line";
 
@@ -661,8 +672,7 @@ export const StatViz = ({
   const subtitle = useMemo(() => {
     if (collapsed) {
       if (latestSummaryValue == null) return "";
-      const statType = stat?.type ?? "count";
-      return formatStatValue(latestSummaryValue, statType);
+      return formatStatValue(latestSummaryValue, latestSummaryType ?? "count");
     }
     if (chartData?.mode === "bar") {
       return "";
