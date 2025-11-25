@@ -461,8 +461,10 @@ export const useDemographics = ({
             }
 
             const marriedValue = marriedEntry?.data?.[code];
+            // Married percent stored as ratio (0-1); convert to percentage points for display
             if (typeof marriedValue === "number" && Number.isFinite(marriedValue) && safePop > 0) {
-              weightedMarried += marriedValue * safePop;
+              const marriedPct = marriedValue * 100;
+              weightedMarried += marriedPct * safePop;
               weightedMarriedDenominator += safePop;
             }
           }
@@ -617,8 +619,9 @@ export const useDemographics = ({
           }
 
           const marriedValue = marriedRoots.get(area.kind)?.data?.[area.code];
+          // Stored as ratio (0-1); convert to percentage points
           if (typeof marriedValue === "number" && Number.isFinite(marriedValue)) {
-            weightedMarried += marriedValue * weight;
+            weightedMarried += marriedValue * 100 * weight;
             weightedMarriedDenominator += weight;
           }
 
