@@ -594,7 +594,7 @@ export const StatViz = ({
 
   const { latestSummaryValue, latestSummaryType } = useMemo(() => {
     const primaryKind = areaEntries[0]?.kind ?? activeAreaKind ?? "ZIP";
-    const summaryType = statDataByKind[primaryKind]?.type ?? stat?.type ?? "count";
+    const summaryType = statDataByKind[primaryKind]?.type ?? "count";
 
     const values: number[] = [];
     for (const entry of areaEntries) {
