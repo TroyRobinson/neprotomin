@@ -22,8 +22,8 @@ interface ReportScreenProps {
 }
 
 const comparisonLabelByKind: Record<SupportedAreaKind, string> = {
-  ZIP: "City",
-  COUNTY: "State",
+  ZIP: "all OK ZIPs",
+  COUNTY: "all OK counties",
 };
 
 function formatNumber(n: number): string {
@@ -148,7 +148,7 @@ export const ReportScreen = ({
     };
   }, [primaryCodes, primaryKind, statDataById, statsById]);
 
-  const comparisonLabel = primaryKind ? comparisonLabelByKind[primaryKind] : "City";
+  const comparisonLabel = primaryKind ? comparisonLabelByKind[primaryKind] : "all OK ZIPs";
 
   const ranking = useMemo(() => {
     if (!primaryKind || primaryCodes.length === 0) return { left: [], right: [] };
@@ -290,7 +290,7 @@ export const ReportScreen = ({
 
             <div className="mt-6">
               <h3 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Top differences vs {comparisonLabel.toLowerCase()}
+                Top differences vs {comparisonLabel}
               </h3>
               {primaryKind && (
                 <p className="-mt-1 mb-2 text-xs text-slate-400 dark:text-slate-500">
@@ -312,7 +312,7 @@ export const ReportScreen = ({
                         <p className="text-sm font-semibold text-slate-800 dark:text-white">{formatStatValue(row.selectedValue)}</p>
                         <p className={`text-xs font-medium ${row.diff >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                           {row.diff >= 0 ? "+" : "-"}
-                          {formatStatDiff(row.diff)} vs {comparisonLabel.toLowerCase()}
+                          {formatStatDiff(row.diff)} vs {comparisonLabel}
                         </p>
                       </div>
                     </li>
@@ -331,7 +331,7 @@ export const ReportScreen = ({
                         <p className="text-sm font-semibold text-slate-800 dark:text-white">{formatStatValue(row.selectedValue)}</p>
                         <p className={`text-xs font-medium ${row.diff >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                           {row.diff >= 0 ? "+" : "-"}
-                          {formatStatDiff(row.diff)} vs {comparisonLabel.toLowerCase()}
+                          {formatStatDiff(row.diff)} vs {comparisonLabel}
                         </p>
                       </div>
                     </li>
