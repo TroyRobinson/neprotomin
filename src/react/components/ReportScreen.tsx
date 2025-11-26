@@ -42,6 +42,27 @@ function formatYears(n: number): string {
   return `${n.toFixed(1)}`;
 }
 
+function formatStatValue(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  // If it's between 0 and 1, treat as a decimal percentage
+  if (n > 0 && n < 1) {
+    return `${new Intl.NumberFormat().format(Math.round(n * 100))}%`;
+  }
+  // Otherwise, round to nearest whole number with thousands separators
+  return new Intl.NumberFormat().format(Math.round(n));
+}
+
+function formatStatDiff(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  const abs = Math.abs(n);
+  // If it's between 0 and 1, treat as a decimal percentage
+  if (abs > 0 && abs < 1) {
+    return `${new Intl.NumberFormat().format(Math.round(abs * 100))}%`;
+  }
+  // Otherwise, round to nearest whole number with thousands separators
+  return new Intl.NumberFormat().format(Math.round(abs));
+}
+
 export const ReportScreen = ({
   activeKind,
   activeAreas,
@@ -284,14 +305,14 @@ export const ReportScreen = ({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{row.name}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {comparisonLabel}: {row.comparisonValue.toFixed(2)}
+                          {comparisonLabel}: {formatStatValue(row.comparisonValue)}
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-semibold text-slate-800 dark:text-white">{row.selectedValue.toFixed(2)}</p>
+                        <p className="text-sm font-semibold text-slate-800 dark:text-white">{formatStatValue(row.selectedValue)}</p>
                         <p className={`text-xs font-medium ${row.diff >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                           {row.diff >= 0 ? "+" : "-"}
-                          {Math.abs(row.diff).toFixed(2)} vs {comparisonLabel.toLowerCase()}
+                          {formatStatDiff(row.diff)} vs {comparisonLabel.toLowerCase()}
                         </p>
                       </div>
                     </li>
@@ -303,14 +324,14 @@ export const ReportScreen = ({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{row.name}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {comparisonLabel}: {row.comparisonValue.toFixed(2)}
+                          {comparisonLabel}: {formatStatValue(row.comparisonValue)}
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-semibold text-slate-800 dark:text-white">{row.selectedValue.toFixed(2)}</p>
+                        <p className="text-sm font-semibold text-slate-800 dark:text-white">{formatStatValue(row.selectedValue)}</p>
                         <p className={`text-xs font-medium ${row.diff >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                           {row.diff >= 0 ? "+" : "-"}
-                          {Math.abs(row.diff).toFixed(2)} vs {comparisonLabel.toLowerCase()}
+                          {formatStatDiff(row.diff)} vs {comparisonLabel.toLowerCase()}
                         </p>
                       </div>
                     </li>
