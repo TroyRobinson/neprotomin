@@ -629,8 +629,8 @@ export const Sidebar = ({
           </button>
         </div>
 
-        {/* Category Filter Indicator */}
-        {categoryFilter && (
+        {/* Category Filter Indicator (desktop only) */}
+        {categoryFilter && variant === "desktop" && (
           <div className="flex items-center gap-1">
             <span className="text-[10px] text-slate-400 dark:text-slate-500">
               <span className="font-semibold text-slate-400 dark:text-slate-400">Filter</span>: {getCategoryLabel(categoryFilter as any)}
