@@ -121,7 +121,7 @@ const LineChart = ({ series, onHoverLine, statType }: LineChartProps) => {
   const yPad = maxVRaw * 0.08;
   const yMax = Math.max(1, maxVRaw + yPad);
 
-  const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
+  const fmt = (n: number) => formatStatValue(n, statType ?? "count");
   const maxLabel = fmt(yMax);
   const labelWidth = maxLabel.length * 6;
   const dynamicLeftMargin = Math.max(16, labelWidth + 8);
