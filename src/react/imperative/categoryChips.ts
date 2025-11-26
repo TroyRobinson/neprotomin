@@ -576,9 +576,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       ? `${MOBILE_STAT_CHIP_BASE_CLASSES} border-slate-200`
       : `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES}`;
     btn.setAttribute("data-stat-id", stat.id);
-    btn.setAttribute("title", stat.name);
+    const displayName = stat.label || stat.name;
+    btn.setAttribute("title", displayName);
     const label = document.createElement("span");
-    label.textContent = isMobile ? stat.name : formatStatChipLabel(stat.name);
+    label.textContent = isMobile ? displayName : formatStatChipLabel(displayName);
     label.className = isMobile
       ? "whitespace-nowrap overflow-hidden text-ellipsis"
       : "whitespace-nowrap";
@@ -722,10 +723,11 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     btn.type = "button";
     btn.className = `${CATEGORY_CHIP_CLASSES} ${SECONDARY_STAT_CHIP_CLASSES}`;
     btn.setAttribute("data-secondary-stat-id", stat.id);
-    btn.setAttribute("title", `Secondary: ${stat.name}`);
+    const displayName = stat.label || stat.name;
+    btn.setAttribute("title", `Secondary: ${displayName}`);
 
     const label = document.createElement("span");
-    label.textContent = stat.name;
+    label.textContent = displayName;
     label.className = isMobile
       ? "whitespace-nowrap overflow-hidden text-ellipsis"
       : "whitespace-nowrap";

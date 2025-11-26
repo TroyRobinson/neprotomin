@@ -200,7 +200,7 @@ export const ReportScreen = ({
       const diff = selectedValue - comparisonAverage;
       rows.push({
         statId,
-        name: stat.name,
+        name: stat.label || stat.name,
         type: entry.type,
         selectedValue,
         comparisonValue: comparisonAverage,

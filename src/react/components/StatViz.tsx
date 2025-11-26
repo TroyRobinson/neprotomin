@@ -732,7 +732,7 @@ export const StatViz = ({
         onClick={() => setCollapsed(!collapsed)}
       >
         <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          {stat ? stat.name : "Trend"}
+          {stat ? (stat.label || stat.name) : "Trend"}
         </h3>
         <div className="text-xs text-slate-400 dark:text-slate-500">{subtitle}</div>
       </div>

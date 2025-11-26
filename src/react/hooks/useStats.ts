@@ -64,6 +64,7 @@ export const useStats = () => {
         map.set(row.id, {
           id: row.id,
           name: row.name,
+          label: typeof row.label === "string" && row.label.trim() ? row.label : undefined,
           category: row.category as Category,
           goodIfUp: typeof row.goodIfUp === "boolean" ? row.goodIfUp : undefined,
           active: typeof row.active === "boolean" ? row.active : undefined,
