@@ -112,8 +112,8 @@ const setNeHomeRedirectState = (disabled: boolean): void => {
 
 interface TopBarProps {
   onBrandClick?: () => void;
-  onNavigate?: (screen: "map" | "report" | "roadmap" | "data" | "queue") => void;
-  active?: "map" | "report" | "roadmap" | "data" | "queue";
+  onNavigate?: (screen: "map" | "report" | "roadmap" | "data" | "queue" | "admin") => void;
+  active?: "map" | "report" | "roadmap" | "data" | "queue" | "admin";
   onOpenAuth?: () => void;
   isMobile?: boolean;
   onMobileLocationSearch?: (query: string) => void;
@@ -317,7 +317,7 @@ export const TopBar = ({
     track("topbar_nav_click", { item, destination, device: isMobile ? "mobile" : "desktop" });
   };
 
-  const handleNavigate = (screen: "map" | "report" | "roadmap" | "data" | "queue") => {
+  const handleNavigate = (screen: "map" | "report" | "roadmap" | "data" | "queue" | "admin") => {
     setIsMobileMenuOpen(false);
     const labelMap: Record<typeof screen, string> = {
       map: "Food Map",
@@ -325,6 +325,7 @@ export const TopBar = ({
       roadmap: "Roadmap",
       data: "Data",
       queue: "Queue",
+      admin: "Admin",
     };
     trackNavItem(labelMap[screen], "internal");
     onNavigate?.(screen);
@@ -360,6 +361,8 @@ export const TopBar = ({
     !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
   const showReportLink = !isLoading && user && !user.isGuest && showAdvanced;
   const showQueueLink =
+    !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
+  const showAdminLink =
     !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
   const showRoadmapLink = !isLoading && user != null && !user.isGuest;
 
@@ -417,6 +420,30 @@ export const TopBar = ({
                 >
                   OK Food Map
                 </a>
+                {showAdminLink && (
+                  <a
+                    href="#admin"
+                    onMouseEnter={() => {
+                      import("../components/AdminScreen");
+                    }}
+                    onFocus={() => {
+                      import("../components/AdminScreen");
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      trackNavItem("Admin", "internal");
+                      onNavigate?.("admin");
+                    }}
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                      active === "admin"
+                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                        : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    }`}
+                    aria-current={active === "admin" ? "page" : undefined}
+                  >
+                    Admin
+                  </a>
+                )}
                 {ENABLE_REPORT_MENU && showReportLink && (
                   <a
                     href="#report"
@@ -822,6 +849,16 @@ export const TopBar = ({
               >
                 OK Food Map
               </button>
+              {showAdminLink && (
+                <button
+                  type="button"
+                  onClick={() => handleNavigate("admin")}
+                  className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 ${active === "admin" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
+                  aria-current={active === "admin" ? "page" : undefined}
+                >
+                  Admin
+                </button>
+              )}
               {ENABLE_REPORT_MENU && showReportLink && (
                 <button
                   type="button"

@@ -32,7 +32,7 @@ import { parseFullAddress, geocodeAddress, looksLikeAddress } from "./lib/geocod
 import { normalizeForSearch, computeSimilarityFromNormalized } from "./lib/fuzzyMatch";
 import { useAuthSession } from "./hooks/useAuthSession";
 type SupportedAreaKind = "ZIP" | "COUNTY";
-type ScreenName = "map" | "report" | "roadmap" | "data" | "queue" | "addOrg";
+type ScreenName = "map" | "report" | "roadmap" | "data" | "queue" | "addOrg" | "admin";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
 const RoadmapScreen = lazy(() => import("./components/RoadmapScreen").then((m) => ({ default: m.default })));
@@ -41,6 +41,9 @@ const AddOrganizationScreen = lazy(() =>
 );
 const QueueScreen = lazy(() =>
   import("./components/QueueScreen").then((m) => ({ default: m.QueueScreen })),
+);
+const AdminScreen = lazy(() =>
+  import("./components/AdminScreen").then((m) => ({ default: m.AdminScreen })),
 );
 
 const COUNTY_MODE_ENABLE_ZOOM = 9;
@@ -2665,12 +2668,16 @@ export const ReactMapApp = () => {
   const mobileOrganizationsCount = visibleCount;
 
   const handleTopBarNavigate = useCallback(
-    (screen: "map" | "report" | "roadmap" | "data" | "queue") => {
+    (screen: "map" | "report" | "roadmap" | "data" | "queue" | "admin") => {
       if (screen === "queue" && !isAdmin) {
         setActiveScreen("map");
         return;
       }
       if (screen === "data" && !isAdmin) {
+        setActiveScreen("map");
+        return;
+      }
+      if (screen === "admin" && !isAdmin) {
         setActiveScreen("map");
         return;
       }
@@ -2801,6 +2808,8 @@ export const ReactMapApp = () => {
             ? "data"
             : activeScreen === "queue"
             ? "queue"
+            : activeScreen === "admin"
+            ? "admin"
             : "map"
         }
         onOpenAuth={() => setAuthOpen(true)}
@@ -3185,6 +3194,21 @@ export const ReactMapApp = () => {
           <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-slate-500">Loading queue…</div>}>
             <div className="flex h-full w-full overflow-hidden bg-white pb-safe dark:bg-slate-950">
               <QueueScreen />
+            </div>
+          </Suspense>
+        )}
+      </div>
+
+      {/* Admin overlay */}
+      <div
+        aria-hidden={activeScreen !== "admin"}
+        style={{ visibility: activeScreen === "admin" ? "visible" : "hidden", top: topBarHeight }}
+        className="absolute left-0 right-0 bottom-0 z-30"
+      >
+        {activeScreen === "admin" && (
+          <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-slate-500">Loading admin…</div>}>
+            <div className="flex h-full w-full overflow-hidden bg-white pb-safe dark:bg-slate-900">
+              <AdminScreen />
             </div>
           </Suspense>
         )}
