@@ -2812,62 +2812,62 @@ export const ReactMapApp = () => {
         onAdvancedToggle={setShowAdvanced}
       />
       <div className="relative flex flex-1 flex-col overflow-hidden">
-        {!isMobile && showAdvanced && (
-          <BoundaryToolbar
-            boundaryMode={boundaryMode}
-            boundaryControlMode={boundaryControlMode}
-            selections={toolbarSelections}
-            hoveredArea={hoveredArea}
-            stickyTopClass="top-0"
-            onBoundaryModeChange={handleBoundaryModeManualSelect}
-            onBoundaryControlModeChange={handleBoundaryControlModeChange}
-            onHoverArea={setHoveredAreaState}
-            onExport={handleExport}
-            onUpdateSelection={handleUpdateAreaSelection}
-          />
-        )}
         <main className="relative flex flex-1 flex-col overflow-hidden md:flex-row">
           <div className="relative flex flex-1 flex-col overflow-hidden">
-              <MapLibreMap
-                key={isMobile ? "mobile" : "desktop"}
-                organizations={availableOrganizations}
-                orgPinsVisible={orgPinsVisible}
-                zoomOutRequestNonce={zoomOutNonce}
-                clearMapCategoryNonce={clearMapCategoryNonce}
-                onRequestHideOrgs={() => {
-                  setOrgPinsVisible(false);
-                  setForceHideOrgsNonce((n) => n + 1);
-                }}
+            {!isMobile && showAdvanced && (
+              <BoundaryToolbar
                 boundaryMode={boundaryMode}
-                autoBoundarySwitch={autoBoundarySwitch}
-                selectedZips={selectedZips}
-                pinnedZips={pinnedZips}
-                hoveredZip={hoveredZip}
-                selectedCounties={selectedCounties}
-                pinnedCounties={pinnedCounties}
-                hoveredCounty={hoveredCounty}
-                activeOrganizationId={activeOrganizationId}
-                selectedOrgIds={selectedOrgIds}
-                onHover={handleHover}
-                onOrganizationClick={handleOrganizationClick}
-                onClusterClick={handleClusterClick}
-                selectedStatId={selectedStatId}
-                secondaryStatId={secondaryStatId}
-                categoryFilter={categoryFilter}
-                onAreaSelectionChange={handleAreaSelectionChange}
-                onAreaHoverChange={handleAreaHoverChange}
-                onStatSelectionChange={setSelectedStatId}
-                onSecondaryStatChange={setSecondaryStatId}
-                onCategorySelectionChange={setCategoryFilter}
-                onVisibleIdsChange={(ids, _totalInSource, allSourceIds) => {
-                  applyMapVisibleIds(ids, allSourceIds);
-                }}
-                onBoundaryModeChange={handleMapBoundaryModeChange}
-                onZipScopeChange={(scope, neighbors) => {
-                  setZipScope(scope);
-                  setZipNeighborScopes(neighbors);
-                }}
-                onCameraChange={setCameraState}
+                boundaryControlMode={boundaryControlMode}
+                selections={toolbarSelections}
+                hoveredArea={hoveredArea}
+                stickyTopClass="top-0"
+                onBoundaryModeChange={handleBoundaryModeManualSelect}
+                onBoundaryControlModeChange={handleBoundaryControlModeChange}
+                onHoverArea={setHoveredAreaState}
+                onExport={handleExport}
+                onUpdateSelection={handleUpdateAreaSelection}
+              />
+            )}
+            <MapLibreMap
+              key={isMobile ? "mobile" : "desktop"}
+              organizations={availableOrganizations}
+              orgPinsVisible={orgPinsVisible}
+              zoomOutRequestNonce={zoomOutNonce}
+              clearMapCategoryNonce={clearMapCategoryNonce}
+              onRequestHideOrgs={() => {
+                setOrgPinsVisible(false);
+                setForceHideOrgsNonce((n) => n + 1);
+              }}
+              boundaryMode={boundaryMode}
+              autoBoundarySwitch={autoBoundarySwitch}
+              selectedZips={selectedZips}
+              pinnedZips={pinnedZips}
+              hoveredZip={hoveredZip}
+              selectedCounties={selectedCounties}
+              pinnedCounties={pinnedCounties}
+              hoveredCounty={hoveredCounty}
+              activeOrganizationId={activeOrganizationId}
+              selectedOrgIds={selectedOrgIds}
+              onHover={handleHover}
+              onOrganizationClick={handleOrganizationClick}
+              onClusterClick={handleClusterClick}
+              selectedStatId={selectedStatId}
+              secondaryStatId={secondaryStatId}
+              categoryFilter={categoryFilter}
+              onAreaSelectionChange={handleAreaSelectionChange}
+              onAreaHoverChange={handleAreaHoverChange}
+              onStatSelectionChange={setSelectedStatId}
+              onSecondaryStatChange={setSecondaryStatId}
+              onCategorySelectionChange={setCategoryFilter}
+              onVisibleIdsChange={(ids, _totalInSource, allSourceIds) => {
+                applyMapVisibleIds(ids, allSourceIds);
+              }}
+              onBoundaryModeChange={handleMapBoundaryModeChange}
+              onZipScopeChange={(scope, neighbors) => {
+                setZipScope(scope);
+                setZipNeighborScopes(neighbors);
+              }}
+              onCameraChange={setCameraState}
                 onMapDragStart={() => {
                   setSidebarFollowMode("map");
                   track("map_interaction", { type: "drag", device: isMobile ? "mobile" : "desktop" });

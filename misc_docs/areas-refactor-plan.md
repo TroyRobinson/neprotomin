@@ -56,7 +56,7 @@
 - Should the county centroid source be pruned to active counties only, or is the full statewide feature set required for future expansion?
 - Validate county-weight weighting (population vs. simple average) and confirm numbers align with analytics expectations.
 - Report currently prioritises ZIP selections when both ZIPs and counties are pinned; document whether mixed reports should show both or split into sections.
-- Upcoming iteration: align report + sidebar with the Areas dropdown (single active kind), let timeline highlights include extra pinned areas beyond the active kind, and add a “control by zoom” option so users can hand dropdown control back to auto-zoom mode.
+- Upcoming iteration: align report + sidebar with the Areas dropdown (single active kind), let timeline highlights include extra pinned areas beyond the active kind, and add an auto, “control by zoom” option so users can hand dropdown control back to auto-zoom mode.
 
 ---
 

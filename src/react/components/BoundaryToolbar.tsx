@@ -496,7 +496,7 @@ export const BoundaryToolbar = ({
               options={[
                 { value: "zips", label: "ZIPs" },
                 { value: "counties", label: "Counties" },
-                { value: "auto", label: "Control by zoom" },
+                { value: "auto", label: "Auto" },
                 { value: "none", label: "None" }
               ]}
               onChange={(value) => {

@@ -16,7 +16,7 @@ _Snapshot: 2025-10-22_
 ## Status Overview
 - ✅ Demographics, stats hooks, and overlays support both ZIP and county data.
 - ✅ Reports/export mirror the active Areas dropdown (ZIP or county).
-- ✅ Areas dropdown supports “Control by zoom” vs manual mode; sidebar/report panels stay in sync.
+- ✅ Areas dropdown supports Auto (control by zoom) vs manual mode; sidebar/report panels stay in sync.
 - ✅ Highlights show selected areas, pinned cross-kind context (grey), and top remaining active-kind areas.
 - 🔄 Final QA + copy polish underway.
 - ⚠️ Node 22.11.0 triggers a Vite warning (needs ≥22.12.0).
@@ -31,7 +31,7 @@ _Snapshot: 2025-10-22_
 - Mixed selections: verify report + sidebar follow the Areas dropdown; highlights show selected areas in color, other pinned areas in grey, and top remaining active-kind entries.
 - County secondary overlay: hover/pin behavior survives style reloads.
 - Export CSV reflects the active area kind only.
-- Manual zoom toggles: “Control by zoom” returns dropdown to auto mode cleanly.
+- Manual zoom toggles: Auto (control by zoom) returns dropdown to auto mode cleanly.
 - Toolbar chips: confirm only the active kind’s chips render and bulk actions operate on that set.
 
 ## Useful References
