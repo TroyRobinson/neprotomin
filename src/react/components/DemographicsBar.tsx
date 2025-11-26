@@ -34,7 +34,12 @@ const formatNumber = (value: number | undefined): string =>
 const formatPercent = (value: number | undefined): string =>
   Number.isFinite(value || NaN) ? `${Math.round(value as number)}%` : "—%";
 
-const SegmentBar = ({ segments }: { segments: BreakdownSegmentDisplay[] }) => {
+interface SegmentBarProps {
+  segments: BreakdownSegmentDisplay[];
+  label?: string;
+}
+
+const SegmentBar = ({ segments, label }: SegmentBarProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
 
@@ -52,6 +57,13 @@ const SegmentBar = ({ segments }: { segments: BreakdownSegmentDisplay[] }) => {
   return (
     <div ref={containerRef} className="relative h-5 w-full">
       <div className="relative h-full w-full overflow-hidden rounded bg-slate-200 dark:bg-slate-800">
+        {label && (
+          <div className="pointer-events-none absolute inset-y-0 left-1 z-10 flex items-center">
+            <span className="px-2 py-[1px] text-[11px] font-semibold uppercase leading-none text-slate-900 drop-shadow-[0_1px_1px_rgba(255,255,255,0.65)]">
+              {label}
+            </span>
+          </div>
+        )}
         {segments.map((seg) => {
         const width = Math.max(0, Math.min(100, Math.round(seg.valuePercent)));
         const left = offset;
@@ -97,10 +109,10 @@ const renderBreakdowns = (groups: Map<string, BreakdownGroup>) => {
     }));
     return (
       <div key={key} className="mt-2">
-        <div className="mb-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-          {key.charAt(0).toUpperCase() + key.slice(1)}
-        </div>
-        <SegmentBar segments={displaySegments} />
+        <SegmentBar
+          label={key.charAt(0).toUpperCase() + key.slice(1)}
+          segments={displaySegments}
+        />
       </div>
     );
   });
