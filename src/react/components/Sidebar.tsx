@@ -488,6 +488,16 @@ export const Sidebar = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forceHideOrgsNonce]);
 
+  // Switch to Statistics tab when advanced mode is enabled and user is not already on stats tab
+  const prevShowAdvancedRef = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    // Only switch if advanced mode transitions from false to true
+    if (showAdvanced && prevShowAdvancedRef.current === false && activeTab !== "stats") {
+      setActiveTab("stats");
+    }
+    prevShowAdvancedRef.current = showAdvanced;
+  }, [showAdvanced, activeTab]);
+
   const handleToggleKeepOrgs = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
     setKeepOrgsOnMap((prev) => !prev);
