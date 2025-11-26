@@ -8,7 +8,7 @@ import { themeController } from "../imperative/theme";
 // ============================================================================
 // Enable Features
 // ============================================================================
-const ENABLE_REPORT_MENU = false;
+const ENABLE_REPORT_MENU = true;
 
 type ThemeName = "light" | "dark";
 
@@ -358,6 +358,7 @@ export const TopBar = ({
 
   const showDataLink =
     !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
+  const showReportLink = !isLoading && user && !user.isGuest && showAdvanced;
   const showQueueLink =
     !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
   const showRoadmapLink = !isLoading && user != null && !user.isGuest;
@@ -416,7 +417,7 @@ export const TopBar = ({
                 >
                   OK Food Map
                 </a>
-                {ENABLE_REPORT_MENU && (
+                {ENABLE_REPORT_MENU && showReportLink && (
                   <a
                     href="#report"
                     onMouseEnter={() => {
@@ -821,7 +822,7 @@ export const TopBar = ({
               >
                 OK Food Map
               </button>
-              {ENABLE_REPORT_MENU && (
+              {ENABLE_REPORT_MENU && showReportLink && (
                 <button
                   type="button"
                   onClick={() => handleNavigate("report")}

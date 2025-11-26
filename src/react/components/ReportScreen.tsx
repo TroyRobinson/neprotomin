@@ -33,7 +33,8 @@ function formatNumber(n: number): string {
 
 function formatPercent(n: number): string {
   if (!Number.isFinite(n)) return "—";
-  return `${Math.round(n)}%`;
+  const percentValue = n <= 1 ? n * 100 : n;
+  return `${Math.round(percentValue * 10) / 10}%`;
 }
 
 function formatYears(n: number): string {

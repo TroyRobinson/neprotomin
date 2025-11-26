@@ -296,6 +296,10 @@ export const ReactMapApp = () => {
         setActiveScreen("map");
         return;
       }
+      if (next === "report" && (!authReady || !user || user.isGuest || !showAdvanced)) {
+        setActiveScreen("map");
+        return;
+      }
       setActiveScreen((prev) => (prev === next ? prev : next));
     };
 
@@ -324,6 +328,13 @@ export const ReactMapApp = () => {
       window.history.replaceState(null, "", url);
     }
   }, [activeScreen, authReady, isAdmin]);
+
+  useEffect(() => {
+    if (activeScreen !== "report") return;
+    if (!authReady || !user || user.isGuest || !showAdvanced) {
+      setActiveScreen("map");
+    }
+  }, [activeScreen, authReady, user, showAdvanced]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2663,9 +2674,13 @@ export const ReactMapApp = () => {
         setActiveScreen("map");
         return;
       }
+      if (screen === "report" && (!authReady || !user || user.isGuest || !showAdvanced)) {
+        setActiveScreen("map");
+        return;
+      }
       setActiveScreen(screen);
     },
-    [isAdmin, setActiveScreen],
+    [isAdmin, setActiveScreen, authReady, user, showAdvanced],
   );
 
   const handleCloseWelcomeModal = useCallback(() => {
