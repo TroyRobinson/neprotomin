@@ -115,11 +115,34 @@ const LineChart = ({ series, onHoverLine, statType }: LineChartProps) => {
   }, []);
 
   const allVals: number[] = [];
-  for (const s of series) for (const p of s.points) allVals.push(p.value);
-  const maxVRaw = Math.max(0, ...allVals);
-  const yMin = 0;
-  const yPad = maxVRaw * 0.08;
-  const yMax = Math.max(1, maxVRaw + yPad);
+  for (const s of series)
+    for (const p of s.points) if (Number.isFinite(p.value)) allVals.push(p.value);
+  const hasValues = allVals.length > 0;
+  const minVRaw = hasValues ? Math.min(...allVals) : 0;
+  const maxVRaw = hasValues ? Math.max(...allVals) : 0;
+
+  const baseMin = Math.min(0, minVRaw);
+  const baseMax = Math.max(1, maxVRaw);
+  const baseRange = Math.max(1e-6, baseMax - baseMin);
+  const basePad = baseRange * 0.08;
+
+  let yMin = baseMin;
+  let yMax = baseMax + basePad;
+
+  // If the data sits far from the chart edges, tighten the domain and mark breaks.
+  const gapTop = yMax - maxVRaw;
+  const gapBottom = minVRaw - yMin;
+  const gapRatioTop = yMax > yMin ? gapTop / (yMax - yMin) : 0;
+  const gapRatioBottom = yMax > yMin ? gapBottom / (yMax - yMin) : 0;
+  const clampPad = Math.max(basePad * 0.5, baseRange * 0.05);
+
+  if (gapRatioTop > 0.28 && maxVRaw !== 0) {
+    yMax = maxVRaw + clampPad;
+  }
+  if (gapRatioBottom > 0.28 && minVRaw > 0) {
+    yMin = minVRaw - clampPad;
+  }
+  if (yMax - yMin < 1e-6) yMax = yMin + 1;
 
   const fmt = (n: number) => formatStatValue(n, statType ?? "count");
   const maxLabel = fmt(yMax);
