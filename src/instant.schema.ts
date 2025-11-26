@@ -113,6 +113,9 @@ const _schema = i.schema({
     }),
     stats: i.entity({
       name: i.string().indexed(),
+      // Human-friendly label for display (e.g., "Female Married w/o Spouse")
+      // When set, shown as main title in UI; original name becomes subtitle
+      label: i.string().indexed().optional(),
       category: i.string().indexed(),
       neId: i.string().unique().indexed().optional(),
       source: i.string().indexed().optional(), // e.g., "NE" | "Census"
