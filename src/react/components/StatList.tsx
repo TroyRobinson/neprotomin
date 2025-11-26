@@ -205,7 +205,7 @@ export const StatList = ({
 
       result.push({
         id: s.id,
-        name: s.name,
+        name: s.label || s.name,
         value: displayValue,
         score,
         type: fallbackEntry.type,
