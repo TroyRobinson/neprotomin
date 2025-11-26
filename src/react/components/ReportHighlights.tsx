@@ -36,7 +36,10 @@ type AreaMetric = AreaEntry & { value: number };
 
 const formatValueByType = (value: number, type: string): string => {
   if (!Number.isFinite(value)) return "—";
-  if (type === "percent") return `${Math.round(value)}%`;
+  if (type === "percent") {
+    const percentValue = value <= 1 ? value * 100 : value;
+    return `${Math.round(percentValue * 10) / 10}%`;
+  }
   if (type === "years") return `${value.toFixed(1)}`;
   return new Intl.NumberFormat().format(Math.round(value));
 };
