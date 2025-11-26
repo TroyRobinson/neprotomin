@@ -2969,6 +2969,7 @@ export const ReactMapApp = () => {
               selectedStatId={selectedStatId}
               secondaryStatId={secondaryStatId}
               categoryFilter={categoryFilter}
+              onCategoryChange={setCategoryFilter}
               onHover={handleHover}
               onOrganizationClick={handleSidebarOrganizationClick}
               onHoverArea={handleAreaHoverChange}
@@ -3087,6 +3088,7 @@ export const ReactMapApp = () => {
                     selectedStatId={selectedStatId}
                     secondaryStatId={secondaryStatId}
                     categoryFilter={categoryFilter}
+                    onCategoryChange={setCategoryFilter}
                     onHover={handleHover}
                     onOrganizationClick={handleSidebarOrganizationClick}
                     onHoverArea={handleAreaHoverChange}

@@ -7,7 +7,7 @@ import { StatList } from "./StatList";
 import { IssueReportModal } from "./IssueReportModal";
 import type { Organization, OrganizationHours } from "../../types/organization";
 import type { Stat } from "../../types/stat";
-import { getCategoryLabel } from "../../types/categories";
+import { getCategoryLabel, CATEGORIES } from "../../types/categories";
 import type { CombinedDemographicsSnapshot } from "../hooks/useDemographics";
 import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
 import type { AreaId } from "../../types/areas";
@@ -67,6 +67,7 @@ interface SidebarProps {
   onZoomToCounty?: (countyCode: string) => void;
   onRequestCollapseSheet?: () => void;
   onCategoryClick?: (categoryId: string) => void;
+  onCategoryChange?: (categoryId: string | null) => void;
   onHoverArea?: (area: AreaId | null) => void;
   onStatSelect?: (statId: string | null, meta?: { shiftKey?: boolean; clear?: boolean }) => void;
   onOrgPinsVisibleChange?: (visible: boolean) => void;
@@ -122,6 +123,7 @@ export const Sidebar = ({
   onZoomToCounty,
   onRequestCollapseSheet,
   onCategoryClick,
+  onCategoryChange,
   onHoverArea,
   onStatSelect,
   onOrgPinsVisibleChange,
@@ -346,11 +348,25 @@ export const Sidebar = ({
   const totalCount = countyZoomContext?.totalCount ?? baseTotalCount;
   const missingCount = countyZoomContext?.hiddenCount ?? Math.max(totalCount - visibleCount, 0);
   const hideCategoryTags = Boolean(categoryFilter);
+  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
+  const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const viewportFilterStateRef = useRef({
     missingCount,
     visibleCount,
     filtered: missingCount > 0,
   });
+
+  // Close category dropdown when clicking outside
+  useEffect(() => {
+    if (!categoryDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target as Node)) {
+        setCategoryDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [categoryDropdownOpen]);
 
   // Keep automatic scrolling disabled except when the map filters the list to the current viewport.
   useEffect(() => {
@@ -612,6 +628,60 @@ export const Sidebar = ({
             <span>Statistics</span>
           </button>
         </div>
+
+        {/* Category Filter Indicator */}
+        {categoryFilter && (
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">
+              <span className="font-semibold text-slate-400 dark:text-slate-400">Filter</span>: {getCategoryLabel(categoryFilter as any)}
+            </span>
+            {/* Dropdown button */}
+            <div className="relative" ref={categoryDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setCategoryDropdownOpen((prev) => !prev)}
+                className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                title="Change category filter"
+              >
+                <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+              {categoryDropdownOpen && (
+                <div className="absolute right-0 top-full z-50 mt-1 w-32 rounded-md border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                  {CATEGORIES.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => {
+                        onCategoryChange?.(cat.id);
+                        setCategoryDropdownOpen(false);
+                      }}
+                      className={`block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-slate-700 ${
+                        categoryFilter === cat.id
+                          ? "font-medium text-brand-600 dark:text-brand-400"
+                          : "text-slate-700 dark:text-slate-300"
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* Clear button */}
+            <button
+              type="button"
+              onClick={() => onCategoryChange?.(null)}
+              className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+              title="Clear category filter"
+            >
+              <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Content */}
