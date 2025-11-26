@@ -380,6 +380,20 @@ export const useDemographics = ({
     [normalizedZipScope],
   );
 
+  const countyCodeForZipScope = useMemo(() => {
+    if (!primaryZipScopeLabel) return null;
+    const countyRecords = areasByKindAndCode.get("COUNTY");
+    if (!countyRecords) return null;
+    const targetAliases = new Set(buildScopeLabelAliases(primaryZipScopeLabel));
+    for (const [code, record] of countyRecords.entries()) {
+      const aliases = buildScopeLabelAliases(record.name ?? record.code);
+      if (aliases.some((alias) => targetAliases.has(alias))) {
+        return code;
+      }
+    }
+    return null;
+  }, [areasByKindAndCode, primaryZipScopeLabel]);
+
   const populationRoots = useMemo(
     () => collectLatestRootRows(data?.statData, populationStatId, parentAreaOverride, selectedByKind),
     [data?.statData, populationStatId, parentAreaOverride, selectedByKind],
@@ -546,6 +560,35 @@ export const useDemographics = ({
         }
       }
 
+      if (
+        kind === "ZIP" &&
+        breakdowns.size === 0 &&
+        ENABLE_DEMOGRAPHIC_BREAKDOWNS &&
+        resolvedSelection.length === 0 &&
+        countyCodeForZipScope
+      ) {
+        // When no ZIPs are explicitly selected, fall back to the current county's breakdown rows
+        // so the sidebar shows meaningful demographics for the active viewport scope.
+        const countyBreakdowns = breakdownSources.get("COUNTY");
+        if (countyBreakdowns) {
+          for (const groupKey of BREAKDOWN_KEYS) {
+            const segments = countyBreakdowns.get(groupKey);
+            if (!segments || segments.length === 0) continue;
+            const orderedSegments = SEGMENT_ORDER[groupKey].map((segKey, index) => {
+              const match = segments.find((seg) => seg.key === segKey);
+              const v = match?.values?.[countyCodeForZipScope];
+              const avg = typeof v === "number" && Number.isFinite(v) ? v : 0;
+              const valuePercent = Math.max(0, Math.min(100, Math.round(avg * 100)));
+              const colorToken =
+                match?.colorToken ?? BRAND_SHADE_TOKENS[Math.min(index, BRAND_SHADE_TOKENS.length - 1)];
+              const label = match?.label ?? SEGMENT_LABELS[groupKey][segKey] ?? segKey;
+              return { key: segKey, label, colorToken, valuePercent };
+            });
+            breakdowns.set(groupKey, { key: groupKey, segments: orderedSegments });
+          }
+        }
+      }
+
       const snapshot: DemographicKindSnapshot = {
         kind,
         stats,
@@ -565,6 +608,7 @@ export const useDemographics = ({
     avgAgeRoots,
     marriedRoots,
     breakdownSources,
+    countyCodeForZipScope,
     primaryZipScopeLabel,
   ]);
 
