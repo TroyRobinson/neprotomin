@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 
 import {
+  type CensusOptions,
   fetchGroupMetadata,
   resolveVariables,
   fetchZipData,
@@ -12,7 +13,7 @@ import {
   applyStatDataPayloads,
   deriveStatName,
   CENSUS_TABLE_DOC_URL,
-} from "../scripts/census/censusUtils";
+} from "./_shared/census";
 
 type CensusImportRequest = IncomingMessage & {
   method?: string;
@@ -170,7 +171,7 @@ export default async function handler(req: CensusImportRequest, res: CensusImpor
 
     const db = createInstantClient();
 
-    const baseOptions = {
+    const baseOptions: CensusOptions = {
       dataset,
       survey,
       group,

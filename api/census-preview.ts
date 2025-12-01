@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 
 import {
+  type CensusOptions,
   fetchGroupMetadata,
   resolveVariables,
   fetchZipData,
@@ -9,7 +10,7 @@ import {
   summarizeDataMaps,
   deriveStatName,
   inferStatType,
-} from "../scripts/census/censusUtils";
+} from "./_shared/census";
 
 type CensusPreviewRequest = IncomingMessage & {
   method?: string;
@@ -76,11 +77,11 @@ export default async function handler(req: CensusPreviewRequest, res: CensusPrev
 
     const survey = dataset.split("/").pop() || "acs5";
 
-    const options = {
+    const options: CensusOptions = {
       dataset,
       survey,
       group,
-      variables: [] as string[],
+      variables: [],
       year,
       years: 1,
       includeMoe: false,
