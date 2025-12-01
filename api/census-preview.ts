@@ -3,13 +3,10 @@ import type { IncomingMessage } from "node:http";
 import {
   fetchGroupMetadata,
   resolveVariables,
-  fetchZipData,
-  fetchCountyData,
-  buildDataMaps,
-  summarizeDataMaps,
   deriveStatName,
   inferStatType,
-} from "./_shared/census.js";
+  fetchVariableSummaries,
+} from "./_shared/censusPreview.js";
 
 type CensusPreviewRequest = IncomingMessage & {
   method?: string;
@@ -118,8 +115,7 @@ export default async function handler(req: CensusPreviewRequest, res: CensusPrev
 
     const previewVars = estimates.slice(0, limit);
 
-    const zipPayload = await fetchZipData(options, previewVars, []);
-    const countyPayload = await fetchCountyData(options, previewVars, []);
+    const summaries = await fetchVariableSummaries(options, previewVars);
 
     const variables = [] as Array<{
       name: string;
@@ -138,8 +134,7 @@ export default async function handler(req: CensusPreviewRequest, res: CensusPrev
 
       const statName = deriveStatName(variable, variableMeta, groupMeta);
       const statType = inferStatType(variableMeta);
-      const maps = buildDataMaps(variable, null, zipPayload, countyPayload);
-      const summary = summarizeDataMaps(maps);
+      const summary = summaries[variable] || { zipCount: 0, countyCount: 0 };
 
       variables.push({
         name: variable,
