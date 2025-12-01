@@ -805,4 +805,4 @@ Fetch the URL for a topic to learn more about it.
 - [Managing users](https://instantdb.com/docs/users.md): How to manage users in your Instant app.
 - [Presence, Cursors, and Activity](https://instantdb.com/docs/presence-and-topics.md): How to add ephemeral features like presence and cursors to your Instant app.
 - [Instant CLI](https://instantdb.com/docs/cli.md): How to use the Instant CLI to manage schema.
-- [Storage](https://instantdb.com/docs/storage.md): How to upload and serve files with Instant. 
+- [Storage](https://instantdb.com/docs/storage.md): How to upload and serve files with Instant.

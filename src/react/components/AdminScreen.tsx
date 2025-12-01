@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import type { KeyboardEvent, ChangeEvent } from "react";
 import { db } from "../../lib/reactDb";
+import type { Category } from "../../types/organization";
 
 // Stat item from InstantDB stats table
 interface StatItem {
@@ -321,6 +322,572 @@ const StatListItem = ({ stat, isEditing, onStartEdit, onSave, onCancel }: StatLi
   );
 };
 
+type CensusVariablePreview = {
+  name: string;
+  label: string;
+  concept?: string;
+  predicateType?: string;
+  inferredType: string;
+  statName: string;
+  zipCount: number;
+  countyCount: number;
+};
+
+type ImportStatus = "pending" | "running" | "success" | "error";
+
+interface ImportQueueItem {
+  id: string;
+  dataset: string;
+  group: string;
+  variable: string;
+  year: number;
+  years: number;
+  includeMoe: boolean;
+  category: Category;
+  status: ImportStatus;
+  errorMessage?: string;
+}
+
+const statCategoryOptions: Array<{ value: Category; label: string }> = [
+  { value: "food", label: "Food" },
+  { value: "demographics", label: "Demographics" },
+  { value: "health", label: "Health" },
+  { value: "education", label: "Education" },
+  { value: "economy", label: "Economy" },
+  { value: "housing", label: "Housing" },
+  { value: "justice", label: "Justice" },
+];
+
+interface NewStatModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onImported: (statIds: string[]) => void;
+}
+
+const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
+  const [dataset, setDataset] = useState("acs/acs5");
+  const [group, setGroup] = useState("");
+  const [year, setYear] = useState(() => {
+    const now = new Date();
+    return now.getUTCFullYear() - 2;
+  });
+  const [limit, setLimit] = useState(10);
+  const [category, setCategory] = useState<Category>("demographics");
+  const [includeMoe, setIncludeMoe] = useState(false);
+  const [step, setStep] = useState<1 | 2>(1);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewTotal, setPreviewTotal] = useState(0);
+  const [variables, setVariables] = useState<CensusVariablePreview[]>([]);
+  const [selection, setSelection] = useState<
+    Record<string, { selected: boolean; year: number; years: number }>
+  >({});
+  const [queueItems, setQueueItems] = useState<ImportQueueItem[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const now = new Date();
+    const defaultYear = now.getUTCFullYear() - 2;
+    setDataset("acs/acs5");
+    setGroup("");
+    setYear(defaultYear);
+    setLimit(10);
+    setCategory("demographics");
+    setIncludeMoe(false);
+    setStep(1);
+    setIsPreviewLoading(false);
+    setPreviewError(null);
+    setPreviewTotal(0);
+    setVariables([]);
+    setSelection({});
+    setQueueItems([]);
+    setIsRunning(false);
+    setCurrentIndex(null);
+  }, [isOpen]);
+
+  const handlePreview = useCallback(async () => {
+    const trimmedGroup = group.trim();
+    if (!trimmedGroup) {
+      setPreviewError("Census group is required.");
+      return;
+    }
+    setIsPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const params = new URLSearchParams({
+        dataset,
+        group: trimmedGroup,
+        year: String(year),
+        limit: String(limit),
+      });
+      const response = await fetch(`/api/census-preview?${params.toString()}`);
+      const payload = (await response.json().catch(() => null)) as any;
+      if (!response.ok || !payload) {
+        setPreviewError("Failed to load Census preview.");
+        return;
+      }
+      const vars = Array.isArray(payload.variables) ? payload.variables : [];
+      const total =
+        typeof payload.totalVariables === "number" ? payload.totalVariables : vars.length;
+      const parsed: CensusVariablePreview[] = vars.map((entry: any) => ({
+        name: String(entry.name),
+        label: typeof entry.label === "string" ? entry.label : "",
+        concept: typeof entry.concept === "string" ? entry.concept : undefined,
+        predicateType:
+          typeof entry.predicateType === "string" ? entry.predicateType : undefined,
+        inferredType:
+          typeof entry.inferredType === "string" ? entry.inferredType : "",
+        statName:
+          typeof entry.statName === "string" ? entry.statName : String(entry.name),
+        zipCount: typeof entry.zipCount === "number" ? entry.zipCount : 0,
+        countyCount: typeof entry.countyCount === "number" ? entry.countyCount : 0,
+      }));
+      setVariables(parsed);
+      setPreviewTotal(total);
+      const defaults: Record<string, { selected: boolean; year: number; years: number }> = {};
+      for (const v of parsed) {
+        defaults[v.name] = { selected: false, year, years: 1 };
+      }
+      setSelection(defaults);
+      setStep(2);
+    } catch (err) {
+      console.error("Failed to load Census preview", err);
+      setPreviewError("Failed to load Census preview.");
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  }, [dataset, group, year, limit]);
+
+  const toggleVariableSelected = useCallback((name: string) => {
+    setSelection((prev) => {
+      const current = prev[name] ?? { selected: false, year, years: 1 };
+      return {
+        ...prev,
+        [name]: { ...current, selected: !current.selected },
+      };
+    });
+  }, []);
+
+  const updateSelectionField = useCallback(
+    (name: string, field: "year" | "years", value: number) => {
+      setSelection((prev) => {
+        const current = prev[name] ?? { selected: true, year, years: 1 };
+        const nextValue = Number.isFinite(value)
+          ? value
+          : field === "year"
+          ? year
+          : 1;
+        return {
+          ...prev,
+          [name]: { ...current, [field]: nextValue },
+        };
+      });
+    },
+    [year],
+  );
+
+  const handleAddSelectedToQueue = useCallback(() => {
+    if (!variables.length) return;
+    const trimmedGroup = group.trim();
+    if (!trimmedGroup) return;
+    setQueueItems((prev) => {
+      const existingKeys = new Set(
+        prev.map(
+          (item) =>
+            `${item.dataset}::${item.group}::${item.variable}::${item.year}::${item.years}`,
+        ),
+      );
+      const next = [...prev];
+      for (const v of variables) {
+        const sel = selection[v.name];
+        if (!sel || !sel.selected) continue;
+        const key = `${dataset}::${trimmedGroup}::${v.name}::${sel.year}::${sel.years}`;
+        if (existingKeys.has(key)) continue;
+        next.push({
+          id: key,
+          dataset,
+          group: trimmedGroup,
+          variable: v.name,
+          year: sel.year,
+          years: Math.max(1, sel.years),
+          includeMoe,
+          category,
+          status: "pending",
+        });
+      }
+      return next;
+    });
+  }, [variables, selection, dataset, group, includeMoe, category]);
+
+  const handleRunQueue = useCallback(async () => {
+    if (isRunning || queueItems.length === 0) return;
+    setIsRunning(true);
+    const itemsSnapshot = queueItems.slice();
+    const importedStatIds: string[] = [];
+    try {
+      for (let index = 0; index < itemsSnapshot.length; index += 1) {
+        const item = itemsSnapshot[index];
+        if (item.status === "success") continue;
+        setCurrentIndex(index);
+        setQueueItems((prev) =>
+          prev.map((q, i) =>
+            i === index ? { ...q, status: "running", errorMessage: undefined } : q,
+          ),
+        );
+        try {
+          const response = await fetch("/api/census-import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              dataset: item.dataset,
+              group: item.group,
+              variable: item.variable,
+              year: item.year,
+              years: item.years,
+              includeMoe: item.includeMoe,
+              category: item.category,
+            }),
+          });
+          const payload = (await response.json().catch(() => null)) as any;
+          if (!response.ok || !payload || payload.ok === false || payload.error) {
+            const message =
+              (payload && typeof payload.error === "string" && payload.error) ||
+              `Import failed with status ${response.status}.`;
+            setQueueItems((prev) =>
+              prev.map((q, i) =>
+                i === index ? { ...q, status: "error", errorMessage: message } : q,
+              ),
+            );
+            continue;
+          }
+          const statId = typeof payload.statId === "string" ? payload.statId : null;
+          if (statId && !importedStatIds.includes(statId)) {
+            importedStatIds.push(statId);
+          }
+          setQueueItems((prev) =>
+            prev.map((q, i) =>
+              i === index ? { ...q, status: "success", errorMessage: undefined } : q,
+            ),
+          );
+        } catch (err) {
+          console.error("Census import request failed", err);
+          setQueueItems((prev) =>
+            prev.map((q, i) =>
+              i === index
+                ? { ...q, status: "error", errorMessage: "Network error during import." }
+                : q,
+            ),
+          );
+        }
+      }
+    } finally {
+      setIsRunning(false);
+      setCurrentIndex(null);
+      if (importedStatIds.length > 0) {
+        onImported(importedStatIds);
+      }
+    }
+  }, [queueItems, isRunning, onImported]);
+
+  if (!isOpen) return null;
+
+  const totalItems = queueItems.length;
+  const completedCount = queueItems.filter((item) => item.status === "success").length;
+  const progressPercent =
+    totalItems === 0 ? 0 : Math.round((completedCount / totalItems) * 100);
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/50">
+      <div className="relative w-full max-w-4xl rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Import Census stats
+            </h2>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Choose a Census group, preview available variables, add them to an import queue,
+              and run them one by one.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isRunning}
+            className="rounded-full px-3 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)]">
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Dataset
+                </label>
+                <input
+                  type="text"
+                  value={dataset}
+                  onChange={(e) => setDataset(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Group
+                </label>
+                <input
+                  type="text"
+                  value={group}
+                  onChange={(e) => setGroup(e.target.value)}
+                  placeholder="e.g., B22003"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Year
+                </label>
+                <input
+                  type="number"
+                  value={year}
+                  onChange={(e) => setYear(Number(e.target.value) || year)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Preview limit
+                </label>
+                <input
+                  type="number"
+                  value={limit}
+                  onChange={(e) => setLimit(Math.max(1, Math.min(25, Number(e.target.value) || 10)))}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Category
+                </label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as Category)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                >
+                  {statCategoryOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <label className="mt-4 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={includeMoe}
+                  onChange={(e) => setIncludeMoe(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-800"
+                />
+                Include margin of error (MOE)
+              </label>
+            </div>
+
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={handlePreview}
+                disabled={isPreviewLoading}
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 disabled:opacity-60"
+              >
+                {isPreviewLoading ? "Loading variables…" : "Preview variables"}
+              </button>
+              {previewTotal > 0 && (
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Showing up to {variables.length} of {previewTotal} variables in group {group}
+                </span>
+              )}
+            </div>
+            {previewError && (
+              <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">{previewError}</p>
+            )}
+          </div>
+
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                Queue
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddSelectedToQueue}
+                  disabled={variables.length === 0}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 transition hover:border-brand-300 hover:text-brand-600 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-brand-500 dark:hover:text-brand-300"
+                >
+                  Add selected to queue
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRunQueue}
+                  disabled={isRunning || queueItems.length === 0}
+                  className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-60"
+                >
+                  {isRunning ? "Running imports…" : "Start import"}
+                </button>
+              </div>
+            </div>
+
+            {isRunning && (
+              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                <div
+                  className="h-full rounded-full bg-brand-500 transition-all dark:bg-brand-400"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            )}
+
+            <div className="mt-2 grid grid-cols-1 gap-2">
+              {queueItems.length === 0 ? (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  No imports queued yet. Preview variables, select the ones you want, then add
+                  them to this queue.
+                </p>
+              ) : (
+                <div className="max-h-56 space-y-1 overflow-y-auto text-[11px]">
+                  {queueItems.map((item, index) => {
+                    const isCurrent = currentIndex === index && isRunning;
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between gap-2 rounded-lg bg-white px-2 py-1.5 shadow-sm dark:bg-slate-900"
+                      >
+                        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate font-medium text-slate-800 dark:text-slate-100">
+                              {item.variable}
+                            </span>
+                            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                              {item.group}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+                            <span>
+                              {item.year} ({item.years} year{item.years !== 1 ? "s" : ""})
+                            </span>
+                            <span>dataset: {item.dataset}</span>
+                            <span>category: {item.category}</span>
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right text-[10px]">
+                          {item.status === "pending" && (
+                            <span className="text-slate-500 dark:text-slate-400">Pending</span>
+                          )}
+                          {item.status === "running" && (
+                            <span className="text-brand-600 dark:text-brand-400">
+                              {isCurrent ? "Running…" : "Running"}
+                            </span>
+                          )}
+                          {item.status === "success" && (
+                            <span className="text-emerald-600 dark:text-emerald-400">Done</span>
+                          )}
+                          {item.status === "error" && (
+                            <span className="text-rose-600 dark:text-rose-400">Error</span>
+                          )}
+                          {item.status === "error" && item.errorMessage && (
+                            <div className="mt-0.5 max-w-xs truncate text-[9px] text-rose-500 dark:text-rose-400">
+                              {item.errorMessage}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {step === 2 && variables.length > 0 && (
+          <div className="mt-4 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-[11px] dark:border-slate-700 dark:bg-slate-900">
+            <div className="mb-2 grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,0.9fr)] gap-2 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <span>Variable</span>
+              <span>Label</span>
+              <span>Year(s)</span>
+              <span>Sample coverage</span>
+            </div>
+            <div className="space-y-1">
+              {variables.map((v) => {
+                const sel = selection[v.name] ?? { selected: false, year, years: 1 };
+                return (
+                  <label
+                    key={v.name}
+                    className="grid cursor-pointer grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,0.9fr)] items-center gap-2 rounded-lg px-1.5 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                  >
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={sel.selected}
+                        onChange={() => toggleVariableSelected(v.name)}
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-500 dark:bg-slate-900"
+                      />
+                      <div className="flex flex-col">
+                        <span className="font-medium text-slate-800 dark:text-slate-100">
+                          {v.name}
+                        </span>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                          {v.inferredType} · {v.statName}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="truncate text-[10px] text-slate-600 dark:text-slate-300">
+                      {v.label}
+                    </div>
+                    <div className="flex items-center gap-1 text-[10px] text-slate-600 dark:text-slate-300">
+                      <input
+                        type="number"
+                        value={sel.year}
+                        onChange={(e) =>
+                          updateSelectionField(v.name, "year", Number(e.target.value) || year)
+                        }
+                        className="w-16 rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                      />
+                      <span>for</span>
+                      <input
+                        type="number"
+                        value={sel.years}
+                        onChange={(e) =>
+                          updateSelectionField(
+                            v.name,
+                            "years",
+                            Math.max(1, Number(e.target.value) || 1),
+                          )
+                        }
+                        className="w-12 rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                      />
+                      <span>year{sel.years !== 1 ? "s" : ""}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                      {v.zipCount} ZIPs · {v.countyCount} counties
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const AdminScreen = () => {
   // Query stats from InstantDB
   const { data, isLoading, error } = db.useQuery({
@@ -334,12 +901,29 @@ export const AdminScreen = () => {
   // State for which stat is being edited (null = none)
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isNewStatOpen, setIsNewStatOpen] = useState(false);
+  const [recentStatIds, setRecentStatIds] = useState<string[]>([]);
 
   // Parse and filter stats
   const stats = useMemo(() => {
     if (!data?.stats) return [];
     return data.stats.map(parseStat).filter((s): s is StatItem => s !== null);
   }, [data?.stats]);
+
+  const sortedStats = useMemo(() => {
+    if (!recentStatIds.length) return stats;
+    const idSet = new Set(recentStatIds);
+    const recent: StatItem[] = [];
+    const rest: StatItem[] = [];
+    for (const stat of stats) {
+      if (idSet.has(stat.id)) {
+        recent.push(stat);
+      } else {
+        rest.push(stat);
+      }
+    }
+    return [...recent, ...rest];
+  }, [stats, recentStatIds]);
 
   // Start editing a stat
   const handleStartEdit = useCallback((id: string) => {
@@ -379,6 +963,20 @@ export const AdminScreen = () => {
     [],
   );
 
+  const handleImportedFromModal = useCallback((statIds: string[]) => {
+    if (!statIds.length) return;
+    setRecentStatIds((prev) => {
+      const next = [...prev];
+      for (const id of statIds) {
+        if (!next.includes(id)) {
+          next.unshift(id);
+        }
+      }
+      if (next.length > 50) next.length = 50;
+      return next;
+    });
+  }, []);
+
   // Loading state
   if (isLoading) {
     return (
@@ -407,12 +1005,24 @@ export const AdminScreen = () => {
     <div className="flex h-full w-full flex-col overflow-hidden bg-slate-50 dark:bg-slate-900">
       {/* Header */}
       <div className="shrink-0 border-b border-slate-200 bg-white px-6 py-5 dark:border-slate-800 dark:bg-slate-900">
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Stats</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          {stats.length} stat{stats.length !== 1 ? "s" : ""} in the database
-          {editingId && <span className="ml-2 text-brand-500">(editing)</span>}
-          {isSaving && <span className="ml-2 text-amber-500">Saving…</span>}
-        </p>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Stats</h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              {stats.length} stat{stats.length !== 1 ? "s" : ""} in the database
+              {editingId && <span className="ml-2 text-brand-500">(editing)</span>}
+              {isSaving && <span className="ml-2 text-amber-500">Saving…</span>}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsNewStatOpen(true)}
+            className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+          >
+            <span className="text-base leading-none">+</span>
+            <span>New stat</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats list */}
@@ -423,7 +1033,7 @@ export const AdminScreen = () => {
           </div>
         ) : (
           <div className="mx-auto flex max-w-4xl flex-col gap-3">
-            {stats.map((stat) => (
+            {sortedStats.map((stat) => (
               <StatListItem
                 key={stat.id}
                 stat={stat}
@@ -436,6 +1046,11 @@ export const AdminScreen = () => {
           </div>
         )}
       </div>
+      <NewStatModal
+        isOpen={isNewStatOpen}
+        onClose={() => setIsNewStatOpen(false)}
+        onImported={handleImportedFromModal}
+      />
     </div>
   );
 };

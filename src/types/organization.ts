@@ -1,4 +1,11 @@
-export type Category = "health" | "education" | "justice" | "economy" | "food";
+export type Category =
+  | "health"
+  | "education"
+  | "justice"
+  | "economy"
+  | "food"
+  | "demographics"
+  | "housing";
 
 export type OrganizationStatus = "active" | "moved" | "closed";
 
