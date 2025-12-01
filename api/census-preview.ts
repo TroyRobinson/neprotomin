@@ -149,6 +149,15 @@ export default async function handler(req: CensusPreviewRequest, res: CensusPrev
     });
   } catch (error) {
     console.error("census-preview failed", error);
-    respond(res, 500, { error: "Failed to load Census preview." });
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+        ? error
+        : "Unknown error";
+    respond(res, 500, {
+      error: "Failed to load Census preview.",
+      details: message,
+    });
   }
 }

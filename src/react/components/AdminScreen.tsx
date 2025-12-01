@@ -425,7 +425,14 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
       const response = await fetch(`/api/census-preview?${params.toString()}`);
       const payload = (await response.json().catch(() => null)) as any;
       if (!response.ok || !payload) {
-        setPreviewError("Failed to load Census preview.");
+        const baseMessage = "Failed to load Census preview.";
+        const apiError = payload && typeof payload.error === "string" ? payload.error : null;
+        const details = payload && typeof payload.details === "string" ? payload.details : null;
+        const parts: string[] = [];
+        parts.push(baseMessage);
+        if (apiError && apiError !== baseMessage) parts.push(apiError);
+        if (details) parts.push(details);
+        setPreviewError(parts.join(" "));
         return;
       }
       const vars = Array.isArray(payload.variables) ? payload.variables : [];
@@ -454,7 +461,13 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
       setStep(2);
     } catch (err) {
       console.error("Failed to load Census preview", err);
-      setPreviewError("Failed to load Census preview.");
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+          ? err
+          : null;
+      setPreviewError(message ? `Failed to load Census preview: ${message}` : "Failed to load Census preview.");
     } finally {
       setIsPreviewLoading(false);
     }
