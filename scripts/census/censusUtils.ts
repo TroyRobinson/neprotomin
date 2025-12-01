@@ -1,5 +1,3 @@
-import 'dotenv/config';
-
 import { URL } from 'node:url';
 
 import { init as initAdmin, id, tx } from '@instantdb/admin';
