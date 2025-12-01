@@ -1,7 +1,6 @@
 import type { IncomingMessage } from "node:http";
 
 import {
-  type CensusOptions,
   fetchGroupMetadata,
   resolveVariables,
   fetchZipData,
@@ -13,7 +12,7 @@ import {
   applyStatDataPayloads,
   deriveStatName,
   CENSUS_TABLE_DOC_URL,
-} from "./_shared/census";
+} from "./_shared/census.js";
 
 type CensusImportRequest = IncomingMessage & {
   method?: string;
@@ -26,6 +25,19 @@ type CensusImportResponse = {
   status: (code: number) => CensusImportResponse;
   json: (payload: unknown) => void;
   setHeader: (name: string, value: string) => void;
+};
+
+type CensusOptions = {
+  dataset: string;
+  survey: string;
+  group: string;
+  variables: string[];
+  year: number;
+  years: number;
+  includeMoe: boolean;
+  dryRun: boolean;
+  debug: boolean;
+  limit: number;
 };
 
 type CensusImportBody = {

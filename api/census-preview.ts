@@ -1,7 +1,6 @@
 import type { IncomingMessage } from "node:http";
 
 import {
-  type CensusOptions,
   fetchGroupMetadata,
   resolveVariables,
   fetchZipData,
@@ -10,7 +9,7 @@ import {
   summarizeDataMaps,
   deriveStatName,
   inferStatType,
-} from "./_shared/census";
+} from "./_shared/census.js";
 
 type CensusPreviewRequest = IncomingMessage & {
   method?: string;
@@ -21,6 +20,19 @@ type CensusPreviewResponse = {
   status: (code: number) => CensusPreviewResponse;
   json: (payload: unknown) => void;
   setHeader: (name: string, value: string) => void;
+};
+
+type CensusOptions = {
+  dataset: string;
+  survey: string;
+  group: string;
+  variables: string[];
+  year: number;
+  years: number;
+  includeMoe: boolean;
+  dryRun: boolean;
+  debug: boolean;
+  limit: number;
 };
 
 const respond = (res: CensusPreviewResponse, statusCode: number, payload: unknown): void => {
