@@ -1234,14 +1234,30 @@ export const ReactMapApp = () => {
     for (const [statId, byParent] of statDataByParent.entries()) {
       const aggregate: Partial<Record<"ZIP" | "COUNTY", StatBoundaryEntry>> = {};
 
+      // ZIP-level data: prefer county-scoped buckets for the current context,
+      // but fall back to the statewide "Oklahoma" bucket when no scoped rows
+      // exist (e.g., newly imported Census stats that only write a root ZIP
+      // payload with parentArea="Oklahoma").
+      let hasScopedZip = false;
       for (const scope of relevantScopes) {
         const entry = byParent.get(scope);
         const incoming = entry?.ZIP;
         if (incoming) {
+          hasScopedZip = true;
           aggregate.ZIP = mergeStatEntry(aggregate.ZIP, incoming);
         }
       }
 
+      if (!hasScopedZip) {
+        const statewide = byParent.get(FALLBACK_ZIP_SCOPE)?.ZIP;
+        if (statewide) {
+          aggregate.ZIP = mergeStatEntry(aggregate.ZIP, statewide);
+        }
+      }
+
+      // COUNTY-level data already includes the default statewide bucket via
+      // countyScopes (which contains the normalized DEFAULT_PARENT_AREA_BY_KIND.COUNTY)
+      // plus any nearby county scopes.
       for (const scope of countyScopes) {
         const entry = byParent.get(scope);
         const incoming = entry?.COUNTY;
