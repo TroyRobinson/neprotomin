@@ -1,16 +1,6 @@
 import { URL } from "node:url";
 
 import { init as initAdmin, id, tx } from "@instantdb/admin";
-
-import {
-  ensureAllZipDataLoaded,
-  getAllZipCodes,
-  getZipCountyId,
-  getZipCountyName,
-} from "../../src/lib/zipBoundaries";
-import { getAllCountyIds, getCountyName } from "../../src/lib/countyBoundaries";
-import { normalizeScopeLabel, formatCountyScopeLabel } from "../../src/lib/scopeLabels";
-
 const OK_STATE_FIPS = "40";
 const DEFAULT_CATEGORY = "food";
 const DEFAULT_PARENT_AREA = "Oklahoma";
@@ -37,8 +27,7 @@ const ZIP_PREFIXES_OK = [
   "749",
 ];
 
-const NORMALIZED_DEFAULT_PARENT_AREA =
-  normalizeScopeLabel(DEFAULT_PARENT_AREA) ?? DEFAULT_PARENT_AREA;
+const NORMALIZED_DEFAULT_PARENT_AREA = DEFAULT_PARENT_AREA;
 
 export const CENSUS_TABLE_DOC_URL = (year, dataset, group) =>
   `https://api.census.gov/data/${year}/${dataset}/groups/${group}.html`;
@@ -194,44 +183,8 @@ const isOklahomaZip = (zip) => {
   return ZIP_PREFIXES_OK.includes(zip.slice(0, 3));
 };
 
-const loadZipMetadata = async () => {
-  await ensureAllZipDataLoaded();
-  const okZips = new Set();
-  const zipToCountyId = new Map();
-  const zipToCountyName = new Map();
-  for (const zip of getAllZipCodes()) {
-    if (!isOklahomaZip(zip)) continue;
-    okZips.add(zip);
-    const countyId = normalizeCountyFips(getZipCountyId(zip));
-    const countyName = getZipCountyName(zip);
-    if (countyId) zipToCountyId.set(zip, countyId);
-    if (countyName) {
-      const formatted = formatCountyScopeLabel(countyName);
-      const normalized = normalizeScopeLabel(formatted) ?? formatted;
-      zipToCountyName.set(zip, normalized);
-    }
-  }
-  return { okZips, zipToCountyId, zipToCountyName };
-};
-
-const loadCountyMetadata = () => {
-  const ids = getAllCountyIds().map((id) => normalizeCountyFips(id) ?? id);
-  const idToName = new Map();
-  for (const rawId of ids) {
-    const normalizedId = normalizeCountyFips(rawId);
-    if (!normalizedId) continue;
-    const name = getCountyName(normalizedId);
-    if (name) {
-      const formatted = formatCountyScopeLabel(name);
-      const normalized = normalizeScopeLabel(formatted) ?? formatted;
-      idToName.set(normalizedId, normalized);
-    }
-  }
-  return { ids: ids.filter((id) => typeof id === "string"), idToName };
-};
-
 export const fetchZipData = async (options, estimates, moeVariables) => {
-  if (!estimates.length) return { records: [], okMetadata: await loadZipMetadata() };
+  if (!estimates.length) return { records: [] };
   const getParams = ["NAME", ...estimates, ...moeVariables];
   const data = await fetchCensusJson(
     options.year,
@@ -244,7 +197,7 @@ export const fetchZipData = async (options, estimates, moeVariables) => {
     options.debug,
   );
   const [headers, ...rows] = data;
-  if (!headers) return { records: [], okMetadata: await loadZipMetadata() };
+  if (!headers) return { records: [] };
   const records = rows.map((row) => {
     const entry = {};
     headers.forEach((key, index) => {
@@ -252,11 +205,11 @@ export const fetchZipData = async (options, estimates, moeVariables) => {
     });
     return entry;
   });
-  return { records, okMetadata: await loadZipMetadata() };
+  return { records };
 };
 
 export const fetchCountyData = async (options, estimates, moeVariables) => {
-  if (!estimates.length) return { records: [], countyNames: loadCountyMetadata().idToName };
+  if (!estimates.length) return { records: [] };
   const getParams = ["NAME", ...estimates, ...moeVariables];
   const data = await fetchCensusJson(
     options.year,
@@ -270,7 +223,7 @@ export const fetchCountyData = async (options, estimates, moeVariables) => {
     options.debug,
   );
   const [headers, ...rows] = data;
-  if (!headers) return { records: [], countyNames: loadCountyMetadata().idToName };
+  if (!headers) return { records: [] };
   const records = rows.map((row) => {
     const entry = {};
     headers.forEach((key, index) => {
@@ -278,7 +231,7 @@ export const fetchCountyData = async (options, estimates, moeVariables) => {
     });
     return entry;
   });
-  return { records, countyNames: loadCountyMetadata().idToName };
+  return { records };
 };
 
 export const buildDataMaps = (variable, moeVariable, zipPayload, countyPayload) => {
@@ -290,43 +243,24 @@ export const buildDataMaps = (variable, moeVariable, zipPayload, countyPayload) 
   const countyZipMap = new Map();
   const countyZipMoeMap = moeKey ? new Map() : undefined;
 
-  const { okMetadata } = zipPayload;
-  const { okZips, zipToCountyId, zipToCountyName } = okMetadata;
-
-  for (const record of zipPayload.records) {
+  for (const record of zipPayload.records || []) {
     const zip = record["zip code tabulation area"];
-    if (!okZips.has(zip)) continue;
+    if (!isOklahomaZip(zip)) continue;
     const estimate = toNumberOrNull(record[estimateKey]);
     if (estimate != null) {
       zipMap.set(zip, estimate);
-      const countyId = zipToCountyId.get(zip) ?? null;
-      const countyName = zipToCountyName.get(zip) ?? null;
-      if (countyName && countyId) {
-        const key = `${countyId}::${countyName}`;
-        const bucket = countyZipMap.get(key) ?? new Map();
-        bucket.set(zip, estimate);
-        countyZipMap.set(key, bucket);
-      }
     }
     if (moeKey) {
       const moeVal = toNumberOrNull(record[moeKey]);
       if (moeVal != null) {
         zipMoeMap.set(zip, moeVal);
-        const countyId = zipToCountyId.get(zip) ?? null;
-        const countyName = zipToCountyName.get(zip) ?? null;
-        if (countyName && countyId) {
-          const key = `${countyId}::${countyName}`;
-          const bucket = countyZipMoeMap?.get(key) ?? new Map();
-          bucket.set(zip, moeVal);
-          countyZipMoeMap?.set(key, bucket);
-        }
       }
     }
   }
 
   const countyMap = new Map();
   const countyMoeMap = new Map();
-  for (const record of countyPayload.records) {
+  for (const record of countyPayload.records || []) {
     const countyId = normalizeCountyFips(record.county);
     const state = record.state;
     if (state !== OK_STATE_FIPS) continue;
@@ -557,26 +491,6 @@ export const buildStatDataPayloads = (statId, statName, statType, maps, meta, op
     year: meta.year,
     name: payloadName,
   });
-  for (const [key, bucket] of maps.countyZipBuckets.entries()) {
-    const [countyId, countyName] = key.split("::");
-    if (!countyId || !countyName) continue;
-    const normalizedCounty = normalizeScopeLabel(countyName) ?? countyName;
-    payloads.push({
-      statId,
-      statName,
-      statType,
-      parentArea: normalizedCounty,
-      boundaryType: "ZIP",
-      data: bucket,
-      margin: maps.countyZipMoe?.get(key),
-      censusVariable: meta.censusVariable,
-      censusSurvey: meta.censusSurvey,
-      censusUniverse: meta.censusUniverse,
-      censusTableUrl: meta.censusTableUrl,
-      year: meta.year,
-      name: payloadName,
-    });
-  }
   payloads.push({
     statId,
     statName,
