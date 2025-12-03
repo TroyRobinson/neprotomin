@@ -964,6 +964,7 @@ export const AdminScreen = () => {
     },
     statData: {
       $: {
+        where: { name: "root" },
         fields: ["id", "statId", "boundaryType", "date", "name", "parentArea"],
         order: { statId: "asc" as const },
       },

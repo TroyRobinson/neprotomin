@@ -47,6 +47,16 @@ export const useStats = () => {
           },
           statData: {
             $: {
+              where: { name: "root" },
+              fields: [
+                "statId",
+                "name",
+                "parentArea",
+                "boundaryType",
+                "date",
+                "type",
+                "data",
+              ],
               order: { date: "asc" as const },
             },
           },
