@@ -580,6 +580,7 @@ export const Sidebar = ({
               areaNameLookup={areaNameLookup}
               activeAreaKind={activeAreaKind}
               getZipParentCounty={getZipParentCounty}
+              viewportCountyName={viewportCountyName}
             />
           )}
         </>

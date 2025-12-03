@@ -68,6 +68,7 @@ interface StatVizProps {
   activeAreaKind?: SupportedAreaKind | null;
   /** Returns { code, name } for a ZIP's parent county, or null if unknown */
   getZipParentCounty?: (zipCode: string) => { code: string; name: string } | null;
+  viewportCountyName?: string | null;
 }
 
 interface LineChartProps {
@@ -525,6 +526,7 @@ export const StatViz = ({
   activeAreaKind = null,
   onHoverArea,
   getZipParentCounty,
+  viewportCountyName = null,
 }: StatVizProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const [hoveredLineLabel, setHoveredLineLabel] = useState<string | null>(null);
@@ -671,6 +673,11 @@ export const StatViz = ({
           }
         }
 
+        // If no ZIPs selected but we have a viewport county, treat it as the target county
+        if (zipsByCounty.size === 0 && viewportCountyName) {
+          zipsByCounty.set(viewportCountyName, { name: viewportCountyName, zips: [] });
+        }
+
         const countyCount = zipsByCounty.size;
         const zipData = statDataByKind["ZIP"]?.data ?? {};
 
@@ -681,13 +688,28 @@ export const StatViz = ({
             entries.push({ label: "ZIP Avg", color: getAvgColor(), value: avgValue, areaKey: "AVG-ZIP" });
           }
         } else if (countyCount <= 2) {
-          // 1-2 counties: show per-county averages
-          for (const [countyCode, { name, zips }] of zipsByCounty) {
-            const values = zips
-              .map((z) => zipData[z])
-              .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
-            if (values.length === 0) continue;
-            const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+          // 1-2 counties: show per-county averages (using ALL available ZIPs in those counties)
+          const countyStats = new Map<string, { sum: number; count: number; name: string }>();
+          
+          // Initialize accumulators for relevant counties
+          for (const [countyCode, { name }] of zipsByCounty) {
+            countyStats.set(countyCode, { sum: 0, count: 0, name });
+          }
+
+          // Iterate through all ZIP data to aggregate stats for these counties
+          for (const [zipCode, rawValue] of Object.entries(zipData)) {
+             if (typeof rawValue !== "number" || !Number.isFinite(rawValue)) continue;
+             const parent = getZipParentCounty(zipCode);
+             if (parent && countyStats.has(parent.code)) {
+               const stat = countyStats.get(parent.code)!;
+               stat.sum += rawValue;
+               stat.count += 1;
+             }
+          }
+
+          for (const [countyCode, { sum, count, name }] of countyStats) {
+            if (count === 0) continue;
+            const avg = sum / count;
             const displayName = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
             entries.push({
               label: `${displayName} Avg`,
@@ -768,6 +790,11 @@ export const StatViz = ({
         }
       }
 
+      // If no ZIPs selected but we have a viewport county, treat it as the target county
+      if (zipsByCounty.size === 0 && viewportCountyName) {
+        zipsByCounty.set(viewportCountyName, { name: viewportCountyName, zips: [] });
+      }
+
       const countyCount = zipsByCounty.size;
 
       if (countyCount === 0) {
@@ -777,17 +804,24 @@ export const StatViz = ({
           lineSeries.push({ label: "ZIP Avg", color: getAvgColor(), points: avgSeries, isAverage: true });
         }
       } else if (countyCount <= 2) {
-        // 1-2 counties: show per-county averages
-        for (const [countyCode, { name, zips }] of zipsByCounty) {
-          const zipSet = new Set(zips);
+        // 1-2 counties: show per-county averages (using ALL available ZIPs in those counties)
+        for (const [countyCode, { name }] of zipsByCounty) {
           const avgSeries = avgSeriesEntries.map((e: SeriesEntry) => {
-            const values = Object.entries(e.data ?? {})
-              .filter(([z]) => zipSet.has(z))
-              .map(([, v]) => v)
-              .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+            const values: number[] = [];
+            // Scan all ZIPs in this time point
+            if (e.data) {
+              for (const [zipCode, val] of Object.entries(e.data)) {
+                if (typeof val !== "number" || !Number.isFinite(val)) continue;
+                const parent = getZipParentCounty(zipCode);
+                if (parent && parent.code === countyCode) {
+                  values.push(val);
+                }
+              }
+            }
             const avg = values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : 0;
             return { date: e.date, value: avg };
           });
+
           if (avgSeries.length > 0) {
             const displayName = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
             lineSeries.push({
@@ -820,7 +854,7 @@ export const StatViz = ({
     }
 
     return { mode: "line" as const, series: lineSeries, statType: avgSeriesEntries[0]?.type ?? "count" };
-  }, [stat, statId, chartMode, areaEntries, seriesByKind, statDataByKind, cityAvgByKind, pinnedAreaKeys, activeAreaKind, getZipParentCounty]);
+  }, [stat, statId, chartMode, areaEntries, seriesByKind, statDataByKind, cityAvgByKind, pinnedAreaKeys, activeAreaKind, getZipParentCounty, viewportCountyName]);
 
   const subtitle = useMemo(() => {
     if (collapsed) {
