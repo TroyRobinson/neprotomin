@@ -291,6 +291,117 @@ export const summarizeDataMaps = (maps) => ({
   countyZipGroups: maps.countyZipBuckets.size,
 });
 
+// Local helpers to normalize county names into the same "<Name> County"
+// scope label format used by the React map + useStats layer. This mirrors
+// src/lib/scopeLabels.ts but is duplicated here to keep the import helper
+// self-contained and serverless-safe.
+
+const normalizeWords = (value) =>
+  String(value)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+    .join(" ");
+
+const normalizeScopeLabelLocal = (value) => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return normalizeWords(trimmed);
+};
+
+const stripOklahomaSuffixLocal = (value) => value.replace(/,\s*Oklahoma$/i, "").trim();
+const stripCountySuffixLocal = (value) => value.replace(/\s+County$/i, "").trim();
+
+const formatCountyScopeLabelLocal = (value) => {
+  const normalized = normalizeScopeLabelLocal(value);
+  if (!normalized) return null;
+  const withoutCounty = stripCountySuffixLocal(stripOklahomaSuffixLocal(normalized));
+  const base = normalizeScopeLabelLocal(withoutCounty);
+  if (!base) return null;
+  return `${base} County`;
+};
+
+// Build per-county ZIP buckets using the existing InstantDB areas table so we
+// don't have to pull in heavy geometry helpers in the serverless import
+// functions. This groups each ZIP's value under its parent county scope label.
+
+const getZipToCountyNameMap = async (db) => {
+  const LIMIT = 2000; // Plenty for all OK ZIPs while keeping payload manageable
+  const resp = await db.query({
+    areas: {
+      $: {
+        where: { kind: "ZIP" },
+        fields: ["code", "parentCode"],
+        limit: LIMIT,
+      },
+    },
+  });
+
+  const rows = Array.isArray(resp?.areas)
+    ? resp.areas
+    : Array.isArray(resp?.data?.areas)
+    ? resp.data.areas
+    : [];
+
+  const map = new Map();
+  for (const row of rows) {
+    const code = typeof row?.code === "string" ? row.code : null;
+    const parentCode = typeof row?.parentCode === "string" ? row.parentCode : null;
+    if (!code || !parentCode) continue;
+    map.set(code, parentCode);
+  }
+  return map;
+};
+
+export const hydrateCountyZipBucketsFromAreas = async (db, maps) => {
+  try {
+    const zipToCounty = await getZipToCountyNameMap(db);
+    if (!zipToCounty || zipToCounty.size === 0) return;
+
+    const countyZipBuckets = maps.countyZipBuckets || new Map();
+    maps.countyZipBuckets = countyZipBuckets;
+
+    const hasZipMoe = maps.zipMoe && maps.zipMoe.size > 0;
+    const countyZipMoe = hasZipMoe
+      ? maps.countyZipMoe || new Map()
+      : undefined;
+    if (hasZipMoe && !maps.countyZipMoe) {
+      maps.countyZipMoe = countyZipMoe;
+    }
+
+    for (const [zip, value] of maps.zip.entries()) {
+      const rawCounty = zipToCounty.get(zip);
+      const countyKey = formatCountyScopeLabelLocal(rawCounty);
+      if (!countyKey) continue;
+
+      let bucket = countyZipBuckets.get(countyKey);
+      if (!bucket) {
+        bucket = new Map();
+        countyZipBuckets.set(countyKey, bucket);
+      }
+      bucket.set(zip, value);
+
+      if (countyZipMoe) {
+        const moeVal = maps.zipMoe.get(zip);
+        if (typeof moeVal === "number" && Number.isFinite(moeVal)) {
+          let moeBucket = countyZipMoe.get(countyKey);
+          if (!moeBucket) {
+            moeBucket = new Map();
+            countyZipMoe.set(countyKey, moeBucket);
+          }
+          moeBucket.set(zip, moeVal);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn(
+      "hydrateCountyZipBucketsFromAreas failed; falling back to statewide ZIP bucket only",
+      error,
+    );
+  }
+};
+
 // InstantDB admin helpers for serverless import API
 
 const getInstantAppId = () => {
@@ -491,6 +602,30 @@ export const buildStatDataPayloads = (statId, statName, statType, maps, meta, op
     year: meta.year,
     name: payloadName,
   });
+  if (maps && maps.countyZipBuckets && typeof maps.countyZipBuckets.entries === "function") {
+    for (const [countyName, bucket] of maps.countyZipBuckets.entries()) {
+      if (!bucket || bucket.size === 0) continue;
+      const moeBucket =
+        maps.countyZipMoe && typeof maps.countyZipMoe.get === "function"
+          ? maps.countyZipMoe.get(countyName)
+          : undefined;
+      payloads.push({
+        statId,
+        statName,
+        statType,
+        parentArea: countyName,
+        boundaryType: "ZIP",
+        data: bucket,
+        margin: moeBucket,
+        censusVariable: meta.censusVariable,
+        censusSurvey: meta.censusSurvey,
+        censusUniverse: meta.censusUniverse,
+        censusTableUrl: meta.censusTableUrl,
+        year: meta.year,
+        name: payloadName,
+      });
+    }
+  }
   payloads.push({
     statId,
     statName,

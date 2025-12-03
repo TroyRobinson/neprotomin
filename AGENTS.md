@@ -66,7 +66,8 @@ Remember: Large data files are now managed outside Git. See `data/raw/README.md`
 - InstantDB data
   - Entity ids must be UUIDs. Generate with `id()`; do not write custom seed ids. See `src/lib/seed.ts:39`.
   - Make seeding idempotent by checking existing records (e.g., by name) before `transact`. See `src/lib/seed.ts:23`.
-- Keep schema minimal but indexed for lookups (e.g., `name`). See `src/instant.schema.ts:14`.
+  - To (re)populate the `areas` table for ZIP/COUNTY metadata used by Census imports, run `npm run admin:seed:areas` (uses the Instant admin SDK and ZCTA geometry).
+  - Keep schema minimal but indexed for lookups (e.g., `name`). See `src/instant.schema.ts:14`.
 - InstaQL doesn't support `$: { select: [...] }`; use `$: { fields: [...] }` if you need to limit columns.
 
 - React + InstantDB integration

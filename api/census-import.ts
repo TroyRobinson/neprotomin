@@ -7,6 +7,7 @@ import {
   fetchCountyData,
   buildDataMaps,
   buildStatDataPayloads,
+  hydrateCountyZipBucketsFromAreas,
   createInstantClient,
   ensureStatRecord,
   applyStatDataPayloads,
@@ -225,6 +226,11 @@ export default async function handler(req: CensusImportRequest, res: CensusImpor
       const countyPayload = await fetchCountyData(options, [variable], moeVariables);
 
       const maps = buildDataMaps(variable, includeMoe ? moeMap.get(variable) ?? null : null, zipPayload, countyPayload);
+
+      // Enrich maps with per-county ZIP buckets using the existing areas
+      // metadata in InstantDB so stats can be scoped more precisely by
+      // county in the UI while keeping the import endpoint serverless-safe.
+      await hydrateCountyZipBucketsFromAreas(db, maps);
 
       const derivedStatName = deriveStatName(variable, variableMeta, groupMeta);
 
