@@ -18,6 +18,13 @@ interface StatItem {
   lastUpdated?: number | null;
 }
 
+interface StatDataSummary {
+  years: string[];
+  boundaryTypes: string[];
+  yearsLabel: string;
+  boundaryLabel: string;
+}
+
 // Parse a raw stat row from InstantDB
 const parseStat = (row: unknown): StatItem | null => {
   if (!row || typeof row !== "object") return null;
@@ -76,13 +83,25 @@ const createEditForm = (stat: StatItem): EditFormState => ({
 interface StatListItemProps {
   stat: StatItem;
   isEditing: boolean;
+  summary?: StatDataSummary;
+  isDeleting?: boolean;
   onStartEdit: () => void;
   onSave: (form: EditFormState) => void;
   onCancel: () => void;
+  onDelete?: () => void;
 }
 
 // Stat list item component with bar shape and curved corners
-const StatListItem = ({ stat, isEditing, onStartEdit, onSave, onCancel }: StatListItemProps) => {
+const StatListItem = ({
+  stat,
+  isEditing,
+  summary,
+  isDeleting,
+  onStartEdit,
+  onSave,
+  onCancel,
+  onDelete,
+}: StatListItemProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState<EditFormState>(() => createEditForm(stat));
 
@@ -178,6 +197,15 @@ const StatListItem = ({ stat, isEditing, onStartEdit, onSave, onCancel }: StatLi
                 <span className="text-emerald-600 dark:text-emerald-400">Yes</span>
               ) : (
                 <span className="text-rose-600 dark:text-rose-400">No</span>
+              )}
+            </span>
+          )}
+          {summary && summary.years.length > 0 && (
+            <span className="flex items-center gap-1">
+              <span className="font-medium">Data:</span>
+              <span>{summary.yearsLabel}</span>
+              {summary.boundaryLabel && (
+                <span className="text-slate-400 dark:text-slate-500">· {summary.boundaryLabel}</span>
               )}
             </span>
           )}
@@ -300,23 +328,48 @@ const StatListItem = ({ stat, isEditing, onStartEdit, onSave, onCancel }: StatLi
         </label>
       </div>
 
+      {summary && summary.years.length > 0 && (
+        <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          <div>
+            <span className="font-medium">Years:</span> {summary.yearsLabel}
+          </div>
+          {summary.boundaryLabel && (
+            <div>
+              <span className="font-medium">Areas:</span> {summary.boundaryLabel}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Action buttons */}
-      <div className="flex items-center justify-end gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={handleSubmit}
-          className="rounded-lg bg-brand-500 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-800"
-        >
-          Save
-        </button>
-        <span className="ml-1 text-xs text-slate-400 dark:text-slate-500">⌘+Enter</span>
+      <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-3 text-xs dark:border-slate-700">
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={isDeleting}
+            className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-60 dark:border-rose-800 dark:text-rose-300 dark:hover:bg-rose-950/40"
+          >
+            {isDeleting ? "Deleting…" : "Delete stat + data"}
+          </button>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            className="rounded-lg bg-brand-500 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-800"
+          >
+            Save
+          </button>
+          <span className="ml-1 text-xs text-slate-400 dark:text-slate-500">⌘+Enter</span>
+        </div>
       </div>
     </div>
   );
@@ -902,11 +955,17 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
 };
 
 export const AdminScreen = () => {
-  // Query stats from InstantDB
+  // Query stats and lightweight statData metadata from InstantDB
   const { data, isLoading, error } = db.useQuery({
     stats: {
       $: {
         order: { name: "asc" as const },
+      },
+    },
+    statData: {
+      $: {
+        fields: ["id", "statId", "boundaryType", "date", "name", "parentArea"],
+        order: { statId: "asc" as const },
       },
     },
   });
@@ -916,6 +975,7 @@ export const AdminScreen = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isNewStatOpen, setIsNewStatOpen] = useState(false);
   const [recentStatIds, setRecentStatIds] = useState<string[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Parse and filter stats
   const stats = useMemo(() => {
@@ -937,6 +997,67 @@ export const AdminScreen = () => {
     }
     return [...recent, ...rest];
   }, [stats, recentStatIds]);
+
+  const statDataSummaryByStatId = useMemo(() => {
+    const map = new Map<string, StatDataSummary>();
+    const rows = (data?.statData ?? []) as any[];
+    const formatYearsLabel = (years: string[]): string => {
+      if (years.length === 0) return "";
+      const numericYears = years
+        .map((y) => Number(y))
+        .filter((n) => Number.isFinite(n))
+        .sort((a, b) => a - b)
+        .map((n) => String(n));
+      const uniqueYears = Array.from(new Set(numericYears.length ? numericYears : years.sort()));
+      if (uniqueYears.length <= 2) return uniqueYears.join(", ");
+      const first = uniqueYears[0];
+      const last = uniqueYears[uniqueYears.length - 1];
+      return `${first}–${last}`;
+    };
+    const formatBoundaryLabel = (types: string[]): string => {
+      if (types.length === 0) return "";
+      const uniq = Array.from(new Set(types));
+      if (uniq.length === 1) {
+        return uniq[0] === "ZIP" ? "ZIPs" : uniq[0] === "COUNTY" ? "Counties" : uniq[0];
+      }
+      const pretty = uniq.map((t) => (t === "ZIP" ? "ZIPs" : t === "COUNTY" ? "Counties" : t));
+      return pretty.join(" + ");
+    };
+
+    for (const row of rows) {
+      const statId = typeof row?.statId === "string" ? (row.statId as string) : null;
+      if (!statId) continue;
+      const boundaryType = typeof row.boundaryType === "string" ? (row.boundaryType as string) : null;
+      const rawDate = row.date;
+      const date =
+        typeof rawDate === "string"
+          ? rawDate
+          : typeof rawDate === "number"
+          ? String(rawDate)
+          : null;
+
+      let entry = map.get(statId);
+      if (!entry) {
+        entry = { years: [], boundaryTypes: [], yearsLabel: "", boundaryLabel: "" };
+        map.set(statId, entry);
+      }
+      if (date && !entry.years.includes(date)) {
+        entry.years.push(date);
+      }
+      if (boundaryType && !entry.boundaryTypes.includes(boundaryType)) {
+        entry.boundaryTypes.push(boundaryType);
+      }
+    }
+
+    for (const entry of map.values()) {
+      entry.years.sort();
+      entry.boundaryTypes.sort();
+      entry.yearsLabel = formatYearsLabel(entry.years);
+      entry.boundaryLabel = formatBoundaryLabel(entry.boundaryTypes);
+    }
+
+    return map;
+  }, [data?.statData]);
 
   // Start editing a stat
   const handleStartEdit = useCallback((id: string) => {
@@ -974,6 +1095,39 @@ export const AdminScreen = () => {
       }
     },
     [],
+  );
+
+  const handleDeleteStat = useCallback(
+    async (statId: string) => {
+      if (deletingId) return;
+      if (typeof window !== "undefined") {
+        const confirmed = window.confirm(
+          "Delete this stat and all associated data (statData rows)? This cannot be undone.",
+        );
+        if (!confirmed) return;
+      }
+      setDeletingId(statId);
+      try {
+        const rows = (data?.statData ?? []).filter(
+          (row: any) => row && typeof row.id === "string" && row.statId === statId,
+        );
+        const txs: any[] = [];
+        for (const row of rows) {
+          txs.push(db.tx.statData[row.id as string].delete());
+        }
+        txs.push(db.tx.stats[statId].delete());
+        if (txs.length > 0) {
+          await db.transact(txs);
+        }
+        setEditingId((current) => (current === statId ? null : current));
+        setRecentStatIds((prev) => prev.filter((id) => id !== statId));
+      } catch (err) {
+        console.error("Failed to delete stat:", err);
+      } finally {
+        setDeletingId((current) => (current === statId ? null : current));
+      }
+    },
+    [data?.statData, deletingId],
   );
 
   const handleImportedFromModal = useCallback((statIds: string[]) => {
@@ -1051,9 +1205,12 @@ export const AdminScreen = () => {
                 key={stat.id}
                 stat={stat}
                 isEditing={editingId === stat.id}
+                summary={statDataSummaryByStatId.get(stat.id)}
+                isDeleting={deletingId === stat.id}
                 onStartEdit={() => handleStartEdit(stat.id)}
                 onSave={(form) => handleSave(stat.id, form)}
                 onCancel={handleCancel}
+                onDelete={() => handleDeleteStat(stat.id)}
               />
             ))}
           </div>
