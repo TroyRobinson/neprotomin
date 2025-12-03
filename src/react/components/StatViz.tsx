@@ -66,6 +66,7 @@ interface StatVizProps {
   areaNameLookup?: (kind: SupportedAreaKind, code: string) => string;
   onHoverArea?: (area: AreaId | null) => void;
   activeAreaKind?: SupportedAreaKind | null;
+  zipScopeDisplayName?: string | null;
 }
 
 interface LineChartProps {
@@ -522,6 +523,7 @@ export const StatViz = ({
   areaNameLookup,
   activeAreaKind = null,
   onHoverArea,
+  zipScopeDisplayName = null,
 }: StatVizProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const [hoveredLineLabel, setHoveredLineLabel] = useState<string | null>(null);
@@ -656,8 +658,17 @@ export const StatViz = ({
       if (avgKind) {
         const avgValue = cityAvgByKind.get(avgKind);
         if (typeof avgValue === "number") {
+          const scopeName = zipScopeDisplayName
+            ? zipScopeDisplayName.charAt(0).toUpperCase() + zipScopeDisplayName.slice(1).toLowerCase()
+            : null;
+          const avgLabel =
+            avgKind === "ZIP"
+              ? scopeName
+                ? `${scopeName} Avg`
+                : "ZIP Avg"
+              : "County Avg";
           entries.push({
-            label: avgKind === "ZIP" ? "ZIP Avg" : "County Avg",
+            label: avgLabel,
             color: getAvgColor(),
             value: avgValue,
             areaKey: `AVG-${avgKind}`,
@@ -703,12 +714,15 @@ export const StatViz = ({
     const avgSeriesEntries = seriesByKind.get(avgKind) ?? [];
     const avgSeries = computeCityAvgSeries(avgSeriesEntries);
     if (avgSeries.length > 0) {
-      const avgLabel = avgKind === "COUNTY" ? "State Avg" : "City Average";
+      const scopeName = zipScopeDisplayName
+        ? zipScopeDisplayName.charAt(0).toUpperCase() + zipScopeDisplayName.slice(1).toLowerCase()
+        : null;
+      const avgLabel = avgKind === "COUNTY" ? "State Avg" : scopeName ? `${scopeName} Average` : "City Average";
       lineSeries.push({ label: avgLabel, color: getAvgColor(), points: avgSeries, isAverage: true });
     }
 
     return { mode: "line" as const, series: lineSeries, statType: avgSeriesEntries[0]?.type ?? "count" };
-  }, [stat, statId, chartMode, areaEntries, seriesByKind, statDataByKind, cityAvgByKind, pinnedAreaKeys, activeAreaKind]);
+  }, [stat, statId, chartMode, areaEntries, seriesByKind, statDataByKind, cityAvgByKind, pinnedAreaKeys, activeAreaKind, zipScopeDisplayName]);
 
   const subtitle = useMemo(() => {
     if (collapsed) {

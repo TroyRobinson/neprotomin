@@ -576,6 +576,7 @@ export const Sidebar = ({
               onHoverArea={onHoverArea}
               areaNameLookup={areaNameLookup}
               activeAreaKind={activeAreaKind}
+              zipScopeDisplayName={zipScopeDisplayName}
             />
           )}
         </>
