@@ -617,7 +617,25 @@ export const StatViz = ({
     return { latestSummaryValue: total, latestSummaryType: summaryType };
   }, [areaEntries, statDataByKind, cityAvgByKind, stat, activeAreaKind]);
 
-  const chartMode = areaEntries.length >= 4 ? "bar" : "line";
+  const hasMultiYearSeries = useMemo(() => {
+    if (!statId) return false;
+    if (!seriesByKind || seriesByKind.size === 0) return false;
+    for (const [, entries] of seriesByKind) {
+      if (!entries || entries.length === 0) continue;
+      const dateSet = new Set<string>();
+      for (const e of entries) {
+        if (e && typeof e.date === "string") {
+          dateSet.add(e.date);
+          if (dateSet.size > 1) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }, [statId, seriesByKind]);
+
+  const chartMode = !hasMultiYearSeries || areaEntries.length >= 4 ? "bar" : "line";
 
   const chartData = useMemo(() => {
     if (!statId || !stat) return null;
