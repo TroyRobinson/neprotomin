@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { db } from "../../lib/reactDb";
 import { useAuthSession } from "./useAuthSession";
 import type { Stat } from "../../types/stat";
@@ -64,12 +64,19 @@ export const useStats = () => {
       : null,
   );
 
+  // Cache the last valid data response to prevent UI flashes during transient loading states
+  const cachedDataRef = useRef(data);
+  if (data) {
+    cachedDataRef.current = data;
+  }
+  const effectiveData = data || cachedDataRef.current;
+
   // Normalize stats once to reuse everywhere
   const statsById = useMemo(() => {
     const map = new Map<string, Stat>();
-    if (!data?.stats) return map;
+    if (!effectiveData?.stats) return map;
 
-    for (const row of data.stats) {
+    for (const row of effectiveData.stats) {
       if (row?.id && typeof row.name === "string" && typeof row.category === "string") {
         map.set(row.id, {
           id: row.id,
@@ -82,14 +89,14 @@ export const useStats = () => {
       }
     }
     return map;
-  }, [data?.stats]);
+  }, [effectiveData?.stats]);
 
   // Build time series per stat and area kind (ZIP vs COUNTY for now)
   const seriesByStatIdByKind = useMemo(() => {
     const map = new Map<string, SeriesByKind>();
-    if (!data?.statData) return map;
+    if (!effectiveData?.statData) return map;
 
-    for (const row of data.statData) {
+    for (const row of effectiveData.statData) {
       if (
         !row?.id ||
         typeof row.statId !== "string" ||
@@ -128,7 +135,7 @@ export const useStats = () => {
     }
 
     return map;
-  }, [data?.statData]);
+  }, [effectiveData?.statData]);
 
   // Snapshot the latest statData per boundary type for quick lookup (min/max precomputed)
   const statDataByBoundary = useMemo(() => {
@@ -153,9 +160,9 @@ export const useStats = () => {
 
   const seriesByStatIdByParent = useMemo(() => {
     const map = new Map<string, Map<string, SeriesByKind>>();
-    if (!data?.statData) return map;
+    if (!effectiveData?.statData) return map;
 
-    for (const row of data.statData) {
+    for (const row of effectiveData.statData) {
       if (
         !row?.id ||
         typeof row.statId !== "string" ||
@@ -197,13 +204,13 @@ export const useStats = () => {
     }
 
     return map;
-  }, [data?.statData]);
+  }, [effectiveData?.statData]);
 
   const statDataByParent = useMemo(() => {
     const latestByKey = new Map<string, { row: any; date: string }>();
-    if (!data?.statData) return new Map<string, Map<string, Partial<Record<SupportedAreaKind, StatBoundaryEntry>>>>();
+    if (!effectiveData?.statData) return new Map<string, Map<string, Partial<Record<SupportedAreaKind, StatBoundaryEntry>>>>();
 
-    for (const row of data.statData) {
+    for (const row of effectiveData.statData) {
       if (
         !row?.id ||
         typeof row.statId !== "string" ||
@@ -249,7 +256,7 @@ export const useStats = () => {
     }
 
     return map;
-  }, [data?.statData]);
+  }, [effectiveData?.statData]);
 
   // Maintain ZIP-first view for existing consumers while the rest of the app migrates to by-kind lookups.
   const legacySeriesByStatId = useMemo(() => {

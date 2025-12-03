@@ -60,6 +60,7 @@ class DemographicsStore {
     if (this.unsubscribeStats && this.unsubscribeData) return;
     try {
       this.unsubscribeStats = db.subscribeQuery(STAT_QUERY, (resp) => {
+        if (!resp.data) return;
         const rows = (resp?.data?.stats ?? []) as any[];
         const pop = rows.find((r) => (r as any)?.name === "Population");
         const nextId = pop?.id || null;
@@ -68,7 +69,8 @@ class DemographicsStore {
           this.recompute();
         }
       });
-      this.unsubscribeData = db.subscribeQuery(DATA_QUERY, () => {
+      this.unsubscribeData = db.subscribeQuery(DATA_QUERY, (resp) => {
+        if (!resp.data) return;
         this.recompute();
       });
     } catch (error) {

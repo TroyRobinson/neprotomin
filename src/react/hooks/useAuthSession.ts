@@ -66,9 +66,10 @@ export const useAuthSession = () => {
 
   const authReady = useMemo(() => {
     if (!initialResolved) return false;
+    if (user) return true;
     if (isLoading) return false;
     return true;
-  }, [initialResolved, isLoading]);
+  }, [initialResolved, isLoading, user]);
 
   useEffect(() => {
     if (!isBrowser) return;

@@ -37,6 +37,7 @@ class OrganizationStore {
 
     try {
       this.unsubscribe = db.subscribeQuery(ORGANIZATIONS_QUERY, (resp) => {
+        if (!resp.data) return;
         const rows = resp?.data?.organizations ?? [];
         const normalized: Organization[] = [];
         const allowedCategories = new Set<Organization["category"]>([

@@ -31,6 +31,7 @@ class StatsStore {
     if (this.unsubscribe) return;
     try {
       this.unsubscribe = db.subscribeQuery(STATS_QUERY, (resp) => {
+        if (!resp.data) return;
         const rows = resp?.data?.stats ?? ([] as any[]);
         const normalized: Stat[] = rows
           .filter((row): row is Stat =>

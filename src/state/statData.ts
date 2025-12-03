@@ -60,6 +60,7 @@ class StatDataStore {
     if (this.unsubscribe) return;
     try {
       this.unsubscribe = db.subscribeQuery(QUERY, (resp) => {
+        if (!resp.data) return;
         const rows = (resp?.data?.statData ?? []) as any[];
         const filtered = rows.filter((row) =>
           Boolean(
