@@ -53,6 +53,8 @@ interface SidebarProps {
   selectedOrgIdsFromMap?: boolean;
   zipScopeDisplayName?: string | null;
   countyScopeDisplayName?: string | null;
+  /** Returns { code, name } for a ZIP's parent county, or null if unknown */
+  getZipParentCounty?: (zipCode: string) => { code: string; name: string } | null;
   viewportCountyOrgCount?: number | null;
   viewportCountyName?: string | null;
   viewportCountyCode?: string | null;
@@ -109,6 +111,7 @@ export const Sidebar = ({
   selectedOrgIdsFromMap = false,
   zipScopeDisplayName = null,
   countyScopeDisplayName = null,
+  getZipParentCounty,
   viewportCountyOrgCount = null,
   viewportCountyName = null,
   viewportCountyCode = null,
@@ -576,7 +579,7 @@ export const Sidebar = ({
               onHoverArea={onHoverArea}
               areaNameLookup={areaNameLookup}
               activeAreaKind={activeAreaKind}
-              zipScopeDisplayName={zipScopeDisplayName}
+              getZipParentCounty={getZipParentCounty}
             />
           )}
         </>

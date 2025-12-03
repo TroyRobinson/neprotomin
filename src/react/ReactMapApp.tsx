@@ -968,7 +968,7 @@ export const ReactMapApp = () => {
     return () => clearTimeout(timeout);
   }, [authReady, user?.id, selectedZips, pinnedZips, selectedCounties, pinnedCounties, boundaryMode]);
 
-  const { areasByKindAndCode, getAreaLabel } = useAreas();
+  const { areasByKindAndCode, getAreaLabel, getAreaRecord } = useAreas();
 
   const countyRecords = useMemo(
     () => Array.from(areasByKindAndCode.get("COUNTY")?.values() ?? []),
@@ -1136,6 +1136,17 @@ export const ReactMapApp = () => {
   const areaNameLookup = useMemo(
     () => (kind: SupportedAreaKind, code: string) => getAreaLabel(kind, code) ?? code,
     [getAreaLabel],
+  );
+
+  const getZipParentCounty = useMemo(
+    () => (zipCode: string): { code: string; name: string } | null => {
+      const zipRecord = getAreaRecord("ZIP", zipCode);
+      if (!zipRecord?.parentCode) return null;
+      // parentCode stores the county name (e.g., "Tulsa"), not the FIPS code
+      // Use it directly as both code and name for grouping/display
+      return { code: zipRecord.parentCode, name: zipRecord.parentCode };
+    },
+    [getAreaRecord],
   );
 
   const selectedAreasMap = useMemo(
@@ -2977,6 +2988,7 @@ export const ReactMapApp = () => {
               selectedOrgIdsFromMap={selectedOrgIdsFromMap}
               zipScopeDisplayName={zipScopeDisplayName}
               countyScopeDisplayName={countyScopeDisplayName}
+              getZipParentCounty={getZipParentCounty}
               viewportCountyOrgCount={viewportCountyOrgCount}
               viewportCountyName={viewportCountyName}
               viewportCountyCode={viewportCountyCode}
@@ -3096,6 +3108,7 @@ export const ReactMapApp = () => {
                     selectedOrgIdsFromMap={selectedOrgIdsFromMap}
                     zipScopeDisplayName={zipScopeDisplayName}
                     countyScopeDisplayName={countyScopeDisplayName}
+                    getZipParentCounty={getZipParentCounty}
                     viewportCountyOrgCount={viewportCountyOrgCount}
                     viewportCountyName={viewportCountyName}
                     viewportCountyCode={viewportCountyCode}
