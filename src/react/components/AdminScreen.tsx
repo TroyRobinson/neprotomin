@@ -1004,7 +1004,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
         </div>
 
         <div className="mt-4 flex flex-col gap-4 md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)]">
-          <div className="order-1 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+          <div className="order-1 h-fit space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
             <div className="space-y-3">
               {/* Dataset and Group Search on same row */}
               <div className="flex items-end gap-3">
@@ -1313,7 +1313,7 @@ export const AdminScreen = () => {
 
   // Filter, sort, and search state
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<SortOption>("updated");
+  const [sortBy, setSortBy] = useState<SortOption>("created");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Parse and filter stats
