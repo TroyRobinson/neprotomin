@@ -461,7 +461,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
   const [previewTotal, setPreviewTotal] = useState(0);
   const [variables, setVariables] = useState<CensusVariablePreview[]>([]);
   const [selection, setSelection] = useState<
-    Record<string, { selected: boolean; year: number; years: number }>
+    Record<string, { selected: boolean; yearEnd: number | null; yearStart: number | null }>
   >({});
   const [queueItems, setQueueItems] = useState<ImportQueueItem[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -567,9 +567,9 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
       }));
       setVariables(parsed);
       setPreviewTotal(total);
-      const defaults: Record<string, { selected: boolean; year: number; years: number }> = {};
+      const defaults: Record<string, { selected: boolean; yearEnd: number; yearStart: number | null }> = {};
       for (const v of parsed) {
-        defaults[v.name] = { selected: false, year, years: 1 };
+        defaults[v.name] = { selected: false, yearEnd: year, yearStart: year - 2 };
       }
       setSelection(defaults);
       setStep(2);
@@ -587,65 +587,116 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
     }
   }, [dataset, group, year, limit]);
 
+  // Helper to calculate year and years from selection
+  // If both are set: range from yearStart to yearEnd
+  // If only yearEnd: single year (yearEnd)
+  // If only yearStart: single year (yearStart)
+  // If neither: use default year
+  const getYearRange = (sel: { yearEnd: number | null; yearStart: number | null }, defaultYear: number) => {
+    const hasStart = sel.yearStart !== null;
+    const hasEnd = sel.yearEnd !== null;
+    
+    if (hasStart && hasEnd) {
+      // Range: yearStart to yearEnd
+      const start = sel.yearStart!;
+      const end = sel.yearEnd!;
+      const years = Math.max(1, end - start + 1);
+      return { year: end, years };
+    } else if (hasEnd) {
+      // Single year: yearEnd only
+      return { year: sel.yearEnd!, years: 1 };
+    } else if (hasStart) {
+      // Single year: yearStart only
+      return { year: sel.yearStart!, years: 1 };
+    } else {
+      // Neither set, use default
+      return { year: defaultYear, years: 1 };
+    }
+  };
+
   const toggleVariableSelected = useCallback((name: string) => {
+    const trimmedGroup = group.trim();
     setSelection((prev) => {
-      const current = prev[name] ?? { selected: false, year, years: 1 };
+      const current = prev[name] ?? { selected: false, yearEnd: year, yearStart: null };
+      const newSelected = !current.selected;
+      
+      // If selecting, add to queue
+      if (newSelected && trimmedGroup) {
+        const { year: qYear, years: qYears } = getYearRange(current, year);
+        const key = `${dataset}::${trimmedGroup}::${name}`;
+        setQueueItems((prevQueue) => {
+          const exists = prevQueue.some((item) => item.variable === name && item.group === trimmedGroup);
+          if (exists) return prevQueue;
+          return [
+            ...prevQueue,
+            {
+              id: key,
+              dataset,
+              group: trimmedGroup,
+              variable: name,
+              year: qYear,
+              years: qYears,
+              includeMoe,
+              status: "pending" as const,
+            },
+          ];
+        });
+      }
+      // If deselecting, remove from queue
+      if (!newSelected && trimmedGroup) {
+        setQueueItems((prevQueue) =>
+          prevQueue.filter((item) => item.variable !== name || item.group !== trimmedGroup),
+        );
+      }
+      
       return {
         ...prev,
-        [name]: { ...current, selected: !current.selected },
+        [name]: { ...current, selected: newSelected },
+      };
+    });
+  }, [group, dataset, year, includeMoe]);
+
+  const removeFromQueue = useCallback((itemId: string, variableName: string) => {
+    // Remove from queue
+    setQueueItems((prev) => prev.filter((item) => item.id !== itemId));
+    // Deselect the variable
+    setSelection((prev) => {
+      const current = prev[variableName];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [variableName]: { ...current, selected: false },
       };
     });
   }, []);
 
   const updateSelectionField = useCallback(
-    (name: string, field: "year" | "years", value: number) => {
+    (name: string, field: "yearEnd" | "yearStart", value: number | null) => {
+      const trimmedGroup = group.trim();
       setSelection((prev) => {
-        const current = prev[name] ?? { selected: true, year, years: 1 };
-        const nextValue = Number.isFinite(value)
-          ? value
-          : field === "year"
-          ? year
-          : 1;
+        const current = prev[name] ?? { selected: true, yearEnd: year, yearStart: null };
+        const updated = { ...current, [field]: value };
+        
+        // Update corresponding queue item if selected
+        if (current.selected && trimmedGroup) {
+          const { year: qYear, years: qYears } = getYearRange(updated, year);
+          setQueueItems((prevQueue) =>
+            prevQueue.map((item) =>
+              item.variable === name && item.group === trimmedGroup
+                ? { ...item, year: qYear, years: qYears }
+                : item,
+            ),
+          );
+        }
+        
         return {
           ...prev,
-          [name]: { ...current, [field]: nextValue },
+          [name]: updated,
         };
       });
     },
-    [year],
+    [year, group],
   );
-
-  const handleAddSelectedToQueue = useCallback(() => {
-    if (!variables.length) return;
-    const trimmedGroup = group.trim();
-    if (!trimmedGroup) return;
-    setQueueItems((prev) => {
-      const existingKeys = new Set(
-        prev.map(
-          (item) =>
-            `${item.dataset}::${item.group}::${item.variable}::${item.year}::${item.years}`,
-        ),
-      );
-      const next = [...prev];
-      for (const v of variables) {
-        const sel = selection[v.name];
-        if (!sel || !sel.selected) continue;
-        const key = `${dataset}::${trimmedGroup}::${v.name}::${sel.year}::${sel.years}`;
-        if (existingKeys.has(key)) continue;
-        next.push({
-          id: key,
-          dataset,
-          group: trimmedGroup,
-          variable: v.name,
-          year: sel.year,
-          years: Math.max(1, sel.years),
-          includeMoe,
-          status: "pending",
-        });
-      }
-      return next;
-    });
-  }, [variables, selection, dataset, group, includeMoe]);
 
   const handleRunQueue = useCallback(async () => {
     if (isRunning || queueItems.length === 0) return;
@@ -836,24 +887,14 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
               <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
                 Queue
               </h3>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleAddSelectedToQueue}
-                  disabled={variables.length === 0}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 transition hover:border-brand-300 hover:text-brand-600 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-brand-500 dark:hover:text-brand-300"
-                >
-                  Add selected to queue
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRunQueue}
-                  disabled={isRunning || queueItems.length === 0}
-                  className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-60"
-                >
-                  {isRunning ? "Running imports…" : "Start import"}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleRunQueue}
+                disabled={isRunning || queueItems.length === 0}
+                className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-60"
+              >
+                {isRunning ? "Running imports…" : "Start import"}
+              </button>
             </div>
 
             {isRunning && (
@@ -868,8 +909,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
             <div className="mt-2 grid grid-cols-1 gap-2">
               {queueItems.length === 0 ? (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  No imports queued yet. Preview variables, select the ones you want, then add
-                  them to this queue.
+                  No imports queued yet. Select variables from the preview below to add them.
                 </p>
               ) : (
                 <div className="max-h-56 space-y-1 overflow-y-auto text-[11px]">
@@ -891,14 +931,25 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                           </div>
                           <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400">
                             <span>
-                              {item.year} ({item.years} year{item.years !== 1 ? "s" : ""})
+                              {item.years > 1
+                                ? `${item.year - item.years + 1} to ${item.year}`
+                                : item.year}
                             </span>
                             <span>dataset: {item.dataset}</span>
                           </div>
                         </div>
                         <div className="shrink-0 text-right text-[10px]">
                           {item.status === "pending" && (
-                            <span className="text-slate-500 dark:text-slate-400">Pending</span>
+                            <button
+                              type="button"
+                              onClick={() => removeFromQueue(item.id, item.variable)}
+                              className="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                              title="Remove from queue"
+                            >
+                              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
                           )}
                           {item.status === "running" && (
                             <span className="text-brand-600 dark:text-brand-400">
@@ -952,12 +1003,12 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
             <div className="mb-2 grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,0.9fr)] gap-2 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
               <span>Variable</span>
               <span>Label</span>
-              <span>Year(s)</span>
+              <span>Year Range</span>
               <span>Sample coverage</span>
             </div>
             <div className="space-y-1">
               {variables.map((v) => {
-                const sel = selection[v.name] ?? { selected: false, year, years: 1 };
+                const sel = selection[v.name] ?? { selected: false, yearEnd: year, yearStart: year - 2 };
                 return (
                   <label
                     key={v.name}
@@ -985,26 +1036,27 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                     <div className="flex items-center gap-1 text-[10px] text-slate-600 dark:text-slate-300">
                       <input
                         type="number"
-                        value={sel.year}
-                        onChange={(e) =>
-                          updateSelectionField(v.name, "year", Number(e.target.value) || year)
-                        }
-                        className="w-16 rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                        value={sel.yearStart ?? ""}
+                        placeholder="Start"
+                        onChange={(e) => {
+                          const val = e.target.value.trim();
+                          updateSelectionField(v.name, "yearStart", val ? Number(val) : null);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-14 rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                       />
-                      <span>for</span>
+                      <span>to</span>
                       <input
                         type="number"
-                        value={sel.years}
-                        onChange={(e) =>
-                          updateSelectionField(
-                            v.name,
-                            "years",
-                            Math.max(1, Number(e.target.value) || 1),
-                          )
-                        }
-                        className="w-12 rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                        value={sel.yearEnd ?? ""}
+                        placeholder="End"
+                        onChange={(e) => {
+                          const val = e.target.value.trim();
+                          updateSelectionField(v.name, "yearEnd", val ? Number(val) : null);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-14 rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                       />
-                      <span>year{sel.years !== 1 ? "s" : ""}</span>
                     </div>
                     <div className="text-[10px] text-slate-500 dark:text-slate-400">
                       {v.zipCount} ZIPs · {v.countyCount} counties
