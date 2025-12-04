@@ -24,6 +24,7 @@ interface StatDataSummary {
   boundaryTypes: string[];
   yearsLabel: string;
   boundaryLabel: string;
+  rowCount: number;
 }
 
 // Parse a raw stat row from InstantDB
@@ -329,18 +330,36 @@ const StatListItem = ({
         </label>
       </div>
 
-      {summary && summary.years.length > 0 && (
-        <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-          <div>
-            <span className="font-medium">Years:</span> {summary.yearsLabel}
-          </div>
-          {summary.boundaryLabel && (
-            <div>
+      {/* Info section: Years, Areas, IDs - compact inline */}
+      <div className="mt-2 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {summary && summary.years.length > 0 && (
+            <span>
+              <span className="font-medium">Years:</span> {summary.yearsLabel}
+            </span>
+          )}
+          {summary && summary.boundaryLabel && (
+            <span>
               <span className="font-medium">Areas:</span> {summary.boundaryLabel}
-            </div>
+            </span>
+          )}
+          {stat.neId && (
+            <span>
+              <span className="font-medium">ID:</span>{" "}
+              <code className="rounded bg-slate-200 px-1 py-0.5 text-[10px] dark:bg-slate-700">{stat.neId}</code>
+            </span>
+          )}
+          <span>
+            <span className="font-medium">InstantDB ID:</span>{" "}
+            <code className="rounded bg-slate-200 px-1 py-0.5 text-[10px] dark:bg-slate-700">{stat.id}</code>
+          </span>
+          {summary && (
+            <span>
+              <span className="font-medium">Area-Data Rows:</span> {summary.rowCount.toLocaleString()}
+            </span>
           )}
         </div>
-      )}
+      </div>
 
       {/* Action buttons */}
       <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-3 text-xs dark:border-slate-700">
@@ -1113,9 +1132,10 @@ export const AdminScreen = () => {
 
       let entry = map.get(statId);
       if (!entry) {
-        entry = { years: [], boundaryTypes: [], yearsLabel: "", boundaryLabel: "" };
+        entry = { years: [], boundaryTypes: [], yearsLabel: "", boundaryLabel: "", rowCount: 0 };
         map.set(statId, entry);
       }
+      entry.rowCount += 1;
       if (date && !entry.years.includes(date)) {
         entry.years.push(date);
       }
