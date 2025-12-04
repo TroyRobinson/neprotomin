@@ -46,34 +46,55 @@ export const createMapLoadingIndicator = (): MapLoadingIndicatorController => {
   wrapper.appendChild(spinner);
   wrapper.appendChild(label);
 
-  let isLoading = true; // Starts visible
+  let isVisible = true; // Starts visible for initial load
+  let showTimer: ReturnType<typeof setTimeout> | null = null;
   let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const setLoading = (loading: boolean) => {
-    if (loading === isLoading) return;
-    isLoading = loading;
+  // Minimum time loading must persist before showing indicator (ms)
+  const SHOW_DELAY_MS = 150;
 
+  const show = () => {
+    if (isVisible) return;
+    isVisible = true;
+    wrapper.style.visibility = "visible";
+    requestAnimationFrame(() => {
+      wrapper.style.opacity = "1";
+    });
+  };
+
+  const hide = () => {
+    if (!isVisible) return;
+    isVisible = false;
+    wrapper.style.opacity = "0";
+    // Delay hiding visibility until fade completes
+    hideTimer = setTimeout(() => {
+      wrapper.style.visibility = "hidden";
+    }, 200);
+  };
+
+  const setLoading = (loading: boolean) => {
+    // Clear any pending timers
+    if (showTimer) {
+      clearTimeout(showTimer);
+      showTimer = null;
+    }
     if (hideTimer) {
       clearTimeout(hideTimer);
       hideTimer = null;
     }
 
     if (loading) {
-      wrapper.style.visibility = "visible";
-      // Small delay before showing to avoid flicker on fast loads
-      requestAnimationFrame(() => {
-        wrapper.style.opacity = "1";
-      });
+      // Delay showing to avoid flicker on fast/cached tile loads
+      showTimer = setTimeout(() => {
+        show();
+      }, SHOW_DELAY_MS);
     } else {
-      wrapper.style.opacity = "0";
-      // Delay hiding visibility until fade completes
-      hideTimer = setTimeout(() => {
-        wrapper.style.visibility = "hidden";
-      }, 200);
+      hide();
     }
   };
 
   const destroy = () => {
+    if (showTimer) clearTimeout(showTimer);
     if (hideTimer) clearTimeout(hideTimer);
     wrapper.remove();
   };
