@@ -248,7 +248,7 @@ const StatListItem = ({
       onKeyDown={handleKeyDown}
       className="flex flex-col gap-3 rounded-xl border-2 border-brand-400 bg-white px-4 py-3 shadow-lg ring-2 ring-brand-100 dark:border-brand-500 dark:bg-slate-800 dark:ring-brand-900/50"
     >
-      {/* Label field */}
+      {/* Label field with original name and source as subtitles */}
       <div className="flex flex-col gap-1">
         <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
           Label <span className="text-slate-400 dark:text-slate-500">(display title)</span>
@@ -261,73 +261,81 @@ const StatListItem = ({
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-500 dark:focus:ring-brand-900/50"
           autoFocus
         />
+        <div className="flex gap-4 text-[10px] text-slate-400 dark:text-slate-500">
+          {form.name && <span>Original: {form.name}</span>}
+          {form.source && <span>Source: {form.source}</span>}
+        </div>
       </div>
 
-      {/* Name field (original) */}
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
-          Name <span className="text-slate-400 dark:text-slate-500">(original)</span>
-        </label>
-        <input
-          type="text"
-          value={form.name}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange("name", e.target.value)}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-900/50"
-        />
-      </div>
-
-      {/* Category and Source row */}
-      <div className="flex gap-3">
-        <div className="flex flex-1 flex-col gap-1">
-          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Category</label>
-          <input
-            type="text"
+      {/* Options row - wraps on mobile */}
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Category dropdown */}
+        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/50">
+          <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Category</label>
+          <CustomSelect
             value={form.category}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange("category", e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-900/50"
+            onChange={(val) => handleChange("category", val)}
+            options={statCategoryOptions}
+            className="min-w-[120px]"
           />
         </div>
-        <div className="flex flex-1 flex-col gap-1">
-          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Source</label>
-          <input
-            type="text"
-            value={form.source}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange("source", e.target.value)}
-            placeholder="e.g., Census, NE"
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-500 dark:focus:ring-brand-900/50"
-          />
-        </div>
-      </div>
 
-      {/* Boolean toggles row */}
-      <div className="flex flex-wrap items-center gap-4">
-        <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-          <input
-            type="checkbox"
-            checked={form.goodIfUp === true}
-            onChange={(e) => handleChange("goodIfUp", e.target.checked ? true : false)}
-            className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
-          />
-          Good if up
-        </label>
-        <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-          <input
-            type="checkbox"
-            checked={form.active === true}
-            onChange={(e) => handleChange("active", e.target.checked ? true : false)}
-            className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
-          />
-          Active
-        </label>
-        <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-          <input
-            type="checkbox"
-            checked={form.featured === true}
-            onChange={(e) => handleChange("featured", e.target.checked ? true : false)}
-            className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
-          />
-          Featured
-        </label>
+        {/* Active and Featured checkboxes */}
+        <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/50">
+          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={form.active === true}
+              onChange={(e) => handleChange("active", e.target.checked ? true : false)}
+              className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
+            />
+            Active
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={form.featured === true}
+              onChange={(e) => handleChange("featured", e.target.checked ? true : false)}
+              className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
+            />
+            Featured
+          </label>
+        </div>
+
+        {/* Good if up - radio group */}
+        <fieldset className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/50">
+          <legend className="text-sm font-medium text-slate-600 dark:text-slate-300">Good if up</legend>
+          <label className="flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300">
+            <input
+              type="radio"
+              name="goodIfUp"
+              checked={form.goodIfUp === null}
+              onChange={() => handleChange("goodIfUp", null)}
+              className="h-4 w-4 border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
+            />
+            <span className="text-slate-500 dark:text-slate-400">Unset</span>
+          </label>
+          <label className="flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300">
+            <input
+              type="radio"
+              name="goodIfUp"
+              checked={form.goodIfUp === true}
+              onChange={() => handleChange("goodIfUp", true)}
+              className="h-4 w-4 border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
+            />
+            Yes
+          </label>
+          <label className="flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300">
+            <input
+              type="radio"
+              name="goodIfUp"
+              checked={form.goodIfUp === false}
+              onChange={() => handleChange("goodIfUp", false)}
+              className="h-4 w-4 border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
+            />
+            No
+          </label>
+        </fieldset>
       </div>
 
       {/* Info section: Years, Areas, IDs - compact inline */}
