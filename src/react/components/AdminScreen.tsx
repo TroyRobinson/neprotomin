@@ -424,7 +424,6 @@ interface ImportQueueItem {
   year: number;
   years: number;
   includeMoe: boolean;
-  category: Category;
   status: ImportStatus;
   errorMessage?: string;
 }
@@ -454,7 +453,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
     return now.getUTCFullYear() - 2;
   });
   const [limit, setLimit] = useState(10);
-  const [category, setCategory] = useState<Category>("demographics");
+  const [category, setCategory] = useState<Category | null>(null);
   const [includeMoe, setIncludeMoe] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
@@ -476,7 +475,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
     setGroup("");
     setYear(defaultYear);
     setLimit(10);
-    setCategory("demographics");
+    setCategory(null);
     setIncludeMoe(false);
     setStep(1);
     setIsPreviewLoading(false);
@@ -641,13 +640,12 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
           year: sel.year,
           years: Math.max(1, sel.years),
           includeMoe,
-          category,
           status: "pending",
         });
       }
       return next;
     });
-  }, [variables, selection, dataset, group, includeMoe, category]);
+  }, [variables, selection, dataset, group, includeMoe]);
 
   const handleRunQueue = useCallback(async () => {
     if (isRunning || queueItems.length === 0) return;
@@ -675,7 +673,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
               year: item.year,
               years: item.years,
               includeMoe: item.includeMoe,
-              category: item.category,
+              category: category,
             }),
           });
           const payload = (await response.json().catch(() => null)) as any;
@@ -717,7 +715,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
         onImported(importedStatIds);
       }
     }
-  }, [queueItems, isRunning, onImported]);
+  }, [queueItems, isRunning, onImported, category]);
 
   if (!isOpen) return null;
 
@@ -801,19 +799,8 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Category
-                </label>
-                <CustomSelect
-                  value={category}
-                  onChange={(val) => setCategory(val as Category)}
-                  options={statCategoryOptions}
-                  className="w-full"
-                />
-              </div>
-              <label className="mt-4 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
                 <input
                   type="checkbox"
                   checked={includeMoe}
@@ -907,7 +894,6 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                               {item.year} ({item.years} year{item.years !== 1 ? "s" : ""})
                             </span>
                             <span>dataset: {item.dataset}</span>
-                            <span>category: {item.category}</span>
                           </div>
                         </div>
                         <div className="shrink-0 text-right text-[10px]">
@@ -935,6 +921,27 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                     );
                   })}
                 </div>
+              )}
+            </div>
+
+            {/* Apply Category section */}
+            <div className="mt-3 flex items-center gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                Apply Category
+              </label>
+              <CustomSelect
+                value={category ?? ""}
+                onChange={(val) => setCategory(val ? (val as Category) : null)}
+                options={[
+                  { value: "", label: "None" },
+                  ...statCategoryOptions,
+                ]}
+                className="min-w-36"
+              />
+              {category && (
+                <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                  Will be applied to all imports
+                </span>
               )}
             </div>
           </div>
