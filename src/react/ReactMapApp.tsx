@@ -72,6 +72,7 @@ const ORGANIZATION_MATCH_THRESHOLD = 0.55;
 const HASH_TO_SCREEN: Record<string, ScreenName> = {
   "#roadmap": "roadmap",
   "#queue": "queue",
+  "#admin": "admin",
 };
 
 const screenFromHash = (hash: string): ScreenName | null => {
@@ -85,12 +86,14 @@ const hashForScreen = (screen: ScreenName): string | null => {
       return "#roadmap";
     case "queue":
       return "#queue";
+    case "admin":
+      return "#admin";
     default:
       return null;
   }
 };
 
-const isHashRoutedScreen = (screen: ScreenName): boolean => screen === "roadmap" || screen === "queue";
+const isHashRoutedScreen = (screen: ScreenName): boolean => screen === "roadmap" || screen === "queue" || screen === "admin";
 
 interface AreaSelectionState {
   selected: string[];
@@ -295,7 +298,7 @@ export const ReactMapApp = () => {
         setActiveScreen((prev) => (isHashRoutedScreen(prev) ? "map" : prev));
         return;
       }
-      if (next === "queue" && authReady && !isAdmin) {
+      if ((next === "queue" || next === "admin") && authReady && !isAdmin) {
         setActiveScreen("map");
         return;
       }
@@ -318,7 +321,7 @@ export const ReactMapApp = () => {
     const targetHash = hashForScreen(activeScreen);
     const currentHash = window.location.hash.toLowerCase();
     if (targetHash) {
-      if (activeScreen === "queue" && (!authReady || !isAdmin)) {
+      if ((activeScreen === "queue" || activeScreen === "admin") && (!authReady || !isAdmin)) {
         return;
       }
       if (currentHash !== targetHash) {
@@ -679,7 +682,7 @@ export const ReactMapApp = () => {
 
   useEffect(() => {
     if (!authReady) return;
-    if (!isAdmin && (activeScreen === "queue" || activeScreen === "data")) {
+    if (!isAdmin && (activeScreen === "queue" || activeScreen === "data" || activeScreen === "admin")) {
       setActiveScreen("map");
     }
   }, [authReady, isAdmin, activeScreen]);

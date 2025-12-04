@@ -2,6 +2,7 @@ import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import type { KeyboardEvent, ChangeEvent } from "react";
 import { db } from "../../lib/reactDb";
 import type { Category } from "../../types/organization";
+import { CustomSelect } from "./CustomSelect";
 
 // Stat item from InstantDB stats table
 interface StatItem {
@@ -954,6 +955,29 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
   );
 };
 
+// Sort options for stats list
+type SortOption = "updated" | "created" | "name" | "category";
+const sortOptionLabels: Record<SortOption, string> = {
+  updated: "Recently Updated",
+  created: "Recently Created",
+  name: "Name (A-Z)",
+  category: "Category",
+};
+
+// Simple fuzzy search - matches if all characters appear in order
+const fuzzyMatch = (text: string, query: string): boolean => {
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  let ti = 0;
+  for (let qi = 0; qi < lowerQuery.length; qi++) {
+    const char = lowerQuery[qi];
+    const foundIndex = lowerText.indexOf(char, ti);
+    if (foundIndex === -1) return false;
+    ti = foundIndex + 1;
+  }
+  return true;
+};
+
 export const AdminScreen = () => {
   // Query stats and lightweight statData metadata from InstantDB
   const { data, isLoading, error } = db.useQuery({
@@ -978,26 +1002,76 @@ export const AdminScreen = () => {
   const [recentStatIds, setRecentStatIds] = useState<string[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Filter, sort, and search state
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<SortOption>("updated");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+
   // Parse and filter stats
   const stats = useMemo(() => {
     if (!data?.stats) return [];
     return data.stats.map(parseStat).filter((s): s is StatItem => s !== null);
   }, [data?.stats]);
 
-  const sortedStats = useMemo(() => {
-    if (!recentStatIds.length) return stats;
-    const idSet = new Set(recentStatIds);
-    const recent: StatItem[] = [];
-    const rest: StatItem[] = [];
+  // Extract unique categories from stats
+  const availableCategories = useMemo(() => {
+    const cats = new Set<string>();
     for (const stat of stats) {
-      if (idSet.has(stat.id)) {
-        recent.push(stat);
-      } else {
-        rest.push(stat);
-      }
+      if (stat.category) cats.add(stat.category);
     }
-    return [...recent, ...rest];
-  }, [stats, recentStatIds]);
+    return Array.from(cats).sort();
+  }, [stats]);
+
+  // Filtered and sorted stats
+  const sortedStats = useMemo(() => {
+    // First filter by category
+    let filtered = categoryFilter === "all"
+      ? stats
+      : stats.filter((s) => s.category === categoryFilter);
+
+    // Then filter by search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim();
+      filtered = filtered.filter((s) => {
+        const searchText = `${s.label || ""} ${s.name} ${s.category} ${s.neId || ""} ${s.source || ""}`;
+        return fuzzyMatch(searchText, q);
+      });
+    }
+
+    // Sort based on sortBy option
+    const sorted = [...filtered];
+    switch (sortBy) {
+      case "updated":
+        sorted.sort((a, b) => (b.lastUpdated ?? 0) - (a.lastUpdated ?? 0));
+        break;
+      case "created":
+        sorted.sort((a, b) => (b.createdOn ?? 0) - (a.createdOn ?? 0));
+        break;
+      case "name":
+        sorted.sort((a, b) => (a.label || a.name).localeCompare(b.label || b.name));
+        break;
+      case "category":
+        sorted.sort((a, b) => a.category.localeCompare(b.category) || (a.label || a.name).localeCompare(b.label || b.name));
+        break;
+    }
+
+    // Promote recently imported stats to top if no specific sort
+    if (recentStatIds.length && sortBy === "updated") {
+      const idSet = new Set(recentStatIds);
+      const recent: StatItem[] = [];
+      const rest: StatItem[] = [];
+      for (const stat of sorted) {
+        if (idSet.has(stat.id)) {
+          recent.push(stat);
+        } else {
+          rest.push(stat);
+        }
+      }
+      return [...recent, ...rest];
+    }
+
+    return sorted;
+  }, [stats, categoryFilter, searchQuery, sortBy, recentStatIds]);
 
   const statDataSummaryByStatId = useMemo(() => {
     const map = new Map<string, StatDataSummary>();
@@ -1171,33 +1245,117 @@ export const AdminScreen = () => {
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-slate-50 dark:bg-slate-900">
-      {/* Header */}
-      <div className="shrink-0 border-b border-slate-200 bg-white px-6 py-5 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Stats</h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              {stats.length} stat{stats.length !== 1 ? "s" : ""} in the database
-              {editingId && <span className="ml-2 text-brand-500">(editing)</span>}
-              {isSaving && <span className="ml-2 text-amber-500">Saving…</span>}
+      {/* Header - single row: Title | filters | New stat */}
+      <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
+        <div className="flex items-center gap-3">
+          {/* Left: Title and count */}
+          <div className="shrink-0">
+            <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 sm:text-xl">Stats</h1>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 sm:text-xs">
+              {sortedStats.length}{categoryFilter !== "all" || searchQuery ? ` of ${stats.length}` : ""} stat{sortedStats.length !== 1 ? "s" : ""}
+              {editingId && <span className="ml-1 text-brand-500">(editing)</span>}
+              {isSaving && <span className="ml-1 text-amber-500">Saving…</span>}
             </p>
           </div>
+
+          {/* Center: Filters - Category (desktop only), Search, Sort (desktop only) */}
+          <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
+            {/* Category filter - hidden on mobile */}
+            <div className="hidden sm:block">
+              <CustomSelect
+                value={categoryFilter}
+                onChange={setCategoryFilter}
+                options={[
+                  { value: "all", label: "All categories" },
+                  ...availableCategories.map((cat) => ({
+                    value: cat,
+                    label: cat.charAt(0).toUpperCase() + cat.slice(1),
+                  })),
+                ]}
+              />
+            </div>
+
+            {/* Search input */}
+            <div className="relative w-full sm:w-auto sm:max-w-[200px]">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search…"
+                className="h-6 w-full rounded border border-slate-300 bg-white pl-7 pr-6 text-xs text-slate-700 placeholder:text-slate-400 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
+              />
+              <svg
+                className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+                >
+                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {/* Sort dropdown - hidden on mobile */}
+            <div className="hidden sm:block">
+              <CustomSelect
+                value={sortBy}
+                onChange={(val) => setSortBy(val as SortOption)}
+                options={(Object.keys(sortOptionLabels) as SortOption[]).map((key) => ({
+                  value: key,
+                  label: sortOptionLabels[key],
+                }))}
+              />
+            </div>
+          </div>
+
+          {/* Right: New stat button */}
           <button
             type="button"
             onClick={() => setIsNewStatOpen(true)}
-            className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-brand-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 sm:px-3 sm:py-1.5"
           >
-            <span className="text-base leading-none">+</span>
+            <span className="text-sm leading-none">+</span>
             <span>New stat</span>
           </button>
         </div>
       </div>
 
       {/* Stats list */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-3 sm:px-6 sm:py-4">
         {stats.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <p className="text-sm text-slate-500 dark:text-slate-400">No stats found</p>
+          </div>
+        ) : sortedStats.length === 0 ? (
+          <div className="flex h-40 items-center justify-center">
+            <div className="text-center">
+              <p className="text-sm text-slate-500 dark:text-slate-400">No matching stats</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setCategoryFilter("all");
+                  setSearchQuery("");
+                }}
+                className="mt-2 text-xs text-brand-500 hover:text-brand-600 dark:text-brand-400 dark:hover:text-brand-300"
+              >
+                Clear filters
+              </button>
+            </div>
           </div>
         ) : (
           <div className="mx-auto flex max-w-4xl flex-col gap-3">
