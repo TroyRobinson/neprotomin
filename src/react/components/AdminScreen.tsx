@@ -1004,7 +1004,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
         </div>
 
         <div className="mt-4 flex flex-col gap-4 md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)]">
-          <div className="order-1 h-fit space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+          <div className="order-1 h-fit space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:order-2 dark:border-slate-700 dark:bg-slate-900/40">
             <div className="space-y-3">
               {/* Dataset and Group Search on same row */}
               <div className="flex items-end gap-3">
@@ -1072,7 +1072,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
             )}
           </div>
 
-          <div className="order-3 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:order-2 dark:border-slate-700 dark:bg-slate-900/40">
+          <div className="order-3 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:order-3 dark:border-slate-700 dark:bg-slate-900/40">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
               Queue
             </h3>
@@ -1182,9 +1182,9 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
             </div>
           </div>
 
-          {/* Preview section - order-2 on mobile (after Search), order-3 on desktop (below grid) */}
+          {/* Preview section - order-2 on mobile, order-1 on desktop (above other sections) */}
           {step === 2 && variables.length > 0 && (
-            <div className="order-2 md:order-3 md:col-span-2">
+            <div className="order-2 md:order-1 md:col-span-2">
               {/* Meta info above preview */}
               {previewTotal > 0 && lastSubmittedGroup && (
                 <p className="mb-1.5 px-1 text-[10px] text-slate-400 dark:text-slate-500">
