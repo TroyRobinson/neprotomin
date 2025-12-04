@@ -56,9 +56,9 @@ interface SidebarProps {
   /** Returns { code, name } for a ZIP's parent county, or null if unknown */
   getZipParentCounty?: (zipCode: string) => { code: string; name: string } | null;
   viewportCountyOrgCount?: number | null;
-  viewportCountyName?: string | null;
-  viewportCountyCode?: string | null;
   viewportCountyVisibleCount?: number | null;
+  /** County FIPS code for the current ZIP scope (used for zoom-to-county) */
+  zipScopeCountyCode?: string | null;
   selectedStatId?: string | null;
   secondaryStatId?: string | null;
   categoryFilter?: string | null;
@@ -113,9 +113,8 @@ export const Sidebar = ({
   countyScopeDisplayName = null,
   getZipParentCounty,
   viewportCountyOrgCount = null,
-  viewportCountyName = null,
-  viewportCountyCode = null,
   viewportCountyVisibleCount = null,
+  zipScopeCountyCode = null,
   selectedStatId = null,
   secondaryStatId = null,
   categoryFilter = null,
@@ -327,26 +326,22 @@ export const Sidebar = ({
     typeof viewportCountyVisibleCount === "number" ? viewportCountyVisibleCount : visibleCount;
   const countyZoomContext = useMemo(() => {
     if (!cameraState) return null;
-    if (!viewportCountyCode) return null;
+    if (!zipScopeDisplayName) return null;
     if (typeof viewportCountyOrgCount !== "number" || viewportCountyOrgCount <= 0) return null;
     const hiddenCount = Math.max(viewportCountyOrgCount - countyVisibleCount, 0);
     if (hiddenCount <= 0) return null;
-    const label =
-      viewportCountyName ??
-      (zipScopeDisplayName ? `${zipScopeDisplayName} County` : "County");
+    // Use zipScopeDisplayName for both label and as identifier (already title-cased from scope)
+    const label = `${zipScopeDisplayName} County`;
     return {
-      countyCode: viewportCountyCode,
       countyLabel: label,
       totalCount: viewportCountyOrgCount,
       hiddenCount,
     };
   }, [
     cameraState,
-    viewportCountyCode,
-    viewportCountyOrgCount,
-    viewportCountyName,
-    countyVisibleCount,
     zipScopeDisplayName,
+    viewportCountyOrgCount,
+    countyVisibleCount,
   ]);
   const totalCount = countyZoomContext?.totalCount ?? baseTotalCount;
   const missingCount = countyZoomContext?.hiddenCount ?? Math.max(totalCount - visibleCount, 0);
@@ -854,8 +849,8 @@ export const Sidebar = ({
                         type="button"
                         className="block w-full text-left text-xs font-normal text-brand-300 hover:text-brand-800 dark:text-brand-400 dark:hover:text-brand-200 px-4 pb-4 pt-2 transition-colors"
                         onClick={() => {
-                          if (countyZoomContext && onZoomToCounty) {
-                            onZoomToCounty(countyZoomContext.countyCode);
+                          if (countyZoomContext && zipScopeCountyCode && onZoomToCounty) {
+                            onZoomToCounty(zipScopeCountyCode);
                             if (variant === "mobile") {
                               onRequestCollapseSheet?.();
                             }

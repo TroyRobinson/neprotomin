@@ -70,6 +70,20 @@ export const getCountyBounds = (id: string): BoundsArray | undefined => {
 
 export const getCountyName = (id: string): string | undefined => featureById.get(id)?.properties?.name;
 
+// Build reverse lookup: name -> code (case-insensitive)
+const codeByName = new Map<string, string>();
+for (const feature of features) {
+  const code = feature.properties?.county;
+  const name = feature.properties?.name;
+  if (code && name) codeByName.set(name.toLowerCase(), code);
+}
+
+export const getCountyCodeByName = (name: string): string | undefined => {
+  // Strip " County" suffix if present (e.g., "Tulsa County" -> "Tulsa")
+  const normalized = name.replace(/\s+county$/i, "").toLowerCase();
+  return codeByName.get(normalized);
+};
+
 export const getAllCountyIds = (): string[] => features.map((f) => f.properties?.county).filter((v): v is string => typeof v === "string");
 
 const pointInRing = (point: Position, ring: Position[]): boolean => {

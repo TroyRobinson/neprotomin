@@ -16,7 +16,7 @@ import { useRecentOrganizations } from "./hooks/useRecentOrganizations";
 import { useAreas } from "./hooks/useAreas";
 import { type Organization, OKLAHOMA_CENTER, OKLAHOMA_DEFAULT_ZOOM } from "../types/organization";
 import { findZipForLocation, getZipBounds } from "../lib/zipBoundaries";
-import { findCountyForLocation, getCountyBounds } from "../lib/countyBoundaries";
+import { findCountyForLocation, getCountyBounds, getCountyCodeByName } from "../lib/countyBoundaries";
 import type { BoundaryMode } from "../types/boundaries";
 import { AuthModal } from "./components/AuthModal";
 import { db } from "../lib/reactDb";
@@ -978,23 +978,6 @@ export const ReactMapApp = () => {
     () => Array.from(areasByKindAndCode.get("ZIP")?.values() ?? []),
     [areasByKindAndCode],
   );
-  const viewportCountyRecord = useMemo(() => {
-    if (!cameraState || countyRecords.length === 0) return null;
-    if (boundaryMode !== "zips") return null;
-    const { center } = cameraState;
-    const [lng, lat] = center;
-    const containsPoint = (bounds: [[number, number], [number, number]] | null | undefined): boolean => {
-      if (!bounds) return false;
-      const [[minLng, minLat], [maxLng, maxLat]] = bounds;
-      return lng >= minLng && lng <= maxLng && lat >= minLat && lat <= maxLat;
-    };
-    for (const record of countyRecords) {
-      const bounds = record.bounds ?? getCountyBounds(record.code);
-      if (containsPoint(bounds)) return record;
-    }
-    return null;
-  }, [boundaryMode, cameraState, countyRecords]);
-
   const defaultAreaContext = useMemo(() => {
     if (!cameraState || countyRecords.length === 0) return null;
     const { center, zoom } = cameraState;
@@ -1384,11 +1367,16 @@ export const ReactMapApp = () => {
     }
     return counts;
   }, [availableOrganizations, orgCountyById]);
-  const viewportCountyOrgCount = viewportCountyRecord
-    ? orgCountsByCounty.get(viewportCountyRecord.code) ?? 0
+
+  // Derive viewport county org count from zipScope (viewport-dominance based, not center-point)
+  const zipScopeCountyCode = useMemo(() => {
+    if (!normalizedZipScope) return null;
+    return getCountyCodeByName(normalizedZipScope) ?? null;
+  }, [normalizedZipScope]);
+
+  const viewportCountyOrgCount = zipScopeCountyCode
+    ? orgCountsByCounty.get(zipScopeCountyCode) ?? 0
     : null;
-  const viewportCountyCode = viewportCountyRecord?.code ?? null;
-  const viewportCountyName = viewportCountyRecord?.name ?? null;
 
   const inactiveOrganizations = useMemo(
     () => organizations.filter((org) => org.status && org.status !== "active"),
@@ -2714,8 +2702,8 @@ export const ReactMapApp = () => {
       ? sidebarOrganizations.visibleInViewport
       : sidebarOrganizations.inSelection.length + sidebarOrganizations.all.length;
   const viewportCountyVisibleCount =
-    viewportCountyCode && sidebarOrganizations.visibleCountByCounty
-      ? sidebarOrganizations.visibleCountByCounty.get(viewportCountyCode) ?? 0
+    zipScopeCountyCode && sidebarOrganizations.visibleCountByCounty
+      ? sidebarOrganizations.visibleCountByCounty.get(zipScopeCountyCode) ?? 0
       : 0;
   // Always show viewport count in mobile peek mode, regardless of area selection
   const mobileOrganizationsCount = visibleCount;
@@ -3016,9 +3004,8 @@ export const ReactMapApp = () => {
               countyScopeDisplayName={countyScopeDisplayName}
               getZipParentCounty={getZipParentCounty}
               viewportCountyOrgCount={viewportCountyOrgCount}
-              viewportCountyName={viewportCountyName}
-              viewportCountyCode={viewportCountyCode}
               viewportCountyVisibleCount={viewportCountyVisibleCount}
+              zipScopeCountyCode={zipScopeCountyCode}
               hoveredArea={hoveredArea}
               selectedStatId={selectedStatId}
               secondaryStatId={secondaryStatId}
@@ -3136,9 +3123,8 @@ export const ReactMapApp = () => {
                     countyScopeDisplayName={countyScopeDisplayName}
                     getZipParentCounty={getZipParentCounty}
                     viewportCountyOrgCount={viewportCountyOrgCount}
-                    viewportCountyName={viewportCountyName}
-                    viewportCountyCode={viewportCountyCode}
                     viewportCountyVisibleCount={viewportCountyVisibleCount}
+                    zipScopeCountyCode={zipScopeCountyCode}
                     hoveredArea={hoveredArea}
                     selectedStatId={selectedStatId}
                     secondaryStatId={secondaryStatId}
