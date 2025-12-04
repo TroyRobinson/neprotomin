@@ -18,6 +18,7 @@ import { createChoroplethLegend, type ChoroplethLegendController } from "./compo
 import { createSecondaryChoroplethLegend, type SecondaryChoroplethLegendController } from "./components/secondaryChoroplethLegend";
 import { statsStore } from "../../state/stats";
 import { createOrgLegend, type OrgLegendController } from "./components/orgLegend";
+import { createMapLoadingIndicator } from "./components/mapLoadingIndicator";
 import { getCountyCentroidsMap, getCountyName } from "../../lib/countyCentroids";
 import type { AreaId, AreaKind } from "../../types/areas";
 import { DEFAULT_PARENT_AREA_BY_KIND } from "../../types/areas";
@@ -308,6 +309,10 @@ export const createMapView = ({
     },
   });
   container.appendChild(categoryChips.element);
+
+  // Loading indicator at bottom of map
+  const loadingIndicator = createMapLoadingIndicator();
+  container.appendChild(loadingIndicator.element);
 
   let zipFloatingTitle: ZipFloatingTitleController;
   let zipLabels: ZipLabelsController;
@@ -2278,6 +2283,16 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   });
   map.on("idle", () => {
     ensureSourcesAndLayers();
+    loadingIndicator.setLoading(false);
+  });
+
+  // Track map tile loading state for the loading indicator.
+  // Only show loading for actual tile fetches (basemap), not GeoJSON source updates.
+  map.on("sourcedataloading", (e: maplibregl.MapSourceDataEvent) => {
+    // Only trigger for tile loading events (has a tile property)
+    if (e.tile) {
+      loadingIndicator.setLoading(true);
+    }
   });
 
   unsubscribeStatData = statDataStore.subscribe((byStat) => {
@@ -2988,6 +3003,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       zipLabels?.destroy();
       choroplethLegend?.destroy();
       secondaryChoroplethLegend?.destroy();
+      loadingIndicator?.destroy();
       window.removeEventListener("keydown", handleKeyDown);
       map.remove();
     },
