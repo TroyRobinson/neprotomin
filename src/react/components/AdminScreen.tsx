@@ -633,7 +633,6 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
   });
   const [limit, setLimit] = useState(20);
   const [category, setCategory] = useState<Category | null>(null);
-  const [includeMoe, setIncludeMoe] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -656,7 +655,6 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
     setYear(defaultYear);
     setLimit(20);
     setCategory(null);
-    setIncludeMoe(false);
     setStep(1);
     setIsPreviewLoading(false);
     setPreviewError(null);
@@ -820,7 +818,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
               variable: name,
               year: qYear,
               years: qYears,
-              includeMoe,
+              includeMoe: true,
               status: "pending" as const,
             },
           ];
@@ -838,7 +836,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
         [name]: { ...current, selected: newSelected },
       };
     });
-  }, [group, dataset, year, includeMoe]);
+  }, [group, dataset, year]);
 
   const removeFromQueue = useCallback((itemId: string, variableName: string) => {
     // Remove from queue
@@ -1036,18 +1034,6 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                   />
                 </div>
               </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={includeMoe}
-                  onChange={(e) => setIncludeMoe(e.target.checked)}
-                  className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-800"
-                />
-                Include margin of error (MOE)
-              </label>
             </div>
 
             <div className="mt-2 flex items-center gap-3">
