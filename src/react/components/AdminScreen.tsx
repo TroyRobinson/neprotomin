@@ -446,6 +446,7 @@ interface NewStatModalProps {
 }
 
 const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
+  const modalRef = useRef<HTMLDivElement>(null);
   const [dataset, setDataset] = useState("acs/acs5");
   const [group, setGroup] = useState("");
   const [year, setYear] = useState(() => {
@@ -487,6 +488,39 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
     setIsRunning(false);
     setCurrentIndex(null);
   }, [isOpen]);
+
+  // Handle click outside to close modal
+  useEffect(() => {
+    if (!isOpen || isRunning) return;
+    const handleClickOutside = (e: globalThis.MouseEvent) => {
+      if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    // Delay to avoid immediate trigger from the click that opened the modal
+    const timeout = setTimeout(() => {
+      document.addEventListener("mousedown", handleClickOutside);
+    }, 0);
+    return () => {
+      clearTimeout(timeout);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen, isRunning, onClose]);
+
+  // Handle ESC key to close modal
+  useEffect(() => {
+    if (!isOpen || isRunning) return;
+    const handleKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, isRunning, onClose]);
 
   const handlePreview = useCallback(async () => {
     const trimmedGroup = group.trim();
@@ -694,7 +728,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/50">
-      <div className="relative w-full max-w-4xl rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+      <div ref={modalRef} className="relative w-full max-w-4xl rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -709,9 +743,11 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
             type="button"
             onClick={onClose}
             disabled={isRunning}
-            className="rounded-full px-3 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800"
+            className="rounded-full p-1 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800"
           >
-            Close
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
 
@@ -770,17 +806,12 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                 <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
                   Category
                 </label>
-                <select
+                <CustomSelect
                   value={category}
-                  onChange={(e) => setCategory(e.target.value as Category)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                >
-                  {statCategoryOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setCategory(val as Category)}
+                  options={statCategoryOptions}
+                  className="w-full"
+                />
               </div>
               <label className="mt-4 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
                 <input

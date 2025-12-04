@@ -141,7 +141,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         onKeyDown={handleKeyDown}
         disabled={disabled}
         className={`
-          h-6 w-auto rounded border border-slate-300 bg-white pl-2 pr-6 text-xs text-slate-700 shadow-sm transition 
+          h-6 w-full min-w-32 rounded border border-slate-300 bg-white pl-2 pr-8 text-xs text-slate-700 shadow-sm transition 
           focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 
           dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50
           ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
@@ -157,7 +157,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       </button>
 
       {/* Custom dropdown arrow */}
-      <div className="absolute right-1 top-1/2 h-3 w-3 -translate-y-1/2 pointer-events-none text-slate-400 dark:text-slate-500">
+      <div className="absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 pointer-events-none text-slate-400 dark:text-slate-500">
         <svg 
           viewBox="0 0 20 20" 
           fill="currentColor" 
@@ -176,7 +176,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       {isOpen && (
         <div 
           ref={dropdownRef}
-          className={`absolute z-50 w-full min-w-24 rounded-md border border-slate-300 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-950 ${
+          className={`absolute z-50 w-full min-w-40 rounded-md border border-slate-300 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-950 ${
             dropdownPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'
           }`}
         >
