@@ -2065,6 +2065,32 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       map.on("drag", handleMapDrag);
       map.on("dragend", handleMapDragEnd);
       map.on("moveend", handleMapMoveEnd);
+      // Dwell time for hover - only show overlay after mouse has been in area briefly
+      // This prevents trailing overlays when moving quickly across areas
+      const HOVER_DWELL_MS = 80; // ~4-5 frames - filters out fast traversal
+      let zipHoverDwellTimer: ReturnType<typeof setTimeout> | null = null;
+      let zipHoverCandidate: string | null = null;
+      
+      const commitZipHover = (zip: string) => {
+        hoveredZipFromMap = zip;
+        zipSelection.updateHover();
+        if (mapInMotion) {
+          pendingZipHover = zip;
+          pendingHoverArea = { kind: "ZIP", id: zip };
+        } else {
+          onZipHoverChange?.(zip);
+          onAreaHoverChange?.({ kind: "ZIP", id: zip });
+        }
+      };
+      
+      const clearZipHoverDwell = () => {
+        if (zipHoverDwellTimer !== null) {
+          clearTimeout(zipHoverDwellTimer);
+          zipHoverDwellTimer = null;
+        }
+        zipHoverCandidate = null;
+      };
+      
       const onBoundaryMouseEnter = () => { 
         if (boundaryMode === "zips" && !(isMobile && orgPinsVisible)) {
           map.getCanvas().style.cursor = "pointer";
@@ -2073,6 +2099,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       const onBoundaryMouseLeave = () => {
         map.getCanvas().style.cursor = "pointer";
         if (boundaryMode === "zips") {
+          clearZipHoverDwell();
           hoveredZipFromMap = null;
           zipSelection.updateHover();
           // Defer React callbacks if map is in motion
@@ -2091,17 +2118,22 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         if (isMobile && orgPinsVisible) return;
         const features = map.queryRenderedFeatures(e.point, { layers: zipLayerOrder });
         const zip = features[0]?.properties?.[zipFeatureProperty] as string | undefined;
-        if (!zip || zip === hoveredZipFromMap) return;
-        hoveredZipFromMap = zip;
-        zipSelection.updateHover(); // Always update map visuals
-        // Defer React callbacks if map is in motion
-        if (mapInMotion) {
-          pendingZipHover = zip;
-          pendingHoverArea = { kind: "ZIP", id: zip };
-        } else {
-          onZipHoverChange?.(zip);
-          onAreaHoverChange?.({ kind: "ZIP", id: zip });
-        }
+        if (!zip) return;
+        
+        // If still in the same area (already committed or candidate), do nothing
+        if (zip === hoveredZipFromMap) return;
+        if (zip === zipHoverCandidate) return;
+        
+        // New area - cancel any pending dwell and start fresh
+        clearZipHoverDwell();
+        zipHoverCandidate = zip;
+        zipHoverDwellTimer = setTimeout(() => {
+          zipHoverDwellTimer = null;
+          if (zipHoverCandidate === zip) {
+            commitZipHover(zip);
+            zipHoverCandidate = null;
+          }
+        }, HOVER_DWELL_MS);
       };
       map.on("click", handleBoundaryClick);
       map.on("dblclick", handleBoundaryDoubleClick);
@@ -2112,6 +2144,31 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       map.on("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
       map.on("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
 
+      // Dwell time for county hover (same pattern as ZIP)
+      let countyHoverDwellTimer: ReturnType<typeof setTimeout> | null = null;
+      let countyHoverCandidate: string | null = null;
+      
+      const commitCountyHover = (county: string) => {
+        hoveredCountyFromMap = county;
+        countySelection.updateHover();
+        countyLabels?.setHoveredZip(county);
+        if (mapInMotion) {
+          pendingCountyHover = county;
+          pendingHoverArea = { kind: "COUNTY", id: county };
+        } else {
+          onCountyHoverChange?.(county);
+          onAreaHoverChange?.({ kind: "COUNTY", id: county });
+        }
+      };
+      
+      const clearCountyHoverDwell = () => {
+        if (countyHoverDwellTimer !== null) {
+          clearTimeout(countyHoverDwellTimer);
+          countyHoverDwellTimer = null;
+        }
+        countyHoverCandidate = null;
+      };
+      
       const onCountyMouseEnter = () => { 
         if (boundaryMode === "counties" && !(isMobile && orgPinsVisible)) {
           map.getCanvas().style.cursor = "pointer";
@@ -2119,6 +2176,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       };
       const onCountyMouseLeave = () => {
         map.getCanvas().style.cursor = "pointer";
+        clearCountyHoverDwell();
         hoveredCountyFromMap = null;
         countySelection.updateHover();
         countyLabels?.setHoveredZip(null);
@@ -2137,18 +2195,22 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         if (isMobile && orgPinsVisible) return;
         const features = map.queryRenderedFeatures(e.point, { layers: countyLayerOrder });
         const county = features[0]?.properties?.[countyFeatureProperty] as string | undefined;
-        if (!county || county === hoveredCountyFromMap) return;
-        hoveredCountyFromMap = county;
-        countySelection.updateHover(); // Always update map visuals
-        countyLabels?.setHoveredZip(county);
-        // Defer React callbacks if map is in motion
-        if (mapInMotion) {
-          pendingCountyHover = county;
-          pendingHoverArea = { kind: "COUNTY", id: county };
-        } else {
-          onCountyHoverChange?.(county);
-          onAreaHoverChange?.({ kind: "COUNTY", id: county });
-        }
+        if (!county) return;
+        
+        // If still in the same area (already committed or candidate), do nothing
+        if (county === hoveredCountyFromMap) return;
+        if (county === countyHoverCandidate) return;
+        
+        // New area - cancel any pending dwell and start fresh
+        clearCountyHoverDwell();
+        countyHoverCandidate = county;
+        countyHoverDwellTimer = setTimeout(() => {
+          countyHoverDwellTimer = null;
+          if (countyHoverCandidate === county) {
+            commitCountyHover(county);
+            countyHoverCandidate = null;
+          }
+        }, HOVER_DWELL_MS);
       };
       map.on("mouseenter", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseEnter);
       map.on("mouseenter", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseEnter);
@@ -2160,6 +2222,9 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       map.on("mousemove", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseMove);
       map.on("mousemove", COUNTY_STATDATA_FILL_LAYER_ID, onCountyMouseMove);
       return () => {
+        // Clean up dwell timers
+        clearZipHoverDwell();
+        clearCountyHoverDwell();
         map.off("click", handleBoundaryClick);
         map.off("dblclick", handleBoundaryDoubleClick);
         map.off("mouseenter", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseEnter);
