@@ -19,6 +19,10 @@ To pull schema changes:
 
 - Run `npm run admin:seed:areas` after cloning or when ZCTA geometry changes to (re)populate the `areas` table with ZIP + COUNTY metadata used by Census imports. This script uses the Instant admin SDK and expects `VITE_INSTANT_APP_ID` and `INSTANT_APP_ADMIN_TOKEN` to be set.
 
+## Census imports
+
+- Census imports always fetch margin-of-error (MOE) values alongside estimates; the admin UI no longer exposes a separate "include MOE" toggle.
+
 ## Geometry preprocessing
 
 - Install dev dependencies (`npm install`) to ensure `mapshaper` is available.

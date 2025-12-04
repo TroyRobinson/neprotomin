@@ -466,6 +466,7 @@ const GroupSearchInput = ({ value, onChange, dataset, year, onPreview, inputRef 
   const [searchError, setSearchError] = useState<string | null>(null);
   const [results, setResults] = useState<CensusGroupResult[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const hasValue = value.trim().length > 0;
@@ -512,28 +513,43 @@ const GroupSearchInput = ({ value, onChange, dataset, year, onPreview, inputRef 
         }))
       );
       setIsDropdownOpen(true);
+      setHighlightedIndex(-1);
     } catch (err) {
       setSearchError("Network error during search.");
       setResults([]);
       setIsDropdownOpen(true);
+      setHighlightedIndex(-1);
     } finally {
       setIsSearching(false);
     }
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
+    if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (isGroupId && onPreview) {
+      if (isDropdownOpen && results.length > 0) {
+        setHighlightedIndex((prev) => (prev < results.length - 1 ? prev + 1 : 0));
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (isDropdownOpen && results.length > 0) {
+        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : results.length - 1));
+      }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      // If dropdown is open and an item is highlighted, select it
+      if (isDropdownOpen && highlightedIndex >= 0 && results[highlightedIndex]) {
+        handleSelectGroup(results[highlightedIndex].name);
+      } else if (isGroupId && onPreview) {
         // Group ID entered, trigger preview
         onPreview();
       } else if (hasValue && !isGroupId) {
         // Search term entered, trigger search
         handleSearch();
       }
-    }
-    if (e.key === "Escape") {
+    } else if (e.key === "Escape") {
       setIsDropdownOpen(false);
+      setHighlightedIndex(-1);
     }
   };
 
@@ -541,6 +557,7 @@ const GroupSearchInput = ({ value, onChange, dataset, year, onPreview, inputRef 
     onChange(groupName);
     setIsDropdownOpen(false);
     setResults([]);
+    setHighlightedIndex(-1);
     // Auto-trigger search after selecting a group (pass groupName directly since state update is async)
     if (onPreview) {
       onPreview(groupName);
@@ -595,12 +612,16 @@ const GroupSearchInput = ({ value, onChange, dataset, year, onPreview, inputRef 
               No matching groups found.
             </div>
           )}
-          {results.map((group) => (
+          {results.map((group, index) => (
             <button
               key={group.name}
               type="button"
               onClick={() => handleSelectGroup(group.name)}
-              className="flex w-full flex-col gap-0.5 px-3 py-2 text-left transition hover:bg-slate-50 dark:hover:bg-slate-700"
+              className={`flex w-full flex-col gap-0.5 px-3 py-2 text-left transition ${
+                index === highlightedIndex
+                  ? "bg-brand-50 dark:bg-brand-900/30"
+                  : "hover:bg-slate-50 dark:hover:bg-slate-700"
+              }`}
             >
               <span className="text-xs font-medium text-slate-800 dark:text-slate-100">
                 {group.name}
@@ -984,34 +1005,37 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
 
         <div className="mt-4 flex flex-col gap-4 md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)]">
           <div className="order-1 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[0.6fr_1fr]">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Dataset
-                </label>
-                <input
-                  type="text"
-                  value={dataset}
-                  onChange={(e) => setDataset(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Group Search
-                </label>
-                <GroupSearchInput
-                  value={group}
-                  onChange={setGroup}
-                  dataset={dataset}
-                  year={year}
-                  onPreview={handlePreview}
-                  inputRef={groupInputRef}
-                />
-              </div>
-              {/* Year and Limit on same row */}
+            <div className="space-y-3">
+              {/* Dataset and Group Search on same row */}
               <div className="flex items-end gap-3">
-                <div className="space-y-1">
+                <div className="w-1/4 shrink-0 space-y-1">
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    Dataset
+                  </label>
+                  <input
+                    type="text"
+                    value={dataset}
+                    onChange={(e) => setDataset(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                  />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    Group Search
+                  </label>
+                  <GroupSearchInput
+                    value={group}
+                    onChange={setGroup}
+                    dataset={dataset}
+                    year={year}
+                    onPreview={handlePreview}
+                    inputRef={groupInputRef}
+                  />
+                </div>
+              </div>
+              {/* Year, Limit, Search button row */}
+              <div className="flex flex-wrap items-center gap-3 md:flex-nowrap">
+                <div className="flex items-center gap-1.5">
                   <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
                     Year
                   </label>
@@ -1022,7 +1046,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                     className="w-16 appearance-none rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                   />
                 </div>
-                <div className="space-y-1">
+                <div className="flex items-center gap-1.5">
                   <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
                     Limit
                   </label>
@@ -1033,23 +1057,15 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                     className="w-14 appearance-none rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                   />
                 </div>
+                <button
+                  type="button"
+                  onClick={() => handlePreview()}
+                  disabled={isPreviewLoading}
+                  className="ml-auto inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 disabled:opacity-60"
+                >
+                  {isPreviewLoading ? "Searching…" : "Search"}
+                </button>
               </div>
-            </div>
-
-            <div className="mt-2 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => handlePreview()}
-                disabled={isPreviewLoading}
-                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 disabled:opacity-60"
-              >
-                {isPreviewLoading ? "Searching…" : "Search"}
-              </button>
-              {previewTotal > 0 && lastSubmittedGroup && (
-                <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {variables.length} of {previewTotal} in {lastSubmittedGroup}
-                </span>
-              )}
             </div>
             {previewError && (
               <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">{previewError}</p>
@@ -1168,27 +1184,34 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
 
           {/* Preview section - order-2 on mobile (after Search), order-3 on desktop (below grid) */}
           {step === 2 && variables.length > 0 && (
-            <div className="order-2 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-[11px] md:order-3 md:col-span-2 dark:border-slate-700 dark:bg-slate-900">
-              {/* Desktop header - hidden on mobile */}
-            <div className="mb-2 hidden grid-cols-[minmax(0,1fr)_minmax(0,0.5fr)_minmax(0,0.6fr)] gap-2 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500 sm:grid dark:text-slate-400">
-              <span>Variable</span>
-              <span>Year Range</span>
-              <span>Coverage</span>
-            </div>
+            <div className="order-2 md:order-3 md:col-span-2">
+              {/* Meta info above preview */}
+              {previewTotal > 0 && lastSubmittedGroup && (
+                <p className="mb-1.5 px-1 text-[10px] text-slate-400 dark:text-slate-500">
+                  {variables.length} of {previewTotal} in {lastSubmittedGroup} (+ MOE)
+                </p>
+              )}
+              <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-[11px] dark:border-slate-700 dark:bg-slate-900">
+                {/* Desktop header - hidden on mobile */}
+                <div className="mb-2 hidden grid-cols-3 gap-4 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500 sm:grid dark:text-slate-400">
+                  <span className="pl-6">Variable</span>
+                  <span>Year Range</span>
+                  <span>Coverage</span>
+                </div>
             <div className="space-y-1">
               {variables.map((v) => {
                 const sel = selection[v.name] ?? { selected: false, yearEnd: year, yearStart: year - 2 };
                 return (
                   <label
                     key={v.name}
-                    className="grid cursor-pointer grid-cols-[1fr_auto] items-start gap-2 rounded-lg px-1.5 py-1.5 hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.5fr)_minmax(0,0.6fr)] dark:hover:bg-slate-800/60"
+                    className="grid cursor-pointer grid-cols-[1fr_auto] items-center gap-4 rounded-lg border-t border-slate-100 px-1.5 py-1.5 first:border-t-0 hover:bg-slate-50 sm:grid-cols-3 dark:border-slate-800/70 dark:hover:bg-slate-800/60"
                   >
-                    <div className="flex items-start gap-2">
+                    <div className="flex items-center gap-2">
                       <input
                         type="checkbox"
                         checked={sel.selected}
                         onChange={() => toggleVariableSelected(v.name)}
-                        className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-500 dark:bg-slate-900"
+                        className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-500 dark:bg-slate-900"
                       />
                       <div className="flex min-w-0 flex-col">
                         <span className="font-medium text-slate-800 dark:text-slate-100">
@@ -1210,7 +1233,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                           updateSelectionField(v.name, "yearStart", val ? Number(val) : null);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-11 appearance-none rounded border border-slate-300 bg-white px-1 py-0.5 text-center text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 sm:w-14 sm:text-left dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+                        className="w-14 appearance-none rounded border border-slate-300 bg-white px-1.5 py-0.5 text-center text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 sm:text-left dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                       />
                       <span className="hidden sm:inline">to</span>
                       <input
@@ -1222,7 +1245,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                           updateSelectionField(v.name, "yearEnd", val ? Number(val) : null);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-11 appearance-none rounded border border-slate-300 bg-white px-1 py-0.5 text-center text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 sm:w-14 sm:text-left dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+                        className="w-14 appearance-none rounded border border-slate-300 bg-white px-1.5 py-0.5 text-center text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 sm:text-left dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                       />
                     </div>
                     <div className="hidden text-[10px] text-slate-500 sm:block dark:text-slate-400">
@@ -1231,6 +1254,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                   </label>
                 );
               })}
+                </div>
               </div>
             </div>
           )}
