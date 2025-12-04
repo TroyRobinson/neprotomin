@@ -102,6 +102,17 @@
 }
 
 @layer components {
+  /* Hide number input spinners */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
   .divider {
     @apply h-4 w-px bg-slate-200 dark:bg-slate-700;
   }

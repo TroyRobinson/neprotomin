@@ -456,17 +456,20 @@ interface GroupSearchInputProps {
   onChange: (value: string) => void;
   dataset: string;
   year: number;
+  onPreview?: (groupOverride?: string) => void; // Called when Enter pressed with a group ID
+  inputRef?: React.RefObject<HTMLInputElement | null>; // For external focus control
 }
 
 // Input with inline search capability for Census groups
-const GroupSearchInput = ({ value, onChange, dataset, year }: GroupSearchInputProps) => {
+const GroupSearchInput = ({ value, onChange, dataset, year, onPreview, inputRef }: GroupSearchInputProps) => {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [results, setResults] = useState<CensusGroupResult[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const showSearchButton = value.trim().length > 0 && !looksLikeGroupId(value);
+  const hasValue = value.trim().length > 0;
+  const isGroupId = looksLikeGroupId(value);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -519,9 +522,15 @@ const GroupSearchInput = ({ value, onChange, dataset, year }: GroupSearchInputPr
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && showSearchButton) {
+    if (e.key === "Enter") {
       e.preventDefault();
-      handleSearch();
+      if (isGroupId && onPreview) {
+        // Group ID entered, trigger preview
+        onPreview();
+      } else if (hasValue && !isGroupId) {
+        // Search term entered, trigger search
+        handleSearch();
+      }
     }
     if (e.key === "Escape") {
       setIsDropdownOpen(false);
@@ -532,39 +541,47 @@ const GroupSearchInput = ({ value, onChange, dataset, year }: GroupSearchInputPr
     onChange(groupName);
     setIsDropdownOpen(false);
     setResults([]);
+    // Auto-trigger search after selecting a group (pass groupName directly since state update is async)
+    if (onPreview) {
+      onPreview(groupName);
+    }
   };
 
   return (
     <div ref={containerRef} className="relative">
       <div className="relative flex items-center">
+        {/* Search icon on the left, always visible */}
+        <button
+          type="button"
+          onClick={hasValue && !isGroupId ? handleSearch : undefined}
+          disabled={isSearching || !hasValue || isGroupId}
+          className={`absolute left-1.5 flex h-5 w-5 items-center justify-center rounded transition ${
+            hasValue
+              ? "text-brand-500 dark:text-brand-400"
+              : "text-slate-400 dark:text-slate-500"
+          } ${hasValue && !isGroupId ? "cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700" : "cursor-default"}`}
+          title={hasValue && !isGroupId ? "Search Census groups" : "Enter a search term or group ID"}
+        >
+          {isSearching ? (
+            <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : (
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          )}
+        </button>
         <input
+          ref={inputRef}
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="e.g., B22003 or 'food stamps'"
-          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 pr-8 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+          placeholder="e.g., food, health, or B22003"
+          className="w-full rounded-lg border border-slate-300 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
         />
-        {showSearchButton && (
-          <button
-            type="button"
-            onClick={handleSearch}
-            disabled={isSearching}
-            className="absolute right-1.5 flex h-5 w-5 items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 dark:hover:bg-slate-700 dark:hover:text-slate-300"
-            title="Search Census groups"
-          >
-            {isSearching ? (
-              <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-            ) : (
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            )}
-          </button>
-        )}
       </div>
 
       {/* Dropdown */}
@@ -607,13 +624,14 @@ interface NewStatModalProps {
 
 const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
   const modalRef = useRef<HTMLDivElement>(null);
+  const groupInputRef = useRef<HTMLInputElement>(null);
   const [dataset, setDataset] = useState("acs/acs5");
   const [group, setGroup] = useState("");
   const [year, setYear] = useState(() => {
     const now = new Date();
     return now.getUTCFullYear() - 2;
   });
-  const [limit, setLimit] = useState(10);
+  const [limit, setLimit] = useState(20);
   const [category, setCategory] = useState<Category | null>(null);
   const [includeMoe, setIncludeMoe] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
@@ -627,6 +645,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
   const [queueItems, setQueueItems] = useState<ImportQueueItem[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
+  const [lastSubmittedGroup, setLastSubmittedGroup] = useState<string>(""); // Track last previewed group
 
   useEffect(() => {
     if (!isOpen) return;
@@ -635,7 +654,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
     setDataset("acs/acs5");
     setGroup("");
     setYear(defaultYear);
-    setLimit(10);
+    setLimit(20);
     setCategory(null);
     setIncludeMoe(false);
     setStep(1);
@@ -647,6 +666,9 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
     setQueueItems([]);
     setIsRunning(false);
     setCurrentIndex(null);
+    setLastSubmittedGroup("");
+    // Focus group search input when modal opens
+    setTimeout(() => groupInputRef.current?.focus(), 50);
   }, [isOpen]);
 
   // Handle click outside to close modal
@@ -682,8 +704,8 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
     };
   }, [isOpen, isRunning, onClose]);
 
-  const handlePreview = useCallback(async () => {
-    const trimmedGroup = group.trim();
+  const handlePreview = useCallback(async (groupOverride?: string) => {
+    const trimmedGroup = (groupOverride ?? group).trim();
     if (!trimmedGroup) {
       setPreviewError("Census group is required.");
       return;
@@ -728,6 +750,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
       }));
       setVariables(parsed);
       setPreviewTotal(total);
+      setLastSubmittedGroup(trimmedGroup); // Track what was previewed
       const defaults: Record<string, { selected: boolean; yearEnd: number; yearStart: number | null }> = {};
       for (const v of parsed) {
         defaults[v.name] = { selected: false, yearEnd: year, yearStart: year - 2 };
@@ -937,8 +960,8 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
     totalItems === 0 ? 0 : Math.round((completedCount / totalItems) * 100);
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/50">
-      <div ref={modalRef} className="relative w-full max-w-4xl rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+    <div className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4">
+      <div ref={modalRef} className="relative my-auto w-full max-w-4xl rounded-2xl bg-white p-4 shadow-xl sm:p-6 dark:bg-slate-900">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -961,9 +984,9 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
           </button>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)]">
-          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="mt-4 flex flex-col gap-4 md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)]">
+          <div className="order-1 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[0.6fr_1fr]">
               <div className="space-y-1">
                 <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
                   Dataset
@@ -972,41 +995,46 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                   type="text"
                   value={dataset}
                   onChange={(e) => setDataset(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Group
+                  Group Search
                 </label>
                 <GroupSearchInput
                   value={group}
                   onChange={setGroup}
                   dataset={dataset}
                   year={year}
+                  onPreview={handlePreview}
+                  inputRef={groupInputRef}
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Year
-                </label>
-                <input
-                  type="number"
-                  value={year}
-                  onChange={(e) => setYear(Number(e.target.value) || year)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Preview limit
-                </label>
-                <input
-                  type="number"
-                  value={limit}
-                  onChange={(e) => setLimit(Math.max(1, Math.min(25, Number(e.target.value) || 10)))}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                />
+              {/* Year and Limit on same row */}
+              <div className="flex items-end gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    Year
+                  </label>
+                  <input
+                    type="number"
+                    value={year}
+                    onChange={(e) => setYear(Number(e.target.value) || year)}
+                    className="w-16 appearance-none rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    Limit
+                  </label>
+                  <input
+                    type="number"
+                    value={limit}
+                    onChange={(e) => setLimit(Math.max(1, Math.min(50, Number(e.target.value) || 20)))}
+                    className="w-14 appearance-none rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1022,18 +1050,18 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
               </label>
             </div>
 
-            <div className="mt-2 flex items-center justify-between gap-3">
+            <div className="mt-2 flex items-center gap-3">
               <button
                 type="button"
-                onClick={handlePreview}
+                onClick={() => handlePreview()}
                 disabled={isPreviewLoading}
                 className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 disabled:opacity-60"
               >
-                {isPreviewLoading ? "Loading variables…" : "Preview variables"}
+                {isPreviewLoading ? "Searching…" : "Search"}
               </button>
-              {previewTotal > 0 && (
+              {previewTotal > 0 && lastSubmittedGroup && (
                 <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Showing up to {variables.length} of {previewTotal} variables in group {group}
+                  {variables.length} of {previewTotal} in {lastSubmittedGroup}
                 </span>
               )}
             </div>
@@ -1042,20 +1070,10 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
             )}
           </div>
 
-          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                Queue
-              </h3>
-              <button
-                type="button"
-                onClick={handleRunQueue}
-                disabled={isRunning || queueItems.length === 0}
-                className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-60"
-              >
-                {isRunning ? "Running imports…" : "Start import"}
-              </button>
-            </div>
+          <div className="order-3 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:order-2 dark:border-slate-700 dark:bg-slate-900/40">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+              Queue
+            </h3>
 
             {isRunning && (
               <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
@@ -1135,36 +1153,41 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
               )}
             </div>
 
-            {/* Apply Category section */}
-            <div className="mt-3 flex items-center gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
-              <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                Apply Category
-              </label>
-              <CustomSelect
-                value={category ?? ""}
-                onChange={(val) => setCategory(val ? (val as Category) : null)}
-                options={[
-                  { value: "", label: "None" },
-                  ...statCategoryOptions,
-                ]}
-                className="min-w-36"
-              />
-              {category && (
-                <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                  Will be applied to all imports
-                </span>
-              )}
+            {/* Apply Category + Start Import row */}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3 dark:border-slate-700">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Apply Category
+                </label>
+                <CustomSelect
+                  value={category ?? ""}
+                  onChange={(val) => setCategory(val ? (val as Category) : null)}
+                  options={[
+                    { value: "", label: "None" },
+                    ...statCategoryOptions,
+                  ]}
+                  className="min-w-36"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleRunQueue}
+                disabled={isRunning || queueItems.length === 0}
+                className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-60"
+              >
+                {isRunning ? "Running imports…" : "Start import"}
+              </button>
             </div>
           </div>
-        </div>
 
-        {step === 2 && variables.length > 0 && (
-          <div className="mt-4 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-[11px] dark:border-slate-700 dark:bg-slate-900">
-            <div className="mb-2 grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,0.9fr)] gap-2 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          {/* Preview section - order-2 on mobile (after Search), order-3 on desktop (below grid) */}
+          {step === 2 && variables.length > 0 && (
+            <div className="order-2 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-[11px] md:order-3 md:col-span-2 dark:border-slate-700 dark:bg-slate-900">
+              {/* Desktop header - hidden on mobile */}
+            <div className="mb-2 hidden grid-cols-[minmax(0,1fr)_minmax(0,0.5fr)_minmax(0,0.6fr)] gap-2 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500 sm:grid dark:text-slate-400">
               <span>Variable</span>
-              <span>Label</span>
               <span>Year Range</span>
-              <span>Sample coverage</span>
+              <span>Coverage</span>
             </div>
             <div className="space-y-1">
               {variables.map((v) => {
@@ -1172,16 +1195,16 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                 return (
                   <label
                     key={v.name}
-                    className="grid cursor-pointer grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,0.9fr)] items-center gap-2 rounded-lg px-1.5 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                    className="grid cursor-pointer grid-cols-[1fr_auto] items-start gap-2 rounded-lg px-1.5 py-1.5 hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.5fr)_minmax(0,0.6fr)] dark:hover:bg-slate-800/60"
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-start gap-2">
                       <input
                         type="checkbox"
                         checked={sel.selected}
                         onChange={() => toggleVariableSelected(v.name)}
-                        className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-500 dark:bg-slate-900"
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-500 dark:bg-slate-900"
                       />
-                      <div className="flex flex-col">
+                      <div className="flex min-w-0 flex-col">
                         <span className="font-medium text-slate-800 dark:text-slate-100">
                           {v.name}
                         </span>
@@ -1190,10 +1213,8 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                         </span>
                       </div>
                     </div>
-                    <div className="truncate text-[10px] text-slate-600 dark:text-slate-300">
-                      {v.label}
-                    </div>
-                    <div className="flex items-center gap-1 text-[10px] text-slate-600 dark:text-slate-300">
+                    {/* Year range - stacks vertically on mobile */}
+                    <div className="flex flex-col gap-0.5 text-[10px] text-slate-600 sm:flex-row sm:items-center sm:gap-1 dark:text-slate-300">
                       <input
                         type="number"
                         value={sel.yearStart ?? ""}
@@ -1203,9 +1224,9 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                           updateSelectionField(v.name, "yearStart", val ? Number(val) : null);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-14 rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+                        className="w-11 appearance-none rounded border border-slate-300 bg-white px-1 py-0.5 text-center text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 sm:w-14 sm:text-left dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                       />
-                      <span>to</span>
+                      <span className="hidden sm:inline">to</span>
                       <input
                         type="number"
                         value={sel.yearEnd ?? ""}
@@ -1215,18 +1236,19 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                           updateSelectionField(v.name, "yearEnd", val ? Number(val) : null);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-14 rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+                        className="w-11 appearance-none rounded border border-slate-300 bg-white px-1 py-0.5 text-center text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 sm:w-14 sm:text-left dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                       />
                     </div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                    <div className="hidden text-[10px] text-slate-500 sm:block dark:text-slate-400">
                       {v.zipCount} ZIPs · {v.countyCount} counties
                     </div>
                   </label>
                 );
               })}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
