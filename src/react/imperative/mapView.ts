@@ -310,8 +310,8 @@ export const createMapView = ({
   });
   container.appendChild(categoryChips.element);
 
-  // Loading indicator at bottom of map
-  const loadingIndicator = createMapLoadingIndicator();
+  // Loading indicator: bottom-center pill on desktop, top-right spinner on mobile
+  const loadingIndicator = createMapLoadingIndicator({ isMobile });
   container.appendChild(loadingIndicator.element);
 
   let zipFloatingTitle: ZipFloatingTitleController;
@@ -519,6 +519,12 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     emitScopeChange();
   };
 
+  // Oklahoma bounding box with padding to keep map constrained to the state
+  const OKLAHOMA_MAX_BOUNDS: [[number, number], [number, number]] = [
+    [-104.5, 32.8], // SW: west of panhandle, south of Red River
+    [-93.5, 37.8],  // NE: east of state line, north of Kansas border
+  ];
+
   const map = new maplibregl.Map({
     container: mapNode,
     style: getMapStyle(currentTheme),
@@ -527,6 +533,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     attributionControl: false,
     fadeDuration: 0,
     boxZoom: false,
+    maxBounds: OKLAHOMA_MAX_BOUNDS,
   });
 
   map.dragRotate.disable();
