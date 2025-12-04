@@ -1860,9 +1860,35 @@ export const ReactMapApp = () => {
     }
   };
 
-  const handleAreaHoverChange = (area: AreaId | null) => {
-    setHoveredAreaState(area);
-  };
+  // Throttle React hover state updates to reduce re-renders
+  const lastHoverUpdateRef = useRef(0);
+  const pendingHoverRef = useRef<AreaId | null>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const HOVER_THROTTLE_MS = 32; // ~2 frames, reduced from 50ms for snappier feel
+
+  const handleAreaHoverChange = useCallback((area: AreaId | null) => {
+    const now = performance.now();
+    pendingHoverRef.current = area;
+    
+    // Clear any pending timeout
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    
+    // If enough time has passed, update immediately
+    if (now - lastHoverUpdateRef.current >= HOVER_THROTTLE_MS) {
+      lastHoverUpdateRef.current = now;
+      setHoveredAreaState(area);
+    } else {
+      // Schedule update for later
+      hoverTimeoutRef.current = setTimeout(() => {
+        hoverTimeoutRef.current = null;
+        lastHoverUpdateRef.current = performance.now();
+        setHoveredAreaState(pendingHoverRef.current);
+      }, HOVER_THROTTLE_MS);
+    }
+  }, []);
 
   const handleBoundaryControlModeChange = (mode: "auto" | "manual") => {
     setBoundaryControlMode(mode);

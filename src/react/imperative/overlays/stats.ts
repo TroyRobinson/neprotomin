@@ -120,6 +120,65 @@ export const updateSecondaryChoroplethLegend = (
   legend.setVisible(true);
 };
 
+// Lightweight hover-only update for secondary stat overlay (avoids rebuilding everything)
+export const updateSecondaryStatHoverOnly = (
+  map: maplibregl.Map,
+  ids: Pick<StatOverlayIds, "SECONDARY_STAT_LAYER_ID" | "SECONDARY_STAT_HOVER_LAYER_ID" | "COUNTY_SECONDARY_LAYER_ID" | "COUNTY_SECONDARY_HOVER_LAYER_ID">,
+  boundaryMode: "zips" | string,
+  secondaryStatId: string | null,
+  statDataByStatId: Map<string, BoundaryEntry>,
+  primaryZipScope: Set<string>,
+  primaryCountyScope: Set<string>,
+  hoveredZip: string | null,
+  hoveredCounty: string | null,
+) => {
+  if (!secondaryStatId) return;
+  const entry = statDataByStatId.get(secondaryStatId);
+  if (!entry) return;
+
+  const { SECONDARY_STAT_HOVER_LAYER_ID, COUNTY_SECONDARY_HOVER_LAYER_ID } = ids;
+
+  // ZIP hover layer
+  if (boundaryMode === "zips" && map.getLayer(SECONDARY_STAT_HOVER_LAYER_ID)) {
+    const zipEntry = entry.ZIP;
+    if (hoveredZip && primaryZipScope.has(hoveredZip) && zipEntry) {
+      const { data, min, max } = zipEntry;
+      const v = data?.[hoveredZip];
+      const classes = TEAL_COLORS.length;
+      let idx = 0;
+      if (typeof v === "number" && Number.isFinite(v)) {
+        if (max - min <= 0) idx = Math.floor((classes - 1) / 2);
+        else idx = Math.max(0, Math.min(classes - 1, Math.floor(((v - min) / (max - min)) * (classes - 1))));
+      }
+      map.setFilter(SECONDARY_STAT_HOVER_LAYER_ID, ["==", ["get", "zip"], hoveredZip] as any);
+      map.setPaintProperty(SECONDARY_STAT_HOVER_LAYER_ID, "circle-color", TEAL_COLORS[idx]);
+      map.setPaintProperty(SECONDARY_STAT_HOVER_LAYER_ID, "circle-opacity", 1);
+    } else {
+      map.setPaintProperty(SECONDARY_STAT_HOVER_LAYER_ID, "circle-opacity", 0);
+    }
+  }
+
+  // County hover layer
+  if (boundaryMode === "counties" && map.getLayer(COUNTY_SECONDARY_HOVER_LAYER_ID)) {
+    const countyEntry = entry.COUNTY;
+    if (hoveredCounty && primaryCountyScope.has(hoveredCounty) && countyEntry) {
+      const { data, min, max } = countyEntry;
+      const v = data?.[hoveredCounty];
+      const classes = TEAL_COLORS.length;
+      let idx = 0;
+      if (typeof v === "number" && Number.isFinite(v)) {
+        if (max - min <= 0) idx = Math.floor((classes - 1) / 2);
+        else idx = Math.max(0, Math.min(classes - 1, Math.floor(((v - min) / (max - min)) * (classes - 1))));
+      }
+      map.setFilter(COUNTY_SECONDARY_HOVER_LAYER_ID, ["==", ["get", "county"], hoveredCounty] as any);
+      map.setPaintProperty(COUNTY_SECONDARY_HOVER_LAYER_ID, "circle-color", TEAL_COLORS[idx]);
+      map.setPaintProperty(COUNTY_SECONDARY_HOVER_LAYER_ID, "circle-opacity", 1);
+    } else {
+      map.setPaintProperty(COUNTY_SECONDARY_HOVER_LAYER_ID, "circle-opacity", 0);
+    }
+  }
+};
+
 export const updateSecondaryStatOverlay = (
   map: maplibregl.Map,
   ids: StatOverlayIds,

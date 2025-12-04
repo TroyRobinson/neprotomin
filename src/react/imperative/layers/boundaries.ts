@@ -180,7 +180,7 @@ export const ensureBoundaryLayers = (
       source: BOUNDARY_SOURCE_ID,
       filter: ["==", ["get", "zip"], "__none__"],
       layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
-      paint: { "line-opacity-transition": { duration: 150, delay: 0 } as any },
+      paint: { "line-opacity-transition": { duration: 0, delay: 0 } as any },
     });
   }
 
@@ -192,7 +192,7 @@ export const ensureBoundaryLayers = (
         source: BOUNDARY_SOURCE_ID,
         filter: ["==", ["get", "zip"], "__none__"],
         layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
-        paint: { "fill-opacity-transition": { duration: 150, delay: 0 } as any },
+        paint: { "fill-opacity-transition": { duration: 0, delay: 0 } as any },
       },
       BOUNDARY_HOVER_LINE_LAYER_ID,
     );
@@ -464,12 +464,12 @@ export const updateBoundaryPaint = (
     map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-color", zipHoverPaint.line.color);
     map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity", zipHoverPaint.line.opacity);
     map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-width", zipHoverPaint.line.width);
-    map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity-transition", { duration: 150, delay: 0 } as any);
+    map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity-transition", { duration: 0, delay: 0 } as any);
   }
   if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
     map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-color", zipHoverPaint.fill.color);
     map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity", zipHoverPaint.fill.opacity);
-    map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity-transition", { duration: 150, delay: 0 } as any);
+    map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity-transition", { duration: 0, delay: 0 } as any);
   }
   const countyBasePaint = countyAreaEntry.getBasePaint(theme);
   const countyHoverPaint = countyAreaEntry.getHoverPaint(theme);
@@ -631,6 +631,8 @@ export const updateZipHoverOutline = (
   const filter = hoveredZip ? (["==", ["get", "zip"], hoveredZip] as any) : (["==", ["get", "zip"], "__none__"] as any);
   if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) map.setFilter(BOUNDARY_HOVER_LINE_LAYER_ID, filter);
   if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) map.setFilter(BOUNDARY_HOVER_FILL_LAYER_ID, filter);
+  // Force immediate repaint to avoid hover trailing
+  map.triggerRepaint();
   if (!hoveredZip) return;
   const isPinned = pinnedZips.has(hoveredZip);
   const isSelected = transientZips.has(hoveredZip);
@@ -673,6 +675,8 @@ export const updateCountyHoverOutline = (
   const filter = countyId ? (["==", ["get", "county"], countyId] as any) : (["==", ["get", "county"], "__none__"] as any);
   if (map.getLayer(COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID)) map.setFilter(COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, filter);
   if (map.getLayer(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID)) map.setFilter(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID, filter);
+  // Force immediate repaint to avoid hover trailing
+  map.triggerRepaint();
   if (!countyId) return;
   const isPinned = pinnedCounties.has(countyId);
   const isSelected = transientCounties.has(countyId);

@@ -23,7 +23,7 @@ import type { AreaId, AreaKind } from "../../types/areas";
 import { DEFAULT_PARENT_AREA_BY_KIND } from "../../types/areas";
 import type { TimeSelection } from "../lib/timeFilters";
 // choropleth helpers are used only inside overlays/stats now
-import { updateChoroplethLegend as extUpdateLegend, updateSecondaryChoroplethLegend as extUpdateSecondaryLegend, updateSecondaryStatOverlay as extUpdateSecondaryOverlay, updateStatDataChoropleth as extUpdatePrimaryChoropleth, CHOROPLETH_HIDE_ZOOM } from "./overlays/stats";
+import { updateChoroplethLegend as extUpdateLegend, updateSecondaryChoroplethLegend as extUpdateSecondaryLegend, updateSecondaryStatOverlay as extUpdateSecondaryOverlay, updateSecondaryStatHoverOnly as extUpdateSecondaryStatHover, updateStatDataChoropleth as extUpdatePrimaryChoropleth, CHOROPLETH_HIDE_ZOOM } from "./overlays/stats";
 import {
   ensureBoundaryLayers,
   updateBoundaryPaint as extUpdateBoundaryPaint,
@@ -384,7 +384,9 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     return entry?.[boundary];
   };
 
-  const refreshStatVisuals = () => {
+  // Coalesce multiple refreshStatVisuals calls into one frame
+  let statVisualsScheduled = false;
+  const refreshStatVisualsCore = () => {
     updateStatDataChoropleth();
     updateChoroplethLegend();
     updateSecondaryStatOverlay();
@@ -398,6 +400,33 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     countyLabels?.setStatOverlay(selectedStatId, countyEntry?.data || null, countyEntry?.type || "count");
     const countySecondary = getStatEntryByBoundary(secondaryStatId, "COUNTY");
     countyLabels?.setSecondaryStatOverlay?.(secondaryStatId, countySecondary?.data || null, countySecondary?.type || "count");
+  };
+  
+  const refreshStatVisuals = () => {
+    // If already scheduled, skip - the pending call will pick up latest state
+    if (statVisualsScheduled) return;
+    statVisualsScheduled = true;
+    requestAnimationFrame(() => {
+      statVisualsScheduled = false;
+      refreshStatVisualsCore();
+    });
+  };
+
+  // Schedule work during idle time (or fallback to setTimeout)
+  // Defined early so it's available throughout the module
+  const scheduleIdle = (fn: () => void, timeout = 100): number | ReturnType<typeof setTimeout> => {
+    if (typeof requestIdleCallback === "function") {
+      return requestIdleCallback(() => fn(), { timeout });
+    }
+    return setTimeout(fn, 16); // ~1 frame fallback
+  };
+  const cancelIdle = (handle: number | ReturnType<typeof setTimeout> | null) => {
+    if (handle === null) return;
+    if (typeof cancelIdleCallback === "function") {
+      cancelIdleCallback(handle as number);
+    } else {
+      clearTimeout(handle as ReturnType<typeof setTimeout>);
+    }
   };
 
   let latestNeighborCountyIds: string[] = [];
@@ -549,6 +578,12 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   let boundarySourceReady = false;
   let pendingZctaEnsure = false;
   let pendingZctaEnsureForce = false;
+  
+  // Track map motion state to suppress React hover callbacks during drag/zoom
+  let mapInMotion = false;
+  let pendingHoverArea: AreaId | null = null;
+  let pendingZipHover: string | null = null;
+  let pendingCountyHover: string | null = null;
 
   const toBoundsArray = (bounds: maplibregl.LngLatBounds): BoundsArray => [
     [bounds.getWest(), bounds.getSouth()],
@@ -1176,7 +1211,18 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     COUNTY_STATDATA_FILL_LAYER_ID,
   }, currentTheme, selectedStatId, pinnedZips, transientZips, hovered || null);
     zipLabels?.setHoveredZip(hovered || null);
-    updateSecondaryStatOverlay();
+    
+    // Also update secondary stat hover layer immediately
+    if (secondaryStatId) {
+      const primaryEntry = selectedStatId ? scopedStatDataByBoundary.get(selectedStatId) : undefined;
+      const primaryZipScope = new Set<string>(Object.keys(primaryEntry?.ZIP?.data ?? {}));
+      extUpdateSecondaryStatHover(map, {
+        SECONDARY_STAT_LAYER_ID,
+        SECONDARY_STAT_HOVER_LAYER_ID,
+        COUNTY_SECONDARY_LAYER_ID,
+        COUNTY_SECONDARY_HOVER_LAYER_ID,
+      }, boundaryMode, secondaryStatId, scopedStatDataByBoundary, primaryZipScope, new Set(), hovered || null, null);
+    }
   };
 
   const updateCountySelectionHighlight = () => extUpdateCountySelectionHighlight(map, {
@@ -1238,6 +1284,18 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       COUNTY_BOUNDARY_PINNED_LINE_LAYER_ID,
     COUNTY_STATDATA_FILL_LAYER_ID,
   }, currentTheme, selectedStatId, pinnedCounties, transientCounties, hovered);
+    
+    // Also update secondary stat hover layer immediately
+    if (secondaryStatId) {
+      const primaryEntry = selectedStatId ? scopedStatDataByBoundary.get(selectedStatId) : undefined;
+      const primaryCountyScope = new Set<string>(Object.keys(primaryEntry?.COUNTY?.data ?? {}));
+      extUpdateSecondaryStatHover(map, {
+        SECONDARY_STAT_LAYER_ID,
+        SECONDARY_STAT_HOVER_LAYER_ID,
+        COUNTY_SECONDARY_LAYER_ID,
+        COUNTY_SECONDARY_HOVER_LAYER_ID,
+      }, boundaryMode, secondaryStatId, scopedStatDataByBoundary, new Set(), primaryCountyScope, null, hovered || null);
+    }
   };
 
   const zipSelection = createSelectionHandlers({
@@ -1329,14 +1387,19 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     if (zipGeometryHiddenDueToZoom) {
       zipFloatingTitle?.hide();
     }
-    refreshStatVisuals();
+    refreshStatVisuals(); // Already deferred via coalescing
   };
   map.on("zoom", handleZipGeometryVisibilityChange);
   destroyFns.push(() => {
     map.off("zoom", handleZipGeometryVisibilityChange);
   });
 
-  const handleViewportSettled = () => {
+  // Debounce viewport settled handler to reduce jutter during pan/zoom
+  let viewportSettledTimer: ReturnType<typeof setTimeout> | null = null;
+  let viewportIdleHandle: number | ReturnType<typeof setTimeout> | null = null;
+  const VIEWPORT_SETTLED_DEBOUNCE_MS = 200;
+
+  const handleViewportSettledCore = () => {
     void ensureZctasForCurrentView();
     // Check if selected orgs are still visible after viewport change
     void checkSelectedOrgsVisibility();
@@ -1345,11 +1408,37 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       void updateSelectedClusterHighlight();
     }
   };
+
+  const handleViewportSettled = () => {
+    // Cancel any pending work
+    if (viewportSettledTimer !== null) {
+      clearTimeout(viewportSettledTimer);
+    }
+    cancelIdle(viewportIdleHandle);
+    viewportIdleHandle = null;
+    
+    // Debounce first, then schedule in idle time
+    viewportSettledTimer = setTimeout(() => {
+      viewportSettledTimer = null;
+      // Schedule heavy work during idle time so it doesn't block interactions
+      viewportIdleHandle = scheduleIdle(() => {
+        viewportIdleHandle = null;
+        handleViewportSettledCore();
+      }, 150);
+    }, VIEWPORT_SETTLED_DEBOUNCE_MS);
+  };
+
   map.on("moveend", handleViewportSettled);
   map.on("zoomend", handleViewportSettled);
   destroyFns.push(() => {
     map.off("moveend", handleViewportSettled);
     map.off("zoomend", handleViewportSettled);
+    if (viewportSettledTimer !== null) {
+      clearTimeout(viewportSettledTimer);
+      viewportSettledTimer = null;
+    }
+    cancelIdle(viewportIdleHandle);
+    viewportIdleHandle = null;
   });
 
   const checkSelectedOrgsVisibility = async () => {
@@ -1538,20 +1627,24 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       );
     }
 
+    // Critical path: visibility and basic paint (fast, needed for UX)
     updateHighlight();
     updateBoundaryPaint();
     updateBoundaryVisibility({ force: true });
     zipSelection.refresh();
     countySelection.refresh();
-    updateStatDataChoropleth();
-    updateSecondaryStatOverlay();
     updateOrganizationPinsVisibility();
-    // visibility will be emitted by the wired tracker on next move/zoom end
-    // Toggle label visibility according to boundary mode
     applyLabelVisibility();
     if (pendingUserLocationUpdate || userLocation) {
       updateUserLocationSource();
     }
+    
+    // Deferred path: stat overlays (can wait, expensive)
+    // Use idle callback so map renders first, then overlays appear
+    scheduleIdle(() => {
+      updateStatDataChoropleth();
+      updateSecondaryStatOverlay();
+    }, 100);
   };
 
   map.once("load", () => {
@@ -1562,9 +1655,14 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
 
     map.getCanvas().style.outline = "none";
 
+    // Critical path: set up layers and visibility (fast)
     ensureSourcesAndLayers();
     evaluateBoundaryModeForZoom();
-    void ensureZctasForCurrentView({ force: true });
+    
+    // Deferred: ZCTA loading (heavy, can wait for idle)
+    scheduleIdle(() => {
+      void ensureZctasForCurrentView({ force: true });
+    }, 50);
 
     zipFloatingTitle = createZipFloatingTitle({ map });
     
@@ -1907,6 +2005,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         resetCountyPressState();
         dragStartCenter = map.getCenter();
         dragCollapseTriggered = false;
+        mapInMotion = true;
       };
       const handleMapDrag = () => {
         if (!dragStartCenter || dragCollapseTriggered) return;
@@ -1933,6 +2032,29 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       const handleMapDragEnd = () => {
         dragStartCenter = null;
         dragCollapseTriggered = false;
+        mapInMotion = false;
+        // Flush any pending hover updates now that motion stopped
+        if (pendingZipHover !== null || pendingCountyHover !== null || pendingHoverArea !== null) {
+          if (pendingZipHover !== null) onZipHoverChange?.(pendingZipHover);
+          if (pendingCountyHover !== null) onCountyHoverChange?.(pendingCountyHover);
+          if (pendingHoverArea !== null) onAreaHoverChange?.(pendingHoverArea);
+          pendingZipHover = null;
+          pendingCountyHover = null;
+          pendingHoverArea = null;
+        }
+      };
+      // Safety: also reset motion on moveend in case dragend doesn't fire
+      const handleMapMoveEnd = () => {
+        if (mapInMotion) {
+          mapInMotion = false;
+          // Flush pending hovers
+          if (pendingZipHover !== null) onZipHoverChange?.(pendingZipHover);
+          if (pendingCountyHover !== null) onCountyHoverChange?.(pendingCountyHover);
+          if (pendingHoverArea !== null) onAreaHoverChange?.(pendingHoverArea);
+          pendingZipHover = null;
+          pendingCountyHover = null;
+          pendingHoverArea = null;
+        }
       };
       countyInteractionLayers.forEach((layerId) => {
         map.on("mousedown", layerId, handleCountyPointerDown);
@@ -1942,6 +2064,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       map.on("dragstart", handleMapDragStart);
       map.on("drag", handleMapDrag);
       map.on("dragend", handleMapDragEnd);
+      map.on("moveend", handleMapMoveEnd);
       const onBoundaryMouseEnter = () => { 
         if (boundaryMode === "zips" && !(isMobile && orgPinsVisible)) {
           map.getCanvas().style.cursor = "pointer";
@@ -1952,8 +2075,14 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         if (boundaryMode === "zips") {
           hoveredZipFromMap = null;
           zipSelection.updateHover();
-          onZipHoverChange?.(null);
-          onAreaHoverChange?.(null);
+          // Defer React callbacks if map is in motion
+          if (mapInMotion) {
+            pendingZipHover = null;
+            pendingHoverArea = null;
+          } else {
+            onZipHoverChange?.(null);
+            onAreaHoverChange?.(null);
+          }
         }
       };
       const onZipMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
@@ -1964,9 +2093,15 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         const zip = features[0]?.properties?.[zipFeatureProperty] as string | undefined;
         if (!zip || zip === hoveredZipFromMap) return;
         hoveredZipFromMap = zip;
-        zipSelection.updateHover();
-        onZipHoverChange?.(zip);
-        onAreaHoverChange?.({ kind: "ZIP", id: zip });
+        zipSelection.updateHover(); // Always update map visuals
+        // Defer React callbacks if map is in motion
+        if (mapInMotion) {
+          pendingZipHover = zip;
+          pendingHoverArea = { kind: "ZIP", id: zip };
+        } else {
+          onZipHoverChange?.(zip);
+          onAreaHoverChange?.({ kind: "ZIP", id: zip });
+        }
       };
       map.on("click", handleBoundaryClick);
       map.on("dblclick", handleBoundaryDoubleClick);
@@ -1987,8 +2122,14 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         hoveredCountyFromMap = null;
         countySelection.updateHover();
         countyLabels?.setHoveredZip(null);
-        onCountyHoverChange?.(null);
-        onAreaHoverChange?.(null);
+        // Defer React callbacks if map is in motion
+        if (mapInMotion) {
+          pendingCountyHover = null;
+          pendingHoverArea = null;
+        } else {
+          onCountyHoverChange?.(null);
+          onAreaHoverChange?.(null);
+        }
       };
       const onCountyMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
         if (boundaryMode !== "counties") return;
@@ -1998,10 +2139,16 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         const county = features[0]?.properties?.[countyFeatureProperty] as string | undefined;
         if (!county || county === hoveredCountyFromMap) return;
         hoveredCountyFromMap = county;
-        countySelection.updateHover();
+        countySelection.updateHover(); // Always update map visuals
         countyLabels?.setHoveredZip(county);
-        onCountyHoverChange?.(county);
-        onAreaHoverChange?.({ kind: "COUNTY", id: county });
+        // Defer React callbacks if map is in motion
+        if (mapInMotion) {
+          pendingCountyHover = county;
+          pendingHoverArea = { kind: "COUNTY", id: county };
+        } else {
+          onCountyHoverChange?.(county);
+          onAreaHoverChange?.({ kind: "COUNTY", id: county });
+        }
       };
       map.on("mouseenter", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseEnter);
       map.on("mouseenter", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseEnter);
@@ -2071,7 +2218,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   unsubscribeStatData = statDataStore.subscribe((byStat) => {
     statDataStoreMap = byStat;
     recomputeScopedStatData();
-    refreshStatVisuals();
+    refreshStatVisuals(); // Already deferred via coalescing
   });
 
   function updateHighlight() {
@@ -2235,38 +2382,57 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       (hoveredCountyFromToolbar || hoveredCountyFromMap || null));
   }
 
+
   const setBoundaryMode = (mode: BoundaryMode) => {
     if (mode === boundaryMode) return;
     const previousMode = boundaryMode;
     boundaryMode = mode;
+    
+    // Immediate: clear hover state (fast)
     if (mode !== "zips") {
       hoveredZipFromToolbar = null;
       hoveredZipFromMap = null;
-      zipSelection.clearTransient({ shouldZoom: false, notify: true });
       zipFloatingTitle?.hide();
       zipLabels?.setHoveredZip(null);
       zipLabels?.setSelectedZips([], []);
-      onZipHoverChange?.(null);
-      onAreaHoverChange?.(null);
     }
     if (mode !== "counties") {
       hoveredCountyFromMap = null;
       hoveredCountyFromToolbar = null;
-      countySelection.clearTransient({ shouldZoom: false, notify: true });
       countyLabels?.setHoveredZip(null);
       countyLabels?.setSelectedZips([], []);
     }
     if (mode === "counties" && previousMode !== "counties") {
       zipFloatingTitle?.hide();
     }
+    
+    // Immediate: update layer visibility (fast, critical for UX)
     ensureSourcesAndLayers();
-    if (mode === "zips") {
-      void ensureZctasForCurrentView({ force: true });
-    }
     updateBoundaryVisibility({ force: true });
     applyLabelVisibility();
-    refreshStatVisuals();
+    
+    // Notify React immediately so UI can update (mode indicator, etc.)
     onBoundaryModeChange?.(boundaryMode);
+    
+    // Deferred: React callbacks for selection clearing (next frame)
+    requestAnimationFrame(() => {
+      if (previousMode === "zips" && mode !== "zips") {
+        zipSelection.clearTransient({ shouldZoom: false, notify: true });
+        onZipHoverChange?.(null);
+        onAreaHoverChange?.(null);
+      }
+      if (previousMode === "counties" && mode !== "counties") {
+        countySelection.clearTransient({ shouldZoom: false, notify: true });
+      }
+    });
+    
+    // Heavy work: ZCTA loading and stat visuals (idle time)
+    scheduleIdle(() => {
+      if (mode === "zips") {
+        void ensureZctasForCurrentView({ force: true });
+      }
+      refreshStatVisuals();
+    }, 100);
   };
 
   const highlightClusterContainingOrg = async (id: string | null) => {
