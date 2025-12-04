@@ -1267,6 +1267,24 @@ export const ReactMapApp = () => {
     return map;
   }, [statDataByParent, relevantScopes, countyScopes]);
 
+  // Compute true statewide averages (from Oklahoma bucket, not scoped data)
+  const stateAvgByStatId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [statId, byParent] of statDataByParent.entries()) {
+      const statewide = byParent.get(FALLBACK_ZIP_SCOPE)?.ZIP;
+      if (statewide?.data) {
+        const values = Object.values(statewide.data).filter(
+          (v): v is number => typeof v === "number" && Number.isFinite(v)
+        );
+        if (values.length > 0) {
+          const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+          map.set(statId, avg);
+        }
+      }
+    }
+    return map;
+  }, [statDataByParent]);
+
   const zipScopeDisplayName = useMemo(() => {
     if (!normalizedZipScope) return null;
     const aliases = buildScopeLabelAliases(normalizedZipScope);
@@ -3006,6 +3024,7 @@ export const ReactMapApp = () => {
               viewportCountyOrgCount={viewportCountyOrgCount}
               viewportCountyVisibleCount={viewportCountyVisibleCount}
               zipScopeCountyCode={zipScopeCountyCode}
+              stateAvg={selectedStatId ? stateAvgByStatId.get(selectedStatId) ?? null : null}
               hoveredArea={hoveredArea}
               selectedStatId={selectedStatId}
               secondaryStatId={secondaryStatId}
@@ -3125,6 +3144,7 @@ export const ReactMapApp = () => {
                     viewportCountyOrgCount={viewportCountyOrgCount}
                     viewportCountyVisibleCount={viewportCountyVisibleCount}
                     zipScopeCountyCode={zipScopeCountyCode}
+                    stateAvg={selectedStatId ? stateAvgByStatId.get(selectedStatId) ?? null : null}
                     hoveredArea={hoveredArea}
                     selectedStatId={selectedStatId}
                     secondaryStatId={secondaryStatId}

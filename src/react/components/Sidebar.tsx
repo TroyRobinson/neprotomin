@@ -59,6 +59,8 @@ interface SidebarProps {
   viewportCountyVisibleCount?: number | null;
   /** County FIPS code for the current ZIP scope (used for zoom-to-county) */
   zipScopeCountyCode?: string | null;
+  /** True statewide average for the selected stat */
+  stateAvg?: number | null;
   selectedStatId?: string | null;
   secondaryStatId?: string | null;
   categoryFilter?: string | null;
@@ -115,6 +117,7 @@ export const Sidebar = ({
   viewportCountyOrgCount = null,
   viewportCountyVisibleCount = null,
   zipScopeCountyCode = null,
+  stateAvg = null,
   selectedStatId = null,
   secondaryStatId = null,
   categoryFilter = null,
@@ -576,6 +579,7 @@ export const Sidebar = ({
               activeAreaKind={activeAreaKind}
               getZipParentCounty={getZipParentCounty}
               zipScopeCountyName={zipScopeDisplayName}
+              stateAvg={stateAvg}
             />
           )}
         </>
