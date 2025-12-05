@@ -1377,8 +1377,12 @@ export const AdminScreen = () => {
   const { authReady } = useAuthSession();
   const queryEnabled = authReady;
 
-  // Query stats and lightweight statData metadata from InstantDB
-  const { data, isLoading, error } = db.useQuery(
+  // Primary query: just stats (small, fast, reliable)
+  const {
+    data: statsData,
+    isLoading: statsLoading,
+    error: statsError,
+  } = db.useQuery(
     queryEnabled
       ? {
           stats: {
@@ -1386,6 +1390,21 @@ export const AdminScreen = () => {
               order: { name: "asc" as const },
             },
           },
+        }
+      : null,
+  );
+
+  // State to control statData query (for retry logic)
+  const [statDataQueryEnabled, setStatDataQueryEnabled] = useState(true);
+
+  // Secondary query: statData for summaries (separate, may be slow/timeout)
+  const {
+    data: statDataResponse,
+    isLoading: statDataLoading,
+    error: statDataError,
+  } = db.useQuery(
+    queryEnabled && statDataQueryEnabled
+      ? {
           statData: {
             $: {
               where: { name: "root" },
@@ -1397,10 +1416,27 @@ export const AdminScreen = () => {
       : null,
   );
 
+  // Retry callback: briefly disable then re-enable the query
+  const retryStatData = useCallback(() => {
+    setStatDataQueryEnabled(false);
+    setTimeout(() => setStatDataQueryEnabled(true), 50);
+  }, []);
+
+  // Log statData errors but don't block the screen
   useEffect(() => {
-    if (!error) return;
+    if (!statDataError) return;
     if (!IS_DEV) return;
-    const anyError = error as any;
+    const anyError = statDataError as any;
+    console.warn("[AdminScreen] statData query failed (summaries unavailable)", {
+      message: anyError.message,
+      hint: anyError.hint,
+    });
+  }, [statDataError]);
+
+  useEffect(() => {
+    if (!statsError) return;
+    if (!IS_DEV) return;
+    const anyError = statsError as any;
     const debugPayload: Record<string, unknown> = {
       name: anyError.name,
       message: anyError.message,
@@ -1408,7 +1444,7 @@ export const AdminScreen = () => {
     if (anyError.code) debugPayload.code = anyError.code;
     if (anyError.operation) debugPayload.operation = anyError.operation;
     console.error("[AdminScreen] Failed to load stats", debugPayload, anyError);
-  }, [error]);
+  }, [statsError]);
 
   // State for which stat is being edited (null = none)
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1430,9 +1466,9 @@ export const AdminScreen = () => {
 
   // Parse and filter stats
   const stats = useMemo(() => {
-    if (!data?.stats) return [];
-    return data.stats.map(parseStat).filter((s): s is StatItem => s !== null);
-  }, [data?.stats]);
+    if (!statsData?.stats) return [];
+    return statsData.stats.map(parseStat).filter((s): s is StatItem => s !== null);
+  }, [statsData?.stats]);
 
   // Extract unique categories from stats
   const availableCategories = useMemo(() => {
@@ -1810,7 +1846,7 @@ export const AdminScreen = () => {
 
   const statDataSummaryByStatId = useMemo(() => {
     const map = new Map<string, StatDataSummary>();
-    const rows = (data?.statData ?? []) as any[];
+    const rows = (statDataResponse?.statData ?? []) as any[];
     const formatYearsLabel = (years: string[]): string => {
       if (years.length === 0) return "";
       const numericYears = years
@@ -1868,7 +1904,7 @@ export const AdminScreen = () => {
     }
 
     return map;
-  }, [data?.statData]);
+  }, [statDataResponse?.statData]);
 
   // Start editing a stat
   const handleStartEdit = useCallback((id: string) => {
@@ -1919,7 +1955,7 @@ export const AdminScreen = () => {
       }
       setDeletingId(statId);
       try {
-        const rows = (data?.statData ?? []).filter(
+        const rows = (statDataResponse?.statData ?? []).filter(
           (row: any) => row && typeof row.id === "string" && row.statId === statId,
         );
         const txs: any[] = [];
@@ -1938,7 +1974,7 @@ export const AdminScreen = () => {
         setDeletingId((current) => (current === statId ? null : current));
       }
     },
-    [data?.statData, deletingId],
+    [statDataResponse?.statData, deletingId],
   );
 
   const handleImportedFromModal = useCallback((statIds: string[]) => {
@@ -1955,8 +1991,8 @@ export const AdminScreen = () => {
     });
   }, []);
 
-  // Loading state
-  if (isLoading) {
+  // Loading state - only block on stats (primary query)
+  if (statsLoading) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-white dark:bg-slate-900">
         <div className="flex flex-col items-center gap-3">
@@ -1967,19 +2003,19 @@ export const AdminScreen = () => {
     );
   }
 
-  // Error state
-  if (error) {
-    const anyError = error as any;
+  // Error state - only block on stats error (statData errors are non-fatal)
+  if (statsError) {
+    const anyError = statsError as any;
     const debugParts: string[] = [];
     if (anyError.code) debugParts.push(`code=${String(anyError.code)}`);
     if (anyError.operation) debugParts.push(`operation=${String(anyError.operation)}`);
-    const debugLine = debugParts.length ? debugParts.join("  b7 ") : null;
+    const debugLine = debugParts.length ? debugParts.join(" · ") : null;
 
     return (
       <div className="flex h-full w-full items-center justify-center bg-white dark:bg-slate-900">
         <div className="flex flex-col items-center gap-2 text-center">
           <p className="text-sm font-medium text-rose-600 dark:text-rose-400">Failed to load stats</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">{error.message}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{statsError.message}</p>
           {IS_DEV && debugLine && (
             <p className="text-[10px] text-slate-400 dark:text-slate-500">{debugLine}</p>
           )}
@@ -2000,6 +2036,19 @@ export const AdminScreen = () => {
               {sortedStats.length}{categoryFilter !== "all" || searchQuery ? ` of ${stats.length}` : ""} stat{sortedStats.length !== 1 ? "s" : ""}
               {editingId && <span className="ml-1 text-brand-500">(editing)</span>}
               {isSaving && <span className="ml-1 text-amber-500">Saving…</span>}
+              {statDataLoading && <span className="ml-1 text-slate-400">· loading summaries…</span>}
+              {statDataError && !statDataLoading && (
+                <span className="ml-1 text-amber-500">
+                  · summaries unavailable{" "}
+                  <button
+                    type="button"
+                    onClick={retryStatData}
+                    className="text-brand-500 underline hover:text-brand-600 dark:text-brand-400 dark:hover:text-brand-300"
+                  >
+                    retry
+                  </button>
+                </span>
+              )}
             </p>
           </div>
 
