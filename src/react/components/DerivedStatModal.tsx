@@ -193,21 +193,6 @@ export const DerivedStatModal = ({
                 />
               </div>
             </div>
-            <div className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/60">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                Auto-generated fields
-              </p>
-              <div className="mt-1.5 space-y-1 text-xs text-slate-600 dark:text-slate-300">
-                <p>
-                  <span className="font-medium text-slate-500 dark:text-slate-400">Internal name:</span>{" "}
-                  {generatedName || "—"}
-                </p>
-                <p>
-                  <span className="font-medium text-slate-500 dark:text-slate-400">Source:</span>{" "}
-                  {generatedSource}
-                </p>
-              </div>
-            </div>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/40 sm:col-span-2">
@@ -288,6 +273,10 @@ export const DerivedStatModal = ({
                 <p>Select two stats to build a formula.</p>
               )}
             </div>
+
+            <p className="mt-4 text-[10px] text-slate-400 dark:text-slate-500">
+              <span className="font-medium">Source:</span> {generatedSource}
+            </p>
           </div>
         </div>
 
