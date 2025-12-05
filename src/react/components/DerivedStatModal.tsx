@@ -1,0 +1,297 @@
+import { useEffect, useMemo, useState } from "react";
+import type { Category } from "../../types/organization";
+
+export interface DerivedStatOption {
+  id: string;
+  name: string;
+  label?: string | null;
+  category: string;
+}
+
+export type DerivedFormulaKind = "percent";
+
+export interface DerivedStatModalSubmit {
+  name: string;
+  label: string;
+  category: Category | string;
+  numeratorId: string;
+  denominatorId: string;
+  formula: DerivedFormulaKind;
+  description?: string;
+}
+
+interface DerivedStatModalProps {
+  isOpen: boolean;
+  stats: DerivedStatOption[];
+  categories: string[];
+  onClose: () => void;
+  onSubmit: (payload: DerivedStatModalSubmit) => void;
+  isSubmitting?: boolean;
+  errorMessage?: string | null;
+}
+
+const defaultFormula: DerivedFormulaKind = "percent";
+
+export const DerivedStatModal = ({
+  isOpen,
+  stats,
+  categories,
+  onClose,
+  onSubmit,
+  isSubmitting = false,
+  errorMessage,
+}: DerivedStatModalProps) => {
+  const [name, setName] = useState("");
+  const [label, setLabel] = useState("");
+  const [category, setCategory] = useState<string>("");
+  const [numeratorId, setNumeratorId] = useState<string>("");
+  const [denominatorId, setDenominatorId] = useState<string>("");
+  const [formula] = useState<DerivedFormulaKind>(defaultFormula);
+  const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setName("");
+    setLabel("");
+    setNotes("");
+    setCategory((prev) => (prev ? prev : stats[0]?.category ?? categories[0] ?? ""));
+    const [first, second] = stats;
+    setNumeratorId(first?.id ?? "");
+    const defaultDen = second && second.id !== first?.id ? second.id : stats.find((s) => s.id !== first?.id)?.id ?? "";
+    setDenominatorId(defaultDen);
+  }, [isOpen, stats, categories]);
+
+  const numerator = useMemo(() => stats.find((s) => s.id === numeratorId), [stats, numeratorId]);
+  const denominator = useMemo(() => stats.find((s) => s.id === denominatorId), [stats, denominatorId]);
+
+  const validationMessage = useMemo(() => {
+    if (!name.trim()) return "Name is required.";
+    if (!category.trim()) return "Category is required.";
+    if (!numeratorId || !denominatorId) return "Select both numerator and denominator.";
+    if (numeratorId === denominatorId) return "Numerator and denominator must be different stats.";
+    return null;
+  }, [name, category, numeratorId, denominatorId]);
+
+  const isValid = validationMessage === null;
+
+  const handleSubmit = () => {
+    if (!isValid || isSubmitting) return;
+    onSubmit({
+      name: name.trim(),
+      label: label.trim(),
+      category: category.trim(),
+      numeratorId,
+      denominatorId,
+      formula,
+      description: notes.trim() || undefined,
+    });
+  };
+
+  const handleSwap = () => {
+    if (!numeratorId || !denominatorId) return;
+    setNumeratorId(denominatorId);
+    setDenominatorId(numeratorId);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-4">
+      <div className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Create derived stat</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Build a percent stat by dividing one stat by another and applying a friendly label.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+            aria-label="Close"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="grid gap-6 px-6 py-5 sm:grid-cols-5">
+          <div className="space-y-4 sm:col-span-3">
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <span>Derived stat name</span>
+                <span className="text-[10px] normal-case text-slate-400">Shown everywhere by default</span>
+              </label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={isSubmitting}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+                placeholder="Percent of households receiving SNAP"
+              />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <span>Optional short label</span>
+                <span className="text-[10px] normal-case text-slate-400">Overrides display chip text</span>
+              </label>
+              <input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                disabled={isSubmitting}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+                placeholder="SNAP households %"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Category
+              </label>
+              <input
+                list="derived-category-options"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                disabled={isSubmitting}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+                placeholder="economy"
+              />
+              <datalist id="derived-category-options">
+                {categories.map((cat) => (
+                  <option key={cat} value={cat} />
+                ))}
+              </datalist>
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <span>Notes (optional)</span>
+                <span className="text-[10px] normal-case text-slate-400">Saved as stat source metadata</span>
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                disabled={isSubmitting}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+                placeholder="Describe numerator, denominator, or special calculations"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/40 sm:col-span-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Formula
+            </p>
+            <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">Percentage</p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Numerator
+                </label>
+                <select
+                  value={numeratorId}
+                  onChange={(e) => setNumeratorId(e.target.value)}
+                  disabled={isSubmitting}
+                  className="mt-1 w-full rounded-lg border border-brand-200 bg-white px-2 py-1.5 text-sm text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-50"
+                >
+                  {stats.map((stat) => (
+                    <option key={stat.id} value={stat.id}>
+                      {stat.label || stat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleSwap}
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-400 hover:text-slate-800 dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-500"
+                >
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6}>
+                    <path d="M7 7h9m0 0l-3-3m3 3l-3 3M13 13H4m0 0l3 3m-3-3l3-3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Swap
+                </button>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Denominator
+                </label>
+                <select
+                  value={denominatorId}
+                  onChange={(e) => setDenominatorId(e.target.value)}
+                  disabled={isSubmitting}
+                  className="mt-1 w-full rounded-lg border border-brand-200 bg-white px-2 py-1.5 text-sm text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-50"
+                >
+                  {stats.map((stat) => (
+                    <option key={stat.id} value={stat.id} disabled={stat.id === numeratorId}>
+                      {stat.label || stat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg bg-white px-3 py-2 text-xs text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
+              {numerator && denominator ? (
+                <p>
+                  {numerator.label || numerator.name} ÷ {denominator.label || denominator.name}
+                </p>
+              ) : (
+                <p>Select two stats to build a formula.</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {(validationMessage || errorMessage) && (
+          <div className="px-6 text-xs text-rose-600 dark:text-rose-400">
+            {validationMessage ?? errorMessage}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!isValid || isSubmitting}
+            className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+              isValid && !isSubmitting
+                ? "bg-brand-600 hover:bg-brand-500"
+                : "cursor-not-allowed bg-slate-400 dark:bg-slate-600"
+            }`}
+          >
+            {isSubmitting && (
+              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                />
+              </svg>
+            )}
+            <span>{isSubmitting ? "Creating…" : "Create stat"}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

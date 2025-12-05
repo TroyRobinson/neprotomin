@@ -1,8 +1,16 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
-import type { KeyboardEvent, ChangeEvent } from "react";
+import type { KeyboardEvent, ChangeEvent, MouseEvent } from "react";
+import { id as createId } from "@instantdb/react";
 import { db } from "../../lib/reactDb";
+import { isDevEnv } from "../../lib/env";
+import { useAuthSession } from "../hooks/useAuthSession";
 import type { Category } from "../../types/organization";
 import { CustomSelect } from "./CustomSelect";
+import {
+  DerivedStatModal,
+  type DerivedStatModalSubmit,
+  type DerivedStatOption,
+} from "./DerivedStatModal";
 
 // Stat item from InstantDB stats table
 interface StatItem {
@@ -26,6 +34,68 @@ interface StatDataSummary {
   boundaryLabel: string;
   rowCount: number;
 }
+
+interface RootStatDataRow {
+  parentArea: string | null;
+  boundaryType: string | null;
+  date: string | null;
+  data: Record<string, number>;
+}
+
+const toFiniteNumber = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const normalizeDataMap = (value: unknown): Record<string, number> => {
+  const out: Record<string, number> = {};
+  if (!value) return out;
+  if (value instanceof Map) {
+    value.forEach((v, k) => {
+      const num = toFiniteNumber(v);
+      if (num != null) out[String(k)] = num;
+    });
+    return out;
+  }
+  if (typeof value === "object") {
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+      const num = toFiniteNumber(raw);
+      if (num != null) out[key] = num;
+    }
+  }
+  return out;
+};
+
+const MAX_DERIVED_TX_BATCH = 20;
+
+const buildRowKey = (row: RootStatDataRow) =>
+  `${row.parentArea ?? ""}::${row.boundaryType ?? ""}::${row.date ?? ""}`;
+
+const computePercentValues = (
+  numerator: Record<string, number>,
+  denominator: Record<string, number>,
+): Record<string, number> => {
+  const out: Record<string, number> = {};
+  for (const [area, numVal] of Object.entries(numerator)) {
+    const denVal = denominator[area];
+    if (
+      typeof denVal === "number" &&
+      Number.isFinite(denVal) &&
+      denVal !== 0 &&
+      typeof numVal === "number" &&
+      Number.isFinite(numVal)
+    ) {
+      out[area] = numVal / denVal;
+    }
+  }
+  return out;
+};
+
+const IS_DEV = isDevEnv();
 
 // Parse a raw stat row from InstantDB
 const parseStat = (row: unknown): StatItem | null => {
@@ -91,6 +161,8 @@ interface StatListItemProps {
   onSave: (form: EditFormState) => void;
   onCancel: () => void;
   onDelete?: () => void;
+  isSelected?: boolean;
+  onToggleSelect?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
 // Stat list item component with bar shape and curved corners
@@ -103,6 +175,8 @@ const StatListItem = ({
   onSave,
   onCancel,
   onDelete,
+  isSelected,
+  onToggleSelect,
 }: StatListItemProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState<EditFormState>(() => createEditForm(stat));
@@ -117,7 +191,7 @@ const StatListItem = ({
   // Handle click outside to cancel
   useEffect(() => {
     if (!isEditing) return;
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: globalThis.MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         onCancel();
       }
@@ -160,8 +234,20 @@ const StatListItem = ({
     return (
       <div
         ref={containerRef}
-        onClick={onStartEdit}
-        className="flex cursor-pointer flex-col gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-brand-200 hover:shadow-md dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-600"
+        onClick={(e) => {
+          if (onToggleSelect && (e.metaKey || e.ctrlKey || e.shiftKey)) {
+            e.preventDefault();
+            e.stopPropagation();
+            onToggleSelect(e);
+            return;
+          }
+          onStartEdit();
+        }}
+        className={`flex cursor-pointer flex-col gap-2 rounded-xl border bg-white px-4 py-3 shadow-sm transition hover:border-brand-200 hover:shadow-md dark:bg-slate-800 dark:hover:border-slate-600 ${
+          isSelected
+            ? "border-brand-400 ring-2 ring-brand-100 dark:border-brand-500 dark:ring-brand-900/50"
+            : "border-slate-200 dark:border-slate-700"
+        }`}
       >
         {/* Top row: Title (label or name) and category */}
         <div className="flex items-start justify-between gap-3">
@@ -1288,21 +1374,41 @@ const fuzzyMatch = (text: string, query: string): boolean => {
 };
 
 export const AdminScreen = () => {
+  const { authReady } = useAuthSession();
+  const queryEnabled = authReady;
+
   // Query stats and lightweight statData metadata from InstantDB
-  const { data, isLoading, error } = db.useQuery({
-    stats: {
-      $: {
-        order: { name: "asc" as const },
-      },
-    },
-    statData: {
-      $: {
-        where: { name: "root" },
-        fields: ["id", "statId", "boundaryType", "date", "name", "parentArea"],
-        order: { statId: "asc" as const },
-      },
-    },
-  });
+  const { data, isLoading, error } = db.useQuery(
+    queryEnabled
+      ? {
+          stats: {
+            $: {
+              order: { name: "asc" as const },
+            },
+          },
+          statData: {
+            $: {
+              where: { name: "root" },
+              fields: ["id", "statId", "boundaryType", "date", "name", "parentArea"],
+              order: { statId: "asc" as const },
+            },
+          },
+        }
+      : null,
+  );
+
+  useEffect(() => {
+    if (!error) return;
+    if (!IS_DEV) return;
+    const anyError = error as any;
+    const debugPayload: Record<string, unknown> = {
+      name: anyError.name,
+      message: anyError.message,
+    };
+    if (anyError.code) debugPayload.code = anyError.code;
+    if (anyError.operation) debugPayload.operation = anyError.operation;
+    console.error("[AdminScreen] Failed to load stats", debugPayload, anyError);
+  }, [error]);
 
   // State for which stat is being edited (null = none)
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1310,6 +1416,12 @@ export const AdminScreen = () => {
   const [isNewStatOpen, setIsNewStatOpen] = useState(false);
   const [recentStatIds, setRecentStatIds] = useState<string[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedStatIds, setSelectedStatIds] = useState<string[]>([]);
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
+  const [isDerivedModalOpen, setIsDerivedModalOpen] = useState(false);
+  const [derivedSelection, setDerivedSelection] = useState<DerivedStatOption[]>([]);
+  const [isDerivedSubmitting, setIsDerivedSubmitting] = useState(false);
+  const [derivedError, setDerivedError] = useState<string | null>(null);
 
   // Filter, sort, and search state
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -1334,9 +1446,10 @@ export const AdminScreen = () => {
   // Filtered and sorted stats
   const sortedStats = useMemo(() => {
     // First filter by category
-    let filtered = categoryFilter === "all"
-      ? stats
-      : stats.filter((s) => s.category === categoryFilter);
+    let filtered =
+      categoryFilter === "all"
+        ? stats
+        : stats.filter((s) => s.category === categoryFilter);
 
     // Then filter by search query
     if (searchQuery.trim()) {
@@ -1360,7 +1473,10 @@ export const AdminScreen = () => {
         sorted.sort((a, b) => (a.label || a.name).localeCompare(b.label || b.name));
         break;
       case "category":
-        sorted.sort((a, b) => a.category.localeCompare(b.category) || (a.label || a.name).localeCompare(b.label || b.name));
+        sorted.sort(
+          (a, b) =>
+            a.category.localeCompare(b.category) || (a.label || a.name).localeCompare(b.label || b.name),
+        );
         break;
     }
 
@@ -1381,6 +1497,316 @@ export const AdminScreen = () => {
 
     return sorted;
   }, [stats, categoryFilter, searchQuery, sortBy, recentStatIds]);
+
+  const statIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    sortedStats.forEach((stat, index) => {
+      map.set(stat.id, index);
+    });
+    return map;
+  }, [sortedStats]);
+
+  const selectedIdSet = useMemo(() => new Set(selectedStatIds), [selectedStatIds]);
+
+  const sortSelection = useCallback(
+    (ids: string[]) =>
+      ids
+        .slice()
+        .sort((a, b) => (statIndexMap.get(a) ?? 0) - (statIndexMap.get(b) ?? 0)),
+    [statIndexMap],
+  );
+
+  const selectedCount = selectedStatIds.length;
+  const canCreateDerivedStat = selectedCount >= 2;
+
+  const handleToggleSelect = useCallback(
+    (statId: string, event: MouseEvent<HTMLDivElement>) => {
+      setSelectedStatIds((prev) => {
+        const isShift = event.shiftKey;
+        const isMeta = event.metaKey || event.ctrlKey;
+        let next = prev;
+
+        if (isShift) {
+          const anchor = selectionAnchorId ?? prev[prev.length - 1] ?? statId;
+          const anchorIndex = statIndexMap.get(anchor);
+          const currentIndex = statIndexMap.get(statId);
+          if (anchorIndex != null && currentIndex != null) {
+            const [start, end] = anchorIndex <= currentIndex ? [anchorIndex, currentIndex] : [currentIndex, anchorIndex];
+            const rangeIds = sortedStats.slice(start, end + 1).map((stat) => stat.id);
+            const union = new Set(prev);
+            rangeIds.forEach((id) => union.add(id));
+            next = sortSelection(Array.from(union));
+            return next;
+          }
+        }
+
+        if (isMeta) {
+          if (prev.includes(statId)) {
+            next = prev.filter((id) => id !== statId);
+          } else {
+            next = sortSelection([...prev, statId]);
+          }
+          return next;
+        }
+
+        if (prev.length === 1 && prev[0] === statId) {
+          return [];
+        }
+        return [statId];
+      });
+
+      if (!event.shiftKey) {
+        setSelectionAnchorId(statId);
+      }
+    },
+    [selectionAnchorId, sortSelection, sortedStats, statIndexMap],
+  );
+
+  useEffect(() => {
+    if (selectedStatIds.length === 0 && selectionAnchorId) {
+      setSelectionAnchorId(null);
+    }
+  }, [selectedStatIds.length, selectionAnchorId]);
+
+  useEffect(() => {
+    setSelectedStatIds((prev) => {
+      const filtered = prev.filter((id) => statIndexMap.has(id));
+      return filtered.length === prev.length ? prev : filtered;
+    });
+  }, [statIndexMap]);
+
+  const handleRequestDerivedStat = useCallback(() => {
+    const selection = sortedStats
+      .filter((stat) => selectedIdSet.has(stat.id))
+      .map<DerivedStatOption>((stat) => ({
+        id: stat.id,
+        name: stat.name,
+        label: stat.label,
+        category: stat.category,
+      }));
+    setDerivedError(null);
+    setDerivedSelection(selection);
+    setIsDerivedModalOpen(true);
+  }, [selectedIdSet, sortedStats]);
+
+  const handleDerivedModalClose = useCallback(() => {
+    setIsDerivedModalOpen(false);
+    setDerivedSelection([]);
+    setDerivedError(null);
+  }, []);
+
+  const handleDerivedSubmit = useCallback(
+    async (payload: DerivedStatModalSubmit) => {
+      setDerivedError(null);
+      setIsDerivedSubmitting(true);
+      let attemptedWrite = false;
+      try {
+        const numeratorMeta = stats.find((stat) => stat.id === payload.numeratorId);
+        const denominatorMeta = stats.find((stat) => stat.id === payload.denominatorId);
+        if (!numeratorMeta || !denominatorMeta) {
+          throw new Error("Unable to locate selected stats.");
+        }
+
+        const statIds = [payload.numeratorId, payload.denominatorId];
+        const { data: statDataResponse } = await db.queryOnce({
+          statData: {
+            $: {
+              where: {
+                name: "root",
+                statId: { $in: statIds },
+              },
+              fields: ["statId", "parentArea", "boundaryType", "date", "data"],
+            },
+          },
+        });
+
+        const rawRows = Array.isArray((statDataResponse as any)?.statData)
+          ? ((statDataResponse as any).statData as any[])
+          : Array.isArray((statDataResponse as any)?.data?.statData)
+          ? ((statDataResponse as any).data.statData as any[])
+          : [];
+
+        const perStat = new Map<string, Map<string, RootStatDataRow>>();
+        const yearsByStat = new Map<string, Set<string>>();
+        const boundaryTypesByStat = new Map<string, Set<string>>();
+
+        for (const row of rawRows) {
+          if (!row || typeof row !== "object") continue;
+          const statId = typeof row.statId === "string" ? row.statId : null;
+          if (!statId) continue;
+          const parentArea = typeof row.parentArea === "string" ? row.parentArea : null;
+          const boundaryType = typeof row.boundaryType === "string" ? row.boundaryType : null;
+          const rawDate = row.date;
+          const date =
+            typeof rawDate === "string"
+              ? rawDate
+              : typeof rawDate === "number"
+              ? String(rawDate)
+              : null;
+          const dataMap = normalizeDataMap((row as any).data);
+          const normalized: RootStatDataRow = { parentArea, boundaryType, date, data: dataMap };
+          const key = buildRowKey(normalized);
+          if (!perStat.has(statId)) {
+            perStat.set(statId, new Map());
+          }
+          perStat.get(statId)!.set(key, normalized);
+
+          if (!yearsByStat.has(statId)) yearsByStat.set(statId, new Set<string>());
+          if (!boundaryTypesByStat.has(statId)) boundaryTypesByStat.set(statId, new Set<string>());
+          if (date) yearsByStat.get(statId)!.add(date);
+          if (boundaryType) boundaryTypesByStat.get(statId)!.add(boundaryType);
+        }
+
+        const setEquals = (a?: Set<string>, b?: Set<string>): boolean => {
+          if (!a && !b) return true;
+          if (!a || !b) return false;
+          if (a.size !== b.size) return false;
+          for (const value of a) {
+            if (!b.has(value)) return false;
+          }
+          return true;
+        };
+
+        const numYears = yearsByStat.get(payload.numeratorId);
+        const denYears = yearsByStat.get(payload.denominatorId);
+        const numBounds = boundaryTypesByStat.get(payload.numeratorId);
+        const denBounds = boundaryTypesByStat.get(payload.denominatorId);
+
+        if (!setEquals(numYears, denYears) || !setEquals(numBounds, denBounds)) {
+          const parts: string[] = [];
+          if (!setEquals(numYears, denYears)) {
+            const numList = Array.from(numYears ?? []).sort().join(", ") || "none";
+            const denList = Array.from(denYears ?? []).sort().join(", ") || "none";
+            parts.push(`years (numerator: ${numList}, denominator: ${denList})`);
+          }
+          if (!setEquals(numBounds, denBounds)) {
+            const numList = Array.from(numBounds ?? []).sort().join(", ") || "none";
+            const denList = Array.from(denBounds ?? []).sort().join(", ") || "none";
+            parts.push(`boundary types (numerator: ${numList}, denominator: ${denList})`);
+          }
+          throw new Error(
+            `These stats can't be combined: they have different ${parts.join(" and ")}.`,
+          );
+        }
+
+        const numeratorRows = perStat.get(payload.numeratorId);
+        const denominatorRows = perStat.get(payload.denominatorId);
+        if (!numeratorRows?.size || !denominatorRows?.size) {
+          throw new Error("Missing data for one of the selected stats.");
+        }
+
+        const derivedRows: RootStatDataRow[] = [];
+        let nonEmptyCount = 0;
+
+        // Use denominator as canonical coverage: iterate its row keys and
+        // compute percentages where numerator data exists.
+        for (const [key, denRow] of denominatorRows.entries()) {
+          const numRow = numeratorRows.get(key);
+          const derivedData = computePercentValues(numRow?.data ?? {}, denRow.data);
+          if (Object.keys(derivedData).length > 0) {
+            nonEmptyCount += 1;
+          }
+          derivedRows.push({
+            parentArea: denRow.parentArea,
+            boundaryType: denRow.boundaryType,
+            date: denRow.date,
+            data: derivedData,
+          });
+        }
+
+        if (nonEmptyCount === 0) {
+          throw new Error(
+            "Selected stats have no overlapping area data to compute a percentage.",
+          );
+        }
+
+        const now = Date.now();
+        const newStatId = createId();
+        const trimmedName = payload.name.trim();
+        const trimmedLabel = payload.label.trim();
+        const trimmedCategory = payload.category.trim();
+        const numeratorLabel = numeratorMeta.label || numeratorMeta.name;
+        const denominatorLabel = denominatorMeta.label || denominatorMeta.name;
+        const description = payload.description?.trim();
+        const derivedSource = description
+          ? description
+          : `Derived (${numeratorLabel} ÷ ${denominatorLabel})`;
+
+        const txs: any[] = [
+          db.tx.stats[newStatId].update({
+            name: trimmedName,
+            label: trimmedLabel || null,
+            category: trimmedCategory,
+            source: derivedSource,
+            goodIfUp: null,
+            featured: false,
+            active: true,
+            createdOn: now,
+            lastUpdated: now,
+          }),
+        ];
+
+        for (const row of derivedRows) {
+          txs.push(
+            db.tx.statData[createId()].update({
+              statId: newStatId,
+              name: "root",
+              parentArea: row.parentArea ?? undefined,
+              boundaryType: row.boundaryType ?? undefined,
+              date: row.date ?? undefined,
+              type: "percent",
+              data: row.data,
+              source: derivedSource,
+              statTitle: trimmedLabel || trimmedName,
+              createdOn: now,
+              lastUpdated: now,
+            }),
+          );
+        }
+
+        const batches: any[][] = [];
+        for (let i = 0; i < txs.length; i += MAX_DERIVED_TX_BATCH) {
+          batches.push(txs.slice(i, i + MAX_DERIVED_TX_BATCH));
+        }
+
+        for (const batch of batches) {
+          attemptedWrite = true;
+          await db.transact(batch);
+        }
+
+        setRecentStatIds((prev) => {
+          const next = [newStatId, ...prev.filter((id) => id !== newStatId)];
+          if (next.length > 50) next.length = 50;
+          return next;
+        });
+
+        setIsDerivedModalOpen(false);
+        setDerivedSelection([]);
+        setSelectedStatIds([]);
+        setSelectionAnchorId(null);
+      } catch (err) {
+        console.error("Failed to create derived stat", err);
+        const timeout = err instanceof Error && err.message.includes("Operation timed out");
+        const partialMessage = attemptedWrite
+          ? " Some data may have been written before this error. If this derived stat now appears in the list, it may have incomplete area coverage."
+          : "";
+        const baseMessage = timeout
+          ? "Saving the derived stat to the database took too long (operation timed out)."
+          : "Failed to create derived stat.";
+
+        if (err instanceof Error && err.message) {
+          setDerivedError(`${baseMessage} ${err.message}${partialMessage}`);
+        } else {
+          setDerivedError(`${baseMessage}${partialMessage}`);
+        }
+      } finally {
+        setIsDerivedSubmitting(false);
+      }
+    },
+    [stats],
+  );
+
+  // (definition moved above)
 
   const statDataSummaryByStatId = useMemo(() => {
     const map = new Map<string, StatDataSummary>();
@@ -1543,11 +1969,20 @@ export const AdminScreen = () => {
 
   // Error state
   if (error) {
+    const anyError = error as any;
+    const debugParts: string[] = [];
+    if (anyError.code) debugParts.push(`code=${String(anyError.code)}`);
+    if (anyError.operation) debugParts.push(`operation=${String(anyError.operation)}`);
+    const debugLine = debugParts.length ? debugParts.join("  b7 ") : null;
+
     return (
       <div className="flex h-full w-full items-center justify-center bg-white dark:bg-slate-900">
         <div className="flex flex-col items-center gap-2 text-center">
           <p className="text-sm font-medium text-rose-600 dark:text-rose-400">Failed to load stats</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">{error.message}</p>
+          {IS_DEV && debugLine && (
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">{debugLine}</p>
+          )}
         </div>
       </div>
     );
@@ -1633,15 +2068,45 @@ export const AdminScreen = () => {
             </div>
           </div>
 
-          {/* Right: New stat button */}
-          <button
-            type="button"
-            onClick={() => setIsNewStatOpen(true)}
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-brand-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 sm:px-3 sm:py-1.5"
-          >
-            <span className="text-sm leading-none">+</span>
-            <span>New stat</span>
-          </button>
+          {/* Right: actions */}
+          <div className="flex shrink-0 items-center gap-2">
+            {selectedCount > 0 && (
+              <span className="rounded-full border border-brand-200 px-2 py-0.5 text-[11px] font-medium text-brand-600 dark:border-brand-500/40 dark:text-brand-300">
+                {selectedCount} selected
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsNewStatOpen(true)}
+              className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 sm:px-3 sm:py-1.5"
+            >
+              <span className="text-sm leading-none">+</span>
+              <span>New stat</span>
+            </button>
+            {canCreateDerivedStat && (
+              <button
+                type="button"
+                onClick={handleRequestDerivedStat}
+                className="inline-flex items-center gap-1 rounded-lg border border-brand-400 px-2 py-1 text-xs font-medium text-brand-600 shadow-sm transition hover:bg-brand-50 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:border-brand-300 dark:text-brand-200 dark:hover:bg-brand-900/20 dark:focus:ring-brand-800/70 sm:px-3 sm:py-1.5"
+              >
+                <svg
+                  className="h-3 w-3"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M10 4v12m6-6H4"
+                    stroke="currentColor"
+                    strokeWidth={1.6}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Create stat</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1680,6 +2145,8 @@ export const AdminScreen = () => {
                 onSave={(form) => handleSave(stat.id, form)}
                 onCancel={handleCancel}
                 onDelete={() => handleDeleteStat(stat.id)}
+                isSelected={selectedIdSet.has(stat.id)}
+                onToggleSelect={(event) => handleToggleSelect(stat.id, event)}
               />
             ))}
           </div>
@@ -1689,6 +2156,15 @@ export const AdminScreen = () => {
         isOpen={isNewStatOpen}
         onClose={() => setIsNewStatOpen(false)}
         onImported={handleImportedFromModal}
+      />
+      <DerivedStatModal
+        isOpen={isDerivedModalOpen}
+        stats={derivedSelection}
+        categories={availableCategories}
+        onClose={handleDerivedModalClose}
+        onSubmit={handleDerivedSubmit}
+        isSubmitting={isDerivedSubmitting}
+        errorMessage={derivedError}
       />
     </div>
   );
