@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Category } from "../../types/organization";
+import { CustomSelect } from "./CustomSelect";
 
 export interface DerivedStatOption {
   id: string;
@@ -32,6 +33,10 @@ interface DerivedStatModalProps {
 
 const defaultFormula: DerivedFormulaKind = "percent";
 
+const formulaSymbol: Record<DerivedFormulaKind, string> = {
+  percent: "÷",
+};
+
 export const DerivedStatModal = ({
   isOpen,
   stats,
@@ -41,49 +46,56 @@ export const DerivedStatModal = ({
   isSubmitting = false,
   errorMessage,
 }: DerivedStatModalProps) => {
-  const [name, setName] = useState("");
   const [label, setLabel] = useState("");
   const [category, setCategory] = useState<string>("");
   const [numeratorId, setNumeratorId] = useState<string>("");
   const [denominatorId, setDenominatorId] = useState<string>("");
   const [formula] = useState<DerivedFormulaKind>(defaultFormula);
-  const [notes, setNotes] = useState("");
 
   useEffect(() => {
     if (!isOpen) return;
-    setName("");
     setLabel("");
-    setNotes("");
-    setCategory((prev) => (prev ? prev : stats[0]?.category ?? categories[0] ?? ""));
+    setCategory(stats[0]?.category ?? "");
     const [first, second] = stats;
     setNumeratorId(first?.id ?? "");
     const defaultDen = second && second.id !== first?.id ? second.id : stats.find((s) => s.id !== first?.id)?.id ?? "";
     setDenominatorId(defaultDen);
-  }, [isOpen, stats, categories]);
+  }, [isOpen, stats]);
 
   const numerator = useMemo(() => stats.find((s) => s.id === numeratorId), [stats, numeratorId]);
   const denominator = useMemo(() => stats.find((s) => s.id === denominatorId), [stats, denominatorId]);
 
+  // Auto-generated name based on formula
+  const generatedName = useMemo(() => {
+    if (!numerator || !denominator) return "";
+    const numLabel = numerator.label || numerator.name;
+    const denLabel = denominator.label || denominator.name;
+    const sym = formulaSymbol[formula];
+    return `Derived: (${numLabel} ${sym} ${denLabel})`;
+  }, [numerator, denominator, formula]);
+
+  // Auto-generated source
+  const generatedSource = "Derived, Census";
+
+  const nameRequired = !label.trim();
   const validationMessage = useMemo(() => {
-    if (!name.trim()) return "Name is required.";
-    if (!category.trim()) return "Category is required.";
     if (!numeratorId || !denominatorId) return "Select both numerator and denominator.";
     if (numeratorId === denominatorId) return "Numerator and denominator must be different stats.";
     return null;
-  }, [name, category, numeratorId, denominatorId]);
+  }, [numeratorId, denominatorId]);
 
-  const isValid = validationMessage === null;
+  const isValid = !nameRequired && validationMessage === null;
 
   const handleSubmit = () => {
     if (!isValid || isSubmitting) return;
     onSubmit({
-      name: name.trim(),
+      name: generatedName,
       label: label.trim(),
-      category: category.trim(),
+      category: category || "",
       numeratorId,
       denominatorId,
       formula,
-      description: notes.trim() || undefined,
+      description: generatedSource,
     });
   };
 
@@ -93,11 +105,48 @@ export const DerivedStatModal = ({
     setDenominatorId(numeratorId);
   };
 
+  const categoryOptions = useMemo(() => {
+    const opts = [{ value: "", label: "No category" }];
+    for (const cat of categories) {
+      opts.push({ value: cat, label: cat.charAt(0).toUpperCase() + cat.slice(1) });
+    }
+    return opts;
+  }, [categories]);
+
+  // Close on ESC key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isSubmitting) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isSubmitting, onClose]);
+
+  // Close on click outside
+  const modalRef = useRef<HTMLDivElement>(null);
+  const handleBackdropClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (modalRef.current && !modalRef.current.contains(e.target as Node) && !isSubmitting) {
+        onClose();
+      }
+    },
+    [isSubmitting, onClose],
+  );
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-4">
-      <div className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-4"
+      onClick={handleBackdropClick}
+    >
+      <div
+        ref={modalRef}
+        className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+      >
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Create derived stat</h2>
@@ -120,62 +169,44 @@ export const DerivedStatModal = ({
         <div className="grid gap-6 px-6 py-5 sm:grid-cols-5">
           <div className="space-y-4 sm:col-span-3">
             <div>
-              <label className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                <span>Derived stat name</span>
-                <span className="text-[10px] normal-case text-slate-400">Shown everywhere by default</span>
-              </label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                disabled={isSubmitting}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
-                placeholder="Percent of households receiving SNAP"
-              />
-            </div>
-            <div>
-              <label className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                <span>Optional short label</span>
-                <span className="text-[10px] normal-case text-slate-400">Overrides display chip text</span>
+              <label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Derived stat name
               </label>
               <input
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 disabled={isSubmitting}
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
-                placeholder="SNAP households %"
+                placeholder="e.g. SNAP households %"
               />
             </div>
             <div>
               <label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Category
               </label>
-              <input
-                list="derived-category-options"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                disabled={isSubmitting}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
-                placeholder="economy"
-              />
-              <datalist id="derived-category-options">
-                {categories.map((cat) => (
-                  <option key={cat} value={cat} />
-                ))}
-              </datalist>
+              <div className="mt-1">
+                <CustomSelect
+                  value={category}
+                  onChange={setCategory}
+                  options={categoryOptions}
+                  disabled={isSubmitting}
+                />
+              </div>
             </div>
-            <div>
-              <label className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                <span>Notes (optional)</span>
-                <span className="text-[10px] normal-case text-slate-400">Saved as stat source metadata</span>
-              </label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={3}
-                disabled={isSubmitting}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-brand-400 focus:ring-1 focus:ring-brand-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
-                placeholder="Describe numerator, denominator, or special calculations"
-              />
+            <div className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/60">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                Auto-generated fields
+              </p>
+              <div className="mt-1.5 space-y-1 text-xs text-slate-600 dark:text-slate-300">
+                <p>
+                  <span className="font-medium text-slate-500 dark:text-slate-400">Internal name:</span>{" "}
+                  {generatedName || "—"}
+                </p>
+                <p>
+                  <span className="font-medium text-slate-500 dark:text-slate-400">Source:</span>{" "}
+                  {generatedSource}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -189,18 +220,25 @@ export const DerivedStatModal = ({
                 <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Numerator
                 </label>
-                <select
-                  value={numeratorId}
-                  onChange={(e) => setNumeratorId(e.target.value)}
-                  disabled={isSubmitting}
-                  className="mt-1 w-full rounded-lg border border-brand-200 bg-white px-2 py-1.5 text-sm text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-50"
-                >
-                  {stats.map((stat) => (
-                    <option key={stat.id} value={stat.id}>
-                      {stat.label || stat.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative mt-1">
+                  <select
+                    value={numeratorId}
+                    onChange={(e) => setNumeratorId(e.target.value)}
+                    disabled={isSubmitting}
+                    className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
+                  >
+                    {stats.map((stat) => (
+                      <option key={stat.id} value={stat.id}>
+                        {stat.label || stat.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+                    <svg viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                </div>
               </div>
               <div className="flex justify-center">
                 <button
@@ -219,18 +257,25 @@ export const DerivedStatModal = ({
                 <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Denominator
                 </label>
-                <select
-                  value={denominatorId}
-                  onChange={(e) => setDenominatorId(e.target.value)}
-                  disabled={isSubmitting}
-                  className="mt-1 w-full rounded-lg border border-brand-200 bg-white px-2 py-1.5 text-sm text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-50"
-                >
-                  {stats.map((stat) => (
-                    <option key={stat.id} value={stat.id} disabled={stat.id === numeratorId}>
-                      {stat.label || stat.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative mt-1">
+                  <select
+                    value={denominatorId}
+                    onChange={(e) => setDenominatorId(e.target.value)}
+                    disabled={isSubmitting}
+                    className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
+                  >
+                    {stats.map((stat) => (
+                      <option key={stat.id} value={stat.id} disabled={stat.id === numeratorId}>
+                        {stat.label || stat.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+                    <svg viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -261,35 +306,40 @@ export const DerivedStatModal = ({
           >
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={!isValid || isSubmitting}
-            className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
-              isValid && !isSubmitting
-                ? "bg-brand-600 hover:bg-brand-500"
-                : "cursor-not-allowed bg-slate-400 dark:bg-slate-600"
-            }`}
-          >
-            {isSubmitting && (
-              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                />
-              </svg>
+          <div className="relative flex items-center">
+            {nameRequired && !isSubmitting && (
+              <span className="absolute -top-5 right-0 text-[10px] text-rose-500 dark:text-rose-400">Name is required</span>
             )}
-            <span>{isSubmitting ? "Creating…" : "Create stat"}</span>
-          </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!isValid || isSubmitting}
+              className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+                isValid && !isSubmitting
+                  ? "bg-brand-600 hover:bg-brand-500"
+                  : "cursor-not-allowed bg-slate-400 dark:bg-slate-600"
+              }`}
+            >
+              {isSubmitting && (
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                  />
+                </svg>
+              )}
+              <span>{isSubmitting ? "Creating…" : "Create stat"}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

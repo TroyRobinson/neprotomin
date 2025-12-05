@@ -1758,20 +1758,18 @@ export const AdminScreen = () => {
 
         const now = Date.now();
         const newStatId = createId();
-        const trimmedName = payload.name.trim();
-        const trimmedLabel = payload.label.trim();
+        // payload.name is auto-generated like "(Numerator ÷ Denominator)"
+        // payload.label is the user-entered display name (required)
+        const autoName = payload.name.trim();
+        const displayName = payload.label.trim();
         const trimmedCategory = payload.category.trim();
-        const numeratorLabel = numeratorMeta.label || numeratorMeta.name;
-        const denominatorLabel = denominatorMeta.label || denominatorMeta.name;
-        const description = payload.description?.trim();
-        const derivedSource = description
-          ? description
-          : `Derived (${numeratorLabel} ÷ ${denominatorLabel})`;
+        // payload.description is always "Census Derived" now
+        const derivedSource = payload.description?.trim() || "Census Derived";
 
         const txs: any[] = [
           db.tx.stats[newStatId].update({
-            name: trimmedName,
-            label: trimmedLabel || null,
+            name: autoName,
+            label: displayName,
             category: trimmedCategory,
             source: derivedSource,
             goodIfUp: null,
@@ -1793,7 +1791,7 @@ export const AdminScreen = () => {
               type: "percent",
               data: row.data,
               source: derivedSource,
-              statTitle: trimmedLabel || trimmedName,
+              statTitle: displayName,
               createdOn: now,
               lastUpdated: now,
             }),
@@ -2209,7 +2207,7 @@ export const AdminScreen = () => {
       <DerivedStatModal
         isOpen={isDerivedModalOpen}
         stats={derivedSelection}
-        categories={availableCategories}
+        categories={statCategoryOptions.map((opt) => opt.value)}
         onClose={handleDerivedModalClose}
         onSubmit={handleDerivedSubmit}
         isSubmitting={isDerivedSubmitting}
