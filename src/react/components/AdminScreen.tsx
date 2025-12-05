@@ -8,6 +8,7 @@ import type { Category } from "../../types/organization";
 import { CustomSelect } from "./CustomSelect";
 import {
   DerivedStatModal,
+  type DerivedFormulaKind,
   type DerivedStatModalSubmit,
   type DerivedStatOption,
 } from "./DerivedStatModal";
@@ -75,24 +76,72 @@ const MAX_DERIVED_TX_BATCH = 20;
 const buildRowKey = (row: RootStatDataRow) =>
   `${row.parentArea ?? ""}::${row.boundaryType ?? ""}::${row.date ?? ""}`;
 
-const computePercentValues = (
-  numerator: Record<string, number>,
-  denominator: Record<string, number>,
+// Compute derived values based on formula type
+const computeDerivedValues = (
+  aData: Record<string, number>,
+  bData: Record<string, number>,
+  formula: DerivedFormulaKind,
 ): Record<string, number> => {
   const out: Record<string, number> = {};
-  for (const [area, numVal] of Object.entries(numerator)) {
-    const denVal = denominator[area];
-    if (
-      typeof denVal === "number" &&
-      Number.isFinite(denVal) &&
-      denVal !== 0 &&
-      typeof numVal === "number" &&
-      Number.isFinite(numVal)
-    ) {
-      out[area] = numVal / denVal;
+  const isFiniteNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+  // For sum/difference, iterate over union of keys; for division-based, iterate over A's keys
+  const keys = formula === "sum" || formula === "difference"
+    ? new Set([...Object.keys(aData), ...Object.keys(bData)])
+    : Object.keys(aData);
+
+  for (const area of keys) {
+    const aVal = aData[area];
+    const bVal = bData[area];
+
+    switch (formula) {
+      case "percent":
+        if (isFiniteNum(aVal) && isFiniteNum(bVal) && bVal !== 0) {
+          out[area] = aVal / bVal;
+        }
+        break;
+      case "sum":
+        if (isFiniteNum(aVal) && isFiniteNum(bVal)) {
+          out[area] = aVal + bVal;
+        } else if (isFiniteNum(aVal)) {
+          out[area] = aVal;
+        } else if (isFiniteNum(bVal)) {
+          out[area] = bVal;
+        }
+        break;
+      case "difference":
+        if (isFiniteNum(aVal) && isFiniteNum(bVal)) {
+          out[area] = aVal - bVal;
+        }
+        break;
+      case "rate_per_1000":
+        if (isFiniteNum(aVal) && isFiniteNum(bVal) && bVal !== 0) {
+          out[area] = (aVal / bVal) * 1000;
+        }
+        break;
+      case "ratio":
+        if (isFiniteNum(aVal) && isFiniteNum(bVal) && bVal !== 0) {
+          out[area] = aVal / bVal;
+        }
+        break;
+      case "index":
+        if (isFiniteNum(aVal) && isFiniteNum(bVal) && bVal !== 0) {
+          out[area] = (aVal / bVal) * 100;
+        }
+        break;
     }
   }
   return out;
+};
+
+// Map formula to statData type
+const formulaToStatType: Record<DerivedFormulaKind, string> = {
+  percent: "percent",
+  sum: "number",
+  difference: "number",
+  rate_per_1000: "number",
+  ratio: "number",
+  index: "number",
 };
 
 const IS_DEV = isDevEnv();
@@ -1734,25 +1783,25 @@ export const AdminScreen = () => {
         const derivedRows: RootStatDataRow[] = [];
         let nonEmptyCount = 0;
 
-        // Use denominator as canonical coverage: iterate its row keys and
-        // compute percentages where numerator data exists.
-        for (const [key, denRow] of denominatorRows.entries()) {
-          const numRow = numeratorRows.get(key);
-          const derivedData = computePercentValues(numRow?.data ?? {}, denRow.data);
+        // Use B stat (denominator/second) as canonical coverage: iterate its row keys
+        // and compute derived values where A stat data exists.
+        for (const [key, bRow] of denominatorRows.entries()) {
+          const aRow = numeratorRows.get(key);
+          const derivedData = computeDerivedValues(aRow?.data ?? {}, bRow.data, payload.formula);
           if (Object.keys(derivedData).length > 0) {
             nonEmptyCount += 1;
           }
           derivedRows.push({
-            parentArea: denRow.parentArea,
-            boundaryType: denRow.boundaryType,
-            date: denRow.date,
+            parentArea: bRow.parentArea,
+            boundaryType: bRow.boundaryType,
+            date: bRow.date,
             data: derivedData,
           });
         }
 
         if (nonEmptyCount === 0) {
           throw new Error(
-            "Selected stats have no overlapping area data to compute a percentage.",
+            "Selected stats have no overlapping area data to compute a derived value.",
           );
         }
 
@@ -1788,7 +1837,7 @@ export const AdminScreen = () => {
               parentArea: row.parentArea ?? undefined,
               boundaryType: row.boundaryType ?? undefined,
               date: row.date ?? undefined,
-              type: "percent",
+              type: formulaToStatType[payload.formula],
               data: row.data,
               source: derivedSource,
               statTitle: displayName,
