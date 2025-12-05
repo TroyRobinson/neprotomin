@@ -12,6 +12,13 @@ export const formatStatValue = (value: number, type: string): string => {
         const percentValue = value <= 1 ? value * 100 : value;
         return `${Math.round(percentValue * 10) / 10}%`;
       }
+    case "percent_change":
+      // Percent change: show +/- sign (e.g., -30%, +24%)
+      {
+        const pct = value * 100;
+        const sign = value > 0 ? "+" : "";
+        return `${sign}${Math.round(pct * 10) / 10}%`;
+      }
     case "currency":
       return new Intl.NumberFormat("en-US", { 
         style: "currency", 
@@ -42,6 +49,13 @@ export const formatStatValueCompact = (value: number, type: string): string => {
           return `${Math.round(percentValue)}%`;
         }
         return `${Math.round(percentValue * 10) / 10}%`;
+      }
+    case "percent_change":
+      // Percent change: show +/- sign (e.g., -30%, +24%)
+      {
+        const pct = value * 100;
+        const sign = value > 0 ? "+" : "";
+        return `${sign}${Math.round(pct)}%`;
       }
     case "currency":
       if (value >= 1000000) {

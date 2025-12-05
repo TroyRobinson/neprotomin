@@ -1,12 +1,11 @@
 import type maplibregl from "maplibre-gl";
 
-import { CHOROPLETH_COLORS, TEAL_COLORS, getClassIndex } from "../../../lib/choropleth";
+import { CHOROPLETH_COLORS, TEAL_COLORS, getClassIndex, getDivergingColor, DIVERGING_NEGATIVE_COLORS, DIVERGING_POSITIVE_COLORS } from "../../../lib/choropleth";
 import type { ChoroplethLegendController } from "../components/choroplethLegend";
 import type { SecondaryChoroplethLegendController } from "../components/secondaryChoroplethLegend";
 
-type BoundaryEntry = Partial<
-  Record<"ZIP" | "COUNTY", { type: string; data: Record<string, number>; min: number; max: number }>
->;
+type BoundaryDataEntry = { type: string; data: Record<string, number>; min: number; max: number };
+type BoundaryEntry = Partial<Record<"ZIP" | "COUNTY", BoundaryDataEntry>>;
 
 export interface StatOverlayIds {
   BOUNDARY_STATDATA_FILL_LAYER_ID: string;
@@ -36,7 +35,7 @@ export const updateStatDataChoropleth = (
   const applyEntry = (
     layerId: string,
     featureKey: "zip" | "county",
-    entry: { data: Record<string, number>; min: number; max: number } | undefined,
+    entry: BoundaryDataEntry | undefined,
     active: boolean,
   ) => {
     if (!map.getLayer(layerId)) return;
@@ -49,13 +48,26 @@ export const updateStatDataChoropleth = (
       map.setPaintProperty(layerId, "fill-opacity", 0);
       return;
     }
-    const COLORS = CHOROPLETH_COLORS;
-    const classes = COLORS.length;
+
+    const isPercentChange = entry.type === "percent_change";
     const match: any[] = ["match", ["get", featureKey]];
-    for (const id of keys) {
-      const v = entry.data[id];
-      const color = COLORS[getClassIndex(v, entry.min, entry.max, classes)];
-      match.push(id, color);
+
+    if (isPercentChange) {
+      // Diverging colors: burnt yellow for negative, indigo for positive
+      for (const id of keys) {
+        const v = entry.data[id];
+        const color = getDivergingColor(v, entry.min, entry.max);
+        match.push(id, color);
+      }
+    } else {
+      // Standard sequential colors
+      const COLORS = CHOROPLETH_COLORS;
+      const classes = COLORS.length;
+      for (const id of keys) {
+        const v = entry.data[id];
+        const color = COLORS[getClassIndex(v, entry.min, entry.max, classes)];
+        match.push(id, color);
+      }
     }
     match.push("#000000");
 
@@ -94,7 +106,16 @@ export const updateChoroplethLegend = (
     legend.setVisible(false);
     return;
   }
-  legend.setColors(CHOROPLETH_COLORS[0], CHOROPLETH_COLORS[CHOROPLETH_COLORS.length - 1]);
+
+  const isPercentChange = dataEntry.type === "percent_change";
+  if (isPercentChange) {
+    // Diverging legend: burnt yellow (negative) to indigo (positive)
+    const negColor = DIVERGING_NEGATIVE_COLORS[DIVERGING_NEGATIVE_COLORS.length - 1];
+    const posColor = DIVERGING_POSITIVE_COLORS[DIVERGING_POSITIVE_COLORS.length - 1];
+    legend.setColors(negColor, posColor);
+  } else {
+    legend.setColors(CHOROPLETH_COLORS[0], CHOROPLETH_COLORS[CHOROPLETH_COLORS.length - 1]);
+  }
   legend.setRange(dataEntry.min, dataEntry.max, dataEntry.type);
   legend.setVisible(true);
 };

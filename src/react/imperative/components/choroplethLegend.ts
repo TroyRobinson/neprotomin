@@ -25,6 +25,16 @@ const formatValue = (value: number, type?: string, isMobile?: boolean): string =
     const hasFrac = Math.abs(pct % 1) > 1e-6;
     return `${hasFrac ? wrap(pct, 1) : Math.round(pct)}%`;
   }
+  // percent_change: show +/- sign with % (e.g., -30%, +24%)
+  if (t === "percent_change") {
+    const pct = value * 100;
+    const sign = value > 0 ? "+" : "";
+    if (isMobile) {
+      return `${sign}${Math.round(pct)}%`;
+    }
+    const hasFrac = Math.abs(pct % 1) > 1e-6;
+    return `${sign}${hasFrac ? wrap(pct, 1) : Math.round(pct)}%`;
+  }
   if (t === "years" || t === "rate") {
     if (isMobile) {
       return String(Math.round(value));

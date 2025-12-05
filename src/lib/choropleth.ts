@@ -18,6 +18,27 @@ export const TEAL_COLORS = [
   "#0f766e",
 ];
 
+// Diverging scale for percent change: burnt yellow (negative) -> neutral -> indigo (positive)
+// Negative values: creamy burnt yellow, darker as more negative
+export const DIVERGING_NEGATIVE_COLORS = [
+  "#fffbeb", // very light cream
+  "#fef3c7", // light amber
+  "#fcd34d", // amber-300
+  "#f59e0b", // amber-500
+  "#d97706", // amber-600
+  "#b45309", // amber-700 - burnt
+];
+
+// Positive values: indigo scale, darker as more positive
+export const DIVERGING_POSITIVE_COLORS = [
+  "#eef2ff", // very light indigo
+  "#e0e7ff", // indigo-100
+  "#c7d2fe", // indigo-200
+  "#a5b4fc", // indigo-300
+  "#818cf8", // indigo-400
+  "#6366f1", // indigo-500 - brand
+];
+
 export const getClassIndex = (
   value: number,
   min: number,
@@ -30,6 +51,33 @@ export const getClassIndex = (
   if (range <= 0) return Math.floor((numClasses - 1) / 2);
   const r = (value - min) / range;
   return Math.max(0, Math.min(numClasses - 1, Math.floor(r * (numClasses - 1))));
+};
+
+// For diverging data (percent change): returns { isPositive, index }
+// index 0 = closest to zero, higher = further from zero
+export const getDivergingColor = (
+  value: number,
+  min: number,
+  max: number,
+): string => {
+  if (!Number.isFinite(value)) return DIVERGING_POSITIVE_COLORS[0];
+  
+  const negColors = DIVERGING_NEGATIVE_COLORS;
+  const posColors = DIVERGING_POSITIVE_COLORS;
+  
+  if (value >= 0) {
+    // Positive: scale from 0 to max
+    const maxAbs = Math.max(0.001, max);
+    const ratio = Math.min(1, value / maxAbs);
+    const idx = Math.floor(ratio * (posColors.length - 1));
+    return posColors[Math.min(posColors.length - 1, Math.max(0, idx))];
+  } else {
+    // Negative: scale from min to 0
+    const minAbs = Math.abs(Math.min(-0.001, min));
+    const ratio = Math.min(1, Math.abs(value) / minAbs);
+    const idx = Math.floor(ratio * (negColors.length - 1));
+    return negColors[Math.min(negColors.length - 1, Math.max(0, idx))];
+  }
 };
 
 

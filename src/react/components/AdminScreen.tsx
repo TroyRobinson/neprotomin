@@ -142,6 +142,7 @@ const formulaToStatType: Record<DerivedFormulaKind, string> = {
   rate_per_1000: "number",
   ratio: "number",
   index: "number",
+  change_over_time: "percent_change",
 };
 
 const IS_DEV = isDevEnv();
@@ -1507,6 +1508,7 @@ export const AdminScreen = () => {
   const [derivedSelection, setDerivedSelection] = useState<DerivedStatOption[]>([]);
   const [isDerivedSubmitting, setIsDerivedSubmitting] = useState(false);
   const [derivedError, setDerivedError] = useState<string | null>(null);
+  const [derivedAvailableYears, setDerivedAvailableYears] = useState<string[]>([]);
 
   // Filter, sort, and search state
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -1602,7 +1604,8 @@ export const AdminScreen = () => {
   );
 
   const selectedCount = selectedStatIds.length;
-  const canCreateDerivedStat = selectedCount >= 2;
+  // Allow 1+ stats for derived stat creation (1 stat = change_over_time mode)
+  const canCreateDerivedStat = selectedCount >= 1;
 
   const handleToggleSelect = useCallback(
     (statId: string, event: MouseEvent<HTMLDivElement>) => {
@@ -1660,7 +1663,7 @@ export const AdminScreen = () => {
     });
   }, [statIndexMap]);
 
-  const handleRequestDerivedStat = useCallback(() => {
+  const handleRequestDerivedStat = useCallback(async () => {
     const selection = sortedStats
       .filter((stat) => selectedIdSet.has(stat.id))
       .map<DerivedStatOption>((stat) => ({
@@ -1671,6 +1674,32 @@ export const AdminScreen = () => {
       }));
     setDerivedError(null);
     setDerivedSelection(selection);
+    setDerivedAvailableYears([]);
+
+    // For single stat selection, fetch available years for change_over_time
+    if (selection.length === 1) {
+      try {
+        const { data } = await db.queryOnce({
+          statData: {
+            $: {
+              where: { statId: selection[0].id, name: "root" },
+              fields: ["date"],
+            },
+          },
+        });
+        const rows = (data as any)?.statData ?? [];
+        const years = new Set<string>();
+        for (const row of rows) {
+          if (typeof row?.date === "string" && row.date.trim()) {
+            years.add(row.date.trim());
+          }
+        }
+        setDerivedAvailableYears(Array.from(years).sort());
+      } catch (err) {
+        console.warn("Failed to fetch years for stat", err);
+      }
+    }
+
     setIsDerivedModalOpen(true);
   }, [selectedIdSet, sortedStats]);
 
@@ -1678,6 +1707,7 @@ export const AdminScreen = () => {
     setIsDerivedModalOpen(false);
     setDerivedSelection([]);
     setDerivedError(null);
+    setDerivedAvailableYears([]);
   }, []);
 
   const handleDerivedSubmit = useCallback(
@@ -1686,6 +1716,151 @@ export const AdminScreen = () => {
       setIsDerivedSubmitting(true);
       let attemptedWrite = false;
       try {
+        // --- CHANGE OVER TIME formula: special handling ---
+        if (payload.formula === "change_over_time") {
+          const statId = payload.numeratorId; // same as denominatorId for this formula
+          const startYear = payload.startYear;
+          const endYear = payload.endYear;
+          if (!statId || !startYear || !endYear) {
+            throw new Error("Missing stat or year range for change over time calculation.");
+          }
+
+          const statMeta = stats.find((s) => s.id === statId);
+          if (!statMeta) {
+            throw new Error("Unable to locate selected stat.");
+          }
+
+          // Fetch all data rows for this stat
+          const { data: statDataResponse } = await db.queryOnce({
+            statData: {
+              $: {
+                where: { statId, name: "root" },
+                fields: ["parentArea", "boundaryType", "date", "data"],
+              },
+            },
+          });
+
+          const rawRows = Array.isArray((statDataResponse as any)?.statData)
+            ? ((statDataResponse as any).statData as any[])
+            : [];
+
+          // Group by parentArea + boundaryType, keyed by date
+          type RowsByDate = Map<string, Record<string, number>>;
+          const byContext = new Map<string, { parentArea: string | null; boundaryType: string | null; rowsByDate: RowsByDate }>();
+
+          for (const row of rawRows) {
+            if (!row || typeof row !== "object") continue;
+            const parentArea = typeof row.parentArea === "string" ? row.parentArea : null;
+            const boundaryType = typeof row.boundaryType === "string" ? row.boundaryType : null;
+            const date = typeof row.date === "string" ? row.date : typeof row.date === "number" ? String(row.date) : null;
+            if (!date) continue;
+            const dataMap = normalizeDataMap(row.data);
+            const ctxKey = `${parentArea ?? ""}|${boundaryType ?? ""}`;
+            if (!byContext.has(ctxKey)) {
+              byContext.set(ctxKey, { parentArea, boundaryType, rowsByDate: new Map() });
+            }
+            byContext.get(ctxKey)!.rowsByDate.set(date, dataMap);
+          }
+
+          const derivedRows: RootStatDataRow[] = [];
+          let nonEmptyCount = 0;
+
+          // For each context, compute percent change between startYear and endYear
+          for (const [, ctx] of byContext) {
+            const startData = ctx.rowsByDate.get(startYear);
+            const endData = ctx.rowsByDate.get(endYear);
+            if (!startData || !endData) continue;
+
+            const changeData: Record<string, number> = {};
+            for (const areaKey of Object.keys(endData)) {
+              const startVal = startData[areaKey];
+              const endVal = endData[areaKey];
+              if (typeof startVal === "number" && typeof endVal === "number" && startVal !== 0) {
+                // Percent change: (end - start) / |start|
+                changeData[areaKey] = (endVal - startVal) / Math.abs(startVal);
+              }
+            }
+
+            if (Object.keys(changeData).length > 0) {
+              nonEmptyCount += 1;
+              derivedRows.push({
+                parentArea: ctx.parentArea,
+                boundaryType: ctx.boundaryType,
+                date: `${startYear}-${endYear}`,
+                data: changeData,
+              });
+            }
+          }
+
+          if (nonEmptyCount === 0) {
+            throw new Error(`No overlapping areas with data for both ${startYear} and ${endYear}.`);
+          }
+
+          const now = Date.now();
+          const newStatId = createId();
+          const autoName = payload.name.trim();
+          const displayName = payload.label.trim();
+          const trimmedCategory = payload.category.trim();
+          const derivedSource = payload.description?.trim() || "Census Derived";
+
+          const txs: any[] = [
+            db.tx.stats[newStatId].update({
+              name: autoName,
+              label: displayName,
+              category: trimmedCategory,
+              source: derivedSource,
+              goodIfUp: null,
+              featured: false,
+              active: true,
+              createdOn: now,
+              lastUpdated: now,
+            }),
+          ];
+
+          for (const row of derivedRows) {
+            txs.push(
+              db.tx.statData[createId()].update({
+                statId: newStatId,
+                name: "root",
+                parentArea: row.parentArea ?? undefined,
+                boundaryType: row.boundaryType ?? undefined,
+                date: row.date ?? undefined,
+                type: "percent_change",
+                data: row.data,
+                source: derivedSource,
+                statTitle: displayName,
+                createdOn: now,
+                lastUpdated: now,
+              }),
+            );
+          }
+
+          const batches: any[][] = [];
+          for (let i = 0; i < txs.length; i += MAX_DERIVED_TX_BATCH) {
+            batches.push(txs.slice(i, i + MAX_DERIVED_TX_BATCH));
+          }
+
+          for (const batch of batches) {
+            attemptedWrite = true;
+            await db.transact(batch);
+          }
+
+          setRecentStatIds((prev) => {
+            const next = [newStatId, ...prev.filter((id) => id !== newStatId)];
+            if (next.length > 50) next.length = 50;
+            return next;
+          });
+
+          setIsDerivedModalOpen(false);
+          setDerivedSelection([]);
+          setDerivedAvailableYears([]);
+          setSelectedStatIds([]);
+          setSelectionAnchorId(null);
+          setIsDerivedSubmitting(false);
+          return;
+        }
+
+        // --- Standard two-stat derived formula ---
         const numeratorMeta = stats.find((stat) => stat.id === payload.numeratorId);
         const denominatorMeta = stats.find((stat) => stat.id === payload.denominatorId);
         if (!numeratorMeta || !denominatorMeta) {
@@ -2257,6 +2432,7 @@ export const AdminScreen = () => {
         isOpen={isDerivedModalOpen}
         stats={derivedSelection}
         categories={statCategoryOptions.map((opt) => opt.value)}
+        availableYears={derivedAvailableYears}
         onClose={handleDerivedModalClose}
         onSubmit={handleDerivedSubmit}
         isSubmitting={isDerivedSubmitting}

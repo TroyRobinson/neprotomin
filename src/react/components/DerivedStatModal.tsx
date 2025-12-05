@@ -9,7 +9,7 @@ export interface DerivedStatOption {
   category: string;
 }
 
-export type DerivedFormulaKind = "percent" | "sum" | "difference" | "rate_per_1000" | "ratio" | "index";
+export type DerivedFormulaKind = "percent" | "sum" | "difference" | "rate_per_1000" | "ratio" | "index" | "change_over_time";
 
 export interface DerivedStatModalSubmit {
   name: string;
@@ -19,12 +19,16 @@ export interface DerivedStatModalSubmit {
   denominatorId: string;
   formula: DerivedFormulaKind;
   description?: string;
+  // For change_over_time formula
+  startYear?: string;
+  endYear?: string;
 }
 
 interface DerivedStatModalProps {
   isOpen: boolean;
   stats: DerivedStatOption[];
   categories: string[];
+  availableYears?: string[]; // Years available for the selected stat (for change_over_time)
   onClose: () => void;
   onSubmit: (payload: DerivedStatModalSubmit) => void;
   isSubmitting?: boolean;
@@ -40,6 +44,7 @@ const formulaSymbol: Record<DerivedFormulaKind, string> = {
   rate_per_1000: "÷",
   ratio: ":",
   index: "÷",
+  change_over_time: "Δ",
 };
 
 const formulaDescription: Record<DerivedFormulaKind, string> = {
@@ -49,21 +54,24 @@ const formulaDescription: Record<DerivedFormulaKind, string> = {
   rate_per_1000: "(A ÷ B) × 1000",
   ratio: "A : B (simple division)",
   index: "(A ÷ B) × 100",
+  change_over_time: "(End − Start) ÷ Start as %",
 };
 
-const formulaOptions: Array<{ value: DerivedFormulaKind; label: string }> = [
-  { value: "percent", label: "Percentage" },
-  { value: "sum", label: "Sum" },
-  { value: "difference", label: "Difference" },
-  { value: "rate_per_1000", label: "Rate per 1,000" },
-  { value: "ratio", label: "Ratio" },
-  { value: "index", label: "Index" },
+const formulaOptions: Array<{ value: DerivedFormulaKind; label: string; requiresTwoStats?: boolean }> = [
+  { value: "percent", label: "Percentage", requiresTwoStats: true },
+  { value: "sum", label: "Sum", requiresTwoStats: true },
+  { value: "difference", label: "Difference", requiresTwoStats: true },
+  { value: "rate_per_1000", label: "Rate per 1,000", requiresTwoStats: true },
+  { value: "ratio", label: "Ratio", requiresTwoStats: true },
+  { value: "index", label: "Index", requiresTwoStats: true },
+  { value: "change_over_time", label: "Change Over Time", requiresTwoStats: false },
 ];
 
 export const DerivedStatModal = ({
   isOpen,
   stats,
   categories,
+  availableYears = [],
   onClose,
   onSubmit,
   isSubmitting = false,
@@ -74,33 +82,56 @@ export const DerivedStatModal = ({
   const [numeratorId, setNumeratorId] = useState<string>("");
   const [denominatorId, setDenominatorId] = useState<string>("");
   const [formula, setFormula] = useState<DerivedFormulaKind>(defaultFormula);
+  const [startYear, setStartYear] = useState<string>("");
+  const [endYear, setEndYear] = useState<string>("");
+
+  // Single-stat mode (for change_over_time)
+  const isSingleStatMode = stats.length === 1;
+  const singleStat = isSingleStatMode ? stats[0] : null;
+
+  // Sorted years for dropdown
+  const sortedYears = useMemo(() => [...availableYears].sort(), [availableYears]);
 
   useEffect(() => {
     if (!isOpen) return;
     setLabel("");
     setCategory(stats[0]?.category ?? "");
-    setFormula(defaultFormula);
+    // Default to change_over_time in single-stat mode, otherwise percent
+    setFormula(isSingleStatMode ? "change_over_time" : defaultFormula);
     const [first, second] = stats;
     setNumeratorId(first?.id ?? "");
     const defaultDen = second && second.id !== first?.id ? second.id : stats.find((s) => s.id !== first?.id)?.id ?? "";
     setDenominatorId(defaultDen);
-  }, [isOpen, stats]);
+    // Initialize year selection
+    if (sortedYears.length >= 2) {
+      setStartYear(sortedYears[0]);
+      setEndYear(sortedYears[sortedYears.length - 1]);
+    } else {
+      setStartYear("");
+      setEndYear("");
+    }
+  }, [isOpen, stats, isSingleStatMode, sortedYears]);
 
   const numerator = useMemo(() => stats.find((s) => s.id === numeratorId), [stats, numeratorId]);
   const denominator = useMemo(() => stats.find((s) => s.id === denominatorId), [stats, denominatorId]);
 
   // Auto-generated name based on formula
   const generatedName = useMemo(() => {
+    if (formula === "change_over_time") {
+      if (!singleStat) return "";
+      const statLabel = singleStat.label || singleStat.name;
+      return `Derived: ${statLabel} Change (${startYear}–${endYear})`;
+    }
     if (!numerator || !denominator) return "";
     const numLabel = numerator.label || numerator.name;
     const denLabel = denominator.label || denominator.name;
     const sym = formulaSymbol[formula];
     const suffix = formula === "rate_per_1000" ? " ×1000" : formula === "index" ? " ×100" : "";
     return `Derived: (${numLabel} ${sym} ${denLabel}${suffix})`;
-  }, [numerator, denominator, formula]);
+  }, [numerator, denominator, formula, singleStat, startYear, endYear]);
 
   // Labels for A/B based on formula type
-  const operandLabels = useMemo(() => {
+  const operandLabels = useMemo((): { a: string; b: string } => {
     switch (formula) {
       case "percent":
       case "rate_per_1000":
@@ -113,6 +144,8 @@ export const DerivedStatModal = ({
         return { a: "First value", b: "Second value" };
       case "index":
         return { a: "Value", b: "Reference" };
+      case "change_over_time":
+        return { a: "Start year", b: "End year" };
     }
   }, [formula]);
 
@@ -121,10 +154,16 @@ export const DerivedStatModal = ({
 
   const nameRequired = !label.trim();
   const validationMessage = useMemo(() => {
+    if (formula === "change_over_time") {
+      if (!singleStat) return "Select a stat for change over time calculation.";
+      if (!startYear || !endYear) return "Select both start and end years.";
+      if (startYear >= endYear) return "End year must be after start year.";
+      return null;
+    }
     if (!numeratorId || !denominatorId) return "Select both numerator and denominator.";
     if (numeratorId === denominatorId) return "Numerator and denominator must be different stats.";
     return null;
-  }, [numeratorId, denominatorId]);
+  }, [formula, singleStat, startYear, endYear, numeratorId, denominatorId]);
 
   const isValid = !nameRequired && validationMessage === null;
 
@@ -134,10 +173,12 @@ export const DerivedStatModal = ({
       name: generatedName,
       label: label.trim(),
       category: category || "",
-      numeratorId,
-      denominatorId,
+      numeratorId: formula === "change_over_time" ? (singleStat?.id ?? "") : numeratorId,
+      denominatorId: formula === "change_over_time" ? (singleStat?.id ?? "") : denominatorId,
       formula,
       description: generatedSource,
+      startYear: formula === "change_over_time" ? startYear : undefined,
+      endYear: formula === "change_over_time" ? endYear : undefined,
     });
   };
 
@@ -261,72 +302,145 @@ export const DerivedStatModal = ({
               </div>
             </div>
             <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">{formulaDescription[formula]}</p>
-            <div className="mt-4 space-y-3">
-              <div>
-                <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  {operandLabels.a}
-                </label>
-                <div className="relative mt-1">
-                  <select
-                    value={numeratorId}
-                    onChange={(e) => setNumeratorId(e.target.value)}
-                    disabled={isSubmitting}
-                    className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
-                  >
-                    {stats.map((stat) => (
-                      <option key={stat.id} value={stat.id}>
-                        {stat.label || stat.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
-                    <svg viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                    </svg>
+            
+            {/* Year selection for change_over_time */}
+            {formula === "change_over_time" ? (
+              <div className="mt-4 space-y-3">
+                {singleStat && (
+                  <div className="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700 dark:bg-brand-900/30 dark:text-brand-300">
+                    <p className="font-medium">{singleStat.label || singleStat.name}</p>
+                  </div>
+                )}
+                <div>
+                  <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {operandLabels.a}
+                  </label>
+                  <div className="relative mt-1">
+                    <select
+                      value={startYear}
+                      onChange={(e) => setStartYear(e.target.value)}
+                      disabled={isSubmitting}
+                      className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
+                    >
+                      {sortedYears.map((year) => (
+                        <option key={year} value={year} disabled={year >= endYear}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+                      <svg viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-center">
+                  <span className="text-lg text-slate-400">→</span>
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {operandLabels.b}
+                  </label>
+                  <div className="relative mt-1">
+                    <select
+                      value={endYear}
+                      onChange={(e) => setEndYear(e.target.value)}
+                      disabled={isSubmitting}
+                      className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
+                    >
+                      {sortedYears.map((year) => (
+                        <option key={year} value={year} disabled={year <= startYear}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+                      <svg viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                      </svg>
+                    </div>
                   </div>
                 </div>
               </div>
-              <div className="flex justify-center">
-                <button
-                  type="button"
-                  onClick={handleSwap}
-                  disabled={isSubmitting}
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-400 hover:text-slate-800 dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-500"
-                >
-                  <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6}>
-                    <path d="M7 7h9m0 0l-3-3m3 3l-3 3M13 13H4m0 0l3 3m-3-3l3-3" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  Swap
-                </button>
-              </div>
-              <div>
-                <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  {operandLabels.b}
-                </label>
-                <div className="relative mt-1">
-                  <select
-                    value={denominatorId}
-                    onChange={(e) => setDenominatorId(e.target.value)}
+            ) : (
+              /* Standard two-stat operand selection */
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {operandLabels.a}
+                  </label>
+                  <div className="relative mt-1">
+                    <select
+                      value={numeratorId}
+                      onChange={(e) => setNumeratorId(e.target.value)}
+                      disabled={isSubmitting}
+                      className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
+                    >
+                      {stats.map((stat) => (
+                        <option key={stat.id} value={stat.id}>
+                          {stat.label || stat.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+                      <svg viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={handleSwap}
                     disabled={isSubmitting}
-                    className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-400 hover:text-slate-800 dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-500"
                   >
-                    {stats.map((stat) => (
-                      <option key={stat.id} value={stat.id} disabled={stat.id === numeratorId}>
-                        {stat.label || stat.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
-                    <svg viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6}>
+                      <path d="M7 7h9m0 0l-3-3m3 3l-3 3M13 13H4m0 0l3 3m-3-3l3-3" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
+                    Swap
+                  </button>
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {operandLabels.b}
+                  </label>
+                  <div className="relative mt-1">
+                    <select
+                      value={denominatorId}
+                      onChange={(e) => setDenominatorId(e.target.value)}
+                      disabled={isSubmitting}
+                      className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
+                    >
+                      {stats.map((stat) => (
+                        <option key={stat.id} value={stat.id} disabled={stat.id === numeratorId}>
+                          {stat.label || stat.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+                      <svg viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                      </svg>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
 
+            {/* Preview of formula */}
             <div className="mt-4 rounded-lg bg-white px-3 py-2 text-xs text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
-              {numerator && denominator ? (
+              {formula === "change_over_time" ? (
+                singleStat && startYear && endYear ? (
+                  <p>
+                    Percent change in <strong>{singleStat.label || singleStat.name}</strong> from {startYear} to {endYear}
+                  </p>
+                ) : (
+                  <p>Select a stat and year range.</p>
+                )
+              ) : numerator && denominator ? (
                 <p>
                   {numerator.label || numerator.name} ÷ {denominator.label || denominator.name}
                 </p>
