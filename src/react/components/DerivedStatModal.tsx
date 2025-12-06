@@ -68,6 +68,150 @@ const formulaOptions: Array<{ value: DerivedFormulaKind; label: string; requires
   { value: "change_over_time", label: "Change Over Time", requiresTwoStats: false },
 ];
 
+// Threshold for showing fuzzy-search vs simple dropdown
+const FUZZY_SEARCH_THRESHOLD = 5;
+
+// Simple fuzzy match for stat filtering
+const fuzzyMatch = (text: string, query: string): boolean => {
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase().trim();
+  if (!lowerQuery) return true;
+  // Check if all query words appear somewhere in the text
+  const words = lowerQuery.split(/\s+/);
+  return words.every((word) => lowerText.includes(word));
+};
+
+// Searchable stat selector component
+interface StatSearchSelectProps {
+  stats: DerivedStatOption[];
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+  disabledId?: string; // ID to disable (e.g. the other operand)
+  placeholder?: string;
+}
+
+const StatSearchSelect = ({
+  stats,
+  value,
+  onChange,
+  disabled = false,
+  disabledId,
+  placeholder = "Search stats...",
+}: StatSearchSelectProps) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const selectedStat = useMemo(() => stats.find((s) => s.id === value), [stats, value]);
+
+  const filteredStats = useMemo(() => {
+    if (!query.trim()) return stats;
+    return stats.filter((stat) => {
+      const searchText = `${stat.label || ""} ${stat.name} ${stat.category}`;
+      return fuzzyMatch(searchText, query);
+    });
+  }, [stats, query]);
+
+  // Close on click outside
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isOpen]);
+
+  const handleSelect = (id: string) => {
+    onChange(id);
+    setIsOpen(false);
+    setQuery("");
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setIsOpen(false);
+      setQuery("");
+    } else if (e.key === "Enter" && filteredStats.length === 1) {
+      e.preventDefault();
+      handleSelect(filteredStats[0].id);
+    }
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => {
+          if (!disabled) {
+            setIsOpen(!isOpen);
+            setTimeout(() => inputRef.current?.focus(), 0);
+          }
+        }}
+        disabled={disabled}
+        className="flex h-7 w-full items-center justify-between rounded-lg border border-slate-300 bg-white pl-3 pr-2 text-left text-xs text-slate-700 shadow-sm transition hover:border-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+      >
+        <span className="truncate">
+          {selectedStat ? selectedStat.label || selectedStat.name : "Select stat..."}
+        </span>
+        <svg className="h-3 w-3 shrink-0 text-slate-400" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-full min-w-[220px] rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          <div className="border-b border-slate-100 p-2 dark:border-slate-800">
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={placeholder}
+              className="h-7 w-full rounded border border-slate-200 bg-slate-50 px-2 text-xs text-slate-700 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            />
+          </div>
+          <div className="max-h-48 overflow-y-auto py-1">
+            {filteredStats.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-slate-400">No matching stats</div>
+            ) : (
+              filteredStats.map((stat) => {
+                const isDisabled = stat.id === disabledId;
+                return (
+                  <button
+                    key={stat.id}
+                    type="button"
+                    onClick={() => !isDisabled && handleSelect(stat.id)}
+                    disabled={isDisabled}
+                    className={`flex w-full flex-col items-start px-3 py-1.5 text-left text-xs transition ${
+                      stat.id === value
+                        ? "bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300"
+                        : isDisabled
+                        ? "cursor-not-allowed text-slate-300 dark:text-slate-600"
+                        : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    <span className="font-medium">{stat.label || stat.name}</span>
+                    {stat.label && stat.label !== stat.name && (
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">{stat.name}</span>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const DerivedStatModal = ({
   isOpen,
   stats,
@@ -100,19 +244,29 @@ export const DerivedStatModal = ({
     return [] as string[];
   }, [availableYearsByStat, availableYears, numeratorId]);
 
+  // Use fuzzy-search mode when many stats (passed all stats, not pre-selected)
+  const useFuzzySearch = stats.length > FUZZY_SEARCH_THRESHOLD;
+
   useEffect(() => {
     if (!isOpen) return;
     setLabel("");
     setCategory(stats[0]?.category ?? "");
     // Default to change_over_time in single-stat mode, otherwise percent
     setFormula(isSingleStatMode ? "change_over_time" : defaultFormula);
-    const [first, second] = stats;
-    const firstId = first?.id ?? "";
-    setNumeratorId(firstId);
-    const defaultDen =
-      second && second.id !== firstId ? second.id : stats.find((s) => s.id !== firstId)?.id ?? "";
-    setDenominatorId(defaultDen);
-  }, [isOpen, stats, isSingleStatMode]);
+
+    // In fuzzy-search mode, don't pre-select - user must search and choose
+    if (useFuzzySearch) {
+      setNumeratorId("");
+      setDenominatorId("");
+    } else {
+      const [first, second] = stats;
+      const firstId = first?.id ?? "";
+      setNumeratorId(firstId);
+      const defaultDen =
+        second && second.id !== firstId ? second.id : stats.find((s) => s.id !== firstId)?.id ?? "";
+      setDenominatorId(defaultDen);
+    }
+  }, [isOpen, stats, isSingleStatMode, useFuzzySearch]);
 
   // Initialize / reset year range whenever the base stat or formula changes
   useEffect(() => {
@@ -325,24 +479,36 @@ export const DerivedStatModal = ({
                     <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                       Base stat
                     </label>
-                    <div className="relative mt-1">
-                      <select
-                        value={numeratorId}
-                        onChange={(e) => setNumeratorId(e.target.value)}
-                        disabled={isSubmitting}
-                        className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
-                      >
-                        {stats.map((stat) => (
-                          <option key={stat.id} value={stat.id}>
-                            {stat.label || stat.name}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
-                        <svg viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                        </svg>
-                      </div>
+                    <div className="mt-1">
+                      {useFuzzySearch ? (
+                        <StatSearchSelect
+                          stats={stats}
+                          value={numeratorId}
+                          onChange={setNumeratorId}
+                          disabled={isSubmitting}
+                          placeholder="Search base stat..."
+                        />
+                      ) : (
+                        <div className="relative">
+                          <select
+                            value={numeratorId}
+                            onChange={(e) => setNumeratorId(e.target.value)}
+                            disabled={isSubmitting}
+                            className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
+                          >
+                            {stats.map((stat) => (
+                              <option key={stat.id} value={stat.id}>
+                                {stat.label || stat.name}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+                            <svg viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -405,30 +571,43 @@ export const DerivedStatModal = ({
                 </div>
               </div>
             ) : (
-              /* Standard two-stat operand selection */
+              /* Standard two-stat operand selection - use fuzzy search when many stats */
               <div className="mt-4 space-y-3">
                 <div>
                   <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     {operandLabels.a}
                   </label>
-                  <div className="relative mt-1">
-                    <select
-                      value={numeratorId}
-                      onChange={(e) => setNumeratorId(e.target.value)}
-                      disabled={isSubmitting}
-                      className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
-                    >
-                      {stats.map((stat) => (
-                        <option key={stat.id} value={stat.id}>
-                          {stat.label || stat.name}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
-                      <svg viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                      </svg>
-                    </div>
+                  <div className="mt-1">
+                    {stats.length > FUZZY_SEARCH_THRESHOLD ? (
+                      <StatSearchSelect
+                        stats={stats}
+                        value={numeratorId}
+                        onChange={setNumeratorId}
+                        disabled={isSubmitting}
+                        disabledId={denominatorId}
+                        placeholder="Search numerator..."
+                      />
+                    ) : (
+                      <div className="relative">
+                        <select
+                          value={numeratorId}
+                          onChange={(e) => setNumeratorId(e.target.value)}
+                          disabled={isSubmitting}
+                          className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
+                        >
+                          {stats.map((stat) => (
+                            <option key={stat.id} value={stat.id}>
+                              {stat.label || stat.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+                          <svg viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex justify-center">
@@ -448,24 +627,37 @@ export const DerivedStatModal = ({
                   <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     {operandLabels.b}
                   </label>
-                  <div className="relative mt-1">
-                    <select
-                      value={denominatorId}
-                      onChange={(e) => setDenominatorId(e.target.value)}
-                      disabled={isSubmitting}
-                      className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
-                    >
-                      {stats.map((stat) => (
-                        <option key={stat.id} value={stat.id} disabled={stat.id === numeratorId}>
-                          {stat.label || stat.name}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
-                      <svg viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                      </svg>
-                    </div>
+                  <div className="mt-1">
+                    {stats.length > FUZZY_SEARCH_THRESHOLD ? (
+                      <StatSearchSelect
+                        stats={stats}
+                        value={denominatorId}
+                        onChange={setDenominatorId}
+                        disabled={isSubmitting}
+                        disabledId={numeratorId}
+                        placeholder="Search denominator..."
+                      />
+                    ) : (
+                      <div className="relative">
+                        <select
+                          value={denominatorId}
+                          onChange={(e) => setDenominatorId(e.target.value)}
+                          disabled={isSubmitting}
+                          className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
+                        >
+                          {stats.map((stat) => (
+                            <option key={stat.id} value={stat.id} disabled={stat.id === numeratorId}>
+                              {stat.label || stat.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+                          <svg viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

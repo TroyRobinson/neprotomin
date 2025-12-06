@@ -219,6 +219,7 @@ interface StatListItemProps {
   onDelete?: () => void;
   isSelected?: boolean;
   onToggleSelect?: (event: MouseEvent<HTMLDivElement>) => void;
+  selectionMode?: boolean;
 }
 
 // Stat list item component with bar shape and curved corners
@@ -233,6 +234,7 @@ const StatListItem = ({
   onDelete,
   isSelected,
   onToggleSelect,
+  selectionMode,
 }: StatListItemProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState<EditFormState>(() => createEditForm(stat));
@@ -291,7 +293,9 @@ const StatListItem = ({
       <div
         ref={containerRef}
         onClick={(e) => {
-          if (onToggleSelect && (e.metaKey || e.ctrlKey || e.shiftKey)) {
+          const wantsSelection =
+            !!onToggleSelect && (selectionMode || e.metaKey || e.ctrlKey || e.shiftKey);
+          if (wantsSelection && onToggleSelect) {
             e.preventDefault();
             e.stopPropagation();
             onToggleSelect(e);
@@ -1510,6 +1514,7 @@ export const AdminScreen = () => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedStatIds, setSelectedStatIds] = useState<string[]>([]);
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isDerivedModalOpen, setIsDerivedModalOpen] = useState(false);
   const [derivedSelection, setDerivedSelection] = useState<DerivedStatOption[]>([]);
   const [isDerivedSubmitting, setIsDerivedSubmitting] = useState(false);
@@ -1611,8 +1616,6 @@ export const AdminScreen = () => {
   );
 
   const selectedCount = selectedStatIds.length;
-  // Allow 1+ stats for derived stat creation (1 stat = change_over_time mode)
-  const canCreateDerivedStat = selectedCount >= 1;
 
   const handleToggleSelect = useCallback(
     (statId: string, event: MouseEvent<HTMLDivElement>) => {
@@ -1622,6 +1625,11 @@ export const AdminScreen = () => {
         let next = prev;
 
         if (isShift) {
+          // Shift+click on already-selected item = unselect it
+          if (prev.includes(statId)) {
+            return prev.filter((id) => id !== statId);
+          }
+          // Otherwise, range select from anchor to current
           const anchor = selectionAnchorId ?? prev[prev.length - 1] ?? statId;
           const anchorIndex = statIndexMap.get(anchor);
           const currentIndex = statIndexMap.get(statId);
@@ -1635,7 +1643,8 @@ export const AdminScreen = () => {
           }
         }
 
-        if (isMeta) {
+        // In selection mode or with Meta/Ctrl, toggle the individual stat
+        if (isMeta || isSelectionMode) {
           if (prev.includes(statId)) {
             next = prev.filter((id) => id !== statId);
           } else {
@@ -1654,7 +1663,7 @@ export const AdminScreen = () => {
         setSelectionAnchorId(statId);
       }
     },
-    [selectionAnchorId, sortSelection, sortedStats, statIndexMap],
+    [selectionAnchorId, sortSelection, sortedStats, statIndexMap, isSelectionMode],
   );
 
   useEffect(() => {
@@ -1670,15 +1679,43 @@ export const AdminScreen = () => {
     });
   }, [statIndexMap]);
 
+  // Clear all selections and exit selection mode
+  const handleClearSelection = useCallback(() => {
+    setSelectedStatIds([]);
+    setSelectionAnchorId(null);
+    setIsSelectionMode(false);
+  }, []);
+
+  // ESC key clears selection and exits selection mode
+  useEffect(() => {
+    const handleKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape" && (selectedStatIds.length > 0 || isSelectionMode)) {
+        handleClearSelection();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [selectedStatIds.length, isSelectionMode, handleClearSelection]);
+
   const handleRequestDerivedStat = useCallback(async () => {
-    const selection = sortedStats
-      .filter((stat) => selectedIdSet.has(stat.id))
-      .map<DerivedStatOption>((stat) => ({
-        id: stat.id,
-        name: stat.name,
-        label: stat.label,
-        category: stat.category,
-      }));
+    // If user has selected stats, use those; otherwise pass ALL stats for fuzzy-search mode
+    const hasSelection = selectedIdSet.size > 0;
+    const selection = hasSelection
+      ? sortedStats
+          .filter((stat) => selectedIdSet.has(stat.id))
+          .map<DerivedStatOption>((stat) => ({
+            id: stat.id,
+            name: stat.name,
+            label: stat.label,
+            category: stat.category,
+          }))
+      : stats.map<DerivedStatOption>((stat) => ({
+          id: stat.id,
+          name: stat.name,
+          label: stat.label,
+          category: stat.category,
+        }));
+
     setDerivedError(null);
     setDerivedSelection(selection);
     setDerivedAvailableYears([]);
@@ -1708,7 +1745,7 @@ export const AdminScreen = () => {
     }
 
     setIsDerivedModalOpen(true);
-  }, [selectedIdSet, sortedStats]);
+  }, [selectedIdSet, sortedStats, stats]);
 
   const handleDerivedModalClose = useCallback(() => {
     setIsDerivedModalOpen(false);
@@ -2416,10 +2453,26 @@ export const AdminScreen = () => {
 
           {/* Right: actions */}
           <div className="flex shrink-0 items-center gap-2">
-            {selectedCount > 0 && (
-              <span className="rounded-full border border-brand-200 px-2 py-0.5 text-[11px] font-medium text-brand-600 dark:border-brand-500/40 dark:text-brand-300">
-                {selectedCount} selected
-              </span>
+            {/* Selection mode toggle / X selected chip */}
+            {isSelectionMode || selectedCount > 0 ? (
+              <button
+                type="button"
+                onClick={handleClearSelection}
+                className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-600 transition hover:bg-brand-100 dark:border-brand-500/40 dark:bg-brand-900/30 dark:text-brand-300 dark:hover:bg-brand-900/50"
+              >
+                <span>{selectedCount} selected</span>
+                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsSelectionMode(true)}
+                className="rounded-full border border-slate-200 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+              >
+                Select Stats
+              </button>
             )}
             <button
               type="button"
@@ -2427,31 +2480,29 @@ export const AdminScreen = () => {
               className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 sm:px-3 sm:py-1.5"
             >
               <span className="text-sm leading-none">+</span>
-              <span>New stat</span>
+              <span>Import Stat</span>
             </button>
-            {canCreateDerivedStat && (
-              <button
-                type="button"
-                onClick={handleRequestDerivedStat}
-                className="inline-flex items-center gap-1 rounded-lg border border-brand-400 px-2 py-1 text-xs font-medium text-brand-600 shadow-sm transition hover:bg-brand-50 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:border-brand-300 dark:text-brand-200 dark:hover:bg-brand-900/20 dark:focus:ring-brand-800/70 sm:px-3 sm:py-1.5"
+            <button
+              type="button"
+              onClick={handleRequestDerivedStat}
+              className="inline-flex items-center gap-1 rounded-lg border border-brand-400 px-2 py-1 text-xs font-medium text-brand-600 shadow-sm transition hover:bg-brand-50 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:border-brand-300 dark:text-brand-200 dark:hover:bg-brand-900/20 dark:focus:ring-brand-800/70 sm:px-3 sm:py-1.5"
+            >
+              <svg
+                className="h-3 w-3"
+                viewBox="0 0 20 20"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
               >
-                <svg
-                  className="h-3 w-3"
-                  viewBox="0 0 20 20"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M10 4v12m6-6H4"
-                    stroke="currentColor"
-                    strokeWidth={1.6}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span>Create stat</span>
-              </button>
-            )}
+                <path
+                  d="M10 4v12m6-6H4"
+                  stroke="currentColor"
+                  strokeWidth={1.6}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span>Create Stat</span>
+            </button>
           </div>
         </div>
       </div>
@@ -2479,7 +2530,7 @@ export const AdminScreen = () => {
             </div>
           </div>
         ) : (
-          <div className="mx-auto flex max-w-4xl flex-col gap-3">
+          <div className="mx-auto flex max-w-4xl select-none flex-col gap-3">
             {sortedStats.map((stat) => (
               <StatListItem
                 key={stat.id}
@@ -2493,6 +2544,7 @@ export const AdminScreen = () => {
                 onDelete={() => handleDeleteStat(stat.id)}
                 isSelected={selectedIdSet.has(stat.id)}
                 onToggleSelect={(event) => handleToggleSelect(stat.id, event)}
+                selectionMode={isSelectionMode}
               />
             ))}
           </div>
