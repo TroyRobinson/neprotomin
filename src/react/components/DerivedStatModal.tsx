@@ -28,7 +28,8 @@ interface DerivedStatModalProps {
   isOpen: boolean;
   stats: DerivedStatOption[];
   categories: string[];
-  availableYears?: string[]; // Years available for the selected stat (for change_over_time)
+  availableYears?: string[]; // Legacy: years for a single selected stat
+  availableYearsByStat?: Record<string, string[]>; // Years per stat id for change_over_time
   onClose: () => void;
   onSubmit: (payload: DerivedStatModalSubmit) => void;
   isSubmitting?: boolean;
@@ -72,6 +73,7 @@ export const DerivedStatModal = ({
   stats,
   categories,
   availableYears = [],
+  availableYearsByStat,
   onClose,
   onSubmit,
   isSubmitting = false,
@@ -84,13 +86,19 @@ export const DerivedStatModal = ({
   const [formula, setFormula] = useState<DerivedFormulaKind>(defaultFormula);
   const [startYear, setStartYear] = useState<string>("");
   const [endYear, setEndYear] = useState<string>("");
-
-  // Single-stat mode (for change_over_time)
   const isSingleStatMode = stats.length === 1;
-  const singleStat = isSingleStatMode ? stats[0] : null;
 
-  // Sorted years for dropdown
-  const sortedYears = useMemo(() => [...availableYears].sort(), [availableYears]);
+  // Years for the currently selected base stat (numerator) in change_over_time mode
+  const yearsForBaseStat = useMemo(() => {
+    const baseYearsFromMap = availableYearsByStat?.[numeratorId];
+    if (baseYearsFromMap && baseYearsFromMap.length) {
+      return [...baseYearsFromMap].sort();
+    }
+    if (availableYears && availableYears.length) {
+      return [...availableYears].sort();
+    }
+    return [] as string[];
+  }, [availableYearsByStat, availableYears, numeratorId]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -99,18 +107,24 @@ export const DerivedStatModal = ({
     // Default to change_over_time in single-stat mode, otherwise percent
     setFormula(isSingleStatMode ? "change_over_time" : defaultFormula);
     const [first, second] = stats;
-    setNumeratorId(first?.id ?? "");
-    const defaultDen = second && second.id !== first?.id ? second.id : stats.find((s) => s.id !== first?.id)?.id ?? "";
+    const firstId = first?.id ?? "";
+    setNumeratorId(firstId);
+    const defaultDen =
+      second && second.id !== firstId ? second.id : stats.find((s) => s.id !== firstId)?.id ?? "";
     setDenominatorId(defaultDen);
-    // Initialize year selection
-    if (sortedYears.length >= 2) {
-      setStartYear(sortedYears[0]);
-      setEndYear(sortedYears[sortedYears.length - 1]);
+  }, [isOpen, stats, isSingleStatMode]);
+
+  // Initialize / reset year range whenever the base stat or formula changes
+  useEffect(() => {
+    if (!isOpen || formula !== "change_over_time") return;
+    if (yearsForBaseStat.length >= 2) {
+      setStartYear(yearsForBaseStat[0]);
+      setEndYear(yearsForBaseStat[yearsForBaseStat.length - 1]);
     } else {
       setStartYear("");
       setEndYear("");
     }
-  }, [isOpen, stats, isSingleStatMode, sortedYears]);
+  }, [isOpen, formula, yearsForBaseStat]);
 
   const numerator = useMemo(() => stats.find((s) => s.id === numeratorId), [stats, numeratorId]);
   const denominator = useMemo(() => stats.find((s) => s.id === denominatorId), [stats, denominatorId]);
@@ -118,8 +132,8 @@ export const DerivedStatModal = ({
   // Auto-generated name based on formula
   const generatedName = useMemo(() => {
     if (formula === "change_over_time") {
-      if (!singleStat) return "";
-      const statLabel = singleStat.label || singleStat.name;
+      if (!numerator || !startYear || !endYear) return "";
+      const statLabel = numerator.label || numerator.name;
       return `Derived: ${statLabel} Change (${startYear}–${endYear})`;
     }
     if (!numerator || !denominator) return "";
@@ -128,7 +142,7 @@ export const DerivedStatModal = ({
     const sym = formulaSymbol[formula];
     const suffix = formula === "rate_per_1000" ? " ×1000" : formula === "index" ? " ×100" : "";
     return `Derived: (${numLabel} ${sym} ${denLabel}${suffix})`;
-  }, [numerator, denominator, formula, singleStat, startYear, endYear]);
+  }, [numerator, denominator, formula, startYear, endYear]);
 
   // Labels for A/B based on formula type
   const operandLabels = useMemo((): { a: string; b: string } => {
@@ -155,7 +169,7 @@ export const DerivedStatModal = ({
   const nameRequired = !label.trim();
   const validationMessage = useMemo(() => {
     if (formula === "change_over_time") {
-      if (!singleStat) return "Select a stat for change over time calculation.";
+      if (!numeratorId || !numerator) return "Select a stat for change over time calculation.";
       if (!startYear || !endYear) return "Select both start and end years.";
       if (startYear >= endYear) return "End year must be after start year.";
       return null;
@@ -163,7 +177,7 @@ export const DerivedStatModal = ({
     if (!numeratorId || !denominatorId) return "Select both numerator and denominator.";
     if (numeratorId === denominatorId) return "Numerator and denominator must be different stats.";
     return null;
-  }, [formula, singleStat, startYear, endYear, numeratorId, denominatorId]);
+  }, [formula, numeratorId, numerator, startYear, endYear, denominatorId]);
 
   const isValid = !nameRequired && validationMessage === null;
 
@@ -173,8 +187,8 @@ export const DerivedStatModal = ({
       name: generatedName,
       label: label.trim(),
       category: category || "",
-      numeratorId: formula === "change_over_time" ? (singleStat?.id ?? "") : numeratorId,
-      denominatorId: formula === "change_over_time" ? (singleStat?.id ?? "") : denominatorId,
+      numeratorId,
+      denominatorId: formula === "change_over_time" ? numeratorId : denominatorId,
       formula,
       description: generatedSource,
       startYear: formula === "change_over_time" ? startYear : undefined,
@@ -303,13 +317,40 @@ export const DerivedStatModal = ({
             </div>
             <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">{formulaDescription[formula]}</p>
             
-            {/* Year selection for change_over_time */}
+            {/* Year + base stat selection for change_over_time */}
             {formula === "change_over_time" ? (
               <div className="mt-4 space-y-3">
-                {singleStat && (
-                  <div className="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700 dark:bg-brand-900/30 dark:text-brand-300">
-                    <p className="font-medium">{singleStat.label || singleStat.name}</p>
+                {stats.length > 1 ? (
+                  <div>
+                    <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      Base stat
+                    </label>
+                    <div className="relative mt-1">
+                      <select
+                        value={numeratorId}
+                        onChange={(e) => setNumeratorId(e.target.value)}
+                        disabled={isSubmitting}
+                        className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
+                      >
+                        {stats.map((stat) => (
+                          <option key={stat.id} value={stat.id}>
+                            {stat.label || stat.name}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    </div>
                   </div>
+                ) : (
+                  numerator && (
+                    <div className="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700 dark:bg-brand-900/30 dark:text-brand-300">
+                      <p className="font-medium">{numerator.label || numerator.name}</p>
+                    </div>
+                  )
                 )}
                 <div>
                   <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -322,7 +363,7 @@ export const DerivedStatModal = ({
                       disabled={isSubmitting}
                       className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
                     >
-                      {sortedYears.map((year) => (
+                      {yearsForBaseStat.map((year) => (
                         <option key={year} value={year} disabled={year >= endYear}>
                           {year}
                         </option>
@@ -349,7 +390,7 @@ export const DerivedStatModal = ({
                       disabled={isSubmitting}
                       className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
                     >
-                      {sortedYears.map((year) => (
+                      {yearsForBaseStat.map((year) => (
                         <option key={year} value={year} disabled={year <= startYear}>
                           {year}
                         </option>
@@ -433,9 +474,9 @@ export const DerivedStatModal = ({
             {/* Preview of formula */}
             <div className="mt-4 rounded-lg bg-white px-3 py-2 text-xs text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
               {formula === "change_over_time" ? (
-                singleStat && startYear && endYear ? (
+                numerator && startYear && endYear ? (
                   <p>
-                    Percent change in <strong>{singleStat.label || singleStat.name}</strong> from {startYear} to {endYear}
+                    Percent change in <strong>{numerator.label || numerator.name}</strong> from {startYear} to {endYear}
                   </p>
                 ) : (
                   <p>Select a stat and year range.</p>

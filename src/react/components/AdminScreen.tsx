@@ -71,7 +71,7 @@ const normalizeDataMap = (value: unknown): Record<string, number> => {
   return out;
 };
 
-const MAX_DERIVED_TX_BATCH = 20;
+const MAX_DERIVED_TX_BATCH = 10;
 
 const buildRowKey = (row: RootStatDataRow) =>
   `${row.parentArea ?? ""}::${row.boundaryType ?? ""}::${row.date ?? ""}`;
@@ -2045,17 +2045,23 @@ export const AdminScreen = () => {
       } catch (err) {
         console.error("Failed to create derived stat", err);
         const timeout = err instanceof Error && err.message.includes("Operation timed out");
-        const partialMessage = attemptedWrite
-          ? " Some data may have been written before this error. If this derived stat now appears in the list, it may have incomplete area coverage."
-          : "";
-        const baseMessage = timeout
-          ? "Saving the derived stat to the database took too long (operation timed out)."
-          : "Failed to create derived stat.";
-
-        if (err instanceof Error && err.message) {
-          setDerivedError(`${baseMessage} ${err.message}${partialMessage}`);
+        if (timeout && attemptedWrite) {
+          setDerivedError(
+            "Saving the derived stat took longer than expected, but some data was likely written. Please check the stats list and verify the new stat's coverage.",
+          );
         } else {
-          setDerivedError(`${baseMessage}${partialMessage}`);
+          const partialMessage = attemptedWrite
+            ? " Some data may have been written before this error. If this derived stat now appears in the list, it may have incomplete area coverage."
+            : "";
+          const baseMessage = timeout
+            ? "Saving the derived stat to the database took too long (operation timed out)."
+            : "Failed to create derived stat.";
+
+          if (err instanceof Error && err.message) {
+            setDerivedError(`${baseMessage} ${err.message}${partialMessage}`);
+          } else {
+            setDerivedError(`${baseMessage}${partialMessage}`);
+          }
         }
       } finally {
         setIsDerivedSubmitting(false);
@@ -2066,9 +2072,17 @@ export const AdminScreen = () => {
 
   // (definition moved above)
 
-  const statDataSummaryByStatId = useMemo(() => {
-    const map = new Map<string, StatDataSummary>();
+  const [statDataSummaryByStatId, setStatDataSummaryByStatId] = useState<
+    Map<string, StatDataSummary>
+  >(new Map());
+
+  useEffect(() => {
     const rows = (statDataResponse?.statData ?? []) as any[];
+    // If there are no rows (e.g. transient error), keep the last successful summaries
+    if (!rows.length) return;
+
+    const map = new Map<string, StatDataSummary>();
+
     const formatYearsLabel = (years: string[]): string => {
       if (years.length === 0) return "";
       const numericYears = years
@@ -2082,6 +2096,7 @@ export const AdminScreen = () => {
       const last = uniqueYears[uniqueYears.length - 1];
       return `${first}–${last}`;
     };
+
     const formatBoundaryLabel = (types: string[]): string => {
       if (types.length === 0) return "";
       const uniq = Array.from(new Set(types));
@@ -2125,8 +2140,26 @@ export const AdminScreen = () => {
       entry.boundaryLabel = formatBoundaryLabel(entry.boundaryTypes);
     }
 
-    return map;
+    setStatDataSummaryByStatId(map);
   }, [statDataResponse?.statData]);
+
+  // Available years per stat id for derived modal (from summaries + single-stat fallback)
+  const derivedAvailableYearsByStat = useMemo(() => {
+    const result: Record<string, string[]> = {};
+    for (const opt of derivedSelection) {
+      const summary = statDataSummaryByStatId.get(opt.id);
+      if (summary && summary.years.length) {
+        result[opt.id] = summary.years;
+      }
+    }
+    if (derivedSelection.length === 1) {
+      const only = derivedSelection[0];
+      if (!result[only.id] && derivedAvailableYears.length) {
+        result[only.id] = [...derivedAvailableYears];
+      }
+    }
+    return result;
+  }, [derivedSelection, statDataSummaryByStatId, derivedAvailableYears]);
 
   // Start editing a stat
   const handleStartEdit = useCallback((id: string) => {
@@ -2259,7 +2292,7 @@ export const AdminScreen = () => {
               {editingId && <span className="ml-1 text-brand-500">(editing)</span>}
               {isSaving && <span className="ml-1 text-amber-500">Saving…</span>}
               {statDataLoading && <span className="ml-1 text-slate-400">· loading summaries…</span>}
-              {statDataError && !statDataLoading && (
+              {statDataError && !statDataLoading && statDataSummaryByStatId.size === 0 && (
                 <span className="ml-1 text-amber-500">
                   · summaries unavailable{" "}
                   <button
@@ -2433,6 +2466,7 @@ export const AdminScreen = () => {
         stats={derivedSelection}
         categories={statCategoryOptions.map((opt) => opt.value)}
         availableYears={derivedAvailableYears}
+        availableYearsByStat={derivedAvailableYearsByStat}
         onClose={handleDerivedModalClose}
         onSubmit={handleDerivedSubmit}
         isSubmitting={isDerivedSubmitting}
