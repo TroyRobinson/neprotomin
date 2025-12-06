@@ -1907,6 +1907,197 @@ export const AdminScreen = () => {
           return;
         }
 
+        // --- Multi-stat SUM formula: special handling ---
+        if (payload.formula === "sum" && payload.sumOperandIds && payload.sumOperandIds.length >= 2) {
+          const operandIds = payload.sumOperandIds.filter((id) => id && id.trim());
+          if (operandIds.length < 2) {
+            throw new Error("Select at least two stats to sum.");
+          }
+
+          // Fetch all data rows for the operand stats
+          const { data: statDataResponse } = await db.queryOnce({
+            statData: {
+              $: {
+                where: { name: "root", statId: { $in: operandIds } },
+                fields: ["statId", "parentArea", "boundaryType", "date", "data"],
+              },
+            },
+          });
+
+          const rawRows = Array.isArray((statDataResponse as any)?.statData)
+            ? ((statDataResponse as any).statData as any[])
+            : [];
+
+          // Group rows by statId, then by row key
+          const perStat = new Map<string, Map<string, RootStatDataRow>>();
+          const yearsByStat = new Map<string, Set<string>>();
+          const boundaryTypesByStat = new Map<string, Set<string>>();
+
+          for (const row of rawRows) {
+            if (!row || typeof row !== "object") continue;
+            const statId = typeof row.statId === "string" ? row.statId : null;
+            if (!statId) continue;
+            const parentArea = typeof row.parentArea === "string" ? row.parentArea : null;
+            const boundaryType = typeof row.boundaryType === "string" ? row.boundaryType : null;
+            const rawDate = row.date;
+            const date =
+              typeof rawDate === "string"
+                ? rawDate
+                : typeof rawDate === "number"
+                ? String(rawDate)
+                : null;
+            const dataMap = normalizeDataMap((row as any).data);
+            const normalized: RootStatDataRow = { parentArea, boundaryType, date, data: dataMap };
+            const key = buildRowKey(normalized);
+            if (!perStat.has(statId)) perStat.set(statId, new Map());
+            perStat.get(statId)!.set(key, normalized);
+
+            if (!yearsByStat.has(statId)) yearsByStat.set(statId, new Set<string>());
+            if (!boundaryTypesByStat.has(statId)) boundaryTypesByStat.set(statId, new Set<string>());
+            if (date) yearsByStat.get(statId)!.add(date);
+            if (boundaryType) boundaryTypesByStat.get(statId)!.add(boundaryType);
+          }
+
+          // Collect all unique row keys across all operands
+          const allRowKeys = new Set<string>();
+          for (const [, rowMap] of perStat) {
+            for (const key of rowMap.keys()) {
+              allRowKeys.add(key);
+            }
+          }
+
+          if (allRowKeys.size === 0) {
+            throw new Error("No data found for the selected stats.");
+          }
+
+          // Compute sum for each row key
+          const derivedRows: RootStatDataRow[] = [];
+          let nonEmptyCount = 0;
+          const isFiniteNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+          for (const key of allRowKeys) {
+            // Get template row from first stat that has this key
+            let templateRow: RootStatDataRow | null = null;
+            for (const statId of operandIds) {
+              const rowMap = perStat.get(statId);
+              if (rowMap?.has(key)) {
+                templateRow = rowMap.get(key)!;
+                break;
+              }
+            }
+            if (!templateRow) continue;
+
+            // Collect all area keys across all operands for this row
+            const allAreaKeys = new Set<string>();
+            for (const statId of operandIds) {
+              const rowMap = perStat.get(statId);
+              const row = rowMap?.get(key);
+              if (row?.data) {
+                for (const areaKey of Object.keys(row.data)) {
+                  allAreaKeys.add(areaKey);
+                }
+              }
+            }
+
+            // Sum values for each area
+            const sumData: Record<string, number> = {};
+            for (const areaKey of allAreaKeys) {
+              let sum = 0;
+              let hasAnyValue = false;
+              for (const statId of operandIds) {
+                const rowMap = perStat.get(statId);
+                const row = rowMap?.get(key);
+                const val = row?.data?.[areaKey];
+                if (isFiniteNum(val)) {
+                  sum += val;
+                  hasAnyValue = true;
+                }
+              }
+              if (hasAnyValue) {
+                sumData[areaKey] = sum;
+              }
+            }
+
+            if (Object.keys(sumData).length > 0) {
+              nonEmptyCount += 1;
+            }
+            derivedRows.push({
+              parentArea: templateRow.parentArea,
+              boundaryType: templateRow.boundaryType,
+              date: templateRow.date,
+              data: sumData,
+            });
+          }
+
+          if (nonEmptyCount === 0) {
+            throw new Error("Selected stats have no overlapping area data to compute a sum.");
+          }
+
+          const now = Date.now();
+          const newStatId = createId();
+          const autoName = payload.name.trim();
+          const displayName = payload.label.trim();
+          const trimmedCategory = payload.category.trim();
+          const derivedSource = payload.description?.trim() || "Census Derived";
+
+          newStatMeta = { id: newStatId, label: displayName || autoName };
+
+          const txs: any[] = [
+            db.tx.stats[newStatId].update({
+              name: autoName,
+              label: displayName,
+              category: trimmedCategory,
+              source: derivedSource,
+              goodIfUp: null,
+              featured: false,
+              active: true,
+              createdOn: now,
+              lastUpdated: now,
+            }),
+          ];
+
+          for (const row of derivedRows) {
+            txs.push(
+              db.tx.statData[createId()].update({
+                statId: newStatId,
+                name: "root",
+                parentArea: row.parentArea ?? undefined,
+                boundaryType: row.boundaryType ?? undefined,
+                date: row.date ?? undefined,
+                type: "number",
+                data: row.data,
+                source: derivedSource,
+                statTitle: displayName,
+                createdOn: now,
+                lastUpdated: now,
+              }),
+            );
+          }
+
+          const batches: any[][] = [];
+          for (let i = 0; i < txs.length; i += MAX_DERIVED_TX_BATCH) {
+            batches.push(txs.slice(i, i + MAX_DERIVED_TX_BATCH));
+          }
+
+          for (const batch of batches) {
+            attemptedWrite = true;
+            await db.transact(batch);
+          }
+
+          setRecentStatIds((prev) => {
+            const next = [newStatId, ...prev.filter((id) => id !== newStatId)];
+            if (next.length > 50) next.length = 50;
+            return next;
+          });
+
+          setIsDerivedModalOpen(false);
+          setDerivedSelection([]);
+          setSelectedStatIds([]);
+          setSelectionAnchorId(null);
+          setIsDerivedSubmitting(false);
+          return;
+        }
+
         // --- Standard two-stat derived formula ---
         const numeratorMeta = stats.find((stat) => stat.id === payload.numeratorId);
         const denominatorMeta = stats.find((stat) => stat.id === payload.denominatorId);

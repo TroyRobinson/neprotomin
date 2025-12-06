@@ -22,6 +22,8 @@ export interface DerivedStatModalSubmit {
   // For change_over_time formula
   startYear?: string;
   endYear?: string;
+  // For sum formula with multiple operands
+  sumOperandIds?: string[];
 }
 
 interface DerivedStatModalProps {
@@ -50,7 +52,7 @@ const formulaSymbol: Record<DerivedFormulaKind, string> = {
 
 const formulaDescription: Record<DerivedFormulaKind, string> = {
   percent: "(A ÷ B) as percentage",
-  sum: "A + B",
+  sum: "A + B + C + … (any number of stats)",
   difference: "A − B",
   rate_per_1000: "(A ÷ B) × 1000",
   ratio: "A : B (simple division)",
@@ -230,6 +232,8 @@ export const DerivedStatModal = ({
   const [formula, setFormula] = useState<DerivedFormulaKind>(defaultFormula);
   const [startYear, setStartYear] = useState<string>("");
   const [endYear, setEndYear] = useState<string>("");
+  // For sum formula: list of operand stat IDs (minimum 2)
+  const [sumOperandIds, setSumOperandIds] = useState<string[]>([]);
   const isSingleStatMode = stats.length === 1;
 
   // Years for the currently selected base stat (numerator) in change_over_time mode
@@ -254,7 +258,7 @@ export const DerivedStatModal = ({
     // Default to change_over_time in single-stat mode, otherwise percent
     setFormula(isSingleStatMode ? "change_over_time" : defaultFormula);
 
-    // In fuzzy-search mode, don't pre-select - user must search and choose
+    // In fuzzy-search mode, don't pre-select numerator/denominator - user must search
     if (useFuzzySearch) {
       setNumeratorId("");
       setDenominatorId("");
@@ -266,6 +270,8 @@ export const DerivedStatModal = ({
         second && second.id !== firstId ? second.id : stats.find((s) => s.id !== firstId)?.id ?? "";
       setDenominatorId(defaultDen);
     }
+    // For sum formula: always initialize with ALL selected stats (regardless of fuzzy mode)
+    setSumOperandIds(stats.map((s) => s.id));
   }, [isOpen, stats, isSingleStatMode, useFuzzySearch]);
 
   // Initialize / reset year range whenever the base stat or formula changes
@@ -283,6 +289,12 @@ export const DerivedStatModal = ({
   const numerator = useMemo(() => stats.find((s) => s.id === numeratorId), [stats, numeratorId]);
   const denominator = useMemo(() => stats.find((s) => s.id === denominatorId), [stats, denominatorId]);
 
+  // Resolved sum operand stats
+  const sumOperands = useMemo(
+    () => sumOperandIds.map((id) => stats.find((s) => s.id === id)).filter(Boolean) as DerivedStatOption[],
+    [sumOperandIds, stats],
+  );
+
   // Auto-generated name based on formula
   const generatedName = useMemo(() => {
     if (formula === "change_over_time") {
@@ -290,13 +302,19 @@ export const DerivedStatModal = ({
       const statLabel = numerator.label || numerator.name;
       return `Derived: ${statLabel} Change (${startYear}–${endYear})`;
     }
+    // Sum formula with multiple operands
+    if (formula === "sum") {
+      if (sumOperands.length < 2) return "";
+      const labels = sumOperands.map((s) => s.label || s.name);
+      return `Derived: (${labels.join(" + ")})`;
+    }
     if (!numerator || !denominator) return "";
     const numLabel = numerator.label || numerator.name;
     const denLabel = denominator.label || denominator.name;
     const sym = formulaSymbol[formula];
     const suffix = formula === "rate_per_1000" ? " ×1000" : formula === "index" ? " ×100" : "";
     return `Derived: (${numLabel} ${sym} ${denLabel}${suffix})`;
-  }, [numerator, denominator, formula, startYear, endYear]);
+  }, [numerator, denominator, formula, startYear, endYear, sumOperands]);
 
   // Labels for A/B based on formula type
   const operandLabels = useMemo((): { a: string; b: string } => {
@@ -305,7 +323,7 @@ export const DerivedStatModal = ({
       case "rate_per_1000":
         return { a: "Numerator", b: "Denominator" };
       case "sum":
-        return { a: "First stat", b: "Second stat" };
+        return { a: "Stats to sum", b: "" };
       case "difference":
         return { a: "Minuend (A)", b: "Subtrahend (B)" };
       case "ratio":
@@ -328,10 +346,17 @@ export const DerivedStatModal = ({
       if (startYear >= endYear) return "End year must be after start year.";
       return null;
     }
+    // Sum formula validation
+    if (formula === "sum") {
+      if (sumOperandIds.length < 2) return "Select at least two stats to sum.";
+      const uniqueIds = new Set(sumOperandIds);
+      if (uniqueIds.size !== sumOperandIds.length) return "Each stat can only be added once.";
+      return null;
+    }
     if (!numeratorId || !denominatorId) return "Select both numerator and denominator.";
     if (numeratorId === denominatorId) return "Numerator and denominator must be different stats.";
     return null;
-  }, [formula, numeratorId, numerator, startYear, endYear, denominatorId]);
+  }, [formula, numeratorId, numerator, startYear, endYear, denominatorId, sumOperandIds]);
 
   const isValid = !nameRequired && validationMessage === null;
 
@@ -341,12 +366,13 @@ export const DerivedStatModal = ({
       name: generatedName,
       label: label.trim(),
       category: category || "",
-      numeratorId,
-      denominatorId: formula === "change_over_time" ? numeratorId : denominatorId,
+      numeratorId: formula === "sum" ? sumOperandIds[0] ?? "" : numeratorId,
+      denominatorId: formula === "change_over_time" ? numeratorId : formula === "sum" ? sumOperandIds[1] ?? "" : denominatorId,
       formula,
       description: generatedSource,
       startYear: formula === "change_over_time" ? startYear : undefined,
       endYear: formula === "change_over_time" ? endYear : undefined,
+      sumOperandIds: formula === "sum" ? sumOperandIds : undefined,
     });
   };
 
@@ -570,6 +596,89 @@ export const DerivedStatModal = ({
                   </div>
                 </div>
               </div>
+            ) : formula === "sum" ? (
+              /* Sum formula: dynamic list of operands */
+              <div className="mt-4 space-y-2">
+                <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Stats to sum
+                </label>
+                {sumOperandIds.map((opId, index) => {
+                  const selectedIdsExceptThis = sumOperandIds.filter((_, i) => i !== index);
+                  return (
+                    <div key={index} className="flex items-center gap-2">
+                      <span className="w-5 text-center text-xs text-slate-400">{index + 1}.</span>
+                      <div className="flex-1">
+                        {stats.length > FUZZY_SEARCH_THRESHOLD ? (
+                          <StatSearchSelect
+                            stats={stats}
+                            value={opId}
+                            onChange={(newId) => {
+                              setSumOperandIds((prev) => prev.map((id, i) => (i === index ? newId : id)));
+                            }}
+                            disabled={isSubmitting}
+                            disabledId={undefined}
+                            placeholder={`Search stat ${index + 1}...`}
+                          />
+                        ) : (
+                          <div className="relative">
+                            <select
+                              value={opId}
+                              onChange={(e) => {
+                                const newId = e.target.value;
+                                setSumOperandIds((prev) => prev.map((id, i) => (i === index ? newId : id)));
+                              }}
+                              disabled={isSubmitting}
+                              className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
+                            >
+                              <option value="">Select stat...</option>
+                              {stats.map((stat) => (
+                                <option
+                                  key={stat.id}
+                                  value={stat.id}
+                                  disabled={selectedIdsExceptThis.includes(stat.id)}
+                                >
+                                  {stat.label || stat.name}
+                                </option>
+                              ))}
+                            </select>
+                            <div className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+                              <svg viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      {/* Remove button - only show if more than 2 operands */}
+                      {sumOperandIds.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => setSumOperandIds((prev) => prev.filter((_, i) => i !== index))}
+                          disabled={isSubmitting}
+                          className="flex h-6 w-6 items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+                          title="Remove"
+                        >
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M4 10a.75.75 0 01.75-.75h10.5a.75.75 0 010 1.5H4.75A.75.75 0 014 10z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {/* Add another stat button */}
+                <button
+                  type="button"
+                  onClick={() => setSumOperandIds((prev) => [...prev, ""])}
+                  disabled={isSubmitting || sumOperandIds.length >= stats.length}
+                  className="mt-1 inline-flex items-center gap-1 rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:border-slate-400 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-slate-300"
+                >
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                  </svg>
+                  Add another stat
+                </button>
+              </div>
             ) : (
               /* Standard two-stat operand selection - use fuzzy search when many stats */
               <div className="mt-4 space-y-3">
@@ -672,6 +781,12 @@ export const DerivedStatModal = ({
                   </p>
                 ) : (
                   <p>Select a stat and year range.</p>
+                )
+              ) : formula === "sum" ? (
+                sumOperands.length >= 2 ? (
+                  <p>{sumOperands.map((s) => s.label || s.name).join(" + ")}</p>
+                ) : (
+                  <p>Select at least two stats to sum.</p>
                 )
               ) : numerator && denominator ? (
                 <p>
