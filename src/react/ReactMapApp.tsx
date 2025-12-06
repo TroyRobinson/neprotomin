@@ -54,6 +54,14 @@ const ALWAYS_SHOW_WELCOME_MODAL = false;
 
 const FALLBACK_ZIP_SCOPE = normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma") ?? "Oklahoma";
 const DEFAULT_PRIMARY_STAT_ID = "8383685c-2741-40a2-96ff-759c42ddd586";
+
+// Check if we're on the food map domain - only apply food defaults there
+const isFoodMapDomain = (): boolean => {
+  if (typeof window === "undefined") return false;
+  const hostname = window.location.hostname.toLowerCase();
+  return hostname === "okfoodmap.com" || hostname.endsWith(".okfoodmap.com");
+};
+
 const DEFAULT_TOP_BAR_HEIGHT = 64;
 const MOBILE_MAX_WIDTH_QUERY = "(max-width: 767px)";
 const MOBILE_SHEET_PEEK_HEIGHT = 136;
@@ -1479,7 +1487,10 @@ export const ReactMapApp = () => {
 
   useEffect(() => {
     if (hasAppliedDefaultStat) return;
-    if (!DEFAULT_PRIMARY_STAT_ID) {
+
+    // Only apply the default food stat on okfoodmap.com domain
+    // On other domains, let users choose their own category/stat
+    if (!isFoodMapDomain() || !DEFAULT_PRIMARY_STAT_ID) {
       setHasAppliedDefaultStat(true);
       return;
     }
