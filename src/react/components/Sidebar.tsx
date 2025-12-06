@@ -281,12 +281,28 @@ export const Sidebar = ({
   const totalSelectedCount = selectedZips.length + selectedCounties.length;
 
   const {
-    inSelection = [],
-    all = [],
-    recent = [],
+    inSelection: rawInSelection = [],
+    all: rawAll = [],
+    recent: rawRecent = [],
     totalSourceCount = 0,
     visibleInViewport,
   } = organizations ?? { inSelection: [], all: [], recent: [], totalSourceCount: 0 };
+
+  // Filter organizations by category when a category filter is active
+  const inSelection = useMemo(() => {
+    if (!categoryFilter) return rawInSelection;
+    return rawInSelection.filter((org) => org.category === categoryFilter);
+  }, [rawInSelection, categoryFilter]);
+
+  const all = useMemo(() => {
+    if (!categoryFilter) return rawAll;
+    return rawAll.filter((org) => org.category === categoryFilter);
+  }, [rawAll, categoryFilter]);
+
+  const recent = useMemo(() => {
+    if (!categoryFilter) return rawRecent;
+    return rawRecent.filter((org) => org.category === categoryFilter);
+  }, [rawRecent, categoryFilter]);
 
   // Determine the "IN SELECTION" label - show area name if only one area is selected
   const inSelectionLabel = useMemo(() => {

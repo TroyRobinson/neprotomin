@@ -97,7 +97,7 @@ interface ChipEntry {
   btn: HTMLButtonElement;
   handleClick: () => void;
   id: string;
-  name: string;
+  displayName: string;
   labelEl: HTMLSpanElement;
   closeIcon: HTMLSpanElement;
 }
@@ -704,7 +704,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     statEntries = stats.map((s) => {
       const { btn, handleClick, labelEl, closeIcon } = buildStatButton(s);
       statWrapper.appendChild(btn);
-      return { btn, handleClick, id: s.id, name: s.name, labelEl, closeIcon };
+      return { btn, handleClick, id: s.id, displayName: s.label || s.name, labelEl, closeIcon };
     });
 
     updateStatSelectionStyles();
@@ -727,20 +727,20 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       return;
     }
     // Stat chips maintain their original order - no reordering on selection
-    statEntries.forEach(({ btn, id, name, labelEl, closeIcon }) => {
+    statEntries.forEach(({ btn, id, displayName, labelEl, closeIcon }) => {
       const isSelected = selectedStatId === id;
       if (isMobile) {
         const base = `${MOBILE_STAT_CHIP_BASE_CLASSES} border-slate-200`;
         btn.className = isSelected
           ? `${MOBILE_STAT_CHIP_BASE_CLASSES} border-transparent ${MOBILE_STAT_CHIP_SELECTED_CLASSES}`
           : base;
-        labelEl.textContent = name;
+        labelEl.textContent = displayName;
       } else {
         btn.className = `${CATEGORY_CHIP_CLASSES} ${
           isSelected ? STAT_CHIP_SELECTED_CLASSES : CATEGORY_CHIP_NEUTRAL_CLASSES
         }`;
-        // Selected stat shows full name; others truncated
-        labelEl.textContent = isSelected ? name : formatStatChipLabel(name);
+        // Selected stat shows display name (label if available, otherwise name)
+        labelEl.textContent = isSelected ? displayName : formatStatChipLabel(displayName);
       }
       // Show close icon only when stat is selected
       toggleCloseIcon(closeIcon, isSelected);

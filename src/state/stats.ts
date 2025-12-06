@@ -44,8 +44,10 @@ class StatsStore {
           .map((row) => ({
             id: row.id,
             name: (row as any).name,
+            label: typeof (row as any).label === "string" ? (row as any).label : undefined,
             category: (row as any).category,
             goodIfUp: typeof (row as any).goodIfUp === "boolean" ? (row as any).goodIfUp : undefined,
+            featured: typeof (row as any).featured === "boolean" ? (row as any).featured : undefined,
             active: typeof (row as any).active === "boolean" ? (row as any).active : undefined,
           }));
         this.data = normalized;
