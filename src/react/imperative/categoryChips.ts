@@ -66,9 +66,9 @@ const CHIP_VISIBLE_STYLES = {
   pointerEvents: "auto" as const,
 };
 
-import { CATEGORIES as categories } from "../../types/categories";
 import type { Stat } from "../../types/stat";
 import { statsStore } from "../../state/stats";
+import { categoriesStore, type CategoryRow } from "../../state/categories";
 import { formatTimeSelection as formatTimeSelectionLabel, type TimeSelection } from "../lib/timeFilters";
 
 export interface CategoryChipsController {
@@ -262,42 +262,75 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   let allStats: Stat[] = [];
   let unsubscribeStats: (() => void) | null = null;
 
-  const entries = isMobile
-    ? []
-    : categories.map((category) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES}`;
-        button.setAttribute("data-category", category.id);
-        button.setAttribute("aria-pressed", "false");
+  // In-memory categories from store (for map chips)
+  let mapCategories: CategoryRow[] = [];
+  let unsubscribeCategories: (() => void) | null = null;
 
-        const label = document.createElement("span");
-        label.textContent = category.label;
-        label.className = "whitespace-nowrap";
+  // Category chip entries (mutable, rebuilt when categories change)
+  interface CategoryEntry {
+    button: HTMLButtonElement;
+    closeIcon: HTMLSpanElement;
+    handleClick: () => void;
+    categoryId: string;
+  }
+  let entries: CategoryEntry[] = [];
 
-        const closeIcon = document.createElement("span");
-        closeIcon.innerHTML = CLOSE_ICON;
-        closeIcon.className = "-mr-1 hidden";
+  // Build category chip entries from categories data
+  const buildCategoryEntries = (categories: CategoryRow[]): CategoryEntry[] => {
+    if (isMobile) return [];
+    const result: CategoryEntry[] = [];
+    // Process categories in reverse order so they appear in correct order when inserted at beginning
+    for (let i = categories.length - 1; i >= 0; i--) {
+      const category = categories[i];
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES}`;
+      button.setAttribute("data-category", category.slug);
+      button.setAttribute("aria-pressed", "false");
 
-        button.appendChild(label);
-        button.appendChild(closeIcon);
+      const label = document.createElement("span");
+      label.textContent = category.label;
+      label.className = "whitespace-nowrap";
 
-        const handleClick = () => {
-          const nextId = selectedId === category.id ? null : category.id;
-          selectedId = nextId;
-          // Reset stat selection when switching category or clearing category
-          selectedStatId = null;
-          update();
-          if (options.onChange) options.onChange(selectedId);
-          if (options.onStatChange) options.onStatChange(selectedStatId);
-        };
+      const closeIcon = document.createElement("span");
+      closeIcon.innerHTML = CLOSE_ICON;
+      closeIcon.className = "-mr-1 hidden";
 
-        button.addEventListener("click", handleClick);
+      button.appendChild(label);
+      button.appendChild(closeIcon);
 
-        list.appendChild(button);
+      const handleClick = () => {
+        const nextId = selectedId === category.slug ? null : category.slug;
+        selectedId = nextId;
+        // Reset stat selection when switching category or clearing category
+        selectedStatId = null;
+        update();
+        if (options.onChange) options.onChange(selectedId);
+        if (options.onStatChange) options.onStatChange(selectedStatId);
+      };
 
-        return { button, closeIcon, handleClick, categoryId: category.id };
-      });
+      button.addEventListener("click", handleClick);
+
+      // Insert at the beginning so order is preserved (we're iterating in reverse)
+      list.insertBefore(button, list.firstChild);
+
+      result.unshift({ button, closeIcon, handleClick, categoryId: category.slug });
+    }
+    return result;
+  };
+
+  // Rebuild category chips when categories data changes
+  const rebuildCategoryChips = (categories: CategoryRow[]) => {
+    // Remove old category buttons from DOM
+    entries.forEach(({ button, handleClick }) => {
+      button.removeEventListener("click", handleClick);
+      button.remove();
+    });
+    // Build new entries
+    entries = buildCategoryEntries(categories);
+    // Re-run update to apply selection styles
+    update();
+  };
 
   const update = () => {
     // Reorder buttons so selected chip comes first
@@ -538,8 +571,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     if (selectedStatId) {
       const stat = allStats.find((s) => s.id === selectedStatId);
       if (stat && stat.category !== selectedId) {
-        // Only set the category if it's one of the official categories
-        const isOfficialCategory = categories.some((c) => c.id === stat.category);
+        // Only set the category if it's one of the official map categories
+        const isOfficialCategory = mapCategories.some((c) => c.slug === stat.category);
         if (isOfficialCategory) {
           selectedId = stat.category;
           update();
@@ -794,6 +827,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       removeSearchOutsideHandler = null;
     }
     if (unsubscribeStats) unsubscribeStats();
+    if (unsubscribeCategories) unsubscribeCategories();
     if (isMobile) window.removeEventListener("resize", handleResize);
   };
 
@@ -804,6 +838,19 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     allStats = rows;
     renderStatChips();
     renderSecondaryStatChip();
+  });
+
+  // Subscribe to categories store for map chips
+  unsubscribeCategories = categoriesStore.subscribe((rows) => {
+    const newMapCategories = rows.filter((c) => c.showOnMap);
+    // Only rebuild if categories actually changed
+    const slugsChanged =
+      newMapCategories.length !== mapCategories.length ||
+      newMapCategories.some((c, i) => c.slug !== mapCategories[i]?.slug);
+    if (slugsChanged) {
+      mapCategories = newMapCategories;
+      rebuildCategoryChips(mapCategories);
+    }
   });
 
   const handleResize = () => {

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { db } from "../../lib/reactDb";
 import { useAuthSession } from "./useAuthSession";
+import { useCategories } from "./useCategories";
 import type {
   Organization,
   OrganizationStatus,
@@ -12,6 +13,7 @@ const RECENT_LIMIT = 20;
 
 export const useRecentOrganizations = () => {
   const { authReady } = useAuthSession();
+  const { orgCategories } = useCategories();
   const queryEnabled = authReady;
 
   // Calculate cutoff timestamp (30 days ago)
@@ -42,13 +44,10 @@ export const useRecentOrganizations = () => {
   const recentOrganizations = useMemo<Organization[]>(() => {
     const rows = data?.organizations ?? [];
     const list: Organization[] = [];
-    const allowedCategories = new Set<Organization["category"]>([
-      "health",
-      "education",
-      "justice",
-      "economy",
-      "food",
-    ]);
+    // Build allowed categories from DB (categories with forOrgs: true)
+    // If categories haven't loaded yet, allow all categories through
+    const allowedCategories = new Set<string>(orgCategories.map((c) => c.slug));
+    const hasCategories = allowedCategories.size > 0;
     const allowedStatuses: OrganizationStatus[] = ["active", "moved", "closed"];
 
     for (const row of rows) {
@@ -60,7 +59,8 @@ export const useRecentOrganizations = () => {
         typeof (row as any).category === "string"
       ) {
         const categoryValue = (row as any).category as string;
-        if (!allowedCategories.has(categoryValue as Organization["category"])) {
+        // Only filter by category if categories have loaded
+        if (hasCategories && !allowedCategories.has(categoryValue)) {
           continue;
         }
 
@@ -170,7 +170,7 @@ export const useRecentOrganizations = () => {
     });
 
     return list.slice(0, RECENT_LIMIT);
-  }, [data?.organizations, cutoffTimestamp]);
+  }, [data?.organizations, cutoffTimestamp, orgCategories]);
 
   return { recentOrganizations, isLoading, error };
 };

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { db } from "../../lib/reactDb";
 import { useAuthSession } from "./useAuthSession";
+import { useCategories } from "./useCategories";
 import type {
   Organization,
   OrganizationStatus,
@@ -9,6 +10,7 @@ import type {
 
 export const useOrganizations = () => {
   const { authReady } = useAuthSession();
+  const { orgCategories } = useCategories();
   const queryEnabled = authReady;
 
   // Wait for auth to be ready to avoid race conditions (especially in Safari)
@@ -27,13 +29,10 @@ export const useOrganizations = () => {
   const organizations = useMemo<Organization[]>(() => {
     const rows = data?.organizations ?? [];
     const list: Organization[] = [];
-    const allowedCategories = new Set<Organization["category"]>([
-      "health",
-      "education",
-      "justice",
-      "economy",
-      "food",
-    ]);
+    // Build allowed categories from DB (categories with forOrgs: true)
+    // If categories haven't loaded yet, allow all categories through
+    const allowedCategories = new Set<string>(orgCategories.map((c) => c.slug));
+    const hasCategories = allowedCategories.size > 0;
     const allowedStatuses: OrganizationStatus[] = ["active", "moved", "closed"];
 
     for (const row of rows) {
@@ -45,7 +44,8 @@ export const useOrganizations = () => {
         typeof (row as any).category === "string"
       ) {
         const categoryValue = (row as any).category as string;
-        if (!allowedCategories.has(categoryValue as Organization["category"])) {
+        // Only filter by category if categories have loaded
+        if (hasCategories && !allowedCategories.has(categoryValue)) {
           continue;
         }
 
@@ -131,7 +131,7 @@ export const useOrganizations = () => {
       }
     }
     return list;
-  }, [data?.organizations]);
+  }, [data?.organizations, orgCategories]);
 
   return { organizations, isLoading, error };
 };

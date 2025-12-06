@@ -1,19 +1,12 @@
 import { useMemo, useState, useCallback } from "react";
 import { db } from "../../lib/reactDb";
 import { isAdminEmail } from "../../lib/admin";
+import { useCategories } from "../hooks/useCategories";
 import type {
   Organization,
   OrganizationModerationStatus,
   OrganizationStatus,
 } from "../../types/organization";
-
-const ALLOWED_CATEGORIES = new Set<Organization["category"]>([
-  "health",
-  "education",
-  "justice",
-  "economy",
-  "food",
-]);
 
 const ALLOWED_STATUSES: OrganizationStatus[] = ["active", "moved", "closed"];
 
@@ -22,7 +15,10 @@ type ModerationBuckets = {
   approved: Organization[];
 };
 
-const parseOrganization = (row: any): Organization | null => {
+const parseOrganization = (
+  row: any,
+  allowedCategories: Set<string>
+): Organization | null => {
   if (
     !row ||
     typeof row?.id !== "string" ||
@@ -34,10 +30,9 @@ const parseOrganization = (row: any): Organization | null => {
     return null;
   }
 
-  const category =
-    ALLOWED_CATEGORIES.has(row.category as Organization["category"])
-      ? (row.category as Organization["category"])
-      : "health";
+  const category = allowedCategories.has(row.category)
+    ? (row.category as Organization["category"])
+    : "health";
 
   const rawStatus =
     typeof row?.status === "string" ? (row.status as string).toLowerCase() : null;
@@ -187,9 +182,16 @@ const buildMapsUrl = (org: Organization): string | null => {
 
 export const QueueScreen = () => {
   const { isLoading: isAuthLoading, user } = db.useAuth();
+  const { orgCategories } = useCategories();
   const [expandedApproved, setExpandedApproved] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Build allowed categories from DB (categories with forOrgs: true)
+  const allowedCategories = useMemo(
+    () => new Set<string>(orgCategories.map((c) => c.slug)),
+    [orgCategories]
+  );
 
   const isAdmin =
     !!user && !user.isGuest && !!user.email && isAdminEmail(user.email ?? null);
@@ -215,7 +217,7 @@ export const QueueScreen = () => {
     const pending: Organization[] = [];
     const approved: Organization[] = [];
     for (const row of rows) {
-      const parsed = parseOrganization(row);
+      const parsed = parseOrganization(row, allowedCategories);
       if (!parsed || !parsed.moderationStatus) continue;
       if (parsed.moderationStatus === "pending") {
         pending.push(parsed);
@@ -236,7 +238,7 @@ export const QueueScreen = () => {
       return a.name.localeCompare(b.name);
     });
     return { pending, approved };
-  }, [data?.organizations, queryEnabled]);
+  }, [data?.organizations, queryEnabled, allowedCategories]);
 
   const toggleApproved = useCallback(() => {
     setExpandedApproved((prev) => !prev);

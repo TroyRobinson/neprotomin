@@ -148,6 +148,15 @@ const rules = {
     },
     bind: ["isAdmin", adminCondition],
   },
+  categories: {
+    allow: {
+      view: "true",
+      create: "isAdmin",
+      update: "isAdmin",
+      delete: "isAdmin",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
   $files: {
     allow: {
       view: "true",

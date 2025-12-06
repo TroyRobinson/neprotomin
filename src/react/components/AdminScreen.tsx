@@ -4,6 +4,7 @@ import { id as createId } from "@instantdb/react";
 import { db } from "../../lib/reactDb";
 import { isDevEnv } from "../../lib/env";
 import { useAuthSession } from "../hooks/useAuthSession";
+import { useCategories } from "../hooks/useCategories";
 import type { Category } from "../../types/organization";
 import { CustomSelect } from "./CustomSelect";
 import {
@@ -220,6 +221,7 @@ interface StatListItemProps {
   isSelected?: boolean;
   onToggleSelect?: (event: MouseEvent<HTMLDivElement>) => void;
   selectionMode?: boolean;
+  categoryOptions: Array<{ value: string; label: string }>;
 }
 
 // Stat list item component with bar shape and curved corners
@@ -235,6 +237,7 @@ const StatListItem = ({
   isSelected,
   onToggleSelect,
   selectionMode,
+  categoryOptions,
 }: StatListItemProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState<EditFormState>(() => createEditForm(stat));
@@ -421,7 +424,7 @@ const StatListItem = ({
           <CustomSelect
             value={form.category}
             onChange={(val) => handleChange("category", val)}
-            options={statCategoryOptions}
+            options={categoryOptions}
             className="min-w-[120px]"
           />
         </div>
@@ -574,15 +577,7 @@ interface ImportQueueItem {
   errorMessage?: string;
 }
 
-const statCategoryOptions: Array<{ value: Category; label: string }> = [
-  { value: "food", label: "Food" },
-  { value: "demographics", label: "Demographics" },
-  { value: "health", label: "Health" },
-  { value: "education", label: "Education" },
-  { value: "economy", label: "Economy" },
-  { value: "housing", label: "Housing" },
-  { value: "justice", label: "Justice" },
-];
+// Category options are now fetched from InstantDB via useCategories hook
 
 // Heuristic: group IDs are typically like B22003, S1701, DP02, etc.
 const looksLikeGroupId = (value: string): boolean => {
@@ -787,9 +782,10 @@ interface NewStatModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImported: (statIds: string[]) => void;
+  categoryOptions: Array<{ value: string; label: string }>;
 }
 
-const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
+const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatModalProps) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const groupInputRef = useRef<HTMLInputElement>(null);
   const [dataset, setDataset] = useState("acs/acs5");
@@ -1312,7 +1308,7 @@ const NewStatModal = ({ isOpen, onClose, onImported }: NewStatModalProps) => {
                   onChange={(val) => setCategory(val ? (val as Category) : null)}
                   options={[
                     { value: "", label: "None" },
-                    ...statCategoryOptions,
+                    ...categoryOptions,
                   ]}
                   className="min-w-36"
                 />
@@ -1436,6 +1432,15 @@ const fuzzyMatch = (text: string, query: string): boolean => {
 export const AdminScreen = () => {
   const { authReady } = useAuthSession();
   const queryEnabled = authReady;
+
+  // Fetch categories from InstantDB
+  const { statCategories } = useCategories();
+
+  // Build category options for dropdowns (memoized to avoid re-renders)
+  const statCategoryOptions = useMemo(
+    () => statCategories.map((c) => ({ value: c.slug, label: c.label })),
+    [statCategories]
+  );
 
   // Primary query: just stats (small, fast, reliable)
   const {
@@ -2736,6 +2741,7 @@ export const AdminScreen = () => {
                 isSelected={selectedIdSet.has(stat.id)}
                 onToggleSelect={(event) => handleToggleSelect(stat.id, event)}
                 selectionMode={isSelectionMode}
+                categoryOptions={statCategoryOptions}
               />
             ))}
           </div>
@@ -2745,11 +2751,12 @@ export const AdminScreen = () => {
         isOpen={isNewStatOpen}
         onClose={() => setIsNewStatOpen(false)}
         onImported={handleImportedFromModal}
+        categoryOptions={statCategoryOptions}
       />
       <DerivedStatModal
         isOpen={isDerivedModalOpen}
         stats={derivedSelection}
-        categories={statCategoryOptions.map((opt) => opt.value)}
+        categories={statCategoryOptions.map((c) => c.value)}
         availableYears={derivedAvailableYears}
         availableYearsByStat={derivedAvailableYearsByStat}
         onClose={handleDerivedModalClose}

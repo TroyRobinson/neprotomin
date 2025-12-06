@@ -146,6 +146,20 @@ const _schema = i.schema({
       createdOn: i.number().indexed().optional(),
       lastUpdated: i.number().indexed().optional(),
     }),
+    // Centralized category definitions for stats, orgs, and UI surfaces
+    categories: i.entity({
+      slug: i.string().unique().indexed(), // canonical id (e.g., "food", "health")
+      label: i.string(),                   // display name (e.g., "Food", "Health")
+      sortOrder: i.number().indexed(),     // deterministic ordering in dropdowns/chips
+      active: i.boolean().indexed().optional(), // soft-hide without deleting
+      // Usage flags: enable/disable per surface
+      forStats: i.boolean().indexed().optional(),      // can be used as stats.category
+      forOrgs: i.boolean().indexed().optional(),       // allowed for organizations
+      showOnMap: i.boolean().indexed().optional(),     // top category chips on map
+      showInSidebar: i.boolean().indexed().optional(), // sidebar filter dropdown
+      createdAt: i.number().indexed().optional(),
+      updatedAt: i.number().indexed().optional(),
+    }),
     // Persisted per-user/per-guest UI state
     uiState: i.entity({
       owner: i.string().indexed(), // auth.id (works for guests too)

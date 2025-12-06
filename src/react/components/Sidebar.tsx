@@ -7,7 +7,7 @@ import { StatList } from "./StatList";
 import { IssueReportModal } from "./IssueReportModal";
 import type { Organization, OrganizationHours } from "../../types/organization";
 import type { Stat } from "../../types/stat";
-import { getCategoryLabel, CATEGORIES } from "../../types/categories";
+import { useCategories } from "../hooks/useCategories";
 import type { CombinedDemographicsSnapshot } from "../hooks/useDemographics";
 import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
 import type { AreaId } from "../../types/areas";
@@ -145,6 +145,9 @@ export const Sidebar = ({
   selectionLabelOverride = null,
   selectionStyleVariant = "default",
 }: SidebarProps) => {
+  // Fetch categories from InstantDB
+  const { sidebarCategories, getCategoryLabel } = useCategories();
+
   const [activeTab, setActiveTab] = useState<TabType>("orgs");
   const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(true);
   const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
@@ -653,16 +656,16 @@ export const Sidebar = ({
               </button>
               {categoryDropdownOpen && (
                 <div className="absolute right-0 top-full z-50 mt-1 w-32 rounded-md border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800">
-                  {CATEGORIES.map((cat) => (
+                  {sidebarCategories.map((cat) => (
                     <button
-                      key={cat.id}
+                      key={cat.slug}
                       type="button"
                       onClick={() => {
-                        onCategoryChange?.(cat.id);
+                        onCategoryChange?.(cat.slug);
                         setCategoryDropdownOpen(false);
                       }}
                       className={`block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-slate-700 ${
-                        categoryFilter === cat.id
+                        categoryFilter === cat.slug
                           ? "font-medium text-brand-600 dark:text-brand-400"
                           : "text-slate-700 dark:text-slate-300"
                       }`}
@@ -781,6 +784,7 @@ export const Sidebar = ({
                           onZoomClick={onZoomToOrg}
                           hideCategoryTag={hideCategoryTags}
                           selectionStyleVariant={selectionStyleVariant}
+                          getCategoryLabel={getCategoryLabel}
                         />
                       ))}
                     </ul>
@@ -812,6 +816,7 @@ export const Sidebar = ({
                           onZoomClick={onZoomToOrg}
                           hideCategoryTag={hideCategoryTags}
                           selectionStyleVariant={selectionStyleVariant}
+                          getCategoryLabel={getCategoryLabel}
                         />
                       ))}
                     </ul>
@@ -843,6 +848,7 @@ export const Sidebar = ({
                       onZoomClick={onZoomToOrg}
                       hideCategoryTag={hideCategoryTags}
                       selectionStyleVariant={selectionStyleVariant}
+                      getCategoryLabel={getCategoryLabel}
                     />
                   ))}
 
@@ -906,6 +912,7 @@ interface OrganizationListItemProps {
   onZoomClick?: (organizationId: string) => void;
   hideCategoryTag?: boolean;
   selectionStyleVariant?: "default" | "searchResults";
+  getCategoryLabel: (slug: string) => string;
 }
 
 const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
@@ -1109,6 +1116,7 @@ const OrganizationListItem = ({
   onZoomClick,
   hideCategoryTag = false,
   selectionStyleVariant = "default",
+  getCategoryLabel,
 }: OrganizationListItemProps) => {
   const lastClickTimeRef = useRef<number>(0);
   const categoryLabel = typeof org.category === "string" ? getCategoryLabel(org.category) : null;
