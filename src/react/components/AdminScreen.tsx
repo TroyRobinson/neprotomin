@@ -191,6 +191,12 @@ interface EditFormState {
   featured: boolean | null;
 }
 
+interface PendingDerivedJob {
+  id: string; // statId
+  label: string;
+  createdAt: number;
+}
+
 const createEditForm = (stat: StatItem): EditFormState => ({
   label: stat.label ?? "",
   name: stat.name,
@@ -1509,6 +1515,7 @@ export const AdminScreen = () => {
   const [isDerivedSubmitting, setIsDerivedSubmitting] = useState(false);
   const [derivedError, setDerivedError] = useState<string | null>(null);
   const [derivedAvailableYears, setDerivedAvailableYears] = useState<string[]>([]);
+  const [pendingDerivedJobs, setPendingDerivedJobs] = useState<PendingDerivedJob[]>([]);
 
   // Filter, sort, and search state
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -1715,6 +1722,7 @@ export const AdminScreen = () => {
       setDerivedError(null);
       setIsDerivedSubmitting(true);
       let attemptedWrite = false;
+      let newStatMeta: { id: string; label: string } | null = null;
       try {
         // --- CHANGE OVER TIME formula: special handling ---
         if (payload.formula === "change_over_time") {
@@ -1802,6 +1810,8 @@ export const AdminScreen = () => {
           const displayName = payload.label.trim();
           const trimmedCategory = payload.category.trim();
           const derivedSource = payload.description?.trim() || "Census Derived";
+
+          newStatMeta = { id: newStatId, label: displayName || autoName };
 
           const txs: any[] = [
             db.tx.stats[newStatId].update({
@@ -1990,6 +2000,8 @@ export const AdminScreen = () => {
         // payload.description is always "Census Derived" now
         const derivedSource = payload.description?.trim() || "Census Derived";
 
+        newStatMeta = { id: newStatId, label: displayName || autoName };
+
         const txs: any[] = [
           db.tx.stats[newStatId].update({
             name: autoName,
@@ -2045,10 +2057,27 @@ export const AdminScreen = () => {
       } catch (err) {
         console.error("Failed to create derived stat", err);
         const timeout = err instanceof Error && err.message.includes("Operation timed out");
-        if (timeout && attemptedWrite) {
-          setDerivedError(
-            "Saving the derived stat took longer than expected, but some data was likely written. Please check the stats list and verify the new stat's coverage.",
-          );
+        if (timeout && attemptedWrite && newStatMeta) {
+          const meta = newStatMeta;
+          setPendingDerivedJobs((prev) => {
+            if (prev.some((job) => job.id === meta.id)) return prev;
+            return [
+              ...prev,
+              {
+                id: meta.id,
+                label: meta.label,
+                createdAt: Date.now(),
+              },
+            ];
+          });
+
+          // Close modal and clear selection; job crumb will track completion
+          setIsDerivedModalOpen(false);
+          setDerivedSelection([]);
+          setDerivedAvailableYears([]);
+          setSelectedStatIds([]);
+          setSelectionAnchorId(null);
+          setDerivedError(null);
         } else {
           const partialMessage = attemptedWrite
             ? " Some data may have been written before this error. If this derived stat now appears in the list, it may have incomplete area coverage."
@@ -2161,6 +2190,15 @@ export const AdminScreen = () => {
     return result;
   }, [derivedSelection, statDataSummaryByStatId, derivedAvailableYears]);
 
+  // Clear pending derived jobs when their stats appear in the stats list
+  useEffect(() => {
+    if (!pendingDerivedJobs.length || !stats.length) return;
+    setPendingDerivedJobs((prev) => {
+      const remaining = prev.filter((job) => !stats.some((s) => s.id === job.id));
+      return remaining.length === prev.length ? prev : remaining;
+    });
+  }, [stats, pendingDerivedJobs.length]);
+
   // Start editing a stat
   const handleStartEdit = useCallback((id: string) => {
     setEditingId(id);
@@ -2244,6 +2282,10 @@ export const AdminScreen = () => {
       if (next.length > 50) next.length = 50;
       return next;
     });
+  }, []);
+
+  const dismissPendingJob = useCallback((jobId: string) => {
+    setPendingDerivedJobs((prev) => prev.filter((job) => job.id !== jobId));
   }, []);
 
   // Loading state - only block on stats (primary query)
@@ -2472,6 +2514,30 @@ export const AdminScreen = () => {
         isSubmitting={isDerivedSubmitting}
         errorMessage={derivedError}
       />
+      {pendingDerivedJobs.length > 0 && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center">
+          <div className="pointer-events-auto flex max-w-md flex-col gap-1 rounded-lg bg-slate-900/90 px-3 py-2 text-xs text-slate-100 shadow-lg ring-1 ring-slate-700">
+            {pendingDerivedJobs.map((job) => (
+              <div key={job.id} className="flex items-center gap-2">
+                <div className="h-3 w-3 animate-spin rounded-full border-2 border-slate-500 border-t-brand-400" />
+                <div className="flex-1 truncate">
+                  Finishing derived stat <span className="font-semibold">{job.label || "Derived stat"}</span>…
+                </div>
+                <button
+                  type="button"
+                  onClick={() => dismissPendingJob(job.id)}
+                  className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                  aria-label="Dismiss job"
+                >
+                  <svg className="h-3 w-3" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
