@@ -24,6 +24,7 @@ interface StatItem {
   source?: string | null;
   goodIfUp?: boolean | null;
   featured?: boolean | null;
+  homeFeatured?: boolean | null;
   active?: boolean | null;
   createdOn?: number | null;
   lastUpdated?: number | null;
@@ -164,6 +165,7 @@ const parseStat = (row: unknown): StatItem | null => {
     source: typeof r.source === "string" ? r.source : null,
     goodIfUp: typeof r.goodIfUp === "boolean" ? r.goodIfUp : null,
     featured: typeof r.featured === "boolean" ? r.featured : null,
+    homeFeatured: typeof r.homeFeatured === "boolean" ? r.homeFeatured : null,
     active: typeof r.active === "boolean" ? r.active : null,
     createdOn: typeof r.createdOn === "number" ? r.createdOn : null,
     lastUpdated: typeof r.lastUpdated === "number" ? r.lastUpdated : null,
@@ -190,6 +192,7 @@ interface EditFormState {
   goodIfUp: boolean | null;
   active: boolean | null;
   featured: boolean | null;
+  homeFeatured: boolean | null;
 }
 
 interface PendingDerivedJob {
@@ -206,6 +209,7 @@ const createEditForm = (stat: StatItem): EditFormState => ({
   goodIfUp: stat.goodIfUp ?? null,
   active: stat.active ?? null,
   featured: stat.featured ?? null,
+   homeFeatured: stat.homeFeatured ?? null,
 });
 
 // Stat list item props
@@ -380,6 +384,11 @@ const StatListItem = ({
               Featured
             </span>
           )}
+          {stat.homeFeatured !== null && stat.homeFeatured && (
+            <span className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+              Home default
+            </span>
+          )}
           {(stat.createdOn || stat.lastUpdated) && (
             <span className="ml-auto text-slate-400 dark:text-slate-500">
               {stat.lastUpdated ? `Updated ${formatDate(stat.lastUpdated)}` : `Created ${formatDate(stat.createdOn)}`}
@@ -429,7 +438,7 @@ const StatListItem = ({
           />
         </div>
 
-        {/* Active and Featured checkboxes */}
+        {/* Active, Featured, and Home default checkboxes */}
         <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/50">
           <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
             <input
@@ -448,6 +457,15 @@ const StatListItem = ({
               className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
             />
             Featured
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={form.homeFeatured === true}
+              onChange={(e) => handleChange("homeFeatured", e.target.checked ? true : false)}
+              className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
+            />
+            Home default
           </label>
         </div>
 
@@ -1863,6 +1881,7 @@ export const AdminScreen = () => {
               source: derivedSource,
               goodIfUp: null,
               featured: false,
+              homeFeatured: false,
               active: true,
               createdOn: now,
               lastUpdated: now,
@@ -2243,6 +2262,7 @@ export const AdminScreen = () => {
             source: derivedSource,
             goodIfUp: null,
             featured: false,
+            homeFeatured: false,
             active: true,
             createdOn: now,
             lastUpdated: now,
@@ -2456,6 +2476,7 @@ export const AdminScreen = () => {
             goodIfUp: form.goodIfUp,
             active: form.active,
             featured: form.featured,
+            homeFeatured: form.homeFeatured,
             lastUpdated: Date.now(),
           }),
         );

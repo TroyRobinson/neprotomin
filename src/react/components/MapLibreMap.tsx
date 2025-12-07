@@ -59,6 +59,7 @@ interface MapLibreMapProps {
   userLocation?: { lng: number; lat: number } | null;
   onTimeChipClear?: () => void;
   onLocationSearch?: (query: string) => void;
+  timeFilterAvailable?: boolean;
 }
 
 /**
@@ -110,6 +111,7 @@ export const MapLibreMap = ({
   onControllerReady,
   userLocation = null,
   onLocationSearch,
+  timeFilterAvailable = true,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
@@ -282,6 +284,13 @@ export const MapLibreMap = ({
       mapControllerRef.current.setUserLocation(userLocation ?? null);
     }
   }, [userLocation]);
+
+  // Update time filter availability (controls visibility of the Hours Open chip)
+  useEffect(() => {
+    if (mapControllerRef.current) {
+      mapControllerRef.current.setTimeFilterAvailable(Boolean(timeFilterAvailable));
+    }
+  }, [timeFilterAvailable]);
 
   // Handle zoom out all trigger
   useEffect(() => {

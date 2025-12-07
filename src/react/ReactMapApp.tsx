@@ -1412,6 +1412,22 @@ export const ReactMapApp = () => {
     [organizations],
   );
 
+  // Determine if any organizations in the current data source have hours information.
+  // Used to decide whether the "Hours Open" chip should be shown.
+  const hasAnyHoursInSource = useMemo(() => {
+    if (!organizations || organizations.length === 0) return false;
+    const hasHours = (org: Organization): boolean => {
+      const periods = org.hours?.periods;
+      if (!Array.isArray(periods) || periods.length === 0) return false;
+      return periods.some((p) => Boolean(p.openTime || p.closeTime));
+    };
+    const idSet = new Set(orgsAllSourceIds);
+    if (idSet.size === 0) {
+      return organizations.some(hasHours);
+    }
+    return organizations.some((org) => idSet.has(org.id) && hasHours(org));
+  }, [organizations, orgsAllSourceIds]);
+
   const seriesByStatIdScoped = useMemo(() => {
     const map = new Map<string, SeriesByKind>();
 
@@ -1487,18 +1503,41 @@ export const ReactMapApp = () => {
 
   useEffect(() => {
     if (hasAppliedDefaultStat) return;
+    const allStats = Array.from(statsById.values());
 
-    // Only apply the default food stat on okfoodmap.com domain
-    // On other domains, let users choose their own category/stat
-    if (!isFoodMapDomain() || !DEFAULT_PRIMARY_STAT_ID) {
-      setHasAppliedDefaultStat(true);
+    // Helper: first stat marked as homeFeatured + featured + active
+    const pickHomeFeatured = () =>
+      allStats.find((s) => s.homeFeatured === true && s.featured === true && s.active !== false) ?? null;
+
+    if (isFoodMapDomain()) {
+      // okfoodmap.com always defaults to the legacy SNAP stat if available
+      if (DEFAULT_PRIMARY_STAT_ID) {
+        const defaultStat = statsById.get(DEFAULT_PRIMARY_STAT_ID);
+        if (defaultStat) {
+          setSelectedStatId(DEFAULT_PRIMARY_STAT_ID);
+          setHasAppliedDefaultStat(true);
+          return;
+        }
+      }
+
+      // Fallback on okfoodmap.com: use a homeFeatured stat if configured
+      const homeDefault = pickHomeFeatured();
+      if (homeDefault) {
+        setSelectedStatId(homeDefault.id);
+        setHasAppliedDefaultStat(true);
+        return;
+      }
+
+      if (!areStatsLoading) {
+        setHasAppliedDefaultStat(true);
+      }
       return;
     }
 
-    const defaultStat = statsById.get(DEFAULT_PRIMARY_STAT_ID);
-
-    if (defaultStat) {
-      setSelectedStatId(DEFAULT_PRIMARY_STAT_ID);
+    // Non-okfood domains: respect homeFeatured if present
+    const homeDefault = pickHomeFeatured();
+    if (homeDefault) {
+      setSelectedStatId(homeDefault.id);
       setHasAppliedDefaultStat(true);
       return;
     }
@@ -2950,71 +2989,72 @@ export const ReactMapApp = () => {
                 setZipNeighborScopes(neighbors);
               }}
               onCameraChange={setCameraState}
-                onMapDragStart={() => {
-                  setSidebarFollowMode("map");
-                  track("map_interaction", { type: "drag", device: isMobile ? "mobile" : "desktop" });
-                  if (isMobile) collapseSheet();
-                }}
-                isMobile={isMobile}
-                legendInset={legendInset}
-                onControllerReady={handleMapControllerReady}
-                userLocation={userLocation}
-                onLocationSearch={handleMobileLocationSearch}
-                onTimeChipClick={() => {
-                  track("map_time_chip_click", {
-                    action: "open",
-                    chipState: timeSelection ? "custom" : "open-now",
-                    device: isMobile ? "mobile" : "desktop",
-                  });
-                  setShowTimeSelectorModal(true);
-                }}
-                onTimeChipClear={() => {
-                  track("map_time_chip_click", {
-                    action: "clear",
-                    chipState: timeSelection ? "custom" : "open-now",
-                    device: isMobile ? "mobile" : "desktop",
-                  });
-                  handleClearTimeFilter();
-                }}
-              />
-              {/* Desktop-only overlay still shows the location button inline */}
-              {!isMobile && (
-                <div className={["pointer-events-none absolute right-4 z-30"].join(" ")} style={{ bottom: 16 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isRequestingLocation) return;
-                      track("map_my_location_click", {
-                        variant: "desktop",
-                        action: userLocation ? "zoom" : "request",
-                      });
-                      if (userLocation) {
-                        focusUserLocation();
-                      } else {
-                        requestUserLocation();
-                      }
-                    }}
-                    disabled={isRequestingLocation}
-                    className={[
-                      "pointer-events-auto inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
-                      userLocationError
-                        ? "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
-                        : "border border-slate-200 bg-white text-slate-700 hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white",
-                    ].join(" ")}
-                    aria-label={isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Zoom" : "My Location"}
-                  >
-                    {isRequestingLocation ? (
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent dark:border-slate-500" />
-                    ) : (
-                      <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
-                        <path fill="currentColor" d="M10 2.5a.75.75 0 01.75.75v1.54a5.25 5.25 0 014.46 4.46H16.5a.75.75 0 010 1.5h-1.29a5.25 5.25 0 01-4.46 4.46v1.54a.75.75 0 01-1.5 0v-1.54a5.25 5.25 0 01-4.46-4.46H3.5a.75.75 0 010-1.5h1.29a5.25 5.25 0 014.46-4.46V3.25A.75.75 0 0110 2.5zm0 4a4 4 0 100 8 4 4 0 000-8z" />
-                        <path fill="currentColor" d="M10 8.25a1.75 1.75 0 110 3.5 1.75 1.75 0 010-3.5z" />
-                      </svg>
-                    )}
-                    <span>{isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Zoom" : "My Location"}</span>
-                  </button>
-                </div>
-              )}
+              onMapDragStart={() => {
+                setSidebarFollowMode("map");
+                track("map_interaction", { type: "drag", device: isMobile ? "mobile" : "desktop" });
+                if (isMobile) collapseSheet();
+              }}
+              timeFilterAvailable={hasAnyHoursInSource}
+              isMobile={isMobile}
+              legendInset={legendInset}
+              onControllerReady={handleMapControllerReady}
+              userLocation={userLocation}
+              onLocationSearch={handleMobileLocationSearch}
+              onTimeChipClick={() => {
+                track("map_time_chip_click", {
+                  action: "open",
+                  chipState: timeSelection ? "custom" : "open-now",
+                  device: isMobile ? "mobile" : "desktop",
+                });
+                setShowTimeSelectorModal(true);
+              }}
+              onTimeChipClear={() => {
+                track("map_time_chip_click", {
+                  action: "clear",
+                  chipState: timeSelection ? "custom" : "open-now",
+                  device: isMobile ? "mobile" : "desktop",
+                });
+                handleClearTimeFilter();
+              }}
+            />
+            {/* Desktop-only overlay still shows the location button inline */}
+            {!isMobile && (
+              <div className={["pointer-events-none absolute right-4 z-30"].join(" ")} style={{ bottom: 16 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isRequestingLocation) return;
+                    track("map_my_location_click", {
+                      variant: "desktop",
+                      action: userLocation ? "zoom" : "request",
+                    });
+                    if (userLocation) {
+                      focusUserLocation();
+                    } else {
+                      requestUserLocation();
+                    }
+                  }}
+                  disabled={isRequestingLocation}
+                  className={[
+                    "pointer-events-auto inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
+                    userLocationError
+                      ? "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
+                      : "border border-slate-200 bg-white text-slate-700 hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white",
+                  ].join(" ")}
+                  aria-label={isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Zoom" : "My Location"}
+                >
+                  {isRequestingLocation ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent dark:border-slate-500" />
+                  ) : (
+                    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
+                      <path fill="currentColor" d="M10 2.5a.75.75 0 01.75.75v1.54a5.25 5.25 0 014.46 4.46H16.5a.75.75 0 010 1.5h-1.29a5.25 5.25 0 01-4.46 4.46v1.54a.75.75 0 01-1.5 0v-1.54a5.25 5.25 0 01-4.46-4.46H3.5a.75.75 0 010-1.5h1.29a5.25 5.25 0 014.46-4.46V3.25A.75.75 0 0110 2.5zm0 4a4 4 0 100 8 4 4 0 000-8z" />
+                      <path fill="currentColor" d="M10 8.25a1.75 1.75 0 110 3.5 1.75 1.75 0 010-3.5z" />
+                    </svg>
+                  )}
+                  <span>{isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Zoom" : "My Location"}</span>
+                </button>
+              </div>
+            )}
           </div>
           {!isMobile && (
             <Sidebar

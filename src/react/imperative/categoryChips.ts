@@ -78,6 +78,7 @@ export interface CategoryChipsController {
   setSecondaryStat: (statId: string | null) => void;
   setOrgsVisible: (visible: boolean) => void;
   setTimeSelection: (selection: TimeSelection | null) => void;
+  setTimeFilterAvailable: (available: boolean) => void;
   destroy: () => void;
 }
 
@@ -143,6 +144,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   let searchInput: HTMLInputElement | null = null;
   let removeSearchOutsideHandler: (() => void) | null = null;
   let orgsChipVisible = false;
+  let timeFilterAvailable = false;
 
   // Stats chips appear to the right of the selected category
   const statWrapper = document.createElement("div");
@@ -380,13 +382,17 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   const applyAccessoryChipVisibility = () => {
     if (isMobile) {
+      // Providers chip is desktop-only; on mobile we show only the time chip when available.
       orgsChipBtn.style.display = "none";
-      timeOpenChipBtn.style.display = orgsChipVisible ? "" : "none";
+      const showTime = orgsChipVisible && timeFilterAvailable;
+      timeOpenChipBtn.style.display = showTime ? "" : "none";
       return;
     }
-    const shouldShow = orgsChipVisible && !searchExpanded;
-    orgsChipBtn.style.display = shouldShow ? "" : "none";
-    timeOpenChipBtn.style.display = shouldShow ? "" : "none";
+    const showProviders = orgsChipVisible && !searchExpanded;
+    orgsChipBtn.style.display = showProviders ? "" : "none";
+
+    const showTime = orgsChipVisible && timeFilterAvailable && !searchExpanded;
+    timeOpenChipBtn.style.display = showTime ? "" : "none";
     update();
   };
 
@@ -664,7 +670,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       statEntries = [];
       return;
     }
-    if (searchExpanded) {
+    // When search is expanded, keep the stat chip visible if a stat is already selected
+    if (searchExpanded && !selectedStatId) {
       statWrapper.classList.add("hidden");
       return;
     }
@@ -717,7 +724,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       statWrapper.classList.add("hidden");
       return;
     }
-    if (searchExpanded) {
+    // When search is expanded, keep the stat chip visible if a stat is already selected
+    if (searchExpanded && !selectedStatId) {
       statWrapper.classList.add("hidden");
       return;
     }
@@ -882,10 +890,13 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     setOrgsVisible: (visible: boolean) => {
       orgsChipVisible = visible;
       if (isMobile) {
-        orgsChipBtn.style.display = "none";
-        timeOpenChipBtn.style.display = visible ? "" : "none";
+        applyAccessoryChipVisibility();
         return;
       }
+      applyAccessoryChipVisibility();
+    },
+    setTimeFilterAvailable: (available: boolean) => {
+      timeFilterAvailable = available;
       applyAccessoryChipVisibility();
     },
     setTimeSelection,

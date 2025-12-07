@@ -342,6 +342,10 @@ export const Sidebar = ({
 
   const visibleCount =
     typeof visibleInViewport === "number" ? visibleInViewport : inSelection.length + all.length;
+  // When a category filter is active, the actual filtered count may differ from visibleCount
+  const categoryFilteredCount = categoryFilter
+    ? inSelection.length + all.length + recent.length
+    : visibleCount;
   const baseTotalCount = typeof totalSourceCount === "number" ? totalSourceCount : visibleCount;
   const countForTab = totalSelectedCount > 0 ? inSelection.length : visibleCount;
   const countyVisibleCount =
@@ -495,9 +499,10 @@ export const Sidebar = ({
   ]);
 
   useEffect(() => {
-    const visible = keepOrgsOnMap || activeTab === "orgs";
+    const hasAnyVisibleOrgs = categoryFilteredCount > 0;
+    const visible = hasAnyVisibleOrgs && (keepOrgsOnMap || activeTab === "orgs");
     onOrgPinsVisibleChange?.(visible);
-  }, [activeTab, keepOrgsOnMap, onOrgPinsVisibleChange]);
+  }, [activeTab, keepOrgsOnMap, onOrgPinsVisibleChange, categoryFilteredCount]);
 
   useEffect(() => {
     if (!issueFeedback) return;
@@ -764,10 +769,23 @@ export const Sidebar = ({
               </div>
             )}
             
-            {visibleCount === 0 && missingCount === 0 && recent.length === 0 ? (
-              <p className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
-                No locations found. Add one to get started.
-              </p>
+            {categoryFilteredCount === 0 ? (
+              categoryFilter ? (
+                <div className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
+                  <p className="mb-2">No organizations yet for this category.</p>
+                  <button
+                    type="button"
+                    onClick={() => onCategoryChange?.(null)}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Clear category
+                  </button>
+                </div>
+              ) : (
+                <p className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
+                  No locations found. Add one to get started.
+                </p>
+              )
             ) : timeSelection && inSelection.length === 0 && all.length === 0 && recent.length === 0 ? (
               <p className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
                 No locations are open at the selected time.

@@ -108,6 +108,7 @@ export interface MapViewController {
   addTransientCounties: (counties: string[]) => void;
   fitAllOrganizations: () => void;
   setTimeSelection: (selection: TimeSelection | null) => void;
+  setTimeFilterAvailable: (available: boolean) => void;
   setOrganizationPinsVisible: (visible: boolean) => void;
   setUserLocation: (location: { lng: number; lat: number } | null) => void;
   fitBounds: (bounds: BoundsArray, options?: { padding?: number; maxZoom?: number; duration?: number }) => void;
@@ -2961,6 +2962,9 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     },
     setTimeSelection: (selection: TimeSelection | null) => {
       categoryChips.setTimeSelection(selection);
+    },
+    setTimeFilterAvailable: (available: boolean) => {
+      categoryChips.setTimeFilterAvailable(available);
     },
     fitBounds: (bounds: BoundsArray, options?: { padding?: number; maxZoom?: number; duration?: number }) => {
       map.fitBounds(bounds, {
