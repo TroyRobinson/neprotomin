@@ -605,6 +605,22 @@ const looksLikeGroupId = (value: string): boolean => {
   return /^[A-Z]{1,2}\d{3,5}[A-Z]?$/i.test(trimmed);
 };
 
+const DEFAULT_CENSUS_DATASET = "acs/acs5";
+
+// Auto-pick the correct Census dataset for common group prefixes when the user keeps the default.
+const inferDatasetForGroup = (group: string, dataset: string): { dataset: string; changed: boolean } => {
+  const trimmedGroup = group.trim().toUpperCase();
+  const normalizedDataset = dataset.trim() || DEFAULT_CENSUS_DATASET;
+  if (!trimmedGroup) return { dataset: normalizedDataset, changed: false };
+  // Respect explicit dataset overrides
+  if (normalizedDataset !== DEFAULT_CENSUS_DATASET) return { dataset: normalizedDataset, changed: false };
+
+  if (trimmedGroup.startsWith("DP")) return { dataset: "acs/acs5/profile", changed: normalizedDataset !== "acs/acs5/profile" };
+  if (trimmedGroup.startsWith("CP")) return { dataset: "acs/acs5/cprofile", changed: normalizedDataset !== "acs/acs5/cprofile" };
+  if (trimmedGroup.startsWith("S")) return { dataset: "acs/acs5/subject", changed: normalizedDataset !== "acs/acs5/subject" };
+  return { dataset: normalizedDataset, changed: false };
+};
+
 interface CensusGroupResult {
   name: string;
   description: string;
@@ -889,11 +905,15 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
       setPreviewError("Census group is required.");
       return;
     }
+    const { dataset: resolvedDataset, changed } = inferDatasetForGroup(trimmedGroup, dataset);
+    if (changed) {
+      setDataset(resolvedDataset);
+    }
     setIsPreviewLoading(true);
     setPreviewError(null);
     try {
       const params = new URLSearchParams({
-        dataset,
+        dataset: resolvedDataset,
         group: trimmedGroup,
         year: String(year),
         limit: String(limit),

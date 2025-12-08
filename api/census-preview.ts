@@ -8,6 +8,22 @@ import {
   fetchVariableSummaries,
 } from "./_shared/censusPreview.js";
 
+const DEFAULT_DATASET = "acs/acs5";
+
+// Infer dataset when the user keeps the default but the group prefix requires a different Census endpoint.
+const inferDatasetForGroup = (dataset: string, group: string): { dataset: string; changed: boolean } => {
+  const trimmedGroup = (group || "").trim().toUpperCase();
+  const normalizedDataset = dataset?.trim() || DEFAULT_DATASET;
+  if (!trimmedGroup) return { dataset: normalizedDataset, changed: false };
+  // Respect explicit dataset selection
+  if (normalizedDataset !== DEFAULT_DATASET) return { dataset: normalizedDataset, changed: false };
+
+  if (trimmedGroup.startsWith("DP")) return { dataset: "acs/acs5/profile", changed: true };
+  if (trimmedGroup.startsWith("CP")) return { dataset: "acs/acs5/cprofile", changed: true };
+  if (trimmedGroup.startsWith("S")) return { dataset: "acs/acs5/subject", changed: true };
+  return { dataset: normalizedDataset, changed: false };
+};
+
 type CensusPreviewRequest = IncomingMessage & {
   method?: string;
   query?: Record<string, string | string[]>;
@@ -71,11 +87,17 @@ export default async function handler(req: CensusPreviewRequest, res: CensusPrev
     return;
   }
 
+  let datasetUsed = DEFAULT_DATASET;
+  let groupUsed = "";
+
   try {
     const query = req.query ?? {};
 
-    const dataset = normalizeQueryString(query.dataset) ?? "acs/acs5";
+    const rawDataset = normalizeQueryString(query.dataset) ?? DEFAULT_DATASET;
     const group = normalizeQueryString(query.group);
+    groupUsed = group ?? "";
+    const { dataset } = inferDatasetForGroup(rawDataset, group ?? "");
+    datasetUsed = dataset;
     const year = parseYear(normalizeQueryString(query.year));
     const limit = parseLimit(normalizeQueryString(query.limit));
 
@@ -163,9 +185,13 @@ export default async function handler(req: CensusPreviewRequest, res: CensusPrev
         : typeof error === "string"
         ? error
         : "Unknown error";
-    respond(res, 500, {
+    const status =
+      typeof message === "string" && message.startsWith("Census HTTP 404") ? 404 : 500;
+    respond(res, status, {
       error: "Failed to load Census preview.",
       details: message,
+      dataset: datasetUsed,
+      group: groupUsed,
     });
   }
 }
