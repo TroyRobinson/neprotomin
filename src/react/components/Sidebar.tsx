@@ -204,6 +204,18 @@ export const Sidebar = ({
   const shouldShowDemographicsBar = ENABLE_DEMOGRAPHICS_SECTION && canShowInsights;
   const shouldShowStatVisualization = ENABLE_STATISTICS_VISUALIZATION_SECTION && canShowInsights;
 
+  // When a category is cleared from the sidebar, also clear any active stat selection
+  // so the choropleth overlay matches the category chips behavior on the map.
+  const handleCategoryChange = useCallback(
+    (categoryId: string | null) => {
+      onCategoryChange?.(categoryId);
+      if (categoryId === null) {
+        onStatSelect?.(null, { clear: true });
+      }
+    },
+    [onCategoryChange, onStatSelect],
+  );
+
   const handleOpenIssueModal = useCallback((org: Organization) => {
     setIssueModalOrg(org);
     setIssueFeedback(null);
@@ -687,7 +699,7 @@ export const Sidebar = ({
                   <button
                     type="button"
                     onClick={() => {
-                      onCategoryChange?.(null);
+                      handleCategoryChange(null);
                       setCategoryDropdownOpen(false);
                     }}
                     className={`block w-full px-3 py-1.5 text-left text-xs transition hover:bg-brand-700/70 ${!categoryFilter ? "bg-brand-700/60 font-semibold" : "font-medium text-white/90"}`}
@@ -699,7 +711,7 @@ export const Sidebar = ({
                       key={cat.slug}
                       type="button"
                       onClick={() => {
-                        onCategoryChange?.(cat.slug);
+                        handleCategoryChange(cat.slug);
                         setCategoryDropdownOpen(false);
                       }}
                       className={`block w-full px-3 py-1.5 text-left text-xs transition hover:bg-brand-700/70 ${
@@ -718,7 +730,7 @@ export const Sidebar = ({
               <button
                 type="button"
                 onClick={() => {
-                  onCategoryChange?.(null);
+                  handleCategoryChange(null);
                   setCategoryDropdownOpen(false);
                 }}
                 className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-800/80 text-white hover:bg-brand-700/90"
@@ -796,7 +808,7 @@ export const Sidebar = ({
                   <p className="mb-2">No organizations yet for this category.</p>
                   <button
                     type="button"
-                    onClick={() => onCategoryChange?.(null)}
+                    onClick={() => handleCategoryChange(null)}
                     className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
                     Clear category
