@@ -442,6 +442,7 @@ export const ensureStatRecord = async (
     if (existing.category !== targetCategory) updates.category = targetCategory;
     if (existing.source !== "Census") updates.source = "Census";
     if (existing.name !== statName) updates.name = statName;
+    if (existing.active == null) updates.active = true;
     if (Object.keys(updates).length > 1) await db.transact(tx.stats[existing.id].update(updates));
     return { statId: existing.id, statType };
   }
@@ -454,6 +455,7 @@ export const ensureStatRecord = async (
     if (!sameName.neId) updates.neId = externalId;
     if (sameName.category !== targetCategory) updates.category = targetCategory;
     if (sameName.source !== "Census") updates.source = "Census";
+    if (sameName.active == null) updates.active = true;
     await db.transact(tx.stats[sameName.id].update(updates));
     return { statId: sameName.id, statType };
   }
@@ -466,6 +468,7 @@ export const ensureStatRecord = async (
       neId: externalId,
       source: "Census",
       goodIfUp: null,
+      active: true,
       createdOn: now,
       lastUpdated: now,
     }),

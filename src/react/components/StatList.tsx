@@ -109,8 +109,8 @@ export const StatList = ({
 
   const rows = useMemo<StatRow[]>(() => {
     const stats: Stat[] = Array.from(statsById.values()).filter((s) => {
-      // Only show stats that are active
-      if (s.active !== true) return false;
+      // Show stats unless explicitly marked inactive; newly created stats default to active/undefined.
+      if (s.active === false) return false;
       // Apply category filter if provided
       if (categoryFilter) return s.category === categoryFilter;
       return true;
