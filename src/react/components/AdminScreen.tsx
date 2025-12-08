@@ -633,10 +633,19 @@ interface GroupSearchInputProps {
   year: number;
   onPreview?: (groupOverride?: string) => void; // Called when Enter pressed with a group ID
   inputRef?: React.RefObject<HTMLInputElement | null>; // For external focus control
+  onRegisterSearchRunner?: (runner: () => void) => void; // Expose internal search for external button
 }
 
 // Input with inline search capability for Census groups
-const GroupSearchInput = ({ value, onChange, dataset, year, onPreview, inputRef }: GroupSearchInputProps) => {
+const GroupSearchInput = ({
+  value,
+  onChange,
+  dataset,
+  year,
+  onPreview,
+  inputRef,
+  onRegisterSearchRunner,
+}: GroupSearchInputProps) => {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [results, setResults] = useState<CensusGroupResult[]>([]);
@@ -698,6 +707,13 @@ const GroupSearchInput = ({ value, onChange, dataset, year, onPreview, inputRef 
       setIsSearching(false);
     }
   };
+
+  // Allow parent to trigger the same search logic as pressing Enter on a term
+  useEffect(() => {
+    if (onRegisterSearchRunner) {
+      onRegisterSearchRunner(handleSearch);
+    }
+  }, [handleSearch, onRegisterSearchRunner]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
@@ -822,6 +838,7 @@ interface NewStatModalProps {
 const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatModalProps) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const groupInputRef = useRef<HTMLInputElement>(null);
+  const [runGroupSearch, setRunGroupSearch] = useState<(() => void) | null>(null);
   const [dataset, setDataset] = useState("acs/acs5");
   const [group, setGroup] = useState("");
   const [year, setYear] = useState(() => {
@@ -862,6 +879,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
     setIsRunning(false);
     setCurrentIndex(null);
     setLastSubmittedGroup("");
+    setRunGroupSearch(null);
     // Focus group search input when modal opens
     setTimeout(() => groupInputRef.current?.focus(), 50);
   }, [isOpen]);
@@ -1210,6 +1228,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                     year={year}
                     onPreview={handlePreview}
                     inputRef={groupInputRef}
+                    onRegisterSearchRunner={(runner) => setRunGroupSearch(() => runner)}
                   />
                 </div>
               </div>
@@ -1239,7 +1258,18 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                 </div>
                 <button
                   type="button"
-                  onClick={() => handlePreview()}
+                  onClick={() => {
+                    const trimmed = group.trim();
+                    if (looksLikeGroupId(trimmed)) {
+                      handlePreview();
+                      return;
+                    }
+                    if (runGroupSearch) {
+                      runGroupSearch();
+                      return;
+                    }
+                    setPreviewError("Enter a Census group ID (e.g., S1701) or a search term and press Search again.");
+                  }}
                   disabled={isPreviewLoading}
                   className="ml-auto inline-flex items-center gap-2 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 disabled:opacity-60"
                 >
