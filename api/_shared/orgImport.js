@@ -129,12 +129,22 @@ const GEOCODER_SERVICES = [
   },
 ];
 
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 export const geocodeAddress = async (org) => {
   const address = buildAddressString(org);
   if (!address) return null;
   for (const service of GEOCODER_SERVICES) {
     try {
-      const response = await fetch(service.buildUrl(address));
+      const response = await fetchWithTimeout(service.buildUrl(address), {}, 10_000);
       if (!response.ok) continue;
       const data = await response.json();
       const parsed = service.parse(data);

@@ -197,6 +197,21 @@ export default async function handler(req: OrgImportRequest, res: OrgImportRespo
       filters: { category, nteePrefix, state, city, includeKeywords, excludeKeywords, limit, importAll },
       createdBy,
     });
+    const requestedCount = filtered.length;
+    const setBatchProgress = async (importedCount: number) => {
+      try {
+        await db.transact(
+          tx.orgImports[batchId].update({
+            requestedCount,
+            importedCount,
+            updatedAt: Date.now(),
+          }),
+        );
+      } catch (progressError) {
+        console.warn("org-import progress update failed", progressError);
+      }
+    };
+    await setBatchProgress(0);
 
     trace.step = "writeOrgs";
     const importedIds: string[] = [];
@@ -217,12 +232,14 @@ export default async function handler(req: OrgImportRequest, res: OrgImportRespo
         const ids = Object.keys(resp?.result ?? {});
         importedIds.push(...ids);
         txBuffer.length = 0;
+        await setBatchProgress(importedIds.length);
       }
     }
 
     if (txBuffer.length) {
       const resp = await db.transact(txBuffer);
       importedIds.push(...Object.keys(resp?.result ?? {}));
+      await setBatchProgress(importedIds.length);
     }
 
     trace.step = "finalizeBatch";

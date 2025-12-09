@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { db } from "../../lib/reactDb";
 import { useAuthSession } from "../hooks/useAuthSession";
 import { useCategories } from "../hooks/useCategories";
@@ -121,6 +121,8 @@ type OrgImportModalProps = {
   categoryOptions: Array<{ value: string; label: string }>;
   defaultCategory: string;
   onImported?: () => void;
+  onImportStarted?: (batchId: string) => void;
+  activeBatch?: OrgImportBatch | null;
 };
 
 const OrgImportModal = ({
@@ -129,6 +131,8 @@ const OrgImportModal = ({
   categoryOptions,
   defaultCategory,
   onImported,
+  onImportStarted,
+  activeBatch,
 }: OrgImportModalProps) => {
   const { user } = db.useAuth();
   const [category, setCategory] = useState<string>(defaultCategory);
@@ -239,6 +243,9 @@ const OrgImportModal = ({
           : (payload?.error || payload?.details || rawText || "Import failed") + ` (status ${response.status})`;
         throw new Error(message);
       }
+      if (payload?.batchId && onImportStarted) {
+        onImportStarted(payload.batchId);
+      }
       setIsImporting(false);
       if (onImported) onImported();
       onClose();
@@ -258,6 +265,7 @@ const OrgImportModal = ({
     user?.email,
     onImported,
     onClose,
+    onImportStarted,
   ]);
 
   if (!isOpen) return null;
@@ -371,6 +379,20 @@ const OrgImportModal = ({
             {error}
           </div>
         )}
+        {activeBatch && activeBatch.status === "running" && (
+          <div className="mt-3 rounded-lg border border-brand-100 bg-brand-50 px-3 py-2 text-sm text-brand-800 dark:border-brand-900/50 dark:bg-brand-900/30 dark:text-brand-100">
+            <div className="flex items-center gap-2">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+              <div>
+                <div className="text-xs font-semibold">Import in progress…</div>
+                <div className="text-xs">
+                  Saved {activeBatch.importedCount ?? 0}
+                  {typeof activeBatch.requestedCount === "number" ? ` / ${activeBatch.requestedCount}` : ""} orgs
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
       <div className="mt-4 flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -459,6 +481,8 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
   const [batchSearch, setBatchSearch] = useState<string>("");
   const [deletedBatchIds, setDeletedBatchIds] = useState<Set<string>>(new Set());
   const [hiddenBatchIds, setHiddenBatchIds] = useState<Set<string>>(new Set());
+  const [activeImportBatchId, setActiveImportBatchId] = useState<string | null>(null);
+  const [recentlyFinishedBatchId, setRecentlyFinishedBatchId] = useState<string | null>(null);
 
   const queryEnabled = authReady;
   const allowedCategories = useMemo(() => new Set(orgCategories.map((c) => c.slug)), [orgCategories]);
@@ -517,6 +541,78 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
           (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
       );
   }, [data?.orgImports]);
+
+  const runningBatch = useMemo(
+    () => importBatches.find((b) => b.status === "running") ?? null,
+    [importBatches],
+  );
+
+  const activeBatchFromList = useMemo(
+    () => (activeImportBatchId ? importBatches.find((b) => b.id === activeImportBatchId) ?? null : null),
+    [activeImportBatchId, importBatches],
+  );
+
+  useEffect(() => {
+    if (!runningBatch) return;
+    setActiveImportBatchId((prev) => prev ?? runningBatch.id);
+  }, [runningBatch]);
+
+  useEffect(() => {
+    if (!activeImportBatchId) return;
+    const match = activeBatchFromList;
+    if (match && match.status === "success") {
+      setRecentlyFinishedBatchId(match.id);
+      setActiveImportBatchId(null);
+    }
+  }, [activeBatchFromList, activeImportBatchId]);
+
+  useEffect(() => {
+    if (!recentlyFinishedBatchId) return;
+    const timer = setTimeout(() => setRecentlyFinishedBatchId(null), 6000);
+    return () => clearTimeout(timer);
+  }, [recentlyFinishedBatchId]);
+
+  useEffect(() => {
+    if (!activeImportBatchId) return;
+    if (runningBatch || activeBatchFromList) return;
+    const timer = setTimeout(() => setActiveImportBatchId(null), 20000);
+    return () => clearTimeout(timer);
+  }, [activeBatchFromList, activeImportBatchId, runningBatch]);
+
+  const bannerBatch = useMemo(() => {
+    if (runningBatch) return runningBatch;
+    if (recentlyFinishedBatchId) {
+      return importBatches.find((b) => b.id === recentlyFinishedBatchId) ?? null;
+    }
+    if (activeImportBatchId) {
+      return {
+        id: activeImportBatchId,
+        status: "starting",
+        importedCount: 0,
+        requestedCount: null,
+        label: "Import starting…",
+        source: null,
+        filters: null,
+        sampleOrgIds: null,
+        orgIds: null,
+        error: null,
+        createdAt: Date.now(),
+        createdBy: null,
+        updatedAt: null,
+      } as OrgImportBatch & { status: "starting" };
+    }
+    return null;
+  }, [activeImportBatchId, importBatches, recentlyFinishedBatchId, runningBatch]);
+
+  const bannerCounts = useMemo(() => {
+    if (!bannerBatch) return null;
+    const imported = bannerBatch.importedCount ?? 0;
+    const requested =
+      typeof bannerBatch.requestedCount === "number" ? bannerBatch.requestedCount : null;
+    const percent =
+      requested && requested > 0 ? Math.min(100, Math.round((imported / requested) * 100)) : null;
+    return { imported, requested, percent };
+  }, [bannerBatch]);
 
   const syntheticBatches = useMemo<OrgImportBatch[]>(() => {
     if (importBatches.length > 0) return [];
@@ -766,6 +862,65 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
         </div>
       </div>
 
+      {bannerBatch && (
+        <div className="px-4 pt-3 sm:px-6">
+          <div
+            className={`flex items-center gap-3 rounded-xl border px-3 py-2 shadow-sm ${
+              bannerBatch.status === "running" || bannerBatch.status === "starting"
+                ? "border-brand-200 bg-brand-50 text-brand-800 dark:border-brand-900/50 dark:bg-brand-900/30 dark:text-brand-100"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-900/25 dark:text-emerald-50"
+            }`}
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 shadow-sm dark:bg-black/30">
+              {bannerBatch.status === "running" || bannerBatch.status === "starting" ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+              ) : (
+                <svg className="h-5 w-5 text-emerald-600 dark:text-emerald-200" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-semibold">
+                {bannerBatch.status === "starting"
+                  ? "Import starting…"
+                  : bannerBatch.status === "running"
+                  ? "Importing orgs (geocoding + saving)…"
+                  : "Import complete"}
+              </div>
+              <div className="text-xs">
+                {bannerBatch.status === "starting"
+                  ? "Waiting for serverless function…"
+                  : (
+                    <>
+                      Saved {bannerCounts?.imported ?? 0}
+                      {bannerCounts?.requested ? ` / ${bannerCounts.requested}` : ""} orgs
+                    </>
+                  )}
+              </div>
+              {bannerBatch.status === "running" && bannerCounts?.percent !== null && (
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/70 dark:bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-brand-500"
+                    style={{ width: `${bannerCounts.percent}%` }}
+                  />
+                </div>
+              )}
+            </div>
+            {bannerBatch.status === "running" && bannerCounts?.percent !== null && (
+              <div className="text-xs font-semibold text-brand-700 dark:text-brand-100">
+                {bannerCounts.percent}%
+              </div>
+            )}
+            {bannerBatch.status === "success" && bannerBatch.label && (
+              <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-200 dark:ring-emerald-800/60">
+                {bannerBatch.label}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto px-4 py-3 sm:px-6 sm:py-4">
         {viewMode === "orgs" ? (
           isLoading ? (
@@ -921,6 +1076,8 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
         onClose={() => setIsImportModalOpen(false)}
         categoryOptions={categoryOptions}
         defaultCategory={categoryOptions[0]?.value ?? "health"}
+        activeBatch={runningBatch}
+        onImportStarted={(batchId) => setActiveImportBatchId(batchId)}
         onImported={() => {
           setSearch("");
           setCategoryFilter("all");
