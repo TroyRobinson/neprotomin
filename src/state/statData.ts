@@ -47,6 +47,7 @@ class StatDataStore {
   private listeners = new Set<Listener>();
   private byStatId: Map<string, StatDataByParentArea> = new Map();
   private unsubscribe: (() => void) | null = null;
+  private enabled = true;
 
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
@@ -59,6 +60,7 @@ class StatDataStore {
   }
 
   private initialize() {
+    if (!this.enabled) return;
     if (this.unsubscribe) return;
     try {
       this.unsubscribe = db.subscribeQuery(QUERY, (resp) => {
@@ -158,6 +160,18 @@ class StatDataStore {
   private emit() {
     this.listeners.forEach((l) => l(this.byStatId));
   }
+
+  setEnabled(enabled: boolean) {
+    if (enabled === this.enabled) return;
+    this.enabled = enabled;
+    if (!enabled) {
+      this.teardown();
+    } else if (this.listeners.size > 0) {
+      this.initialize();
+    }
+  }
 }
 
 export const statDataStore = new StatDataStore();
+export const setStatDataSubscriptionEnabled = (enabled: boolean) =>
+  statDataStore.setEnabled(enabled);

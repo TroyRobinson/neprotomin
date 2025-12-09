@@ -31,6 +31,7 @@ import { findCitySearchTarget, DEFAULT_CITY_ZOOM } from "./lib/citySearchTargets
 import { parseFullAddress, geocodeAddress, looksLikeAddress } from "./lib/geocoding";
 import { normalizeForSearch, computeSimilarityFromNormalized } from "./lib/fuzzyMatch";
 import { useAuthSession } from "./hooks/useAuthSession";
+import { setStatDataSubscriptionEnabled } from "../state/statData";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type ScreenName = "map" | "report" | "roadmap" | "data" | "queue" | "addOrg" | "admin";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
@@ -238,6 +239,15 @@ export const ReactMapApp = () => {
     const viewport = window.visualViewport;
     return Math.round(viewport?.height ?? window.innerHeight);
   });
+
+  // Pause the heavy statData live subscription while in Admin to avoid timeout noise during imports.
+  useEffect(() => {
+    const enableLiveStatData = activeScreen !== "admin";
+    setStatDataSubscriptionEnabled(enableLiveStatData);
+    return () => {
+      setStatDataSubscriptionEnabled(true);
+    };
+  }, [activeScreen]);
   const [userLocation, setUserLocation] = useState<{ lng: number; lat: number } | null>(null);
   const [userLocationSource, setUserLocationSource] = useState<"device" | "search" | null>(null);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
