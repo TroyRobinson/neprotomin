@@ -13,6 +13,8 @@ type OrgRow = Organization & {
   source?: string | null;
 };
 
+type ViewMode = "orgs" | "batches";
+
 const parseOrgRow = (row: any, allowedCategories: Set<string>): OrgRow | null => {
   if (!row || typeof row?.id !== "string" || typeof row?.name !== "string") return null;
   const category = typeof row?.category === "string" ? row.category : "health";
@@ -452,6 +454,9 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("orgs");
+  const [batchStatusFilter, setBatchStatusFilter] = useState<"all" | "success" | "running" | "error">("all");
+  const [batchSearch, setBatchSearch] = useState<string>("");
 
   const queryEnabled = authReady;
   const allowedCategories = useMemo(() => new Set(orgCategories.map((c) => c.slug)), [orgCategories]);
@@ -501,8 +506,57 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
 
   const importBatches = useMemo(() => {
     if (!data?.orgImports) return [];
-    return data.orgImports.map(parseBatch).filter((b): b is OrgImportBatch => !!b);
+    return data.orgImports
+      .map(parseBatch)
+      .filter((b): b is OrgImportBatch => !!b)
+      .sort(
+        (a, b) =>
+          (b.createdAt ?? 0) - (a.createdAt ?? 0) ||
+          (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
+      );
   }, [data?.orgImports]);
+
+  const syntheticBatches = useMemo<OrgImportBatch[]>(() => {
+    if (importBatches.length > 0) return [];
+    const map = new Map<string, OrgImportBatch>();
+    for (const org of organizations) {
+      if (!org.importBatchId) continue;
+      const key = org.importBatchId;
+      if (!map.has(key)) {
+        map.set(key, {
+          id: key,
+          label: `Batch ${key.slice(0, 6)}`,
+          source: "derived",
+          filters: null,
+          status: "success",
+          requestedCount: null,
+          importedCount: null,
+          sampleOrgIds: null,
+          orgIds: [],
+          error: null,
+          createdAt: org.createdAt ?? org.updatedAt ?? org.lastSyncedAt ?? Date.now(),
+          createdBy: null,
+          updatedAt: org.updatedAt ?? org.lastSyncedAt ?? org.createdAt ?? null,
+        });
+      }
+      const batch = map.get(key)!;
+      batch.orgIds = [...(batch.orgIds ?? []), org.id];
+    }
+    return Array.from(map.values()).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  }, [importBatches, organizations]);
+
+  const batchesForView = importBatches.length > 0 ? importBatches : syntheticBatches;
+
+  const filteredBatches = useMemo(() => {
+    const q = batchSearch.trim().toLowerCase();
+    return batchesForView
+      .filter((b) => (batchStatusFilter === "all" ? true : b.status === batchStatusFilter))
+      .filter((b) => {
+        if (!q) return true;
+        const haystack = `${b.label} ${b.source ?? ""}`.toLowerCase();
+        return haystack.includes(q);
+      });
+  }, [batchesForView, batchStatusFilter, batchSearch]);
 
   const filteredOrgs = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -569,220 +623,263 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
       <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
         <div className="flex flex-wrap items-center gap-3">
           <CustomSelect
-            value="orgs"
-            onChange={(val) => onSwitchTab(val as "stats" | "orgs")}
+            value={viewMode}
+            onChange={(val) => setViewMode(val as ViewMode)}
             options={[
-              { value: "stats", label: "Stats" },
               { value: "orgs", label: "Orgs" },
+              { value: "batches", label: "Batches" },
             ]}
             className="w-[120px]"
           />
           <div>
-            <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 sm:text-xl">Orgs</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {filteredOrgs.length} org{filteredOrgs.length === 1 ? "" : "s"} shown
-              {search || categoryFilter !== "all" ? ` of ${organizations.length}` : ""}
-            </p>
+            {viewMode === "orgs" ? (
+              <>
+                <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 sm:text-xl">Orgs</h1>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {filteredOrgs.length} org{filteredOrgs.length === 1 ? "" : "s"} shown
+                  {search || categoryFilter !== "all" ? ` of ${organizations.length}` : ""}
+                </p>
+              </>
+            ) : (
+              <>
+                <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 sm:text-xl">Import batches</h1>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {filteredBatches.length} batch{filteredBatches.length === 1 ? "" : "es"} shown
+                  {batchSearch || batchStatusFilter !== "all" ? ` of ${importBatches.length}` : ""}
+                </p>
+              </>
+            )}
           </div>
-          <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
-            <CustomSelect
-              value={categoryFilter}
-              onChange={setCategoryFilter}
-              options={[
-                { value: "all", label: "All categories" },
-                ...categoryOptions,
-              ]}
-            />
-            <CustomSelect
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={[
-                { value: "all", label: "All statuses" },
-                { value: "active", label: "Active" },
-                { value: "moved", label: "Moved" },
-                { value: "closed", label: "Closed" },
-              ]}
-            />
-            <CustomSelect
-              value={moderationFilter}
-              onChange={setModerationFilter}
-              options={[
-                { value: "all", label: "All moderation" },
-                { value: "approved", label: "Approved" },
-                { value: "pending", label: "Pending" },
-                { value: "declined", label: "Declined" },
-                { value: "removed", label: "Removed" },
-              ]}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search name, city, keyword"
-                className="h-9 w-52 rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          {viewMode === "orgs" ? (
+            <>
+              <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
+                <CustomSelect
+                  value={categoryFilter}
+                  onChange={setCategoryFilter}
+                  options={[
+                    { value: "all", label: "All categories" },
+                    ...categoryOptions,
+                  ]}
+                />
+                <CustomSelect
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                  options={[
+                    { value: "all", label: "All statuses" },
+                    { value: "active", label: "Active" },
+                    { value: "moved", label: "Moved" },
+                    { value: "closed", label: "Closed" },
+                  ]}
+                />
+                <CustomSelect
+                  value={moderationFilter}
+                  onChange={setModerationFilter}
+                  options={[
+                    { value: "all", label: "All moderation" },
+                    { value: "approved", label: "Approved" },
+                    { value: "pending", label: "Pending" },
+                    { value: "declined", label: "Declined" },
+                    { value: "removed", label: "Removed" },
+                  ]}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search name, city, keyword"
+                    className="h-9 w-52 rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  />
+                  <svg
+                    className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    fill="none"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <CustomSelect
+                  value={sortBy}
+                  onChange={(val) => setSortBy(val as "recent" | "name" | "city")}
+                  options={[
+                    { value: "recent", label: "Recently updated" },
+                    { value: "name", label: "Name" },
+                    { value: "city", label: "City" },
+                  ]}
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600"
+                >
+                  <span className="text-lg leading-none">+</span> Import Org
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+              <CustomSelect
+                value={batchStatusFilter}
+                onChange={(val) => setBatchStatusFilter(val as typeof batchStatusFilter)}
+                options={[
+                  { value: "all", label: "All statuses" },
+                  { value: "running", label: "Running" },
+                  { value: "success", label: "Success" },
+                  { value: "error", label: "Error" },
+                ]}
               />
-              <svg
-                className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                fill="none"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+              <div className="relative">
+                <input
+                  value={batchSearch}
+                  onChange={(e) => setBatchSearch(e.target.value)}
+                  placeholder="Search batches"
+                  className="h-9 w-48 rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                />
+                <svg
+                  className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  fill="none"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
             </div>
-            <CustomSelect
-              value={sortBy}
-              onChange={(val) => setSortBy(val as "recent" | "name" | "city")}
-              options={[
-                { value: "recent", label: "Recently updated" },
-                { value: "name", label: "Name" },
-                { value: "city", label: "City" },
-              ]}
-            />
-            <button
-              type="button"
-              onClick={() => setIsImportModalOpen(true)}
-              className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600"
-            >
-              <span className="text-lg leading-none">+</span> Import Org
-            </button>
-          </div>
+          )}
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3 sm:px-6 sm:py-4">
-        {isLoading ? (
+        {viewMode === "orgs" ? (
+          isLoading ? (
+            <div className="flex h-full items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+              Loading orgs…
+            </div>
+          ) : error ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-900/20 dark:text-rose-200">
+              Failed to load organizations.
+            </div>
+          ) : filteredOrgs.length === 0 ? (
+            <div className="flex h-40 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+              No organizations match your filters.
+            </div>
+          ) : (
+            <div className="mx-auto flex max-w-4xl flex-col gap-3">
+              {filteredOrgs.map((org) => (
+                <div
+                  key={org.id}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-brand-200 hover:shadow-md dark:border-slate-700 dark:bg-slate-800"
+                >
+                  <div className="flex flex-wrap items-start gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{org.name}</h3>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                          {org.category}
+                        </span>
+                        {org.ein && (
+                          <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                            EIN {org.ein}
+                          </code>
+                        )}
+                      </div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {[org.address, org.city, org.state, org.postalCode].filter(Boolean).join(", ") || "Address missing"}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        {statusBadge(org.status ?? null)}
+                        {moderationBadge(org.moderationStatus ?? null)}
+                        {org.source && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                            {org.source}
+                          </span>
+                        )}
+                        {org.keywordFound && <span className="text-slate-500 dark:text-slate-300">Keyword: {org.keywordFound}</span>}
+                        {org.googleCategory && <span className="text-slate-500 dark:text-slate-300">NTEE: {org.googleCategory}</span>}
+                        <span className="ml-auto text-slate-400 dark:text-slate-500">
+                          Updated {formatDateTime(org.updatedAt ?? org.lastSyncedAt ?? org.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+                    {org.importBatchId && (
+                      <span className="rounded-lg bg-brand-50 px-2 py-1 text-[11px] font-medium text-brand-700 ring-1 ring-brand-100 dark:bg-brand-900/30 dark:text-brand-200 dark:ring-brand-800/50">
+                        Batch {org.importBatchId.slice(0, 6)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : isLoading ? (
           <div className="flex h-full items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-            Loading orgs…
+            Loading batches…
           </div>
-        ) : error ? (
-          <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-900/20 dark:text-rose-200">
-            Failed to load organizations.
-          </div>
-        ) : filteredOrgs.length === 0 ? (
+        ) : filteredBatches.length === 0 ? (
           <div className="flex h-40 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-            No organizations match your filters.
+            No imports yet.
           </div>
         ) : (
-          <div className="mx-auto flex max-w-4xl flex-col gap-3">
-            {filteredOrgs.map((org) => (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {filteredBatches.map((batch) => (
               <div
-                key={org.id}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-brand-200 hover:shadow-md dark:border-slate-700 dark:bg-slate-800"
+                key={batch.id}
+                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
               >
-                <div className="flex flex-wrap items-start gap-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{org.name}</h3>
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                        {org.category}
-                      </span>
-                      {org.ein && (
-                        <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                          EIN {org.ein}
-                        </code>
-                      )}
-                    </div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      {[org.address, org.city, org.state, org.postalCode].filter(Boolean).join(", ") || "Address missing"}
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{batch.label}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {batch.status === "running" && "Running…"}
+                      {batch.status === "success" &&
+                        `${batch.importedCount ?? 0} / ${batch.requestedCount ?? batch.orgIds?.length ?? 0} imported`}
+                      {batch.status === "error" && `Error: ${batch.error ?? "Unknown"}`}
                     </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                      {statusBadge(org.status ?? null)}
-                      {moderationBadge(org.moderationStatus ?? null)}
-                      {org.source && (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                          {org.source}
-                        </span>
-                      )}
-                      {org.keywordFound && <span className="text-slate-500 dark:text-slate-300">Keyword: {org.keywordFound}</span>}
-                      {org.googleCategory && <span className="text-slate-500 dark:text-slate-300">NTEE: {org.googleCategory}</span>}
-                      <span className="ml-auto text-slate-400 dark:text-slate-500">
-                        Updated {formatDateTime(org.updatedAt ?? org.lastSyncedAt ?? org.createdAt)}
-                      </span>
-                    </div>
                   </div>
-                  {org.importBatchId && (
-                    <span className="rounded-lg bg-brand-50 px-2 py-1 text-[11px] font-medium text-brand-700 ring-1 ring-brand-100 dark:bg-brand-900/30 dark:text-brand-200 dark:ring-brand-800/50">
-                      Batch {org.importBatchId.slice(0, 6)}
-                    </span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      batch.status === "success"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
+                        : batch.status === "error"
+                        ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200"
+                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+                    }`}
+                  >
+                    {batch.status}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  <span>Created {formatDateTime(batch.createdAt)}</span>
+                  {batch.filters?.state && <span>State: {batch.filters.state as string}</span>}
+                  {batch.filters?.city && <span>City: {batch.filters.city as string}</span>}
+                  {batch.filters?.includeKeywords && (
+                    <span>Includes: {(batch.filters.includeKeywords as string) || ""}</span>
                   )}
+                </div>
+                {batch.sampleOrgIds && batch.sampleOrgIds.length > 0 && (
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Sample org IDs: {batch.sampleOrgIds.slice(0, 3).join(", ")}
+                  </p>
+                )}
+                <div className="mt-3 flex items-center justify-between text-xs">
+                  <span className="text-slate-500 dark:text-slate-400">
+                    Batch ID {batch.id.slice(0, 8)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBatch(batch.id)}
+                    disabled={deletingBatchId === batch.id}
+                    className="rounded-lg border border-rose-200 px-3 py-1 font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-60 dark:border-rose-900/60 dark:text-rose-200 dark:hover:bg-rose-900/20"
+                  >
+                    {deletingBatchId === batch.id ? "Deleting…" : "Delete orgs"}
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         )}
-
-        <div className="mt-6">
-          <div className="mb-2 flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Import batches</h3>
-            {deleteError && (
-              <span className="text-xs text-rose-600 dark:text-rose-300">Delete failed: {deleteError}</span>
-            )}
-          </div>
-          {importBatches.length === 0 ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">No imports yet.</p>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {importBatches.map((batch) => (
-                <div
-                  key={batch.id}
-                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{batch.label}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {batch.status === "running" && "Running…"}
-                        {batch.status === "success" &&
-                          `${batch.importedCount ?? 0} / ${batch.requestedCount ?? batch.orgIds?.length ?? 0} imported`}
-                        {batch.status === "error" && `Error: ${batch.error ?? "Unknown"}`}
-                      </p>
-                    </div>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                        batch.status === "success"
-                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
-                          : batch.status === "error"
-                          ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200"
-                          : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
-                      }`}
-                    >
-                      {batch.status}
-                    </span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
-                    <span>Created {formatDateTime(batch.createdAt)}</span>
-                    {batch.filters?.state && <span>State: {batch.filters.state as string}</span>}
-                    {batch.filters?.city && <span>City: {batch.filters.city as string}</span>}
-                    {batch.filters?.includeKeywords && (
-                      <span>Includes: {(batch.filters.includeKeywords as string) || ""}</span>
-                    )}
-                  </div>
-                  {batch.sampleOrgIds && batch.sampleOrgIds.length > 0 && (
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Sample org IDs: {batch.sampleOrgIds.slice(0, 3).join(", ")}
-                    </p>
-                  )}
-                  <div className="mt-3 flex items-center justify-between text-xs">
-                    <span className="text-slate-500 dark:text-slate-400">
-                      Batch ID {batch.id.slice(0, 8)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteBatch(batch.id)}
-                      disabled={deletingBatchId === batch.id}
-                      className="rounded-lg border border-rose-200 px-3 py-1 font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-60 dark:border-rose-900/60 dark:text-rose-200 dark:hover:bg-rose-900/20"
-                    >
-                      {deletingBatchId === batch.id ? "Deleting…" : "Delete orgs"}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
 
       <OrgImportModal
