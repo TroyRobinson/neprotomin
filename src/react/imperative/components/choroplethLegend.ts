@@ -46,14 +46,17 @@ const formatValue = (value: number, type?: string, isMobile?: boolean): string =
   return String(Math.round(value));
 };
 
-export const createChoroplethLegend = (isMobile?: boolean): ChoroplethLegendController => {
+export const createChoroplethLegend = (
+  isMobile?: boolean,
+  onSettingsClick?: () => void,
+): ChoroplethLegendController => {
   const wrapper = document.createElement("div");
   // Wrapper is positioned by parent legend row
   wrapper.className = "pointer-events-none";
 
   const pill = document.createElement("div");
   pill.className = [
-    "pointer-events-auto inline-flex items-center gap-3 rounded-lg border px-3 py-1.5 text-xs font-medium cursor-pointer",
+    "pointer-events-auto relative inline-flex items-center gap-3 rounded-lg border px-3 py-1.5 text-xs font-medium cursor-pointer",
     "bg-white/90 text-slate-600 border-slate-200 shadow-sm backdrop-blur-sm",
     "dark:bg-slate-900/80 dark:text-slate-300 dark:border-slate-700",
     "sm:py-1.5 py-2.5", // more vertical padding for mobile
@@ -86,6 +89,13 @@ export const createChoroplethLegend = (isMobile?: boolean): ChoroplethLegendCont
   pill.appendChild(maxGroup);
   wrapper.appendChild(pill);
 
+  if (onSettingsClick && !isMobile) {
+    pill.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onSettingsClick();
+    });
+  }
+
   const setVisible = (visible: boolean) => {
     wrapper.classList.toggle("hidden", !visible);
   };
@@ -108,5 +118,3 @@ export const createChoroplethLegend = (isMobile?: boolean): ChoroplethLegendCont
 
   return { element: wrapper, pill, setVisible, setRange, setColors, destroy };
 };
-
-

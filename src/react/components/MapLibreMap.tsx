@@ -60,6 +60,8 @@ interface MapLibreMapProps {
   onTimeChipClear?: () => void;
   onLocationSearch?: (query: string) => void;
   timeFilterAvailable?: boolean;
+  onLegendSettingsClick?: () => void;
+  legendAutoRangeEnabled?: boolean;
 }
 
 /**
@@ -112,6 +114,8 @@ export const MapLibreMap = ({
   userLocation = null,
   onLocationSearch,
   timeFilterAvailable = true,
+  onLegendSettingsClick,
+  legendAutoRangeEnabled = true,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
@@ -141,6 +145,7 @@ export const MapLibreMap = ({
   const onTimeChipClearRef = useRef(onTimeChipClear);
   const onLocationSearchRef = useRef(onLocationSearch);
   const setLegendInsetRef = useRef<(pixels: number) => void>(() => {});
+  const onLegendSettingsClickRef = useRef(onLegendSettingsClick);
 
   useEffect(() => { onZipSelectionChangeRef.current = onZipSelectionChange; }, [onZipSelectionChange]);
   useEffect(() => { onHoverRef.current = onHover; }, [onHover]);
@@ -163,6 +168,7 @@ export const MapLibreMap = ({
   useEffect(() => { onTimeChipClickRef.current = onTimeChipClick; }, [onTimeChipClick]);
   useEffect(() => { onTimeChipClearRef.current = onTimeChipClear; }, [onTimeChipClear]);
   useEffect(() => { onLocationSearchRef.current = onLocationSearch; }, [onLocationSearch]);
+  useEffect(() => { onLegendSettingsClickRef.current = onLegendSettingsClick; }, [onLegendSettingsClick]);
   useEffect(() => {
     const controller = mapControllerRef.current;
     if (controller) {
@@ -240,6 +246,10 @@ export const MapLibreMap = ({
       onLocationSearch: (query) => {
         try { onLocationSearchRef.current?.(query); } catch {}
       },
+      onLegendSettingsClick: () => {
+        try { onLegendSettingsClickRef.current?.(); } catch {}
+      },
+      legendAutoRangeEnabled,
     });
 
     containerRef.current.appendChild(mapController.element);
@@ -278,6 +288,12 @@ export const MapLibreMap = ({
       mapControllerRef.current.setOrganizationPinsVisible(Boolean(orgPinsVisible));
     }
   }, [orgPinsVisible]);
+
+  useEffect(() => {
+    if (mapControllerRef.current) {
+      mapControllerRef.current.setLegendAutoRangeEnabled(Boolean(legendAutoRangeEnabled));
+    }
+  }, [legendAutoRangeEnabled]);
 
   useEffect(() => {
     if (mapControllerRef.current) {

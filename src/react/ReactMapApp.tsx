@@ -32,6 +32,7 @@ import { parseFullAddress, geocodeAddress, looksLikeAddress } from "./lib/geocod
 import { normalizeForSearch, computeSimilarityFromNormalized } from "./lib/fuzzyMatch";
 import { useAuthSession } from "./hooks/useAuthSession";
 import { setStatDataSubscriptionEnabled } from "../state/statData";
+import { MapSettingsModal } from "./components/MapSettingsModal";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type ScreenName = "map" | "report" | "roadmap" | "data" | "queue" | "addOrg" | "admin";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
@@ -234,6 +235,8 @@ export const ReactMapApp = () => {
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
   const [isDraggingSheet, setIsDraggingSheet] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [legendAutoRangeEnabled, setLegendAutoRangeEnabled] = useState(true);
+  const [mapSettingsOpen, setMapSettingsOpen] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(() => {
     if (typeof window === "undefined") return 0;
     const viewport = window.visualViewport;
@@ -3054,6 +3057,8 @@ export const ReactMapApp = () => {
                 });
                 handleClearTimeFilter();
               }}
+              onLegendSettingsClick={() => setMapSettingsOpen(true)}
+              legendAutoRangeEnabled={legendAutoRangeEnabled}
             />
             {/* Desktop-only overlay still shows the location button inline */}
             {!isMobile && (
@@ -3410,6 +3415,17 @@ export const ReactMapApp = () => {
         }}
         initialSelection={timeSelection}
         isMobile={isMobile}
+      />
+      <MapSettingsModal
+        open={mapSettingsOpen}
+        onClose={() => setMapSettingsOpen(false)}
+        autoRangeEnabled={legendAutoRangeEnabled}
+        onChangeAutoRange={(enabled) => {
+          setLegendAutoRangeEnabled(enabled);
+          if (mapControllerRef.current) {
+            mapControllerRef.current.setLegendAutoRangeEnabled(enabled);
+          }
+        }}
       />
     </div>
   );

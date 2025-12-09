@@ -86,6 +86,8 @@ interface MapViewOptions {
   onRequestHideOrgs?: () => void;
   onTimeChipClick?: () => void;
   onTimeChipClear?: () => void;
+  onLegendSettingsClick?: () => void;
+  legendAutoRangeEnabled?: boolean;
 }
 
 export interface MapViewController {
@@ -118,6 +120,7 @@ export interface MapViewController {
   setLegendTop: (topPx: number) => void;
   setLegendVisible: (visible: boolean) => void;
   setLegendRightContent: (el: HTMLElement | null) => void;
+  setLegendAutoRangeEnabled: (enabled: boolean) => void;
   resize: () => void;
   destroy: () => void;
 }
@@ -266,6 +269,8 @@ export const createMapView = ({
   onRequestHideOrgs,
   onTimeChipClick,
   onTimeChipClear,
+  onLegendSettingsClick,
+  legendAutoRangeEnabled: legendAutoRangeEnabledInitial = true,
 }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
   container.className = "relative flex flex-1";
@@ -353,6 +358,7 @@ export const createMapView = ({
 
   let currentTheme = themeController.getTheme();
   let boundaryMode: BoundaryMode = "zips";
+  let legendAutoRangeEnabled = Boolean(legendAutoRangeEnabledInitial);
   let pinnedZips = new Set<string>();
   let transientZips = new Set<string>();
   let hoveredZipFromToolbar: string | null = null;
@@ -500,7 +506,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       }
 
       if (scopedEntry?.ZIP && legendScopes.length > 0) {
-        const hasVisible = visibleZipIds.size > 0;
+        const hasVisible = legendAutoRangeEnabled && visibleZipIds.size > 0;
         let legendMin = Number.POSITIVE_INFINITY;
         let legendMax = Number.NEGATIVE_INFINITY;
         for (const scope of legendScopes) {
@@ -539,9 +545,12 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       }
       return;
     }
+    if (!legendAutoRangeEnabled) return;
+    const queryLayers = [BOUNDARY_STATDATA_FILL_LAYER_ID, BOUNDARY_FILL_LAYER_ID].filter((id) => map.getLayer(id));
+    if (queryLayers.length === 0) return;
     const canvas = map.getCanvas();
     const features = map.queryRenderedFeatures([[0, 0], [canvas.width, canvas.height]] as any, {
-      layers: [BOUNDARY_STATDATA_FILL_LAYER_ID, BOUNDARY_FILL_LAYER_ID],
+      layers: queryLayers as any,
     });
     const next = new Set<string>();
     for (const f of features) {
@@ -558,6 +567,17 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     visibleZipIds = next;
     recomputeScopedStatData();
     refreshStatVisuals();
+  };
+
+  const setLegendAutoRangeEnabledInternal = (enabled: boolean) => {
+    if (legendAutoRangeEnabled === enabled) return;
+    legendAutoRangeEnabled = enabled;
+    if (enabled) {
+      updateVisibleZipSet();
+    } else {
+      recomputeScopedStatData();
+      refreshStatVisuals();
+    }
   };
 
   const emitScopeChange = () => {
@@ -821,7 +841,9 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   legendRowEl.style.bottom = `${legendInset}px`;
   container.appendChild(legendRowEl);
 
-  choroplethLegend = createChoroplethLegend(isMobile);
+  choroplethLegend = createChoroplethLegend(isMobile, () => {
+    try { onLegendSettingsClick?.(); } catch {}
+  });
   legendRowEl.appendChild(choroplethLegend.element);
   // Only render the org legend on non-mobile to reduce visual noise
   if (!isMobile) {
@@ -3067,6 +3089,9 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     setLegendTop,
     setLegendVisible,
     setLegendRightContent,
+    setLegendAutoRangeEnabled: (enabled: boolean) => {
+      setLegendAutoRangeEnabledInternal(Boolean(enabled));
+    },
     resize: () => {
       map.resize();
     },
