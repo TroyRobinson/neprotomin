@@ -3,15 +3,15 @@ import React, { useEffect, useRef } from "react";
 interface MapSettingsModalProps {
   open: boolean;
   onClose: () => void;
-  autoRangeEnabled: boolean;
-  onChangeAutoRange: (enabled: boolean) => void;
+  rangeMode: "dynamic" | "scoped" | "global";
+  onChangeRangeMode: (mode: "dynamic" | "scoped" | "global") => void;
 }
 
 export const MapSettingsModal: React.FC<MapSettingsModalProps> = ({
   open,
   onClose,
-  autoRangeEnabled,
-  onChangeAutoRange,
+  rangeMode,
+  onChangeRangeMode,
 }) => {
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
@@ -65,8 +65,8 @@ export const MapSettingsModal: React.FC<MapSettingsModalProps> = ({
                   type="radio"
                   name="legend-range-mode"
                   className="mt-1 h-4 w-4"
-                  checked={autoRangeEnabled}
-                  onChange={() => onChangeAutoRange(true)}
+                  checked={rangeMode === "dynamic"}
+                  onChange={() => onChangeRangeMode("dynamic")}
                 />
                 <div>
                   <div className="font-medium text-slate-800 dark:text-slate-100">Dynamic (viewport ZIPs)</div>
@@ -80,13 +80,28 @@ export const MapSettingsModal: React.FC<MapSettingsModalProps> = ({
                   type="radio"
                   name="legend-range-mode"
                   className="mt-1 h-4 w-4"
-                  checked={!autoRangeEnabled}
-                  onChange={() => onChangeAutoRange(false)}
+                  checked={rangeMode === "scoped"}
+                  onChange={() => onChangeRangeMode("scoped")}
                 />
                 <div>
                   <div className="font-medium text-slate-800 dark:text-slate-100">Scoped (county + neighbors)</div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     Use the dominant county plus neighboring counties regardless of viewport.
+                  </p>
+                </div>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-md border border-transparent p-2 hover:border-slate-200 dark:hover:border-slate-700">
+                <input
+                  type="radio"
+                  name="legend-range-mode"
+                  className="mt-1 h-4 w-4"
+                  checked={rangeMode === "global"}
+                  onChange={() => onChangeRangeMode("global")}
+                />
+                <div>
+                  <div className="font-medium text-slate-800 dark:text-slate-100">No scoping (statewide)</div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Use all available data statewide (ignore viewport or county focus) for the legend range.
                   </p>
                 </div>
               </label>
@@ -97,4 +112,3 @@ export const MapSettingsModal: React.FC<MapSettingsModalProps> = ({
     </div>
   );
 };
-

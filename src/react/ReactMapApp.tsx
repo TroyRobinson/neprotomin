@@ -235,7 +235,7 @@ export const ReactMapApp = () => {
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
   const [isDraggingSheet, setIsDraggingSheet] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [legendAutoRangeEnabled, setLegendAutoRangeEnabled] = useState(true);
+  const [legendRangeMode, setLegendRangeMode] = useState<"dynamic" | "scoped" | "global">("dynamic");
   const [mapSettingsOpen, setMapSettingsOpen] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(() => {
     if (typeof window === "undefined") return 0;
@@ -1281,21 +1281,36 @@ export const ReactMapApp = () => {
       }
 
       if (aggregate.ZIP) {
-        // Keep ZIP legend/range tied to the primary scoped county plus its neighbors.
-        const scopesForLegend =
-          legendZipScopes.length > 0 ? legendZipScopes : [normalizedZipScope ?? FALLBACK_ZIP_SCOPE];
         let legendMin = Number.POSITIVE_INFINITY;
         let legendMax = Number.NEGATIVE_INFINITY;
-        for (const scope of scopesForLegend) {
-          const entry = byParent.get(scope)?.ZIP;
-          if (!entry) continue;
-          for (const value of Object.values(entry.data ?? {})) {
-            if (typeof value === "number" && Number.isFinite(value)) {
-              if (value < legendMin) legendMin = value;
-              if (value > legendMax) legendMax = value;
+
+        if (legendRangeMode === "global") {
+          for (const parentEntry of byParent.values()) {
+            const entry = parentEntry?.ZIP;
+            if (!entry) continue;
+            for (const value of Object.values(entry.data ?? {})) {
+              if (typeof value === "number" && Number.isFinite(value)) {
+                if (value < legendMin) legendMin = value;
+                if (value > legendMax) legendMax = value;
+              }
+            }
+          }
+        } else {
+          // dynamic/scoped: base on scoped counties (and neighbors)
+          const scopesForLegend =
+            legendZipScopes.length > 0 ? legendZipScopes : [normalizedZipScope ?? FALLBACK_ZIP_SCOPE];
+          for (const scope of scopesForLegend) {
+            const entry = byParent.get(scope)?.ZIP;
+            if (!entry) continue;
+            for (const value of Object.values(entry.data ?? {})) {
+              if (typeof value === "number" && Number.isFinite(value)) {
+                if (value < legendMin) legendMin = value;
+                if (value > legendMax) legendMax = value;
+              }
             }
           }
         }
+
         if (Number.isFinite(legendMin) && Number.isFinite(legendMax)) {
           aggregate.ZIP = { ...aggregate.ZIP, min: legendMin, max: legendMax };
         }
@@ -1317,7 +1332,7 @@ export const ReactMapApp = () => {
       }
     }
     return map;
-  }, [statDataByParent, relevantScopes, countyScopes, normalizedZipScope, legendZipScopes]);
+  }, [statDataByParent, relevantScopes, countyScopes, normalizedZipScope, legendZipScopes, legendRangeMode]);
 
   // Compute true statewide averages (from Oklahoma bucket, not scoped data)
   const stateAvgByStatId = useMemo(() => {
@@ -3058,7 +3073,7 @@ export const ReactMapApp = () => {
                 handleClearTimeFilter();
               }}
               onLegendSettingsClick={() => setMapSettingsOpen(true)}
-              legendAutoRangeEnabled={legendAutoRangeEnabled}
+              legendRangeMode={legendRangeMode}
             />
             {/* Desktop-only overlay still shows the location button inline */}
             {!isMobile && (
@@ -3419,11 +3434,11 @@ export const ReactMapApp = () => {
       <MapSettingsModal
         open={mapSettingsOpen}
         onClose={() => setMapSettingsOpen(false)}
-        autoRangeEnabled={legendAutoRangeEnabled}
-        onChangeAutoRange={(enabled) => {
-          setLegendAutoRangeEnabled(enabled);
+        rangeMode={legendRangeMode}
+        onChangeRangeMode={(mode) => {
+          setLegendRangeMode(mode);
           if (mapControllerRef.current) {
-            mapControllerRef.current.setLegendAutoRangeEnabled(enabled);
+            mapControllerRef.current.setLegendRangeMode(mode);
           }
         }}
       />

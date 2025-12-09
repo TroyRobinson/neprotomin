@@ -87,7 +87,7 @@ interface MapViewOptions {
   onTimeChipClick?: () => void;
   onTimeChipClear?: () => void;
   onLegendSettingsClick?: () => void;
-  legendAutoRangeEnabled?: boolean;
+  legendRangeMode?: "dynamic" | "scoped" | "global";
 }
 
 export interface MapViewController {
@@ -120,7 +120,7 @@ export interface MapViewController {
   setLegendTop: (topPx: number) => void;
   setLegendVisible: (visible: boolean) => void;
   setLegendRightContent: (el: HTMLElement | null) => void;
-  setLegendAutoRangeEnabled: (enabled: boolean) => void;
+  setLegendRangeMode: (mode: "dynamic" | "scoped" | "global") => void;
   resize: () => void;
   destroy: () => void;
 }
@@ -270,7 +270,7 @@ export const createMapView = ({
   onTimeChipClick,
   onTimeChipClear,
   onLegendSettingsClick,
-  legendAutoRangeEnabled: legendAutoRangeEnabledInitial = true,
+  legendRangeMode: legendRangeModeInitial = "dynamic",
 }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
   container.className = "relative flex flex-1";
@@ -358,7 +358,7 @@ export const createMapView = ({
 
   let currentTheme = themeController.getTheme();
   let boundaryMode: BoundaryMode = "zips";
-  let legendAutoRangeEnabled = Boolean(legendAutoRangeEnabledInitial);
+  let legendRangeMode: "dynamic" | "scoped" | "global" = legendRangeModeInitial;
   let pinnedZips = new Set<string>();
   let transientZips = new Set<string>();
   let hoveredZipFromToolbar: string | null = null;
@@ -494,7 +494,10 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     const aggregated = new Map<string, StatDataEntryByBoundary>();
     for (const [statId, byParent] of statDataStoreMap.entries()) {
       let scopedEntry: StatDataEntryByBoundary | null = null;
-      for (const scopeName of scopeNames) {
+      const dataScopeNames =
+        legendRangeMode === "global" ? Array.from(byParent.keys()) : scopeNames;
+
+      for (const scopeName of dataScopeNames) {
         const parentEntry = byParent.get(scopeName);
         if (!parentEntry) continue;
         scopedEntry = scopedEntry ?? {};
@@ -505,18 +508,31 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         }
       }
 
-      if (scopedEntry?.ZIP && legendScopes.length > 0) {
-        const hasVisible = legendAutoRangeEnabled && visibleZipIds.size > 0;
+      if (scopedEntry?.ZIP) {
         let legendMin = Number.POSITIVE_INFINITY;
         let legendMax = Number.NEGATIVE_INFINITY;
-        for (const scope of legendScopes) {
-          const entry = byParent.get(scope)?.ZIP;
-          if (!entry) continue;
-          for (const [zip, value] of Object.entries(entry.data ?? {})) {
-            if (hasVisible && !visibleZipIds.has(zip)) continue;
-            if (typeof value === "number" && Number.isFinite(value)) {
-              if (value < legendMin) legendMin = value;
-              if (value > legendMax) legendMax = value;
+        if (legendRangeMode === "global") {
+          for (const parentEntry of byParent.values()) {
+            const entry = parentEntry?.ZIP;
+            if (!entry) continue;
+            for (const value of Object.values(entry.data ?? {})) {
+              if (typeof value === "number" && Number.isFinite(value)) {
+                if (value < legendMin) legendMin = value;
+                if (value > legendMax) legendMax = value;
+              }
+            }
+          }
+        } else if (legendScopes.length > 0) {
+          const hasVisible = legendRangeMode === "dynamic" && visibleZipIds.size > 0;
+          for (const scope of legendScopes) {
+            const entry = byParent.get(scope)?.ZIP;
+            if (!entry) continue;
+            for (const [zip, value] of Object.entries(entry.data ?? {})) {
+              if (hasVisible && !visibleZipIds.has(zip)) continue;
+              if (typeof value === "number" && Number.isFinite(value)) {
+                if (value < legendMin) legendMin = value;
+                if (value > legendMax) legendMax = value;
+              }
             }
           }
         }
@@ -545,7 +561,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       }
       return;
     }
-    if (!legendAutoRangeEnabled) return;
+    if (legendRangeMode !== "dynamic") return;
     const queryLayers = [BOUNDARY_STATDATA_FILL_LAYER_ID, BOUNDARY_FILL_LAYER_ID].filter((id) => map.getLayer(id));
     if (queryLayers.length === 0) return;
     const canvas = map.getCanvas();
@@ -569,10 +585,10 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     refreshStatVisuals();
   };
 
-  const setLegendAutoRangeEnabledInternal = (enabled: boolean) => {
-    if (legendAutoRangeEnabled === enabled) return;
-    legendAutoRangeEnabled = enabled;
-    if (enabled) {
+  const setLegendRangeModeInternal = (mode: "dynamic" | "scoped" | "global") => {
+    if (legendRangeMode === mode) return;
+    legendRangeMode = mode;
+    if (legendRangeMode === "dynamic") {
       updateVisibleZipSet();
     } else {
       recomputeScopedStatData();
@@ -3089,8 +3105,8 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     setLegendTop,
     setLegendVisible,
     setLegendRightContent,
-    setLegendAutoRangeEnabled: (enabled: boolean) => {
-      setLegendAutoRangeEnabledInternal(Boolean(enabled));
+    setLegendRangeMode: (mode: "dynamic" | "scoped" | "global") => {
+      setLegendRangeModeInternal(mode);
     },
     resize: () => {
       map.resize();

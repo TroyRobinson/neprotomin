@@ -61,7 +61,7 @@ interface MapLibreMapProps {
   onLocationSearch?: (query: string) => void;
   timeFilterAvailable?: boolean;
   onLegendSettingsClick?: () => void;
-  legendAutoRangeEnabled?: boolean;
+  legendRangeMode?: "dynamic" | "scoped" | "global";
 }
 
 /**
@@ -115,7 +115,7 @@ export const MapLibreMap = ({
   onLocationSearch,
   timeFilterAvailable = true,
   onLegendSettingsClick,
-  legendAutoRangeEnabled = true,
+  legendRangeMode = "dynamic",
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
@@ -146,6 +146,7 @@ export const MapLibreMap = ({
   const onLocationSearchRef = useRef(onLocationSearch);
   const setLegendInsetRef = useRef<(pixels: number) => void>(() => {});
   const onLegendSettingsClickRef = useRef(onLegendSettingsClick);
+  const legendRangeModeRef = useRef<"dynamic" | "scoped" | "global">(legendRangeMode);
 
   useEffect(() => { onZipSelectionChangeRef.current = onZipSelectionChange; }, [onZipSelectionChange]);
   useEffect(() => { onHoverRef.current = onHover; }, [onHover]);
@@ -169,6 +170,7 @@ export const MapLibreMap = ({
   useEffect(() => { onTimeChipClearRef.current = onTimeChipClear; }, [onTimeChipClear]);
   useEffect(() => { onLocationSearchRef.current = onLocationSearch; }, [onLocationSearch]);
   useEffect(() => { onLegendSettingsClickRef.current = onLegendSettingsClick; }, [onLegendSettingsClick]);
+  useEffect(() => { legendRangeModeRef.current = legendRangeMode; }, [legendRangeMode]);
   useEffect(() => {
     const controller = mapControllerRef.current;
     if (controller) {
@@ -249,7 +251,7 @@ export const MapLibreMap = ({
       onLegendSettingsClick: () => {
         try { onLegendSettingsClickRef.current?.(); } catch {}
       },
-      legendAutoRangeEnabled,
+      legendRangeMode,
     });
 
     containerRef.current.appendChild(mapController.element);
@@ -291,9 +293,9 @@ export const MapLibreMap = ({
 
   useEffect(() => {
     if (mapControllerRef.current) {
-      mapControllerRef.current.setLegendAutoRangeEnabled(Boolean(legendAutoRangeEnabled));
+      mapControllerRef.current.setLegendRangeMode(legendRangeModeRef.current);
     }
-  }, [legendAutoRangeEnabled]);
+  }, [legendRangeMode]);
 
   useEffect(() => {
     if (mapControllerRef.current) {
