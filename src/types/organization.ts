@@ -52,6 +52,10 @@ export interface Organization {
   submittedAt?: number | null;
   queueSortKey?: number | null;
   issueCount?: number | null;
+  ein?: string | null;
+  importBatchId?: string | null;
+  createdAt?: number | null;
+  updatedAt?: number | null;
 }
 
 export const TULSA_CENTER = {
@@ -65,3 +69,19 @@ export const OKLAHOMA_CENTER = {
 };
 
 export const OKLAHOMA_DEFAULT_ZOOM = 6.2;
+
+export interface OrgImportBatch {
+  id: string;
+  label: string;
+  source?: string | null;
+  filters?: Record<string, unknown> | null;
+  status: "running" | "success" | "error";
+  requestedCount?: number | null;
+  importedCount?: number | null;
+  sampleOrgIds?: string[] | null;
+  orgIds?: string[] | null;
+  error?: string | null;
+  createdAt: number;
+  createdBy?: string | null;
+  updatedAt?: number | null;
+}

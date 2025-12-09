@@ -21,7 +21,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
     "strictNullChecks": true,
-    "types": []
+    "types": ["node"]
   },
-  "include": ["src", "vitest.setup.ts", "src/**/*.test.ts"]
+  "include": ["src", "vitest.setup.ts", "src/**/*.test.ts", "api"]
 }

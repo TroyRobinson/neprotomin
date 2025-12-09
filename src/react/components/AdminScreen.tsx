@@ -13,6 +13,7 @@ import {
   type DerivedStatModalSubmit,
   type DerivedStatOption,
 } from "./DerivedStatModal";
+import { AdminOrgsPanel } from "./AdminOrgsPanel";
 
 // Stat item from InstantDB stats table
 interface StatItem {
@@ -1523,6 +1524,7 @@ const fuzzyMatch = (text: string, query: string): boolean => {
 export const AdminScreen = () => {
   const { authReady } = useAuthSession();
   const queryEnabled = authReady;
+  const [activeTab, setActiveTab] = useState<"stats" | "orgs">("stats");
 
   // Fetch categories from InstantDB
   const { statCategories } = useCategories();
@@ -1533,13 +1535,15 @@ export const AdminScreen = () => {
     [statCategories]
   );
 
+  const statsQueryEnabled = queryEnabled && activeTab === "stats";
+
   // Primary query: just stats (small, fast, reliable)
   const {
     data: statsData,
     isLoading: statsLoading,
     error: statsError,
   } = db.useQuery(
-    queryEnabled
+    statsQueryEnabled
       ? {
           stats: {
             $: {
@@ -1559,7 +1563,7 @@ export const AdminScreen = () => {
     isLoading: statDataLoading,
     error: statDataError,
   } = db.useQuery(
-    queryEnabled && statDataQueryEnabled
+    statsQueryEnabled && statDataQueryEnabled
       ? {
           statData: {
             $: {
@@ -2615,6 +2619,11 @@ export const AdminScreen = () => {
     setPendingDerivedJobs((prev) => prev.filter((job) => job.id !== jobId));
   }, []);
 
+  // Switch to Orgs admin tab
+  if (activeTab === "orgs") {
+    return <AdminOrgsPanel onSwitchTab={setActiveTab} />;
+  }
+
   // Loading state - only block on stats (primary query)
   if (statsLoading) {
     return (
@@ -2653,6 +2662,15 @@ export const AdminScreen = () => {
       {/* Header - single row: Title | filters | New stat */}
       <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
         <div className="flex items-center gap-3">
+          <CustomSelect
+            value={activeTab}
+            onChange={(val) => setActiveTab(val as "stats" | "orgs")}
+            options={[
+              { value: "stats", label: "Stats" },
+              { value: "orgs", label: "Orgs" },
+            ]}
+            className="w-[110px]"
+          />
           {/* Left: Title and count */}
           <div className="shrink-0">
             <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 sm:text-xl">Stats</h1>
