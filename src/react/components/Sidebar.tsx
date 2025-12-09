@@ -512,9 +512,9 @@ export const Sidebar = ({
 
   useEffect(() => {
     const hasAnyVisibleOrgs = categoryFilteredCount > 0;
-    const visible = hasAnyVisibleOrgs && (keepOrgsOnMap || activeTab === "orgs");
+    const visible = hasAnyVisibleOrgs && keepOrgsOnMap;
     onOrgPinsVisibleChange?.(visible);
-  }, [activeTab, keepOrgsOnMap, onOrgPinsVisibleChange, categoryFilteredCount]);
+  }, [keepOrgsOnMap, onOrgPinsVisibleChange, categoryFilteredCount]);
 
   useEffect(() => {
     if (!issueFeedback) return;
