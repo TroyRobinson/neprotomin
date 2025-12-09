@@ -160,7 +160,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   // Match org cluster color: #fed7aa (orange-200)
   orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} border-transparent bg-orange-200 text-orange-900 shadow-floating hover:bg-orange-200 dark:bg-orange-400/30 dark:text-orange-100`;
   const orgsLabel = document.createElement("span");
-  orgsLabel.textContent = "Providers";
+  orgsLabel.textContent = "Organizations";
   orgsLabel.className = "whitespace-nowrap";
   const orgsClose = document.createElement("span");
   orgsClose.innerHTML = CLOSE_ICON;
@@ -382,14 +382,14 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   const applyAccessoryChipVisibility = () => {
     if (isMobile) {
-      // Providers chip is desktop-only; on mobile we show only the time chip when available.
+      // Organizations chip is desktop-only; on mobile we show only the time chip when available.
       orgsChipBtn.style.display = "none";
       const showTime = orgsChipVisible && timeFilterAvailable;
       timeOpenChipBtn.style.display = showTime ? "" : "none";
       return;
     }
-    const showProviders = orgsChipVisible && !searchExpanded;
-    orgsChipBtn.style.display = showProviders ? "" : "none";
+    const showOrganizations = orgsChipVisible && !searchExpanded;
+    orgsChipBtn.style.display = showOrganizations ? "" : "none";
 
     const showTime = orgsChipVisible && timeFilterAvailable && !searchExpanded;
     timeOpenChipBtn.style.display = showTime ? "" : "none";
@@ -430,7 +430,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     searchInput.className =
       "w-full min-w-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500";
     searchInput.placeholder = "City, Location, ZIP, Address, ...";
-    searchInput.setAttribute("aria-label", "Search locations");
+    searchInput.setAttribute("aria-label", "Search organizations");
     searchForm.appendChild(searchInput);
 
     const submitButton = document.createElement("button");
