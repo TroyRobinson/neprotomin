@@ -678,7 +678,7 @@ export const Sidebar = ({
                 onClick={() => setCategoryDropdownOpen((prev) => !prev)}
                 className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold shadow-sm ring-1 ring-inset transition ${
                   categoryFilter
-                    ? "bg-brand-800/80 text-white ring-white/10 hover:bg-brand-700/90"
+                    ? "bg-brand-700/90 text-white ring-white/10 hover:bg-brand-500"
                     : "bg-slate-200 text-slate-700 ring-slate-300/70 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:ring-slate-500/70 dark:hover:bg-slate-600"
                 }`}
                 title="Change category filter"
@@ -733,7 +733,7 @@ export const Sidebar = ({
                   handleCategoryChange(null);
                   setCategoryDropdownOpen(false);
                 }}
-                className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-800/80 text-white hover:bg-brand-700/90"
+                className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-700/90 text-white hover:bg-brand-500"
                 title="Clear category filter"
               >
                 <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
