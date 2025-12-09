@@ -373,6 +373,7 @@ export const createMapView = ({
   let dragStartCenter: maplibregl.LngLat | null = null;
   let dragCollapseTriggered = false;
   let zipGeometryHiddenDueToZoom = false;
+  let visibleZipIds = new Set<string>();
 
 let statDataStoreMap: StatDataStoreMap = new Map();
 let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
@@ -473,6 +474,17 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
 
   const recomputeScopedStatData = () => {
     const scopeNames = getScopeAreaNames();
+    const primaryScope = normalizeScopeLabel(activeZipParentArea) ?? FALLBACK_ZIP_PARENT_AREA;
+    const legendScopes = (() => {
+      const set = new Set<string>();
+      if (primaryScope) set.add(primaryScope);
+      for (const neighborId of latestNeighborCountyIds) {
+        const name = normalizeCountyIdToName(neighborId);
+        if (name) set.add(name);
+      }
+      return Array.from(set);
+    })();
+
     const aggregated = new Map<string, StatDataEntryByBoundary>();
     for (const [statId, byParent] of statDataStoreMap.entries()) {
       let scopedEntry: StatDataEntryByBoundary | null = null;
@@ -486,11 +498,66 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
           scopedEntry[boundary] = mergeStatEntries(scopedEntry[boundary], incoming);
         }
       }
+
+      if (scopedEntry?.ZIP && legendScopes.length > 0) {
+        const hasVisible = visibleZipIds.size > 0;
+        let legendMin = Number.POSITIVE_INFINITY;
+        let legendMax = Number.NEGATIVE_INFINITY;
+        for (const scope of legendScopes) {
+          const entry = byParent.get(scope)?.ZIP;
+          if (!entry) continue;
+          for (const [zip, value] of Object.entries(entry.data ?? {})) {
+            if (hasVisible && !visibleZipIds.has(zip)) continue;
+            if (typeof value === "number" && Number.isFinite(value)) {
+              if (value < legendMin) legendMin = value;
+              if (value > legendMax) legendMax = value;
+            }
+          }
+        }
+        if (Number.isFinite(legendMin) && Number.isFinite(legendMax)) {
+          scopedEntry = {
+            ...scopedEntry,
+            ZIP: { ...scopedEntry.ZIP, min: legendMin, max: legendMax },
+          };
+        }
+      }
+
       if (scopedEntry && Object.keys(scopedEntry).length > 0) {
         aggregated.set(statId, scopedEntry);
       }
     }
     scopedStatDataByBoundary = aggregated;
+  };
+
+  const updateVisibleZipSet = () => {
+    // Only track visible ZIPs when the ZIP layer is active and rendered
+    if (boundaryMode !== "zips" || zipGeometryHiddenDueToZoom) {
+      if (visibleZipIds.size > 0) {
+        visibleZipIds = new Set<string>();
+        recomputeScopedStatData();
+        refreshStatVisuals();
+      }
+      return;
+    }
+    const canvas = map.getCanvas();
+    const features = map.queryRenderedFeatures([[0, 0], [canvas.width, canvas.height]] as any, {
+      layers: [BOUNDARY_STATDATA_FILL_LAYER_ID, BOUNDARY_FILL_LAYER_ID],
+    });
+    const next = new Set<string>();
+    for (const f of features) {
+      const zip = (f.properties as any)?.zip;
+      if (typeof zip === "string" && zip.length > 0) {
+        next.add(zip);
+      }
+    }
+    const changed =
+      next.size !== visibleZipIds.size ||
+      Array.from(next).some((zip) => !visibleZipIds.has(zip)) ||
+      Array.from(visibleZipIds).some((zip) => !next.has(zip));
+    if (!changed) return;
+    visibleZipIds = next;
+    recomputeScopedStatData();
+    refreshStatVisuals();
   };
 
   const emitScopeChange = () => {
@@ -1401,6 +1468,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       zipFloatingTitle?.hide();
     }
     refreshStatVisuals(); // Already deferred via coalescing
+    updateVisibleZipSet();
   };
   map.on("zoom", handleZipGeometryVisibilityChange);
   destroyFns.push(() => {
@@ -1420,6 +1488,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     if (selectedOrgIds.size > 0) {
       void updateSelectedClusterHighlight();
     }
+    updateVisibleZipSet();
   };
 
   const handleViewportSettled = () => {
@@ -2293,6 +2362,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     ensureSourcesAndLayers();
     loadingIndicator.setLoading(false);
   });
+  map.once("idle", () => updateVisibleZipSet());
 
   // Track map tile loading state for the loading indicator.
   // Only show loading for actual tile fetches (basemap), not GeoJSON source updates.
@@ -2519,6 +2589,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       if (mode === "zips") {
         void ensureZctasForCurrentView({ force: true });
       }
+      updateVisibleZipSet();
       refreshStatVisuals();
     }, 100);
   };

@@ -1212,6 +1212,13 @@ export const ReactMapApp = () => {
     return Array.from(set);
   }, [zipNeighborScopes]);
 
+  const legendZipScopes = useMemo(() => {
+    const set = new Set<string>();
+    if (normalizedZipScope) set.add(normalizedZipScope);
+    for (const scope of normalizedNeighborScopes) set.add(scope);
+    return Array.from(set);
+  }, [normalizedNeighborScopes, normalizedZipScope]);
+
   const relevantScopes = useMemo(() => {
     const set = new Set<string>();
     if (normalizedZipScope) set.add(normalizedZipScope);
@@ -1270,6 +1277,27 @@ export const ReactMapApp = () => {
         }
       }
 
+      if (aggregate.ZIP) {
+        // Keep ZIP legend/range tied to the primary scoped county plus its neighbors.
+        const scopesForLegend =
+          legendZipScopes.length > 0 ? legendZipScopes : [normalizedZipScope ?? FALLBACK_ZIP_SCOPE];
+        let legendMin = Number.POSITIVE_INFINITY;
+        let legendMax = Number.NEGATIVE_INFINITY;
+        for (const scope of scopesForLegend) {
+          const entry = byParent.get(scope)?.ZIP;
+          if (!entry) continue;
+          for (const value of Object.values(entry.data ?? {})) {
+            if (typeof value === "number" && Number.isFinite(value)) {
+              if (value < legendMin) legendMin = value;
+              if (value > legendMax) legendMax = value;
+            }
+          }
+        }
+        if (Number.isFinite(legendMin) && Number.isFinite(legendMax)) {
+          aggregate.ZIP = { ...aggregate.ZIP, min: legendMin, max: legendMax };
+        }
+      }
+
       // COUNTY-level data already includes the default statewide bucket via
       // countyScopes (which contains the normalized DEFAULT_PARENT_AREA_BY_KIND.COUNTY)
       // plus any nearby county scopes.
@@ -1286,7 +1314,7 @@ export const ReactMapApp = () => {
       }
     }
     return map;
-  }, [statDataByParent, relevantScopes, countyScopes]);
+  }, [statDataByParent, relevantScopes, countyScopes, normalizedZipScope, legendZipScopes]);
 
   // Compute true statewide averages (from Oklahoma bucket, not scoped data)
   const stateAvgByStatId = useMemo(() => {
