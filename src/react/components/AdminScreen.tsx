@@ -668,7 +668,7 @@ const GroupSearchInput = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isDropdownOpen]);
 
-  const handleSearch = async () => {
+  const handleSearch = useCallback(async () => {
     const trimmed = value.trim();
     if (!trimmed || looksLikeGroupId(trimmed)) return;
 
@@ -706,7 +706,7 @@ const GroupSearchInput = ({
     } finally {
       setIsSearching(false);
     }
-  };
+  }, [value, dataset, year]);
 
   // Allow parent to trigger the same search logic as pressing Enter on a term
   useEffect(() => {
@@ -858,6 +858,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
   const [queueItems, setQueueItems] = useState<ImportQueueItem[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
+  const [currentYearProcessing, setCurrentYearProcessing] = useState<number | null>(null);
   const [lastSubmittedGroup, setLastSubmittedGroup] = useState<string>(""); // Track last previewed group
 
   useEffect(() => {
@@ -1102,6 +1103,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
   const handleRunQueue = useCallback(async () => {
     if (isRunning || queueItems.length === 0) return;
     setIsRunning(true);
+    setCurrentYearProcessing(null);
     const itemsSnapshot = queueItems.slice();
     const importedStatIds: string[] = [];
     try {
@@ -1114,55 +1116,74 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
             i === index ? { ...q, status: "running", errorMessage: undefined } : q,
           ),
         );
-        try {
-          const response = await fetch("/api/census-import", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              dataset: item.dataset,
-              group: item.group,
-              variable: item.variable,
-              year: item.year,
-              years: item.years,
-              includeMoe: item.includeMoe,
-              category: category,
-            }),
-          });
-          const payload = (await response.json().catch(() => null)) as any;
-          if (!response.ok || !payload || payload.ok === false || payload.error) {
-            const message =
-              (payload && typeof payload.error === "string" && payload.error) ||
-              `Import failed with status ${response.status}.`;
+        // When importing multiple years, split into per-year requests to keep each server call small.
+        let itemErrored = false;
+        const yearsToProcess =
+          item.years > 1 ? Array.from({ length: item.years }, (_, idx) => item.year - idx) : [item.year];
+
+        for (const year of yearsToProcess) {
+          try {
+            setCurrentYearProcessing(year);
+            const response = await fetch("/api/census-import", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                dataset: item.dataset,
+                group: item.group,
+                variable: item.variable,
+                year,
+                years: 1,
+                includeMoe: item.includeMoe,
+                category: category,
+              }),
+            });
+            const payload = (await response.json().catch(() => null)) as any;
+            if (!response.ok || !payload || payload.ok === false || payload.error) {
+              const message =
+                (payload && typeof payload.error === "string" && payload.error) ||
+                `Import failed with status ${response.status}.`;
+              setQueueItems((prev) =>
+                prev.map((q, i) =>
+                  i === index ? { ...q, status: "error", errorMessage: message } : q,
+                ),
+              );
+              // Stop processing remaining years for this item on error
+              itemErrored = true;
+              throw new Error(message);
+            }
+            const statId = typeof payload.statId === "string" ? payload.statId : null;
+            if (statId && !importedStatIds.includes(statId)) {
+              importedStatIds.push(statId);
+            }
+            setCurrentYearProcessing(null);
+          } catch (err) {
+            console.error("Census import request failed", err);
             setQueueItems((prev) =>
               prev.map((q, i) =>
-                i === index ? { ...q, status: "error", errorMessage: message } : q,
+                i === index
+                  ? { ...q, status: "error", errorMessage: "Network error during import." }
+                  : q,
               ),
             );
-            continue;
+            itemErrored = true;
+            setCurrentYearProcessing(null);
+            break;
           }
-          const statId = typeof payload.statId === "string" ? payload.statId : null;
-          if (statId && !importedStatIds.includes(statId)) {
-            importedStatIds.push(statId);
-          }
-          setQueueItems((prev) =>
-            prev.map((q, i) =>
-              i === index ? { ...q, status: "success", errorMessage: undefined } : q,
-            ),
-          );
-        } catch (err) {
-          console.error("Census import request failed", err);
-          setQueueItems((prev) =>
-            prev.map((q, i) =>
-              i === index
-                ? { ...q, status: "error", errorMessage: "Network error during import." }
-                : q,
-            ),
-          );
         }
+
+        // If we never marked this item as error, treat it as success.
+        setQueueItems((prev) =>
+          prev.map((q, i) =>
+            i === index && !itemErrored
+              ? { ...q, status: "success", errorMessage: undefined }
+              : q,
+          ),
+        );
       }
     } finally {
       setIsRunning(false);
       setCurrentIndex(null);
+      setCurrentYearProcessing(null);
       if (importedStatIds.length > 0) {
         onImported(importedStatIds);
       }
@@ -1343,7 +1364,9 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                           )}
                           {item.status === "running" && (
                             <span className="text-brand-600 dark:text-brand-400">
-                              {isCurrent ? "Running…" : "Running"}
+                              {isCurrent && currentYearProcessing
+                                ? `Loading ${currentYearProcessing}…`
+                                : "Running…"}
                             </span>
                           )}
                           {item.status === "success" && (

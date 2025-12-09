@@ -29,6 +29,8 @@ type Listener = (byStatId: Map<string, StatDataByParentArea>) => void;
 const QUERY = {
   statData: {
     $: {
+      fields: ["id", "statId", "name", "parentArea", "boundaryType", "date", "type", "data"],
+      where: { name: "root", boundaryType: { $in: ["ZIP", "COUNTY"] } },
       order: { date: "asc" as const },
     },
   },

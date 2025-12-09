@@ -100,6 +100,7 @@ const normalizeString = (value: unknown): string | null => {
 };
 
 const parseYear = (raw: unknown): number => {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   const str = normalizeString(raw);
   if (str) {
     const parsed = Number(str);
@@ -110,6 +111,9 @@ const parseYear = (raw: unknown): number => {
 };
 
 const parseYears = (raw: unknown): number => {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return Math.max(1, Math.min(5, raw));
+  }
   const str = normalizeString(raw);
   if (str) {
     const parsed = Number(str);

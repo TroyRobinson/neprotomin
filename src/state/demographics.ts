@@ -14,7 +14,13 @@ const STAT_QUERY = {
 };
 
 const DATA_QUERY = {
-  statData: { $: { order: { date: "asc" as const } } },
+  statData: {
+    $: {
+      fields: ["id", "statId", "name", "parentArea", "boundaryType", "date", "type", "data"],
+      where: { name: "root", boundaryType: { $in: ["ZIP", "COUNTY"] } },
+      order: { date: "asc" as const },
+    },
+  },
 };
 
 const SEGMENT_LABELS: Record<BreakdownGroupKey, Record<string, string>> = {

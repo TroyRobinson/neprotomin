@@ -498,11 +498,14 @@ const buildPayloadKey = (payload) =>
 const buildExistingKey = (row) =>
   `${row.boundaryType}::${row.parentArea}::${row.date}::${row.name ?? "root"}`;
 
-const fetchExistingStatDataMap = async (db, statId) => {
+const fetchExistingStatDataMap = async (db, statId, dates) => {
+  const dateFilter = Array.from(new Set((dates || []).filter(Boolean).map(String)));
   const resp = await db.query({
     statData: {
       $: {
-        where: { statId },
+        where: dateFilter.length ? { statId, date: { $in: dateFilter } } : { statId },
+        // Only fetch identifiers to keep the response small; we overwrite data instead of merging.
+        fields: ["id", "boundaryType", "parentArea", "date", "name"],
       },
     },
   });
@@ -514,13 +517,15 @@ const fetchExistingStatDataMap = async (db, statId) => {
   return map;
 };
 
-const MAX_TX_BATCH = 20;
+// Keep each transact extremely small to avoid 5s admin timeouts.
+const MAX_TX_BATCH = 1;
 
 export const applyStatDataPayloads = async (db, payloads) => {
   if (!payloads.length) return;
   const now = Date.now();
   const statId = payloads[0].statId;
-  const existing = await fetchExistingStatDataMap(db, statId);
+  const dates = payloads.map((p) => p.year);
+  const existing = await fetchExistingStatDataMap(db, statId, dates);
   const operations = [];
 
   const enqueue = async () => {
@@ -548,36 +553,21 @@ export const applyStatDataPayloads = async (db, payloads) => {
       censusTableUrl: payload.censusTableUrl,
     };
 
-    if (existingRow) {
-      const mergedData = mergeNumberMaps(existingRow.data, payload.data);
-      const updates = {
-        ...baseFields,
-        data: mergedData,
-        lastUpdated: now,
-      };
-      if (payload.margin) {
-        updates.marginOfError = mergeNumberMaps(existingRow.marginOfError, payload.margin);
-      }
-      operations.push(tx.statData[existingRow.id].update(updates));
-      existing.set(key, {
-        ...existingRow,
-        data: mergedData,
-        marginOfError: updates.marginOfError ?? existingRow.marginOfError,
-      });
-    } else {
-      const newId = id();
-      const record = {
-        ...baseFields,
-        data: mapToObject(payload.data),
-        createdOn: now,
-        lastUpdated: now,
-      };
-      if (payload.margin) {
-        record.marginOfError = mapToObject(payload.margin);
-      }
-      operations.push(tx.statData[newId].update(record));
-      existing.set(key, record);
+    const targetId = existingRow?.id ?? id();
+    const record = {
+      ...baseFields,
+      data: mapToObject(payload.data),
+      lastUpdated: now,
+    };
+    if (!existingRow) {
+      record.createdOn = now;
     }
+    if (payload.margin && payload.margin.size) {
+      record.marginOfError = mapToObject(payload.margin);
+    }
+
+    operations.push(tx.statData[targetId].update(record));
+    existing.set(key, { ...record, id: targetId });
 
     if (operations.length >= MAX_TX_BATCH) {
       await enqueue();
