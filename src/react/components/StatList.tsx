@@ -238,19 +238,32 @@ export const StatList = ({
     return null;
   }, [areaEntries, areaNameLookup]);
 
+  // Extract selected stat row (keep in list for placeholder)
+  const selectedStatRow = useMemo(() => {
+    if (!selectedStatId) return null;
+    return rows.find((row) => row.id === selectedStatId) ?? null;
+  }, [rows, selectedStatId]);
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Banner for secondary stat hint */}
-      {selectedStatId !== null && secondaryStatId === null && variant !== "mobile" && (
-        <div className="px-4 py-2">
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Shift+click another stat for secondary overlay
-          </p>
+      {/* Fixed area: Pinned selected stat */}
+      {selectedStatRow && (
+        <div className="border-b border-slate-200 dark:border-slate-700 px-4 pt-0 pb-2 shadow-md">
+          <ul>
+            <StatListItem
+              row={selectedStatRow}
+              isSelected={true}
+              isSecondary={false}
+              averageLabel={averageLabel}
+              onStatSelect={onStatSelect}
+              hideValue={HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION && effectiveAreaKind === "COUNTY" && areaEntries.length === 0}
+            />
+          </ul>
         </div>
       )}
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-4 pb-6">
+      <div className="flex-1 overflow-y-auto px-4 pt-2 pb-6">
         {subtitle && (
           <p className="px-1 pt-2 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
             {subtitle}
@@ -262,17 +275,43 @@ export const StatList = ({
           </p>
         ) : (
           <ul className="space-y-2">
-            {rows.map((row) => (
-              <StatListItem
-                key={row.id}
-                row={row}
-                isSelected={selectedStatId === row.id}
-                isSecondary={secondaryStatId === row.id}
-                averageLabel={averageLabel}
-                onStatSelect={onStatSelect}
-                hideValue={HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION && effectiveAreaKind === "COUNTY" && areaEntries.length === 0}
-              />
-            ))}
+            {rows.map((row) => {
+              // Render placeholder line for selected stat (pinned above)
+              if (selectedStatId === row.id) {
+                return (
+                  <li
+                    key={row.id}
+                    className="py-2"
+                    aria-hidden="true"
+                  >
+                    {secondaryStatId === null && variant !== "mobile" ? (
+                      <div className="flex items-center gap-2">
+                        <div className="h-px flex-1 bg-brand-300/40 dark:bg-brand-400/30" />
+                        <span className="text-[9px] text-brand-500/60 dark:text-brand-400/50 whitespace-nowrap">
+                          Shift+click another stat for secondary
+                        </span>
+                        <div className="h-px flex-1 bg-brand-300/40 dark:bg-brand-400/30" />
+                      </div>
+                    ) : (
+                      <div className="h-px bg-brand-300/40 dark:bg-brand-400/30" />
+                    )}
+                  </li>
+                );
+              }
+              
+              // Render normal stat item
+              return (
+                <StatListItem
+                  key={row.id}
+                  row={row}
+                  isSelected={false}
+                  isSecondary={secondaryStatId === row.id}
+                  averageLabel={averageLabel}
+                  onStatSelect={onStatSelect}
+                  hideValue={HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION && effectiveAreaKind === "COUNTY" && areaEntries.length === 0}
+                />
+              );
+            })}
           </ul>
         )}
       </div>
@@ -397,8 +436,8 @@ const StatListItem = ({
         </div>
       </div>
 
-      {!hideValue && (
-        <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2">
+        {!hideValue && (
           <span
             className={`text-sm font-semibold ${valueColorClass}`}
             onMouseEnter={handleValueHover}
@@ -406,8 +445,23 @@ const StatListItem = ({
           >
             {valueLabel}
           </span>
-        </div>
-      )}
+        )}
+        {isSelected && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onStatSelect?.(null, { clear: true });
+            }}
+            className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300 transition-colors"
+            aria-label="Clear selection"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </button>
+        )}
+      </div>
 
       {showTooltip && averageLabel && (
         <div

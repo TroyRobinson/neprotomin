@@ -629,7 +629,7 @@ export const Sidebar = ({
             className={tabClasses(activeTab === "orgs")}
             onClick={() => handleTabChange("orgs")}
           >
-            <span>Organizations ({countForTab})</span>
+            <span>Orgs ({countForTab})</span>
             {/* Keep Orgs On Map Toggle */}
             <span
               role="switch"
@@ -665,7 +665,7 @@ export const Sidebar = ({
               handleTabChange("stats");
             }}
           >
-            <span>Statistics</span>
+            <span>Stats</span>
           </button>
         </div>
 
