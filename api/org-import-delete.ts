@@ -60,12 +60,12 @@ export default async function handler(req: OrgImportDeleteRequest, res: OrgImpor
     const db = createInstantClient();
     let totalDeleted = 0;
     while (true) {
-      const { data } = await db.query({
+      const resp = await db.query({
         organizations: {
           $: { where: { importBatchId: batchId }, fields: ["id"], limit: 50 },
         },
       });
-      const orgs = data?.organizations ?? [];
+      const orgs = (resp as any)?.data?.organizations ?? (resp as any)?.organizations ?? [];
       if (!orgs.length) break;
       const txs = orgs.map((org: any) => tx.organizations[org.id].delete());
       await db.transact(txs);

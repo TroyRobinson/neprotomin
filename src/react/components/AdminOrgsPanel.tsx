@@ -457,6 +457,8 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
   const [viewMode, setViewMode] = useState<ViewMode>("orgs");
   const [batchStatusFilter, setBatchStatusFilter] = useState<"all" | "success" | "running" | "error">("all");
   const [batchSearch, setBatchSearch] = useState<string>("");
+  const [deletedBatchIds, setDeletedBatchIds] = useState<Set<string>>(new Set());
+  const [hiddenBatchIds, setHiddenBatchIds] = useState<Set<string>>(new Set());
 
   const queryEnabled = authReady;
   const allowedCategories = useMemo(() => new Set(orgCategories.map((c) => c.slug)), [orgCategories]);
@@ -550,13 +552,14 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
   const filteredBatches = useMemo(() => {
     const q = batchSearch.trim().toLowerCase();
     return batchesForView
+      .filter((b) => !hiddenBatchIds.has(b.id))
       .filter((b) => (batchStatusFilter === "all" ? true : b.status === batchStatusFilter))
       .filter((b) => {
         if (!q) return true;
         const haystack = `${b.label} ${b.source ?? ""}`.toLowerCase();
         return haystack.includes(q);
       });
-  }, [batchesForView, batchStatusFilter, batchSearch]);
+  }, [batchesForView, batchStatusFilter, batchSearch, hiddenBatchIds]);
 
   const filteredOrgs = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -600,6 +603,18 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
         if (!response.ok || !payload?.ok) {
           throw new Error(payload?.error || "Delete failed");
         }
+        setDeletedBatchIds((prev) => {
+          const next = new Set(prev);
+          next.add(batchId);
+          return next;
+        });
+        setTimeout(() => {
+          setHiddenBatchIds((prev) => {
+            const next = new Set(prev);
+            next.add(batchId);
+            return next;
+          });
+        }, 1500);
       } catch (err: any) {
         setDeleteError(err?.message ?? "Failed to delete batch");
       } finally {
@@ -828,54 +843,73 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
                 key={batch.id}
                 className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{batch.label}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {batch.status === "running" && "Running…"}
-                      {batch.status === "success" &&
-                        `${batch.importedCount ?? 0} / ${batch.requestedCount ?? batch.orgIds?.length ?? 0} imported`}
-                      {batch.status === "error" && `Error: ${batch.error ?? "Unknown"}`}
-                    </p>
+                {deleteError && deletingBatchId === batch.id && (
+                  <div className="mb-2 rounded border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700 dark:border-rose-900/60 dark:bg-rose-900/20 dark:text-rose-200">
+                    {deleteError}
                   </div>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                      batch.status === "success"
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
-                        : batch.status === "error"
-                        ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200"
-                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
-                    }`}
-                  >
-                    {batch.status}
-                  </span>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
-                  <span>Created {formatDateTime(batch.createdAt)}</span>
-                  {batch.filters?.state && <span>State: {batch.filters.state as string}</span>}
-                  {batch.filters?.city && <span>City: {batch.filters.city as string}</span>}
-                  {batch.filters?.includeKeywords && (
-                    <span>Includes: {(batch.filters.includeKeywords as string) || ""}</span>
-                  )}
-                </div>
-                {batch.sampleOrgIds && batch.sampleOrgIds.length > 0 && (
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Sample org IDs: {batch.sampleOrgIds.slice(0, 3).join(", ")}
-                  </p>
                 )}
-                <div className="mt-3 flex items-center justify-between text-xs">
-                  <span className="text-slate-500 dark:text-slate-400">
-                    Batch ID {batch.id.slice(0, 8)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteBatch(batch.id)}
-                    disabled={deletingBatchId === batch.id}
-                    className="rounded-lg border border-rose-200 px-3 py-1 font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-60 dark:border-rose-900/60 dark:text-rose-200 dark:hover:bg-rose-900/20"
-                  >
-                    {deletingBatchId === batch.id ? "Deleting…" : "Delete orgs"}
-                  </button>
-                </div>
+                {(() => {
+                  const isDeleted = deletedBatchIds.has(batch.id);
+                  const isDeleting = deletingBatchId === batch.id;
+                  return (
+                    <>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{batch.label}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {batch.status === "running" && "Running…"}
+                            {batch.status === "success" &&
+                              `${batch.importedCount ?? 0} / ${batch.requestedCount ?? batch.orgIds?.length ?? 0} imported`}
+                            {batch.status === "error" && `Error: ${batch.error ?? "Unknown"}`}
+                          </p>
+                        </div>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            batch.status === "success"
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
+                              : batch.status === "error"
+                              ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200"
+                              : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+                          }`}
+                        >
+                          {batch.status}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <span>Created {formatDateTime(batch.createdAt)}</span>
+                        {batch.filters?.state && <span>State: {batch.filters.state as string}</span>}
+                        {batch.filters?.city && <span>City: {batch.filters.city as string}</span>}
+                        {batch.filters?.includeKeywords && (
+                          <span>Includes: {(batch.filters.includeKeywords as string) || ""}</span>
+                        )}
+                      </div>
+                      {batch.sampleOrgIds && batch.sampleOrgIds.length > 0 && (
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                          Sample org IDs: {batch.sampleOrgIds.slice(0, 3).join(", ")}
+                        </p>
+                      )}
+                      <div className="mt-3 flex items-center justify-between text-xs">
+                        <span className="text-slate-500 dark:text-slate-400">
+                          Batch ID {batch.id.slice(0, 8)}
+                        </span>
+                        {isDeleted ? (
+                          <span className="rounded-lg border border-slate-200 px-3 py-1 font-semibold text-slate-500 dark:border-slate-700 dark:text-slate-300">
+                            Deleted
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteBatch(batch.id)}
+                            disabled={isDeleting}
+                            className="rounded-lg border border-rose-200 px-3 py-1 font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-60 dark:border-rose-900/60 dark:text-rose-200 dark:hover:bg-rose-900/20"
+                          >
+                            {isDeleting ? "Deleting…" : "Delete orgs"}
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             ))}
           </div>
