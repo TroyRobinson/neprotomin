@@ -1059,7 +1059,7 @@ export const ReactMapApp = () => {
     seriesByStatIdByParent,
     statDataByParent,
     isLoading: areStatsLoading,
-  } = useStats();
+  } = useStats({ statDataEnabled: activeScreen !== "admin" });
   const { organizations } = useOrganizations();
   const { recentOrganizations } = useRecentOrganizations();
   const organizationSearchIndex = useMemo(

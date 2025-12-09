@@ -31,7 +31,11 @@ const SUPPORTED_AREA_KINDS: SupportedAreaKind[] = ["ZIP", "COUNTY"];
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
-export const useStats = () => {
+interface UseStatsOptions {
+  statDataEnabled?: boolean;
+}
+
+export const useStats = ({ statDataEnabled = true }: UseStatsOptions = {}) => {
   const { authReady } = useAuthSession();
   const queryEnabled = authReady;
 
@@ -45,21 +49,25 @@ export const useStats = () => {
               order: { name: "asc" as const },
             },
           },
-          statData: {
-            $: {
-              where: { name: "root" },
-              fields: [
-                "statId",
-                "name",
-                "parentArea",
-                "boundaryType",
-                "date",
-                "type",
-                "data",
-              ],
-              order: { date: "asc" as const },
-            },
-          },
+          ...(statDataEnabled
+            ? {
+                statData: {
+                  $: {
+                    where: { name: "root" },
+                    fields: [
+                      "statId",
+                      "name",
+                      "parentArea",
+                      "boundaryType",
+                      "date",
+                      "type",
+                      "data",
+                    ],
+                    order: { date: "asc" as const },
+                  },
+                },
+              }
+            : {}),
         }
       : null,
   );
