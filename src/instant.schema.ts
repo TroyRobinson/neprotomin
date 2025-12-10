@@ -165,6 +165,17 @@ const _schema = i.schema({
       createdOn: i.number().indexed().optional(),
       lastUpdated: i.number().indexed().optional(),
     }),
+    // Parent/child relationships between stats
+    statRelations: i.entity({
+      // Composite uniqueness enforced via relationKey (parent::child::attribute)
+      relationKey: i.string().unique().indexed(),
+      parentStatId: i.string().indexed(),
+      childStatId: i.string().indexed(),
+      statAttribute: i.string().indexed(), // e.g., "Age", "Income"
+      sortOrder: i.number().indexed().optional(), // Manual ordering within a group
+      createdAt: i.number().indexed().optional(),
+      updatedAt: i.number().indexed().optional(),
+    }),
     // Centralized category definitions for stats, orgs, and UI surfaces
     categories: i.entity({
       slug: i.string().unique().indexed(), // canonical id (e.g., "food", "health")

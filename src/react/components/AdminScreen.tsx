@@ -6,6 +6,7 @@ import { isDevEnv } from "../../lib/env";
 import { useAuthSession } from "../hooks/useAuthSession";
 import { useCategories } from "../hooks/useCategories";
 import type { Category } from "../../types/organization";
+import type { StatRelation } from "../../types/stat";
 import { CustomSelect } from "./CustomSelect";
 import {
   DerivedStatModal,
@@ -45,6 +46,11 @@ interface RootStatDataRow {
   date: string | null;
   data: Record<string, number>;
 }
+
+type StatRelationGroup = {
+  attribute: string;
+  relations: Array<StatRelation & { child: StatItem | null }>;
+};
 
 const toFiniteNumber = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -227,6 +233,10 @@ interface StatListItemProps {
   onToggleSelect?: (event: MouseEvent<HTMLDivElement>) => void;
   selectionMode?: boolean;
   categoryOptions: Array<{ value: string; label: string }>;
+  hasChildren?: boolean;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
+  childrenCount?: number;
 }
 
 // Stat list item component with bar shape and curved corners
@@ -243,6 +253,10 @@ const StatListItem = ({
   onToggleSelect,
   selectionMode,
   categoryOptions,
+  hasChildren = false,
+  isExpanded = false,
+  onToggleExpand,
+  childrenCount = 0,
 }: StatListItemProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState<EditFormState>(() => createEditForm(stat));
@@ -297,20 +311,27 @@ const StatListItem = ({
 
   // View mode (non-editing)
   if (!isEditing) {
+    const handleClick = (e: MouseEvent<HTMLDivElement>) => {
+      const wantsSelection =
+        !!onToggleSelect && (selectionMode || e.metaKey || e.ctrlKey || e.shiftKey);
+      if (wantsSelection && onToggleSelect) {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggleSelect(e);
+        return;
+      }
+      if (hasChildren && onToggleExpand) {
+        e.preventDefault();
+        onToggleExpand();
+        return;
+      }
+      onStartEdit();
+    };
+
     return (
       <div
         ref={containerRef}
-        onClick={(e) => {
-          const wantsSelection =
-            !!onToggleSelect && (selectionMode || e.metaKey || e.ctrlKey || e.shiftKey);
-          if (wantsSelection && onToggleSelect) {
-            e.preventDefault();
-            e.stopPropagation();
-            onToggleSelect(e);
-            return;
-          }
-          onStartEdit();
-        }}
+        onClick={handleClick}
         className={`flex cursor-pointer flex-col gap-2 rounded-xl border bg-white px-4 py-3 shadow-sm transition hover:border-brand-200 hover:shadow-md dark:bg-slate-800 dark:hover:border-slate-600 ${
           isSelected
             ? "border-brand-400 ring-2 ring-brand-100 dark:border-brand-500 dark:ring-brand-900/50"
@@ -328,9 +349,33 @@ const StatListItem = ({
               <p className="text-xs text-slate-400 dark:text-slate-500">{stat.name}</p>
             )}
           </div>
-          <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-            {stat.category}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+              {stat.category}
+            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartEdit();
+              }}
+              className="rounded-full border border-slate-200 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              Edit
+            </button>
+            {hasChildren && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleExpand?.();
+                }}
+                className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                {isExpanded ? "Hide children" : `Show ${childrenCount} child${childrenCount === 1 ? "" : "ren"}`}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Details row */}
@@ -396,6 +441,7 @@ const StatListItem = ({
             </span>
           )}
         </div>
+
       </div>
     );
   }
@@ -1550,6 +1596,21 @@ export const AdminScreen = () => {
               order: { name: "asc" as const },
             },
           },
+          statRelations: {
+            $: {
+              fields: [
+                "id",
+                "relationKey",
+                "parentStatId",
+                "childStatId",
+                "statAttribute",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+              ],
+              order: { sortOrder: "asc" as const },
+            },
+          },
         }
       : null,
   );
@@ -1633,6 +1694,128 @@ export const AdminScreen = () => {
     return statsData.stats.map(parseStat).filter((s): s is StatItem => s !== null);
   }, [statsData?.stats]);
 
+  const statsById = useMemo(() => {
+    const map = new Map<string, StatItem>();
+    for (const stat of stats) {
+      map.set(stat.id, stat);
+    }
+    return map;
+  }, [stats]);
+
+  const { statRelationsByParent, statRelationsByChild } = useMemo(() => {
+    const byParent = new Map<string, Map<string, Array<StatRelation & { child: StatItem | null }>>>();
+    const byChild = new Map<string, Array<StatRelation>>();
+
+    const rows = (statsData?.statRelations ?? []) as StatRelation[];
+    const seen = new Set<string>();
+
+    const buildKey = (parent: string, child: string, attribute: string, rawKey?: string) => {
+      const normalized = attribute.trim();
+      if (rawKey && rawKey.trim()) return rawKey;
+      return `${parent}::${child}::${normalized}`;
+    };
+
+    for (const row of rows) {
+      if (
+        !row ||
+        typeof row.id !== "string" ||
+        typeof row.parentStatId !== "string" ||
+        typeof row.childStatId !== "string" ||
+        typeof row.statAttribute !== "string"
+      ) {
+        continue;
+      }
+      const parentStatId = row.parentStatId;
+      const childStatId = row.childStatId;
+      const statAttribute = row.statAttribute.trim();
+      if (!statAttribute) continue;
+      if (!statsById.has(parentStatId)) continue;
+
+      const relationKey = buildKey(parentStatId, childStatId, statAttribute, row.relationKey);
+      if (seen.has(relationKey)) continue;
+      seen.add(relationKey);
+
+      const child = statsById.get(childStatId) ?? null;
+      const relation: StatRelation & { child: StatItem | null } = {
+        id: row.id,
+        relationKey,
+        parentStatId,
+        childStatId,
+        statAttribute,
+        sortOrder: typeof row.sortOrder === "number" ? row.sortOrder : null,
+        createdAt: typeof row.createdAt === "number" ? row.createdAt : null,
+        updatedAt: typeof row.updatedAt === "number" ? row.updatedAt : null,
+        child,
+      };
+
+      const byAttr = byParent.get(parentStatId) ?? new Map<string, Array<StatRelation & { child: StatItem | null }>>();
+      const list = byAttr.get(statAttribute) ?? [];
+      list.push(relation);
+      byAttr.set(statAttribute, list);
+      byParent.set(parentStatId, byAttr);
+
+      const childList = byChild.get(childStatId) ?? [];
+      childList.push({
+        id: relation.id,
+        relationKey: relation.relationKey,
+        parentStatId: relation.parentStatId,
+        childStatId: relation.childStatId,
+        statAttribute: relation.statAttribute,
+        sortOrder: relation.sortOrder,
+        createdAt: relation.createdAt,
+        updatedAt: relation.updatedAt,
+      });
+      byChild.set(childStatId, childList);
+    }
+
+    const sortRelations = (relations: Array<StatRelation & { child: StatItem | null }>) => {
+      const safeLabel = (stat: StatItem | null): string => {
+        if (!stat) return "";
+        return (stat.label || stat.name || "").toLowerCase();
+      };
+      relations.sort((a, b) => {
+        const aOrder = a.sortOrder ?? null;
+        const bOrder = b.sortOrder ?? null;
+        if (aOrder !== null && bOrder !== null && aOrder !== bOrder) return aOrder - bOrder;
+        if (aOrder !== null && bOrder === null) return -1;
+        if (aOrder === null && bOrder !== null) return 1;
+        const attrCompare = a.statAttribute.localeCompare(b.statAttribute);
+        if (attrCompare !== 0) return attrCompare;
+        const labelCompare = safeLabel(a.child).localeCompare(safeLabel(b.child));
+        if (labelCompare !== 0) return labelCompare;
+        return a.relationKey.localeCompare(b.relationKey);
+      });
+    };
+
+    for (const [, byAttr] of byParent) {
+      for (const [, relations] of byAttr) {
+        sortRelations(relations);
+      }
+    }
+
+    for (const [, relations] of byChild) {
+      relations.sort((a, b) => {
+        const aOrder = a.sortOrder ?? null;
+        const bOrder = b.sortOrder ?? null;
+        if (aOrder !== null && bOrder !== null && aOrder !== bOrder) return aOrder - bOrder;
+        if (aOrder !== null && bOrder === null) return -1;
+        if (aOrder === null && bOrder !== null) return 1;
+        return a.statAttribute.localeCompare(b.statAttribute);
+      });
+    }
+
+    if (isDevEnv() && byParent.size > 0) {
+      console.debug("[AdminScreen] statRelations ready", {
+        parents: byParent.size,
+        children: byChild.size,
+      });
+    }
+
+    return { statRelationsByParent: byParent, statRelationsByChild: byChild };
+  }, [statsData?.statRelations, statsById]);
+
+  const childIdSet = useMemo(() => new Set(Array.from(statRelationsByChild.keys())), [statRelationsByChild]);
+
   // Extract unique categories from stats
   const availableCategories = useMemo(() => {
     const cats = new Set<string>();
@@ -1649,6 +1832,9 @@ export const AdminScreen = () => {
       categoryFilter === "all"
         ? stats
         : stats.filter((s) => s.category === categoryFilter);
+
+    // Hide child stats from top-level list
+    filtered = filtered.filter((s) => !childIdSet.has(s.id));
 
     // Then filter by search query
     if (searchQuery.trim()) {
@@ -1695,7 +1881,7 @@ export const AdminScreen = () => {
     }
 
     return sorted;
-  }, [stats, categoryFilter, searchQuery, sortBy, recentStatIds]);
+  }, [stats, categoryFilter, searchQuery, sortBy, recentStatIds, childIdSet]);
 
   const statIndexMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -1716,6 +1902,140 @@ export const AdminScreen = () => {
   );
 
   const selectedCount = selectedStatIds.length;
+
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [groupParentId, setGroupParentId] = useState<string | null>(null);
+  const [groupAttribute, setGroupAttribute] = useState("");
+  const [groupSortOrder, setGroupSortOrder] = useState("");
+  const [groupError, setGroupError] = useState<string | null>(null);
+  const [groupNotice, setGroupNotice] = useState<string | null>(null);
+  const [isGrouping, setIsGrouping] = useState(false);
+  const [expandedParentId, setExpandedParentId] = useState<string | null>(null);
+
+  const parentOptions = useMemo(
+    () =>
+      stats
+        .slice()
+        .sort((a, b) => (a.label || a.name).localeCompare(b.label || b.name))
+        .map((stat) => ({
+          value: stat.id,
+          label: stat.label || stat.name,
+        })),
+    [stats],
+  );
+
+  const handleOpenGroupModal = useCallback(() => {
+    if (selectedCount === 0) return;
+    setGroupAttribute("");
+    setGroupSortOrder("");
+    setGroupError(null);
+    setGroupNotice(null);
+    // default parent to first selected if available
+    const defaultParent = selectedStatIds[0] ?? null;
+    setGroupParentId(defaultParent);
+    setIsGroupModalOpen(true);
+  }, [selectedCount, selectedStatIds]);
+
+  const handleCloseGroupModal = useCallback(() => {
+    setIsGroupModalOpen(false);
+    setGroupError(null);
+  }, []);
+
+  const handleSubmitGroup = useCallback(async () => {
+    if (!groupParentId) {
+      setGroupError("Select a parent stat.");
+      return;
+    }
+    const attribute = groupAttribute.trim();
+    if (!attribute) {
+      setGroupError("Stat attribute is required.");
+      return;
+    }
+
+    const sortOrderValue = groupSortOrder.trim();
+    let sortOrder: number | null = null;
+    if (sortOrderValue) {
+      const parsed = Number(sortOrderValue);
+      if (!Number.isFinite(parsed)) {
+        setGroupError("Sort order must be a number.");
+        return;
+      }
+      sortOrder = parsed;
+    }
+
+    const now = Date.now();
+    const childIds = selectedStatIds.filter((id) => id !== groupParentId);
+    if (childIds.length === 0) {
+      setGroupError("Select at least one child stat (parent cannot be its own child).");
+      return;
+    }
+
+    // Enforce single statAttribute per child across all parents
+    for (const childId of childIds) {
+      const existingForChild = statRelationsByChild.get(childId);
+      if (existingForChild && existingForChild.length > 0) {
+        const existingAttr = existingForChild[0]?.statAttribute;
+        if (existingAttr && existingAttr !== attribute) {
+          const childName = statsById.get(childId)?.label || statsById.get(childId)?.name || "Child stat";
+          setGroupError(`"${childName}" already uses statAttribute "${existingAttr}".`);
+          return;
+        }
+      }
+    }
+
+    const existingByAttr = statRelationsByParent.get(groupParentId);
+    const existingKeys = new Set<string>();
+    if (existingByAttr) {
+      const existing = existingByAttr.get(attribute);
+      if (existing) {
+        for (const rel of existing) {
+          existingKeys.add(rel.relationKey);
+        }
+      }
+    }
+
+    const txs: any[] = [];
+    for (const childId of childIds) {
+      const key = `${groupParentId}::${childId}::${attribute}`;
+      if (existingKeys.has(key)) continue;
+      txs.push(
+        db.tx.statRelations[createId()].update({
+          relationKey: key,
+          parentStatId: groupParentId,
+          childStatId: childId,
+          statAttribute: attribute,
+          sortOrder: sortOrder ?? undefined,
+          createdAt: now,
+          updatedAt: now,
+        }),
+      );
+    }
+
+    if (txs.length === 0) {
+      setGroupError("All selected stats are already grouped under this parent and attribute.");
+      return;
+    }
+
+    try {
+      setIsGrouping(true);
+      await db.transact(txs);
+      setGroupNotice(`Grouped ${txs.length} stat${txs.length === 1 ? "" : "s"} under the parent.`);
+      setIsGroupModalOpen(false);
+    } catch (err) {
+      console.error("Failed to group stats", err);
+      setGroupError(err instanceof Error ? err.message : "Failed to group stats.");
+    } finally {
+      setIsGrouping(false);
+    }
+  }, [groupParentId, groupAttribute, groupSortOrder, selectedStatIds, statRelationsByParent, statRelationsByChild, statsById]);
+
+  const handleUnlinkRelation = useCallback(async (relationId: string) => {
+    try {
+      await db.transact(db.tx.statRelations[relationId].delete());
+    } catch (err) {
+      console.error("Failed to unlink stat relation", err);
+    }
+  }, []);
 
   const handleToggleSelect = useCallback(
     (statId: string, event: MouseEvent<HTMLDivElement>) => {
@@ -1778,6 +2098,12 @@ export const AdminScreen = () => {
       return filtered.length === prev.length ? prev : filtered;
     });
   }, [statIndexMap]);
+
+  useEffect(() => {
+    if (expandedParentId && !statRelationsByParent.has(expandedParentId)) {
+      setExpandedParentId(null);
+    }
+  }, [expandedParentId, statRelationsByParent]);
 
   // Clear all selections and exit selection mode
   const handleClearSelection = useCallback(() => {
@@ -2784,6 +3110,18 @@ export const AdminScreen = () => {
             )}
             <button
               type="button"
+              onClick={handleOpenGroupModal}
+              disabled={selectedCount === 0}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+                selectedCount === 0
+                  ? "cursor-not-allowed border-slate-200 text-slate-400 opacity-60 dark:border-slate-700 dark:text-slate-600"
+                  : "border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              }`}
+            >
+              Group
+            </button>
+            <button
+              type="button"
               onClick={() => setIsNewStatOpen(true)}
               className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 sm:px-3 sm:py-1.5"
             >
@@ -2815,6 +3153,23 @@ export const AdminScreen = () => {
         </div>
       </div>
 
+      {groupNotice && (
+        <div className="mx-4 mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 shadow-sm dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200 sm:mx-6">
+          <div className="flex items-start gap-2">
+            <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
+            <div className="flex-1">{groupNotice}</div>
+            <button
+              type="button"
+              onClick={() => setGroupNotice(null)}
+              className="text-emerald-600 transition hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-100"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Stats list */}
       <div className="flex-1 overflow-y-auto px-4 py-3 sm:px-6 sm:py-4">
         {stats.length === 0 ? (
@@ -2839,23 +3194,88 @@ export const AdminScreen = () => {
           </div>
         ) : (
           <div className="mx-auto flex max-w-4xl select-none flex-col gap-3">
-            {sortedStats.map((stat) => (
-              <StatListItem
-                key={stat.id}
-                stat={stat}
-                isEditing={editingId === stat.id}
-                summary={statDataSummaryByStatId.get(stat.id)}
-                isDeleting={deletingId === stat.id}
-                onStartEdit={() => handleStartEdit(stat.id)}
-                onSave={(form) => handleSave(stat.id, form)}
-                onCancel={handleCancel}
-                onDelete={() => handleDeleteStat(stat.id)}
-                isSelected={selectedIdSet.has(stat.id)}
-                onToggleSelect={(event) => handleToggleSelect(stat.id, event)}
-                selectionMode={isSelectionMode}
-                categoryOptions={statCategoryOptions}
-              />
-            ))}
+            {sortedStats.map((stat) => {
+              const hasChildren = statRelationsByParent.has(stat.id);
+              const isExpanded = expandedParentId === stat.id;
+              const childGroups = hasChildren
+                ? Array.from(statRelationsByParent.get(stat.id)!.entries()).sort(([a], [b]) =>
+                    a.localeCompare(b),
+                  )
+                : [];
+              const childCount = hasChildren
+                ? childGroups.reduce((sum, [, rels]) => sum + rels.length, 0)
+                : 0;
+
+              return (
+                <div key={stat.id} className="flex flex-col gap-2">
+                  <StatListItem
+                    stat={stat}
+                    isEditing={editingId === stat.id}
+                    summary={statDataSummaryByStatId.get(stat.id)}
+                    isDeleting={deletingId === stat.id}
+                    onStartEdit={() => handleStartEdit(stat.id)}
+                    onSave={(form) => handleSave(stat.id, form)}
+                    onCancel={handleCancel}
+                    onDelete={() => handleDeleteStat(stat.id)}
+                    isSelected={selectedIdSet.has(stat.id)}
+                    onToggleSelect={(event) => handleToggleSelect(stat.id, event)}
+                    selectionMode={isSelectionMode}
+                    categoryOptions={statCategoryOptions}
+                    hasChildren={hasChildren}
+                    isExpanded={isExpanded}
+                    childrenCount={childCount}
+                    onToggleExpand={() =>
+                      setExpandedParentId((prev) => (prev === stat.id ? null : stat.id))
+                    }
+                  />
+                  {isExpanded && hasChildren && (
+                    <div className="ml-4 mt-1 space-y-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
+                      {childGroups.map(([attribute, relations]) => (
+                        <div key={attribute} className="space-y-2">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            {attribute}
+                          </div>
+                          <div className="space-y-2">
+                            {relations.map((rel) => {
+                              const child = statsById.get(rel.childStatId);
+                              if (!child) return null;
+                              return (
+                                <div key={child.id} className="relative">
+                                  <StatListItem
+                                    stat={child}
+                                    isEditing={editingId === child.id}
+                                    summary={statDataSummaryByStatId.get(child.id)}
+                                    isDeleting={deletingId === child.id}
+                                    onStartEdit={() => handleStartEdit(child.id)}
+                                    onSave={(form) => handleSave(child.id, form)}
+                                    onCancel={handleCancel}
+                                    onDelete={() => handleDeleteStat(child.id)}
+                                    isSelected={selectedIdSet.has(child.id)}
+                                    selectionMode={false}
+                                    categoryOptions={statCategoryOptions}
+                                    hasChildren={false}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleUnlinkRelation(rel.id);
+                                    }}
+                                    className="absolute right-3 top-3 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 shadow-sm transition hover:bg-rose-50 hover:text-rose-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
+                                  >
+                                    Unlink
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -2865,6 +3285,93 @@ export const AdminScreen = () => {
         onImported={handleImportedFromModal}
         categoryOptions={statCategoryOptions}
       />
+      {isGroupModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-6">
+          <div className="relative w-full max-w-lg rounded-2xl bg-white p-4 shadow-2xl dark:bg-slate-900">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Group stats</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {selectedCount} child stat{selectedCount === 1 ? "" : "s"} selected
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseGroupModal}
+                className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Parent stat
+                </label>
+                <CustomSelect
+                  value={groupParentId ?? ""}
+                  onChange={(val) => setGroupParentId(val || null)}
+                  options={parentOptions}
+                  placeholder="Select a parent stat"
+                  className="w-full"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Stat attribute
+                </label>
+                <input
+                  type="text"
+                  value={groupAttribute}
+                  onChange={(e) => setGroupAttribute(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-brand-900/50"
+                  placeholder="e.g., Age, Income, Education"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Sort order (optional)
+                </label>
+                <input
+                  type="number"
+                  value={groupSortOrder}
+                  onChange={(e) => setGroupSortOrder(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-brand-900/50"
+                  placeholder="Lower numbers show first"
+                />
+              </div>
+
+              {groupError && (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-200">
+                  {groupError}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleCloseGroupModal}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitGroup}
+                disabled={isGrouping}
+                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 disabled:opacity-60 dark:bg-brand-600 dark:hover:bg-brand-500"
+              >
+                {isGrouping ? "Grouping…" : "Group"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <DerivedStatModal
         isOpen={isDerivedModalOpen}
         stats={derivedSelection}

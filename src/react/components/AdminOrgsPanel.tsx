@@ -384,10 +384,14 @@ const OrgImportModal = ({
             <div className="flex items-center gap-2">
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
               <div>
-                <div className="text-xs font-semibold">Import in progress…</div>
+                <div className="text-xs font-semibold">
+                  {typeof activeBatch.requestedCount === "number"
+                    ? `Processing org ${(activeBatch.importedCount ?? 0) + 1} of ${activeBatch.requestedCount}`
+                    : "Processing organizations…"}
+                </div>
                 <div className="text-xs">
                   Saved {activeBatch.importedCount ?? 0}
-                  {typeof activeBatch.requestedCount === "number" ? ` / ${activeBatch.requestedCount}` : ""} orgs
+                  {typeof activeBatch.requestedCount === "number" ? ` / ${activeBatch.requestedCount}` : ""} · Fetching details -&gt; geocoding -&gt; saving to InstantDB
                 </div>
               </div>
             </div>
@@ -612,6 +616,31 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
     const percent =
       requested && requested > 0 ? Math.min(100, Math.round((imported / requested) * 100)) : null;
     return { imported, requested, percent };
+  }, [bannerBatch]);
+
+  const bannerStatus = useMemo(() => {
+    if (!bannerBatch) return null;
+    const imported = bannerBatch.importedCount ?? 0;
+    const requested = typeof bannerBatch.requestedCount === "number" ? bannerBatch.requestedCount : null;
+    const inFlight = requested ? Math.min(requested, imported + 1) : imported + 1;
+
+    if (bannerBatch.status === "starting") {
+      return {
+        title: "Import queued…",
+        detail: "Waiting for serverless function to start (fetching candidates)…",
+      };
+    }
+    if (bannerBatch.status === "running") {
+      const progressText = requested ? `Saved ${imported} / ${requested}` : `Saved ${imported}`;
+      return {
+        title: requested ? `Processing org ${inFlight} of ${requested}` : "Processing next organization",
+        detail: `${progressText} · Fetching details -> geocoding -> saving to InstantDB`,
+      };
+    }
+    return {
+      title: "Import complete",
+      detail: `Saved ${imported}${requested ? ` / ${requested}` : ""} orgs`,
+    };
   }, [bannerBatch]);
 
   const syntheticBatches = useMemo<OrgImportBatch[]>(() => {
@@ -882,21 +911,23 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
             </div>
             <div className="flex-1">
               <div className="text-sm font-semibold">
-                {bannerBatch.status === "starting"
-                  ? "Import starting…"
-                  : bannerBatch.status === "running"
-                  ? "Importing orgs (geocoding + saving)…"
-                  : "Import complete"}
+                {bannerStatus?.title ??
+                  (bannerBatch.status === "starting"
+                    ? "Import starting…"
+                    : bannerBatch.status === "running"
+                    ? "Importing orgs (geocoding + saving)…"
+                    : "Import complete")}
               </div>
               <div className="text-xs">
-                {bannerBatch.status === "starting"
-                  ? "Waiting for serverless function…"
-                  : (
-                    <>
-                      Saved {bannerCounts?.imported ?? 0}
-                      {bannerCounts?.requested ? ` / ${bannerCounts.requested}` : ""} orgs
-                    </>
-                  )}
+                {bannerStatus?.detail ??
+                  (bannerBatch.status === "starting"
+                    ? "Waiting for serverless function…"
+                    : (
+                      <>
+                        Saved {bannerCounts?.imported ?? 0}
+                        {bannerCounts?.requested ? ` / ${bannerCounts.requested}` : ""} orgs
+                      </>
+                    ))}
               </div>
               {bannerBatch.status === "running" && bannerCounts?.percent !== null && (
                 <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/70 dark:bg-white/10">

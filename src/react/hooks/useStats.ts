@@ -1,11 +1,17 @@
 import { useMemo, useRef } from "react";
 import { db } from "../../lib/reactDb";
 import { useAuthSession } from "./useAuthSession";
-import type { Stat } from "../../types/stat";
+import type {
+  Stat,
+  StatRelation,
+  StatRelationsByChild,
+  StatRelationsByParent,
+} from "../../types/stat";
 import type { Category } from "../../types/organization";
 import type { AreaKind } from "../../types/areas";
 import { DEFAULT_PARENT_AREA_BY_KIND } from "../../types/areas";
 import { normalizeScopeLabel } from "../../lib/scopeLabels";
+import { isDevEnv } from "../../lib/env";
 
 type SupportedAreaKind = Extract<AreaKind, "ZIP" | "COUNTY">;
 
@@ -47,6 +53,21 @@ export const useStats = ({ statDataEnabled = true }: UseStatsOptions = {}) => {
           stats: {
             $: {
               order: { name: "asc" as const },
+            },
+          },
+          statRelations: {
+            $: {
+              fields: [
+                "id",
+                "relationKey",
+                "parentStatId",
+                "childStatId",
+                "statAttribute",
+                "sortOrder",
+                "createdAt",
+                "updatedAt",
+              ],
+              order: { sortOrder: "asc" as const },
             },
           },
           ...(statDataEnabled
@@ -285,6 +306,127 @@ export const useStats = ({ statDataEnabled = true }: UseStatsOptions = {}) => {
     return map;
   }, [seriesByStatIdByKind]);
 
+  // Build parent/child relationships for stats
+  const { statRelationsByParent, statRelationsByChild } = useMemo(() => {
+    const byParent: StatRelationsByParent = new Map();
+    const byChild: StatRelationsByChild = new Map();
+    if (!effectiveData?.statRelations) {
+      return { statRelationsByParent: byParent, statRelationsByChild: byChild };
+    }
+
+    const seenKeys = new Set<string>();
+
+    const getRelationKey = (parentStatId: string, childStatId: string, statAttribute: string, rawKey?: string) => {
+      const normalizedAttribute = statAttribute.trim();
+      if (rawKey && typeof rawKey === "string" && rawKey.trim()) return rawKey;
+      return `${parentStatId}::${childStatId}::${normalizedAttribute}`;
+    };
+
+    for (const row of effectiveData.statRelations as StatRelation[]) {
+      if (
+        !row ||
+        typeof row.id !== "string" ||
+        typeof row.parentStatId !== "string" ||
+        typeof row.childStatId !== "string" ||
+        typeof row.statAttribute !== "string"
+      ) {
+        continue;
+      }
+
+      const parentStatId = row.parentStatId;
+      const childStatId = row.childStatId;
+      const statAttribute = row.statAttribute.trim();
+      if (!statAttribute) continue;
+
+      // Skip relations that refer to missing parents or children (keeps maps coherent)
+      if (!statsById.has(parentStatId)) continue;
+      const child = statsById.get(childStatId) ?? null;
+
+      const relationKey = getRelationKey(parentStatId, childStatId, statAttribute, row.relationKey);
+      if (seenKeys.has(relationKey)) continue;
+      seenKeys.add(relationKey);
+
+      const relation: StatRelation & { child: Stat | null } = {
+        id: row.id,
+        relationKey,
+        parentStatId,
+        childStatId,
+        statAttribute,
+        sortOrder: typeof row.sortOrder === "number" ? row.sortOrder : null,
+        createdAt: typeof row.createdAt === "number" ? row.createdAt : null,
+        updatedAt: typeof row.updatedAt === "number" ? row.updatedAt : null,
+        child,
+      };
+
+      const byAttribute =
+        byParent.get(parentStatId) ?? new Map<string, Array<StatRelation & { child: Stat | null }>>();
+      const list = byAttribute.get(statAttribute) ?? [];
+      list.push(relation);
+      byAttribute.set(statAttribute, list);
+      byParent.set(parentStatId, byAttribute);
+
+      const childList = byChild.get(childStatId) ?? [];
+      childList.push({
+        id: relation.id,
+        relationKey: relation.relationKey,
+        parentStatId: relation.parentStatId,
+        childStatId: relation.childStatId,
+        statAttribute: relation.statAttribute,
+        sortOrder: relation.sortOrder,
+        createdAt: relation.createdAt,
+        updatedAt: relation.updatedAt,
+      });
+      byChild.set(childStatId, childList);
+    }
+
+    // Sort children within each attribute by sortOrder then label/name
+    const sortRelations = (relations: Array<StatRelation & { child: Stat | null }>) => {
+      const safeLabel = (stat: Stat | null): string => {
+        if (!stat) return "";
+        return (stat.label || stat.name || "").toLowerCase();
+      };
+      relations.sort((a, b) => {
+        const aOrder = a.sortOrder ?? null;
+        const bOrder = b.sortOrder ?? null;
+        if (aOrder !== null && bOrder !== null && aOrder !== bOrder) return aOrder - bOrder;
+        if (aOrder !== null && bOrder === null) return -1;
+        if (aOrder === null && bOrder !== null) return 1;
+        const attrCompare = a.statAttribute.localeCompare(b.statAttribute);
+        if (attrCompare !== 0) return attrCompare;
+        const labelCompare = safeLabel(a.child).localeCompare(safeLabel(b.child));
+        if (labelCompare !== 0) return labelCompare;
+        return a.relationKey.localeCompare(b.relationKey);
+      });
+    };
+
+    for (const [, attributeMap] of byParent) {
+      for (const [, relations] of attributeMap) {
+        sortRelations(relations);
+      }
+    }
+
+    // Sort parent lists for children
+    for (const [, relations] of byChild) {
+      relations.sort((a, b) => {
+        const aOrder = a.sortOrder ?? null;
+        const bOrder = b.sortOrder ?? null;
+        if (aOrder !== null && bOrder !== null && aOrder !== bOrder) return aOrder - bOrder;
+        if (aOrder !== null && bOrder === null) return -1;
+        if (aOrder === null && bOrder !== null) return 1;
+        return a.statAttribute.localeCompare(b.statAttribute);
+      });
+    }
+
+    if (isDevEnv() && byParent.size > 0) {
+      console.debug("[useStats] statRelationsByParent ready", {
+        parents: byParent.size,
+        children: byChild.size,
+      });
+    }
+
+    return { statRelationsByParent: byParent, statRelationsByChild: byChild };
+  }, [effectiveData?.statRelations, statsById]);
+
   return {
     statsById,
     seriesByStatId: legacySeriesByStatId,
@@ -292,6 +434,8 @@ export const useStats = ({ statDataEnabled = true }: UseStatsOptions = {}) => {
     seriesByStatIdByParent,
     statDataByBoundary,
     statDataByParent,
+    statRelationsByParent,
+    statRelationsByChild,
     isLoading,
     error,
   };

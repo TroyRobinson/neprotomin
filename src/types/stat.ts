@@ -11,5 +11,23 @@ export interface Stat {
   active?: boolean;
 }
 
+export interface StatRelation {
+  id: string;
+  relationKey: string;
+  parentStatId: string;
+  childStatId: string;
+  statAttribute: string;
+  sortOrder?: number | null;
+  createdAt?: number | null;
+  updatedAt?: number | null;
+}
+
+export type StatRelationsByParent = Map<
+  string,
+  Map<string, Array<StatRelation & { child: Stat | null }>>
+>;
+
+export type StatRelationsByChild = Map<string, Array<StatRelation>>;
+
 /** Get display name for a stat (label if available, otherwise name) */
 export const getStatDisplayName = (stat: Stat): string => stat.label || stat.name;
