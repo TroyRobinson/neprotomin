@@ -1,5 +1,10 @@
 import type { IncomingMessage } from "node:http";
-import { fetchProPublicaOrgs, filterOrgsByKeywords } from "./_shared/orgImport.js";
+import {
+  PROPUBLICA_BASE,
+  enrichProPublicaOrgsWithDetails,
+  fetchProPublicaOrgs,
+  filterOrgsByKeywords,
+} from "./_shared/orgImport.js";
 
 type OrgPreviewRequest = IncomingMessage & {
   method?: string;
@@ -97,11 +102,12 @@ export default async function handler(req: OrgPreviewRequest, res: OrgPreviewRes
     }
 
     const filtered = filterOrgsByKeywords(items, includeKeywords, excludeKeywords, false).slice(0, limit);
+    const enriched = await enrichProPublicaOrgsWithDetails(filtered);
 
     respond(res, 200, {
       total,
-      count: filtered.length,
-      items: filtered,
+      count: enriched.length,
+      items: enriched,
       warning,
     });
   } catch (error: any) {

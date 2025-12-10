@@ -7,6 +7,7 @@ import {
   finalizeImportBatch,
   fetchProPublicaOrgs,
   filterOrgsByKeywords,
+  enrichProPublicaOrgsWithDetails,
   geocodeAddress,
   mapNteeToCategory,
   tx,
@@ -178,6 +179,9 @@ export default async function handler(req: OrgImportRequest, res: OrgImportRespo
     });
     const filtered = filterOrgsByKeywords(requested, includeKeywords, excludeKeywords, false);
 
+    trace.step = "enrichDetails";
+    const enriched = await enrichProPublicaOrgsWithDetails(filtered);
+
     trace.step = "createInstantClient";
     let db;
     try {
@@ -197,7 +201,7 @@ export default async function handler(req: OrgImportRequest, res: OrgImportRespo
       filters: { category, nteePrefix, state, city, includeKeywords, excludeKeywords, limit, importAll },
       createdBy,
     });
-    const requestedCount = filtered.length;
+    const requestedCount = enriched.length;
     const setBatchProgress = async (importedCount: number) => {
       try {
         await db.transact(
@@ -218,7 +222,7 @@ export default async function handler(req: OrgImportRequest, res: OrgImportRespo
     const sampleOrgIds: string[] = [];
     const txBuffer: any[] = [];
 
-    for (const org of filtered) {
+    for (const org of enriched) {
       const coords = await geocodeAddress(org);
       if (!coords) {
         continue;
@@ -245,7 +249,7 @@ export default async function handler(req: OrgImportRequest, res: OrgImportRespo
     trace.step = "finalizeBatch";
     await finalizeImportBatch(db, batchId, {
       status: "success",
-      requestedCount: filtered.length,
+      requestedCount: enriched.length,
       importedCount: importedIds.length,
       sampleOrgIds: sampleOrgIds.slice(0, 10),
       orgIds: importedIds,

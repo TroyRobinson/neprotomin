@@ -127,6 +127,23 @@ const GEOCODER_SERVICES = [
       return null;
     },
   },
+  {
+    name: "nominatim.osm.org",
+    buildUrl: (query) => {
+      const params = new URLSearchParams({ q: query, format: "json", limit: "1", addressdetails: "0" });
+      return `https://nominatim.openstreetmap.org/search?${params.toString()}`;
+    },
+    parse: (data) => {
+      if (!Array.isArray(data) || data.length === 0) return null;
+      const first = data[0];
+      const lat = typeof first?.lat === "string" ? parseFloat(first.lat) : null;
+      const lon = typeof first?.lon === "string" ? parseFloat(first.lon) : null;
+      if (typeof lat === "number" && !Number.isNaN(lat) && typeof lon === "number" && !Number.isNaN(lon)) {
+        return { latitude: lat, longitude: lon };
+      }
+      return null;
+    },
+  },
 ];
 
 const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
@@ -140,24 +157,41 @@ const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
 };
 
 export const geocodeAddress = async (org) => {
-  const address = buildAddressString(org);
-  if (!address) return null;
-  for (const service of GEOCODER_SERVICES) {
-    try {
-      const response = await fetchWithTimeout(service.buildUrl(address), {}, 10_000);
-      if (!response.ok) continue;
-      const data = await response.json();
-      const parsed = service.parse(data);
-      if (parsed) return { ...parsed, provider: service.name };
-    } catch (error) {
-      // Swallow and try next provider
-      console.warn(`[org-import] geocoder ${service.name} failed`, error);
+  const attempts = [];
+  const primary = buildAddressString(org);
+  if (primary) attempts.push(primary);
+  const withoutPostal = buildAddressString({ ...org, zip: null, postalCode: null });
+  if (withoutPostal && withoutPostal !== primary) attempts.push(withoutPostal);
+
+  for (const query of attempts) {
+    for (const service of GEOCODER_SERVICES) {
+      try {
+        const response = await fetchWithTimeout(service.buildUrl(query), {}, 10_000);
+        if (!response.ok) continue;
+        const data = await response.json();
+        const parsed = service.parse(data);
+        if (parsed) return { ...parsed, provider: service.name, query };
+      } catch (error) {
+        // Swallow and try next provider
+        console.warn(`[org-import] geocoder ${service.name} failed`, error);
+      }
     }
   }
   return null;
 };
 
-const PROPUBLICA_BASE = "https://projects.propublica.org/nonprofits/api/v2/search.json";
+export const PROPUBLICA_BASE = "https://projects.propublica.org/nonprofits/api/v2/search.json";
+const PROPUBLICA_DETAIL_BASE = "https://projects.propublica.org/nonprofits/api/v2/organizations";
+
+const buildProPublicaHeaders = () => {
+  const headers = {
+    Accept: "application/json",
+    "User-Agent": "NEProtoMinimal/OrgImport (+https://neighborhoodexplorer.org)",
+  };
+  const apiKey = process.env.PROPUBLICA_API_KEY || process.env.PROPUBLICA_NONPROFIT_API_KEY;
+  if (apiKey) headers["X-API-Key"] = apiKey;
+  return headers;
+};
 
 // Fetch one page of ProPublica orgs
 export const fetchProPublicaOrgs = async ({
@@ -180,12 +214,7 @@ export const fetchProPublicaOrgs = async ({
   params.set("page", String(Math.max(0, Number(page) || 0)));
 
   const url = `${PROPUBLICA_BASE}?${params.toString()}`;
-  const headers = {
-    Accept: "application/json",
-    "User-Agent": "NEProtoMinimal/OrgImport (+https://neighborhoodexplorer.org)",
-  };
-  const apiKey = process.env.PROPUBLICA_API_KEY || process.env.PROPUBLICA_NONPROFIT_API_KEY;
-  if (apiKey) headers["X-API-Key"] = apiKey;
+  const headers = buildProPublicaHeaders();
 
   let response;
   try {
@@ -204,21 +233,121 @@ export const fetchProPublicaOrgs = async ({
   const total = typeof payload?.total_results === "number" ? payload.total_results : organizations.length;
 
   const normalized = organizations
-    .map((org) => ({
-      id: normalizeString(org.id) ?? normalizeString(org.ein) ?? normalizeString(org.ein_tax_id) ?? id(),
-      name: normalizeString(org.organization_name) ?? normalizeString(org.name),
-      city: normalizeString(org.city),
-      state: normalizeString(org.state),
-      address: normalizeString(org.street) ?? normalizeString(org.address),
-      postalCode: normalizeString(org.zip) ?? normalizeString(org.zip_code),
-      nteeCode: normalizeString(org.ntee_code) ?? normalizeString(org.ntee) ?? normalizeString(org.ntee_classification),
-      nteeClassification: normalizeString(org.ntee_classification),
-      ein: normalizeString(org.ein) ?? normalizeString(org.ein_tax_id),
-      raw: org,
-    }))
+    .map((org) => {
+      const ein =
+        normalizeEin(org.ein) ??
+        normalizeEin(org.ein_tax_id) ??
+        normalizeEin(org.strein);
+      return {
+        id: normalizeString(org.id) ?? ein ?? id(),
+        name: normalizeString(org.organization_name) ?? normalizeString(org.name),
+        city: normalizeString(org.city),
+        state: normalizeString(org.state),
+        address: normalizeString(org.street) ?? normalizeString(org.address),
+        postalCode: normalizeString(org.zip) ?? normalizeString(org.zip_code),
+        nteeCode: normalizeString(org.ntee_code) ?? normalizeString(org.ntee) ?? normalizeString(org.ntee_classification),
+        nteeClassification: normalizeString(org.ntee_classification),
+        ein,
+        raw: org,
+      };
+    })
     .filter((org) => org.name);
 
   return { items: normalized, total };
+};
+
+const normalizeEin = (value) => {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "string") {
+    const digits = value.replace(/\D/g, "");
+    return digits.length ? digits : null;
+  }
+  return null;
+};
+
+export const fetchProPublicaOrgDetail = async (ein) => {
+  const normalizedEin = normalizeEin(ein);
+  if (!normalizedEin) return null;
+  const url = `${PROPUBLICA_DETAIL_BASE}/${normalizedEin}.json`;
+  let response;
+  try {
+    response = await fetchWithTimeout(url, { headers: buildProPublicaHeaders() }, 10_000);
+  } catch (networkError) {
+    console.warn(`[org-import] detail fetch failed for EIN ${normalizedEin}`, networkError);
+    return null;
+  }
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    console.warn(`[org-import] detail fetch ${response.status} ${response.statusText} for EIN ${normalizedEin} body="${body.substring(0, 200)}"`);
+    return null;
+  }
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (parseError) {
+    console.warn(`[org-import] detail fetch parse error for EIN ${normalizedEin}`, parseError);
+    return null;
+  }
+
+  const detail = payload?.organization;
+  if (!detail || typeof detail !== "object") return null;
+
+  return {
+    address: normalizeString(detail.street) ?? normalizeString(detail.address),
+    city: normalizeString(detail.city),
+    state: normalizeString(detail.state),
+    postalCode: normalizeString(detail.zipcode) ?? normalizeString(detail.zip) ?? normalizeString(detail.zip_code),
+    careOfName: normalizeString(detail.careofname),
+    raw: detail,
+  };
+};
+
+const shouldFetchDetail = (org) => {
+  const hasAddress = normalizeString(org.address);
+  const hasCity = normalizeString(org.city);
+  const hasState = normalizeString(org.state);
+  const hasPostal = normalizeString(org.postalCode);
+  return !(hasAddress && hasCity && hasState && hasPostal);
+};
+
+const mergeRaw = (searchRaw, detailRaw) => {
+  if (!searchRaw && !detailRaw) return null;
+  return {
+    ...(searchRaw ? { search: searchRaw } : {}),
+    ...(detailRaw ? { detail: detailRaw } : {}),
+  };
+};
+
+export const enrichProPublicaOrgsWithDetails = async (orgs, { concurrency = 4 } = {}) => {
+  if (!Array.isArray(orgs) || orgs.length === 0) return [];
+  const results = [...orgs];
+  const targets = orgs
+    .map((org, index) => ({ org, index, ein: normalizeEin(org.ein) }))
+    .filter((item) => item.ein && shouldFetchDetail(item.org));
+
+  const batchSize = Math.max(1, Math.min(concurrency, targets.length || 1));
+  for (let i = 0; i < targets.length; i += batchSize) {
+    const batch = targets.slice(i, i + batchSize);
+    const details = await Promise.all(
+      batch.map(async ({ ein, org, index }) => {
+        const detail = await fetchProPublicaOrgDetail(ein);
+        return { detail, index, org };
+      }),
+    );
+    for (const { detail, index, org } of details) {
+      if (!detail) continue;
+      results[index] = {
+        ...org,
+        address: detail.address ?? org.address,
+        city: detail.city ?? org.city,
+        state: detail.state ?? org.state,
+        postalCode: detail.postalCode ?? org.postalCode,
+        careOfName: detail.careOfName ?? org.careOfName,
+        raw: mergeRaw(org.raw, detail.raw),
+      };
+    }
+  }
+  return results;
 };
 
 // Persist a batch row with initial status
