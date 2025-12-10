@@ -91,6 +91,16 @@ const ArrowRightIcon = () => (
   </svg>
 );
 
+const ChevronDownIcon = () => (
+  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-4 w-4">
+    <path
+      fillRule="evenodd"
+      d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
+
 // Locate icon is now rendered in the map overlay button
 
 const MOBILE_SEARCH_AUTO_EXPAND_THRESHOLD = 380;
@@ -146,9 +156,12 @@ export const TopBar = ({
   const [neHomeRedirectDisabled, setNeHomeRedirectDisabled] = useState(getNeHomeRedirectState);
   const [showLocationTextMobile, setShowLocationTextMobile] = useState(true);
   const [showThemeButtonMobile, setShowThemeButtonMobile] = useState(true);
+  // Desktop "More" dropdown state
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const mobileActionsRef = useRef<HTMLDivElement | null>(null);
   const mobileSearchFormRef = useRef<HTMLFormElement | null>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const unsubscribe = themeController.subscribe((current) => {
@@ -160,6 +173,9 @@ export const TopBar = ({
   useEffect(() => {
     if (!isMobile) {
       setIsMobileMenuOpen(false);
+    } else {
+      // Close desktop dropdown when switching to mobile
+      setIsMoreMenuOpen(false);
     }
   }, [isMobile]);
 
@@ -289,6 +305,22 @@ export const TopBar = ({
     };
   }, [isCompactMobileSearch, isMobileSearchExpanded]);
 
+  // Click-outside handler for desktop "More" dropdown
+  useEffect(() => {
+    if (!isMoreMenuOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const menu = moreMenuRef.current;
+      if (menu && event.target instanceof Node && !menu.contains(event.target)) {
+        setIsMoreMenuOpen(false);
+      }
+    };
+    // Use mousedown for immediate response
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isMoreMenuOpen]);
+
   const handleThemeToggle = () => {
     themeController.toggle();
   };
@@ -389,7 +421,7 @@ export const TopBar = ({
     <>
       <header
         data-role="topbar"
-        className="sticky top-0 z-20 flex flex-col gap-2 border-b border-slate-200 bg-white/80 px-4 pt-safe backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/80 sm:gap-0 sm:px-6"
+        className="sticky top-0 z-40 flex flex-col gap-2 border-b border-slate-200 bg-white/80 px-4 pt-safe backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/80 sm:gap-0 sm:px-6"
       >
         <div className="hidden h-16 w-full items-center justify-between sm:flex">
           <div className="flex min-w-0 flex-1 items-center gap-4">
@@ -402,7 +434,7 @@ export const TopBar = ({
                 NE
               </span>
             </a>
-            <div className="relative flex min-w-0 flex-1 items-center overflow-hidden">
+            <div className="relative flex min-w-0 flex-1 items-center">
               <nav className="hidden items-center gap-2 sm:flex">
                 <a
                   href="#map"
@@ -468,60 +500,6 @@ export const TopBar = ({
                     Report
                   </a>
                 )}
-                {/* {showDataLink && (
-                  <a
-                    href="#data"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      trackNavItem("Data", "internal");
-                      onNavigate?.("data");
-                    }}
-                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-                      active === "data"
-                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                        : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                    }`}
-                    aria-current={active === "data" ? "page" : undefined}
-                  >
-                    Data
-                  </a>
-                )} */}
-                {showQueueLink && (
-                  <a
-                    href="#queue"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      trackNavItem("Queue", "internal");
-                      onNavigate?.("queue");
-                    }}
-                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-                      active === "queue"
-                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                        : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                    }`}
-                    aria-current={active === "queue" ? "page" : undefined}
-                  >
-                    <span>Queue</span>
-                    {showQueueBadge ? (
-                      <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-fuchsia-500 px-1 text-xs font-semibold leading-tight text-white">
-                        {queueBadgeLabel}
-                      </span>
-                    ) : null}
-                  </a>
-                )}
-                {showRoadmapLink && (
-                  <button
-                    type="button"
-                    onClick={() => handleNavigate("roadmap")}
-                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 transition hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white whitespace-nowrap ${
-                      active === "roadmap"
-                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                        : ""
-                    }`}
-                  >
-                    Roadmap
-                  </button>
-                )}
                 <a
                   href="https://www.neighborhoodexplorer.org/statistics/"
                   target="_blank"
@@ -532,33 +510,6 @@ export const TopBar = ({
                   All Stats
                 </a>
                 <a
-                  href="https://www.neighborhoodexplorer.org/organizations/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                  onClick={() => trackNavItem("Orgs", "external")}
-                >
-                  Orgs
-                </a>
-                <a
-                  href="https://www.neighborhoodexplorer.org/community-goals/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                  onClick={() => trackNavItem("Goals", "external")}
-                >
-                  Goals
-                </a>
-                <a
-                  href="https://www.neighborhoodexplorer.org/research-questions/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                  onClick={() => trackNavItem("Research", "external")}
-                >
-                  Research
-                </a>
-                <a
                   href="https://www.9bcorp.com"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -567,6 +518,109 @@ export const TopBar = ({
                 >
                   About
                 </a>
+                {/* "More" dropdown containing Queue, Roadmap, Orgs, Research */}
+                <div className="relative" ref={moreMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsMoreMenuOpen((prev) => !prev)}
+                    className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                      isMoreMenuOpen || active === "queue" || active === "roadmap"
+                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                        : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    }`}
+                    aria-expanded={isMoreMenuOpen}
+                    aria-haspopup="true"
+                  >
+                    <span>More</span>
+                    {showQueueBadge && (
+                      <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-fuchsia-500 px-1 text-xs font-semibold leading-tight text-white">
+                        {queueBadgeLabel}
+                      </span>
+                    )}
+                    <span className={`transition-transform duration-150 ${isMoreMenuOpen ? "rotate-180" : ""}`}>
+                      <ChevronDownIcon />
+                    </span>
+                  </button>
+                  {isMoreMenuOpen && (
+                    <div className="absolute left-0 top-full mt-2 z-50 min-w-[180px] rounded-xl border border-slate-200 bg-white py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                      {showQueueLink && (
+                        <a
+                          href="#queue"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setIsMoreMenuOpen(false);
+                            trackNavItem("Queue", "internal");
+                            onNavigate?.("queue");
+                          }}
+                          className={`flex w-full items-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${
+                            active === "queue"
+                              ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                              : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Queue</span>
+                          {showQueueBadge && (
+                            <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-fuchsia-500 px-1 text-xs font-semibold leading-tight text-white">
+                              {queueBadgeLabel}
+                            </span>
+                          )}
+                        </a>
+                      )}
+                      {showRoadmapLink && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMoreMenuOpen(false);
+                            handleNavigate("roadmap");
+                          }}
+                          className={`flex w-full items-center px-4 py-2 text-left text-sm font-medium transition-colors ${
+                            active === "roadmap"
+                              ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                              : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          Roadmap
+                        </button>
+                      )}
+                      <a
+                        href="https://www.neighborhoodexplorer.org/organizations/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex w-full items-center px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                        onClick={() => {
+                          setIsMoreMenuOpen(false);
+                          trackNavItem("Orgs", "external");
+                        }}
+                      >
+                        Orgs
+                      </a>
+                      <a
+                        href="https://www.neighborhoodexplorer.org/research-questions/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex w-full items-center px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                        onClick={() => {
+                          setIsMoreMenuOpen(false);
+                          trackNavItem("Research", "external");
+                        }}
+                      >
+                        Research
+                      </a>
+                      <a
+                        href="https://www.neighborhoodexplorer.org/community-goals/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex w-full items-center px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                        onClick={() => {
+                          setIsMoreMenuOpen(false);
+                          trackNavItem("Goals", "external");
+                        }}
+                      >
+                        Goals
+                      </a>
+                    </div>
+                  )}
+                </div>
                 <a
                   href={`https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=${neHomeRedirectDisabled ? "1" : "0"}`}
                   onClick={(e) => {
@@ -629,7 +683,7 @@ export const TopBar = ({
               />
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-4">
+          <div className="relative z-10 flex shrink-0 items-center gap-4 bg-white/80 pl-4 -ml-4 pr-2 -mr-2 dark:bg-slate-900/80 backdrop-blur-lg">
             {!isLoading && (!user || user.isGuest) && (
               <button
                 type="button"
