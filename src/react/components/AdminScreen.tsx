@@ -1816,6 +1816,23 @@ export const AdminScreen = () => {
 
   const childIdSet = useMemo(() => new Set(Array.from(statRelationsByChild.keys())), [statRelationsByChild]);
 
+  const hasDescendant = useCallback(
+    (ancestorId: string, targetId: string, visited = new Set<string>()) => {
+      if (visited.has(ancestorId)) return false;
+      visited.add(ancestorId);
+      const byAttr = statRelationsByParent.get(ancestorId);
+      if (!byAttr) return false;
+      for (const relations of byAttr.values()) {
+        for (const rel of relations) {
+          if (rel.childStatId === targetId) return true;
+          if (hasDescendant(rel.childStatId, targetId, visited)) return true;
+        }
+      }
+      return false;
+    },
+    [statRelationsByParent],
+  );
+
   // Extract unique categories from stats
   const availableCategories = useMemo(() => {
     const cats = new Set<string>();
@@ -1911,6 +1928,7 @@ export const AdminScreen = () => {
   const [groupNotice, setGroupNotice] = useState<string | null>(null);
   const [isGrouping, setIsGrouping] = useState(false);
   const [expandedParentId, setExpandedParentId] = useState<string | null>(null);
+  const [expandedChildIds, setExpandedChildIds] = useState<Record<string, boolean>>({});
 
   const parentOptions = useMemo(
     () =>
@@ -1970,16 +1988,11 @@ export const AdminScreen = () => {
       return;
     }
 
-    // Enforce single statAttribute per child across all parents
+    // Prevent cycles: child cannot already be an ancestor of the parent
     for (const childId of childIds) {
-      const existingForChild = statRelationsByChild.get(childId);
-      if (existingForChild && existingForChild.length > 0) {
-        const existingAttr = existingForChild[0]?.statAttribute;
-        if (existingAttr && existingAttr !== attribute) {
-          const childName = statsById.get(childId)?.label || statsById.get(childId)?.name || "Child stat";
-          setGroupError(`"${childName}" already uses statAttribute "${existingAttr}".`);
-          return;
-        }
+      if (hasDescendant(childId, groupParentId)) {
+        setGroupError("Cannot create a cycle between parent and child.");
+        return;
       }
     }
 
@@ -3239,8 +3252,18 @@ export const AdminScreen = () => {
                             {relations.map((rel) => {
                               const child = statsById.get(rel.childStatId);
                               if (!child) return null;
+                              const childHasChildren = statRelationsByParent.has(child.id);
+                              const isChildExpanded = expandedChildIds[child.id] === true;
+                              const grandChildGroups = childHasChildren
+                                ? Array.from(statRelationsByParent.get(child.id)!.entries()).sort(([a, b]) =>
+                                    a.localeCompare(b),
+                                  )
+                                : [];
+                              const grandChildCount = childHasChildren
+                                ? grandChildGroups.reduce((sum, [, rels]) => sum + rels.length, 0)
+                                : 0;
                               return (
-                                <div key={child.id} className="relative">
+                                <div key={child.id} className="relative space-y-2">
                                   <StatListItem
                                     stat={child}
                                     isEditing={editingId === child.id}
@@ -3253,7 +3276,18 @@ export const AdminScreen = () => {
                                     isSelected={selectedIdSet.has(child.id)}
                                     selectionMode={false}
                                     categoryOptions={statCategoryOptions}
-                                    hasChildren={false}
+                                    hasChildren={childHasChildren}
+                                    isExpanded={isChildExpanded}
+                                    childrenCount={grandChildCount}
+                                    onToggleExpand={
+                                      childHasChildren
+                                        ? () =>
+                                            setExpandedChildIds((prev) => ({
+                                              ...prev,
+                                              [child.id]: !prev[child.id],
+                                            }))
+                                        : undefined
+                                    }
                                   />
                                   <button
                                     type="button"
@@ -3265,6 +3299,40 @@ export const AdminScreen = () => {
                                   >
                                     Unlink
                                   </button>
+                                  {childHasChildren && isChildExpanded && (
+                                    <div className="ml-4 space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
+                                      {grandChildGroups.map(([gAttr, gRels]) => (
+                                        <div key={gAttr} className="space-y-1">
+                                          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                            {gAttr}
+                                          </div>
+                                          <div className="space-y-1">
+                                            {gRels.map((gRel) => {
+                                              const grandChild = statsById.get(gRel.childStatId);
+                                              if (!grandChild) return null;
+                                              return (
+                                                <StatListItem
+                                                  key={grandChild.id}
+                                                  stat={grandChild}
+                                                  isEditing={editingId === grandChild.id}
+                                                  summary={statDataSummaryByStatId.get(grandChild.id)}
+                                                  isDeleting={deletingId === grandChild.id}
+                                                  onStartEdit={() => handleStartEdit(grandChild.id)}
+                                                  onSave={(form) => handleSave(grandChild.id, form)}
+                                                  onCancel={handleCancel}
+                                                  onDelete={() => handleDeleteStat(grandChild.id)}
+                                                  isSelected={selectedIdSet.has(grandChild.id)}
+                                                  selectionMode={false}
+                                                  categoryOptions={statCategoryOptions}
+                                                  hasChildren={false}
+                                                />
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
