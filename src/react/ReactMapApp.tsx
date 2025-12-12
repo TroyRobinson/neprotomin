@@ -30,7 +30,7 @@ import { type TimeSelection, isOrganizationOpenAtTime, toTimeSelection } from ".
 import { findCitySearchTarget, DEFAULT_CITY_ZOOM } from "./lib/citySearchTargets";
 import { parseFullAddress, geocodeAddress, looksLikeAddress } from "./lib/geocoding";
 import { normalizeForSearch, computeSimilarityFromNormalized } from "./lib/fuzzyMatch";
-import { getMapPositionFromUrl, updateUrlWithMapPosition, type MapPosition } from "./lib/mapUrl";
+import { getMapStateFromUrl, updateUrlWithMapState } from "./lib/mapUrl";
 import { useAuthSession } from "./hooks/useAuthSession";
 import { setStatDataSubscriptionEnabled } from "../state/statData";
 import { MapSettingsModal } from "./components/MapSettingsModal";
@@ -181,7 +181,10 @@ export const ReactMapApp = () => {
   const [selectedOrgIds, setSelectedOrgIds] = useState<string[]>([]);
   // Track whether the direct org selection originated from the map (vs sidebar click)
   const [selectedOrgIdsFromMap, setSelectedOrgIdsFromMap] = useState<boolean>(false);
-  const [selectedStatId, setSelectedStatId] = useState<string | null>(null);
+  // Parse initial map state from URL once
+  const [initialMapState] = useState(() => getMapStateFromUrl());
+  const initialMapPosition = initialMapState.position;
+  const [selectedStatId, setSelectedStatId] = useState<string | null>(() => initialMapState.statId);
   const [secondaryStatId, setSecondaryStatId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [hasAppliedDefaultStat, setHasAppliedDefaultStat] = useState(false);
@@ -193,8 +196,6 @@ export const ReactMapApp = () => {
   });
   const [authOpen, setAuthOpen] = useState(false);
   const [cameraState, setCameraState] = useState<{ center: [number, number]; zoom: number } | null>(null);
-  // Initial map position from URL (parsed once on mount)
-  const [initialMapPosition] = useState<MapPosition | null>(() => getMapPositionFromUrl());
   const [hasInteractedWithMap, setHasInteractedWithMap] = useState(false);
   const [sidebarFollowsMap, setSidebarFollowsMap] = useState(true);
   const [orgPinsVisible, setOrgPinsVisible] = useState(true);
@@ -1206,7 +1207,7 @@ export const ReactMapApp = () => {
     }
   }, [autoBoundarySwitch, cameraState, boundaryMode]);
 
-  // Debounced URL update when camera changes
+  // Debounced URL update when camera or stat changes
   const urlUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!cameraState) return;
@@ -1217,14 +1218,14 @@ export const ReactMapApp = () => {
     // Debounce URL updates to avoid spam during panning
     urlUpdateTimeoutRef.current = setTimeout(() => {
       const [lng, lat] = cameraState.center;
-      updateUrlWithMapPosition(lat, lng, cameraState.zoom);
+      updateUrlWithMapState(lat, lng, cameraState.zoom, selectedStatId);
     }, 400);
     return () => {
       if (urlUpdateTimeoutRef.current) {
         clearTimeout(urlUpdateTimeoutRef.current);
       }
     };
-  }, [cameraState]);
+  }, [cameraState, selectedStatId]);
 
   const normalizedZipScope = normalizeScopeLabel(zipScope) ?? FALLBACK_ZIP_SCOPE;
   const defaultCountyScope = useMemo(
@@ -1584,6 +1585,11 @@ export const ReactMapApp = () => {
 
   useEffect(() => {
     if (hasAppliedDefaultStat) return;
+    // If stat was already set from URL, skip applying defaults
+    if (selectedStatId) {
+      setHasAppliedDefaultStat(true);
+      return;
+    }
     const allStats = Array.from(statsById.values());
 
     // Helper: first stat marked as homeFeatured + featured + active
