@@ -198,7 +198,7 @@ export const ReactMapApp = () => {
   const [cameraState, setCameraState] = useState<{ center: [number, number]; zoom: number } | null>(null);
   const [hasInteractedWithMap, setHasInteractedWithMap] = useState(false);
   const [sidebarFollowsMap, setSidebarFollowsMap] = useState(true);
-  const [orgPinsVisible, setOrgPinsVisible] = useState(true);
+  const [orgPinsVisible, setOrgPinsVisible] = useState<boolean>(() => initialMapState.orgPinsVisible);
   const [orgsVisibleIds, setOrgsVisibleIds] = useState<string[]>([]);
   const [orgsAllSourceIds, setOrgsAllSourceIds] = useState<string[]>([]);
   const latestVisibleIdsRef = useRef<{ visible: string[]; all: string[] }>({ visible: [], all: [] });
@@ -238,7 +238,7 @@ export const ReactMapApp = () => {
   const [sheetState, setSheetState] = useState<"peek" | "partial" | "expanded">("peek");
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
   const [isDraggingSheet, setIsDraggingSheet] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(() => initialMapState.showAdvanced);
   const [legendRangeMode, setLegendRangeMode] = useState<"dynamic" | "scoped" | "global">("dynamic");
   const [mapSettingsOpen, setMapSettingsOpen] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(() => {
@@ -1207,7 +1207,7 @@ export const ReactMapApp = () => {
     }
   }, [autoBoundarySwitch, cameraState, boundaryMode]);
 
-  // Debounced URL update when camera, stat, category, or selected orgs change
+  // Debounced URL update when camera, stat, category, selected orgs, or toggles change
   const urlUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!cameraState) return;
@@ -1218,14 +1218,23 @@ export const ReactMapApp = () => {
     // Debounce URL updates to avoid spam during panning
     urlUpdateTimeoutRef.current = setTimeout(() => {
       const [lng, lat] = cameraState.center;
-      updateUrlWithMapState(lat, lng, cameraState.zoom, selectedStatId, categoryFilter, selectedOrgIds);
+      updateUrlWithMapState(
+        lat,
+        lng,
+        cameraState.zoom,
+        selectedStatId,
+        categoryFilter,
+        selectedOrgIds,
+        showAdvanced,
+        orgPinsVisible,
+      );
     }, 400);
     return () => {
       if (urlUpdateTimeoutRef.current) {
         clearTimeout(urlUpdateTimeoutRef.current);
       }
     };
-  }, [cameraState, selectedStatId, categoryFilter, selectedOrgIds]);
+  }, [cameraState, selectedStatId, categoryFilter, selectedOrgIds, showAdvanced, orgPinsVisible]);
 
   const normalizedZipScope = normalizeScopeLabel(zipScope) ?? FALLBACK_ZIP_SCOPE;
   const defaultCountyScope = useMemo(
@@ -3180,6 +3189,7 @@ export const ReactMapApp = () => {
               onRequestCollapseSheet={isMobile ? collapseSheet : undefined}
               onStatSelect={handleStatSelect}
               onOrgPinsVisibleChange={setOrgPinsVisible}
+              initialOrgPinsVisible={initialMapState.orgPinsVisible}
               forceHideOrgsNonce={forceHideOrgsNonce}
               timeSelection={timeSelection}
               onClearTimeFilter={handleClearTimeFilter}
@@ -3302,6 +3312,7 @@ export const ReactMapApp = () => {
                     onRequestCollapseSheet={collapseSheet}
                     onStatSelect={handleStatSelect}
                     onOrgPinsVisibleChange={setOrgPinsVisible}
+                    initialOrgPinsVisible={initialMapState.orgPinsVisible}
                     forceHideOrgsNonce={forceHideOrgsNonce}
                     timeSelection={timeSelection}
                     onClearTimeFilter={handleClearTimeFilter}

@@ -12,6 +12,8 @@ export interface MapState {
   statId: string | null;
   category: string | null;
   orgIds: string[];
+  showAdvanced: boolean;
+  orgPinsVisible: boolean;
 }
 
 // Parse map position from current URL query params
@@ -72,13 +74,15 @@ export function clearMapPositionFromUrl(): void {
   window.history.replaceState(null, "", url.toString());
 }
 
-// Get full map state from URL (position + stat + category + orgs)
+// Get full map state from URL (position + stat + category + orgs + toggles)
 export function getMapStateFromUrl(): MapState {
   const position = getMapPositionFromUrl();
   const statId = getStatIdFromUrl();
   const category = getCategoryFromUrl();
   const orgIds = getOrgIdsFromUrl();
-  return { position, statId, category, orgIds };
+  const showAdvanced = getShowAdvancedFromUrl();
+  const orgPinsVisible = getOrgPinsVisibleFromUrl();
+  return { position, statId, category, orgIds, showAdvanced, orgPinsVisible };
 }
 
 // Get stat ID from URL
@@ -104,6 +108,23 @@ export function getOrgIdsFromUrl(): string[] {
   return orgsParam.split(",").filter(id => id.trim().length > 0);
 }
 
+// Get showAdvanced from URL (defaults to false if not present)
+export function getShowAdvancedFromUrl(): boolean {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  return params.get("advanced") === "true";
+}
+
+// Get orgPinsVisible from URL (defaults to true if not present)
+export function getOrgPinsVisibleFromUrl(): boolean {
+  if (typeof window === "undefined") return true;
+  const params = new URLSearchParams(window.location.search);
+  const value = params.get("pins");
+  // If not specified, default to true
+  if (value === null) return true;
+  return value === "true";
+}
+
 // Update URL with stat ID
 export function updateUrlWithStatId(statId: string | null): void {
   if (typeof window === "undefined") return;
@@ -119,7 +140,7 @@ export function updateUrlWithStatId(statId: string | null): void {
   window.history.replaceState(null, "", url.toString());
 }
 
-// Update URL with full map state (position + stat + category + orgs)
+// Update URL with full map state (position + stat + category + orgs + toggles)
 export function updateUrlWithMapState(
   lat: number,
   lng: number,
@@ -127,6 +148,8 @@ export function updateUrlWithMapState(
   statId: string | null,
   category: string | null,
   orgIds: string[],
+  showAdvanced: boolean,
+  orgPinsVisible: boolean,
 ): void {
   if (typeof window === "undefined") return;
 
@@ -156,6 +179,20 @@ export function updateUrlWithMapState(
     url.searchParams.set("orgs", orgIds.join(","));
   } else {
     url.searchParams.delete("orgs");
+  }
+
+  // Update showAdvanced (only if true, to keep URLs clean)
+  if (showAdvanced) {
+    url.searchParams.set("advanced", "true");
+  } else {
+    url.searchParams.delete("advanced");
+  }
+
+  // Update orgPinsVisible (only if false, since true is the default)
+  if (!orgPinsVisible) {
+    url.searchParams.set("pins", "false");
+  } else {
+    url.searchParams.delete("pins");
   }
 
   window.history.replaceState(null, "", url.toString());
