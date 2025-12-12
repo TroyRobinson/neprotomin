@@ -77,6 +77,7 @@ interface SidebarProps {
   onHoverArea?: (area: AreaId | null) => void;
   onStatSelect?: (statId: string | null, meta?: { shiftKey?: boolean; clear?: boolean }) => void;
   onOrgPinsVisibleChange?: (visible: boolean) => void;
+  initialOrgPinsVisible?: boolean;
   variant?: "desktop" | "mobile";
   showInsights?: boolean;
   showAdvanced?: boolean;
@@ -136,6 +137,7 @@ export const Sidebar = ({
   onHoverArea,
   onStatSelect,
   onOrgPinsVisibleChange,
+  initialOrgPinsVisible = true,
   variant = "desktop",
   showInsights = true,
   showAdvanced = false,
@@ -153,7 +155,7 @@ export const Sidebar = ({
   const { sidebarCategories, getCategoryLabel } = useCategories();
 
   const [activeTab, setActiveTab] = useState<TabType>("orgs");
-  const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(true);
+  const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(initialOrgPinsVisible);
   const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
   const [issueModalOrg, setIssueModalOrg] = useState<Organization | null>(null);
   const [issueFeedback, setIssueFeedback] = useState<string | null>(null);
