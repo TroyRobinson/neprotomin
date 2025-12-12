@@ -3349,7 +3349,8 @@ export const AdminScreen = () => {
                                     onCancel={handleCancel}
                                     onDelete={() => handleDeleteStat(child.id)}
                                     isSelected={selectedIdSet.has(child.id)}
-                                    selectionMode={false}
+                                    onToggleSelect={(event) => handleToggleSelect(child.id, event)}
+                                    selectionMode={isSelectionMode}
                                     categoryOptions={statCategoryOptions}
                                     hasChildren={childHasChildren}
                                     isExpanded={isChildExpanded}
@@ -3388,7 +3389,8 @@ export const AdminScreen = () => {
                                                   onCancel={handleCancel}
                                                   onDelete={() => handleDeleteStat(grandChild.id)}
                                                   isSelected={selectedIdSet.has(grandChild.id)}
-                                                  selectionMode={false}
+                                                  onToggleSelect={(event) => handleToggleSelect(grandChild.id, event)}
+                                                  selectionMode={isSelectionMode}
                                                   categoryOptions={statCategoryOptions}
                                                   hasChildren={false}
                                                   onUnlink={() => handleUnlinkRelation(gRel.id)}
