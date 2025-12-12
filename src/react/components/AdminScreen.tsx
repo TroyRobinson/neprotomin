@@ -1104,11 +1104,43 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
 
       const defaults: Record<string, { selected: boolean; yearEnd: number; yearStart: number | null }> = {};
       const suggestedSet = new Set((suggestedStatIds ?? []).filter(Boolean));
+      const autoSelected: Array<{ name: string; yearEnd: number; yearStart: number | null }> = [];
       for (const v of parsed) {
         // Auto-select any AI-suggested variables that exist in this group preview.
         const shouldSelect = suggestedSet.size > 0 && suggestedSet.has(v.name);
-        defaults[v.name] = { selected: shouldSelect, yearEnd: year, yearStart: year - 2 };
+        const entry = { selected: shouldSelect, yearEnd: year, yearStart: year - 2 };
+        defaults[v.name] = entry;
+        if (shouldSelect) {
+          autoSelected.push({ name: v.name, yearEnd: entry.yearEnd, yearStart: entry.yearStart });
+        }
       }
+
+      // Mirror the manual checkbox behavior: if we auto-select variables, add them to the queue too.
+      if (autoSelected.length) {
+        setQueueItems((prevQueue) => {
+          const next = [...prevQueue];
+          for (const sel of autoSelected) {
+            const exists = next.some((item) => item.variable === sel.name && item.group === trimmedGroup);
+            if (exists) continue;
+            const qYear = sel.yearEnd;
+            const qYears =
+              sel.yearStart !== null ? Math.max(1, sel.yearEnd - sel.yearStart + 1) : 1;
+            const key = `${resolvedDataset}::${trimmedGroup}::${sel.name}`;
+            next.push({
+              id: key,
+              dataset: resolvedDataset,
+              group: trimmedGroup,
+              variable: sel.name,
+              year: qYear,
+              years: qYears,
+              includeMoe: true,
+              status: "pending" as const,
+            });
+          }
+          return next;
+        });
+      }
+
       setSelection(defaults);
       setStep(2);
     } catch (err) {
