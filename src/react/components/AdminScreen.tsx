@@ -688,6 +688,11 @@ interface CensusGroupResult {
   description: string;
 }
 
+interface AISuggestion {
+  groupNumber: string;
+  reason: string;
+}
+
 interface GroupSearchInputProps {
   value: string;
   onChange: (value: string) => void;
@@ -711,6 +716,7 @@ const GroupSearchInput = ({
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [results, setResults] = useState<CensusGroupResult[]>([]);
+  const [aiSuggestion, setAiSuggestion] = useState<AISuggestion | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -736,28 +742,45 @@ const GroupSearchInput = ({
 
     setIsSearching(true);
     setSearchError(null);
+    setAiSuggestion(null);
+
     try {
-      const params = new URLSearchParams({
-        dataset,
-        year: String(year),
-        search: trimmed,
-        limit: "15",
-      });
-      const response = await fetch(`/api/census-groups?${params.toString()}`);
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload) {
-        setSearchError(payload?.error || "Search failed.");
+      // Call both Census groups API and OpenRouter AI in parallel
+      const [groupsResponse, aiResponse] = await Promise.allSettled([
+        fetch(`/api/census-groups?${new URLSearchParams({
+          dataset,
+          year: String(year),
+          search: trimmed,
+          limit: "15",
+        }).toString()}`).then(res => res.json()),
+        fetch('/api/ai-census-suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: trimmed, dataset, year }),
+        }).then(res => res.json()),
+      ]);
+
+      // Handle Census groups results
+      if (groupsResponse.status === 'fulfilled' && groupsResponse.value) {
+        const groups = Array.isArray(groupsResponse.value.groups) ? groupsResponse.value.groups : [];
+        setResults(
+          groups.map((g: any) => ({
+            name: typeof g.name === "string" ? g.name : "",
+            description: typeof g.description === "string" ? g.description : "",
+          }))
+        );
+      } else {
         setResults([]);
-        setIsDropdownOpen(true);
-        return;
       }
-      const groups = Array.isArray(payload.groups) ? payload.groups : [];
-      setResults(
-        groups.map((g: any) => ({
-          name: typeof g.name === "string" ? g.name : "",
-          description: typeof g.description === "string" ? g.description : "",
-        }))
-      );
+
+      // Handle AI suggestion
+      if (aiResponse.status === 'fulfilled' && aiResponse.value?.groupNumber) {
+        setAiSuggestion({
+          groupNumber: aiResponse.value.groupNumber,
+          reason: aiResponse.value.reason || "AI suggested group",
+        });
+      }
+
       setIsDropdownOpen(true);
       setHighlightedIndex(-1);
     } catch (err) {
@@ -860,7 +883,32 @@ const GroupSearchInput = ({
           {searchError && (
             <div className="px-3 py-2 text-xs text-rose-600 dark:text-rose-400">{searchError}</div>
           )}
-          {!searchError && results.length === 0 && (
+
+          {/* AI Suggestion - highlighted at top */}
+          {aiSuggestion && (
+            <button
+              type="button"
+              onClick={() => handleSelectGroup(aiSuggestion.groupNumber)}
+              className="flex w-full flex-col gap-1 border-b-2 border-brand-200 bg-gradient-to-r from-brand-50 to-purple-50 px-3 py-2.5 text-left transition hover:from-brand-100 hover:to-purple-100 dark:border-brand-700 dark:from-brand-900/40 dark:to-purple-900/40 dark:hover:from-brand-900/60 dark:hover:to-purple-900/60"
+            >
+              <div className="flex items-center gap-1.5">
+                <svg className="h-3.5 w-3.5 shrink-0 text-brand-500 dark:text-brand-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.476.859h4.002z" />
+                </svg>
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-400">
+                  AI Suggestion
+                </span>
+              </div>
+              <span className="text-xs font-medium text-slate-800 dark:text-slate-100">
+                {aiSuggestion.groupNumber}
+              </span>
+              <span className="line-clamp-2 text-[10px] text-slate-600 dark:text-slate-300">
+                {aiSuggestion.reason}
+              </span>
+            </button>
+          )}
+
+          {!searchError && !aiSuggestion && results.length === 0 && (
             <div className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
               No matching groups found.
             </div>
@@ -1302,7 +1350,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                 </div>
                 <div className="flex-1 space-y-1">
                   <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                    Group Search
+                    Search
                   </label>
                   <GroupSearchInput
                     value={group}
