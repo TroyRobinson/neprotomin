@@ -690,6 +690,8 @@ interface CensusGroupResult {
 
 interface AISuggestion {
   groupNumber: string;
+  statIds?: string[] | null;
+  // Back-compat: older API response shape
   statId?: string | null;
   reason: string;
 }
@@ -699,7 +701,7 @@ interface GroupSearchInputProps {
   onChange: (value: string) => void;
   dataset: string;
   year: number;
-  onPreview?: (groupOverride?: string, suggestedStatId?: string | null) => void; // Called when Enter pressed with a group ID
+  onPreview?: (groupOverride?: string, suggestedStatIds?: string[] | null) => void; // Called when Enter pressed with a group ID
   inputRef?: React.RefObject<HTMLInputElement | null>; // For external focus control
   onRegisterSearchRunner?: (runner: () => void) => void; // Expose internal search for external button
 }
@@ -776,9 +778,17 @@ const GroupSearchInput = ({
 
       // Handle AI suggestion
       if (aiResponse.status === 'fulfilled' && aiResponse.value?.groupNumber) {
+        const statIds = Array.isArray(aiResponse.value.statIds)
+          ? aiResponse.value.statIds.filter((v: unknown) => typeof v === "string")
+          : null;
+        const fallbackStatId = typeof aiResponse.value.statId === "string" ? aiResponse.value.statId : null;
+        const normalizedStatIds =
+          statIds && statIds.length ? statIds : fallbackStatId ? [fallbackStatId] : null;
+
         setAiSuggestion({
           groupNumber: aiResponse.value.groupNumber,
-          statId: typeof aiResponse.value.statId === "string" ? aiResponse.value.statId : null,
+          statIds: normalizedStatIds,
+          statId: fallbackStatId,
           reason: aiResponse.value.reason || "AI suggested group",
         });
       }
@@ -831,7 +841,7 @@ const GroupSearchInput = ({
     }
   };
 
-  const handleSelectGroup = (groupName: string, suggestedStatId?: string | null) => {
+  const handleSelectGroup = (groupName: string, suggestedStatIds?: string[] | null) => {
     onChange(groupName);
     setIsDropdownOpen(false);
     setResults([]);
@@ -839,7 +849,7 @@ const GroupSearchInput = ({
     setAiSuggestion(null);
     // Auto-trigger search after selecting a group (pass groupName directly since state update is async)
     if (onPreview) {
-      onPreview(groupName, suggestedStatId);
+      onPreview(groupName, suggestedStatIds ?? null);
     }
   };
 
@@ -891,7 +901,16 @@ const GroupSearchInput = ({
           {aiSuggestion && (
             <button
               type="button"
-              onClick={() => handleSelectGroup(aiSuggestion.groupNumber, aiSuggestion.statId)}
+              onClick={() =>
+                handleSelectGroup(
+                  aiSuggestion.groupNumber,
+                  aiSuggestion.statIds && aiSuggestion.statIds.length
+                    ? aiSuggestion.statIds
+                    : aiSuggestion.statId
+                      ? [aiSuggestion.statId]
+                      : null
+                )
+              }
               className="flex w-full flex-col gap-1 border-b-2 border-brand-200 bg-gradient-to-r from-brand-50 to-purple-50 px-3 py-2.5 text-left transition hover:from-brand-100 hover:to-purple-100 dark:border-brand-700 dark:from-brand-900/40 dark:to-purple-900/40 dark:hover:from-brand-900/60 dark:hover:to-purple-900/60"
             >
               <div className="flex items-center gap-1.5">
@@ -1031,7 +1050,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
     };
   }, [isOpen, isRunning, onClose]);
 
-  const handlePreview = useCallback(async (groupOverride?: string, suggestedStatId?: string | null) => {
+  const handlePreview = useCallback(async (groupOverride?: string, suggestedStatIds?: string[] | null) => {
     const trimmedGroup = (groupOverride ?? group).trim();
     if (!trimmedGroup) {
       setPreviewError("Census group is required.");
@@ -1084,9 +1103,10 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
       setLastSubmittedGroup(trimmedGroup); // Track what was previewed
 
       const defaults: Record<string, { selected: boolean; yearEnd: number; yearStart: number | null }> = {};
+      const suggestedSet = new Set((suggestedStatIds ?? []).filter(Boolean));
       for (const v of parsed) {
-        // Auto-select the AI-suggested variable if it matches
-        const shouldSelect = !!(suggestedStatId && v.name === suggestedStatId);
+        // Auto-select any AI-suggested variables that exist in this group preview.
+        const shouldSelect = suggestedSet.size > 0 && suggestedSet.has(v.name);
         defaults[v.name] = { selected: shouldSelect, yearEnd: year, yearStart: year - 2 };
       }
       setSelection(defaults);

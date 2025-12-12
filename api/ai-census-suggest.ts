@@ -90,10 +90,10 @@ Variable naming convention:
 - _001E is typically the total/aggregate
 
 Respond with ONLY a JSON object in this exact format (no markdown, no explanation):
-{"groupNumber": "B12001", "statId": "B12001_004E", "reason": "Male population currently married"}
+{"groupNumber": "B12001", "statIds": ["B12001_004E"], "reason": "Male population currently married"}
 
 If you cannot confidently suggest a group, respond with:
-{"groupNumber": "", "statId": "", "reason": ""}`;
+{"groupNumber": "", "statIds": [], "reason": ""}`;
 
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -111,7 +111,7 @@ If you cannot confidently suggest a group, respond with:
           },
         ],
         temperature: 0.3,
-        max_tokens: 150,
+        max_tokens: 200,
       }),
     });
 
@@ -146,12 +146,32 @@ If you cannot confidently suggest a group, respond with:
               : typeof parsed.variable === "string"
                 ? parsed.variable
                 : "";
-      const statId = statIdRaw || null;
+      const statIdsRaw =
+        Array.isArray(parsed.statIds)
+          ? parsed.statIds
+          : Array.isArray(parsed.statIDs)
+            ? parsed.statIDs
+            : Array.isArray(parsed.variableIds)
+              ? parsed.variableIds
+              : Array.isArray(parsed.variables)
+                ? parsed.variables
+                : null;
+
+      const statIds = (statIdsRaw ?? [])
+        .filter((v: unknown) => typeof v === "string")
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+
+      // Back-compat: if model returns a single statId string, treat it as a one-item list.
+      const statId = statIdRaw ? String(statIdRaw).trim() : "";
+      const normalizedStatIds = statIds.length ? statIds : statId ? [statId] : [];
 
       if (groupNumber && reason) {
         respond(res, 200, {
           groupNumber,
-          statId,
+          statIds: normalizedStatIds,
+          // Keep for backward-compat with older clients (or if someone inspects logs/tools)
+          statId: normalizedStatIds[0] ?? null,
           reason,
         });
       } else {
