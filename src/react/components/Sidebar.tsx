@@ -6,7 +6,7 @@ import { StatViz } from "./StatViz";
 import { StatList } from "./StatList";
 import { IssueReportModal } from "./IssueReportModal";
 import type { Organization, OrganizationHours } from "../../types/organization";
-import type { Stat } from "../../types/stat";
+import type { Stat, StatRelationsByParent, StatRelationsByChild } from "../../types/stat";
 import { useCategories } from "../hooks/useCategories";
 import type { CombinedDemographicsSnapshot } from "../hooks/useDemographics";
 import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
@@ -41,6 +41,8 @@ interface SidebarProps {
   statsById?: Map<string, Stat>;
   seriesByStatIdByKind?: Map<string, SeriesByKind>;
   statDataById?: Map<string, Partial<Record<SupportedAreaKind, StatBoundaryEntry>>>;
+  statRelationsByParent?: StatRelationsByParent;
+  statRelationsByChild?: StatRelationsByChild;
   selectedAreas?: SelectedAreasMap;
   pinnedAreas?: PinnedAreasMap;
   activeAreaKind?: SupportedAreaKind | null;
@@ -104,6 +106,8 @@ export const Sidebar = ({
   statsById = new Map(),
   seriesByStatIdByKind = new Map(),
   statDataById = new Map(),
+  statRelationsByParent = new Map(),
+  statRelationsByChild = new Map(),
   selectedAreas = {},
   pinnedAreas = {},
   activeAreaKind = null,
@@ -753,6 +757,8 @@ export const Sidebar = ({
             variant={variant}
             statsById={statsById}
             statDataById={statDataById}
+            statRelationsByParent={statRelationsByParent}
+            statRelationsByChild={statRelationsByChild}
             selectedAreas={selectedAreas}
             activeAreaKind={activeAreaKind}
             areaNameLookup={areaNameLookup}

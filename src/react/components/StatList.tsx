@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Stat } from "../../types/stat";
+import type { Stat, StatRelation, StatRelationsByParent, StatRelationsByChild } from "../../types/stat";
 import { formatStatValue } from "../../lib/format";
 import type { StatBoundaryEntry } from "../hooks/useStats";
 
@@ -31,6 +31,8 @@ type StatRow = {
 interface StatListProps {
   statsById?: Map<string, Stat>;
   statDataById?: StatDataById;
+  statRelationsByParent?: StatRelationsByParent;
+  statRelationsByChild?: StatRelationsByChild;
   selectedAreas?: SelectedAreasMap;
   activeAreaKind?: SupportedAreaKind | null;
   areaNameLookup?: (kind: SupportedAreaKind, code: string) => string;
@@ -73,9 +75,68 @@ const buildAreaEntries = (selectedAreas?: SelectedAreasMap): AreaEntry[] => {
   return entries;
 };
 
+// Dropdown for selecting a child stat from a parent's attribute group
+interface ChildStatDropdownProps {
+  attributeName: string;
+  relations: Array<StatRelation & { child: Stat | null }>;
+  selectedChildId: string | null; // Currently selected child in this attribute group
+  onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
+  onDeselect?: () => void; // Called when "No [attribute]" is selected
+}
+
+const ChildStatDropdown = ({
+  attributeName,
+  relations,
+  selectedChildId,
+  onStatSelect,
+  onDeselect,
+}: ChildStatDropdownProps) => {
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const childId = e.target.value;
+    if (childId === "__none__") {
+      onDeselect?.();
+    } else if (childId && childId !== "") {
+      onStatSelect?.(childId);
+    }
+  };
+
+  // Filter out relations with null children
+  const validRelations = relations.filter((r) => r.child !== null);
+  if (validRelations.length === 0) return null;
+
+  // Determine which value to show - either the selected child or "none"
+  const currentValue = selectedChildId && validRelations.some(r => r.childStatId === selectedChildId)
+    ? selectedChildId
+    : "__none__";
+
+  return (
+    <div className="flex items-center gap-2">
+      <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 whitespace-nowrap min-w-[60px]">
+        {attributeName}
+      </label>
+      <select
+        className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 shadow-sm transition-colors hover:border-brand-300 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-500"
+        onChange={handleChange}
+        value={currentValue}
+      >
+        <option value="__none__">
+          No {attributeName.toLowerCase()}
+        </option>
+        {validRelations.map((relation) => (
+          <option key={relation.childStatId} value={relation.childStatId}>
+            {relation.child?.label || relation.child?.name || relation.childStatId}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+};
+
 export const StatList = ({
   statsById = new Map(),
   statDataById = new Map(),
+  statRelationsByParent = new Map(),
+  statRelationsByChild = new Map(),
   selectedAreas,
   activeAreaKind = null,
   areaNameLookup,
@@ -107,10 +168,18 @@ export const StatList = ({
     return null;
   }, [effectiveAreaKind, areaEntries.length]);
 
+  // Set of stat IDs that are children of some parent (should be hidden from main list)
+  const childIdSet = useMemo(
+    () => new Set(Array.from(statRelationsByChild.keys())),
+    [statRelationsByChild]
+  );
+
   const rows = useMemo<StatRow[]>(() => {
     const stats: Stat[] = Array.from(statsById.values()).filter((s) => {
       // Show stats unless explicitly marked inactive; newly created stats default to active/undefined.
       if (s.active === false) return false;
+      // Hide child stats from the main list - they appear via parent's dropdown
+      if (childIdSet.has(s.id)) return false;
       // Apply category filter if provided
       if (categoryFilter) return s.category === categoryFilter;
       return true;
@@ -224,7 +293,7 @@ export const StatList = ({
     }
 
     return result;
-  }, [statsById, statDataById, areaEntries, categoryFilter, effectiveAreaKind, zipScopeDisplayName, countyScopeDisplayName, areaNameLookup]);
+  }, [statsById, statDataById, areaEntries, categoryFilter, effectiveAreaKind, zipScopeDisplayName, countyScopeDisplayName, areaNameLookup, childIdSet]);
 
   const subtitle = useMemo(() => {
     if (areaEntries.length === 1) {
@@ -238,11 +307,283 @@ export const StatList = ({
     return null;
   }, [areaEntries, areaNameLookup]);
 
+  // Find the root parent and intermediate child by traversing up the hierarchy
+  // This handles parent → child → grandchild relationships
+  const { rootParentId, intermediateChildId } = useMemo(() => {
+    if (!selectedStatId) return { rootParentId: null, intermediateChildId: null };
+
+    // Build ancestor chain: [selectedStatId, parentId, grandparentId, ...]
+    const chain: string[] = [selectedStatId];
+    let currentId = selectedStatId;
+
+    while (true) {
+      const parentRelations = statRelationsByChild.get(currentId);
+      if (!parentRelations || parentRelations.length === 0) break;
+      currentId = parentRelations[0].parentStatId;
+      chain.push(currentId);
+    }
+
+    if (chain.length === 1) {
+      // selectedStatId has no parent, it is the root
+      return { rootParentId: null, intermediateChildId: null };
+    } else if (chain.length === 2) {
+      // selectedStatId is a direct child of root parent
+      return { rootParentId: chain[1], intermediateChildId: null };
+    } else {
+      // selectedStatId is a grandchild or deeper
+      // rootParentId is last, intermediateChildId is second-to-last (direct child of root)
+      return { rootParentId: chain[chain.length - 1], intermediateChildId: chain[chain.length - 2] };
+    }
+  }, [selectedStatId, statRelationsByChild]);
+
+  // The stat ID to display in the sticky header - the root parent (if descendant selected) or the selected stat
+  const displayStatId = rootParentId ?? selectedStatId;
+
+  // The child ID to show as selected in the child dropdown
+  // When grandchild is selected, show its parent (the intermediate child)
+  // When child is selected, show the selected stat itself
+  const activeChildId = intermediateChildId ?? (rootParentId ? selectedStatId : null);
+
   // Extract selected stat row (keep in list for placeholder)
+  // When a child is selected, show the parent row in the sticky header instead
   const selectedStatRow = useMemo(() => {
-    if (!selectedStatId) return null;
-    return rows.find((row) => row.id === selectedStatId) ?? null;
-  }, [rows, selectedStatId]);
+    if (!displayStatId) return null;
+    return rows.find((row) => row.id === displayStatId) ?? null;
+  }, [rows, displayStatId]);
+
+  // Get children of the displayed stat grouped by attribute, split into toggles vs dropdowns
+  // Single-child attributes become toggles, multi-child attributes become dropdowns
+  const { singleChildAttrs, multiChildAttrs, allChildrenByAttr } = useMemo(() => {
+    if (!displayStatId) {
+      return {
+        singleChildAttrs: [] as Array<[string, StatRelation & { child: Stat | null }]>,
+        multiChildAttrs: [] as Array<[string, Array<StatRelation & { child: Stat | null }>]>,
+        allChildrenByAttr: new Map<string, Array<StatRelation & { child: Stat | null }>>(),
+      };
+    }
+    const byAttribute = statRelationsByParent.get(displayStatId);
+    if (!byAttribute || byAttribute.size === 0) {
+      return {
+        singleChildAttrs: [] as Array<[string, StatRelation & { child: Stat | null }]>,
+        multiChildAttrs: [] as Array<[string, Array<StatRelation & { child: Stat | null }>]>,
+        allChildrenByAttr: new Map<string, Array<StatRelation & { child: Stat | null }>>(),
+      };
+    }
+
+    const single: Array<[string, StatRelation & { child: Stat | null }]> = [];
+    const multi: Array<[string, Array<StatRelation & { child: Stat | null }>]> = [];
+
+    for (const [attrName, relations] of byAttribute) {
+      if (relations.length === 1) {
+        single.push([attrName, relations[0]]);
+      } else {
+        multi.push([attrName, relations]);
+      }
+    }
+
+    return {
+      singleChildAttrs: single.sort(([a], [b]) => a.localeCompare(b)),
+      multiChildAttrs: multi.sort(([a], [b]) => a.localeCompare(b)),
+      allChildrenByAttr: byAttribute,
+    };
+  }, [displayStatId, statRelationsByParent]);
+
+  // Find all unique grandchild attributes (attributes of children's children)
+  const grandchildAttributes = useMemo(() => {
+    if (!displayStatId) {
+      return { allAttributes: [] as string[], availableForChild: new Map<string, Set<string>>() };
+    }
+
+    const allAttrsSet = new Set<string>();
+    const availableForChild = new Map<string, Set<string>>();
+
+    // Look at each child of the displayed parent (from all attributes)
+    for (const [, relations] of allChildrenByAttr) {
+      for (const relation of relations) {
+        const childId = relation.childStatId;
+        const grandchildByAttribute = statRelationsByParent.get(childId);
+        if (grandchildByAttribute && grandchildByAttribute.size > 0) {
+          const attrsForThisChild = new Set<string>();
+          for (const [attrName] of grandchildByAttribute) {
+            allAttrsSet.add(attrName);
+            attrsForThisChild.add(attrName);
+          }
+          availableForChild.set(childId, attrsForThisChild);
+        }
+      }
+    }
+
+    return {
+      allAttributes: Array.from(allAttrsSet).sort(),
+      availableForChild,
+    };
+  }, [displayStatId, allChildrenByAttr, statRelationsByParent]);
+
+  // Combine toggle attributes: single-child attrs + grandchild attrs (deduplicated)
+  const allToggleAttributes = useMemo(() => {
+    const attrs = new Set<string>();
+    for (const [attrName] of singleChildAttrs) {
+      attrs.add(attrName);
+    }
+    for (const attr of grandchildAttributes.allAttributes) {
+      attrs.add(attr);
+    }
+    return Array.from(attrs).sort();
+  }, [singleChildAttrs, grandchildAttributes.allAttributes]);
+
+  // Track which toggle attributes the user has intentionally turned ON
+  // This persists when switching children, so the toggle stays on for the new child
+  const [enabledToggles, setEnabledToggles] = useState<Set<string>>(new Set());
+
+  // Check if a toggle attribute is available (can be clicked)
+  const isToggleAttrAvailable = (attr: string): boolean => {
+    // Available if: it's a single-child parent attr, OR grandchild attr is available for active child
+    const isSingleChildAttr = singleChildAttrs.some(([a]) => a === attr);
+    if (isSingleChildAttr) return true;
+    // Check grandchild availability
+    if (!activeChildId) return false;
+    const available = grandchildAttributes.availableForChild.get(activeChildId);
+    return available?.has(attr) ?? false;
+  };
+
+  // Check if a toggle attribute is currently active (derived from selection + enabled state)
+  const isToggleAttrActive = (attr: string): boolean => {
+    // First check if it's enabled by user
+    if (!enabledToggles.has(attr)) return false;
+
+    // Then check if it's actually in effect (i.e., we're at or below that level)
+    if (!selectedStatId || !rootParentId) return false;
+
+    // Check if it's active via single-child attr
+    const singleChild = singleChildAttrs.find(([a]) => a === attr);
+    if (singleChild) {
+      const [, relation] = singleChild;
+      if (selectedStatId === relation.childStatId) return true;
+      if (intermediateChildId === relation.childStatId) return true;
+    }
+
+    // Check grandchild case
+    if (intermediateChildId) {
+      const grandchildByAttribute = statRelationsByParent.get(intermediateChildId);
+      if (grandchildByAttribute?.has(attr)) {
+        return true;
+      }
+    }
+
+    // Check if toggle is enabled and available for current child
+    if (activeChildId) {
+      const available = grandchildAttributes.availableForChild.get(activeChildId);
+      if (available?.has(attr)) return true;
+    }
+
+    return false;
+  };
+
+  // Check if a child ID was selected from a multi-child dropdown (vs single-child toggle)
+  const isChildFromDropdown = (childId: string | null): boolean => {
+    if (!childId) return false;
+    return multiChildAttrs.some(([, relations]) =>
+      relations.some((r) => r.childStatId === childId)
+    );
+  };
+
+  // Handle toggle click - chains through hierarchy
+  const handleToggle = (attr: string) => {
+    if (!onStatSelect || !displayStatId) return;
+
+    const isCurrentlyEnabled = enabledToggles.has(attr);
+    const singleChild = singleChildAttrs.find(([a]) => a === attr);
+    const hasDropdownChild = isChildFromDropdown(activeChildId);
+
+    if (isCurrentlyEnabled) {
+      // Turn OFF: remove from enabled
+      setEnabledToggles((prev) => {
+        const next = new Set(prev);
+        next.delete(attr);
+        return next;
+      });
+
+      // If a child is selected from dropdown, stay on that child (just remove grandchild)
+      if (hasDropdownChild && activeChildId) {
+        onStatSelect(activeChildId);
+      } else if (singleChild) {
+        // Only single-child toggle was active, go back to parent
+        onStatSelect(displayStatId);
+      }
+      // If neither, no selection change needed
+    } else {
+      // Turn ON: add to enabled, select down the hierarchy
+      setEnabledToggles((prev) => new Set(prev).add(attr));
+
+      // If a child is selected from dropdown, chain to that child's grandchild
+      if (hasDropdownChild && activeChildId) {
+        const grandchildByAttribute = statRelationsByParent.get(activeChildId);
+        const relations = grandchildByAttribute?.get(attr);
+        if (relations && relations.length > 0 && relations[0].child) {
+          onStatSelect(relations[0].childStatId);
+        }
+        // If no grandchild available for this attr, just stay on child (toggle is enabled for future)
+      } else if (singleChild) {
+        // No dropdown child selected, use single-child toggle path
+        const [, relation] = singleChild;
+        const singleChildId = relation.childStatId;
+        const grandchildByAttribute = statRelationsByParent.get(singleChildId);
+        const grandchildRelations = grandchildByAttribute?.get(attr);
+        if (grandchildRelations && grandchildRelations.length > 0 && grandchildRelations[0].child) {
+          onStatSelect(grandchildRelations[0].childStatId);
+        } else {
+          onStatSelect(singleChildId);
+        }
+      }
+    }
+  };
+
+  // Handle child selection from dropdown
+  // If a toggle is already enabled and the child has grandchildren with that attribute, chain to grandchild
+  const handleChildSelect = (childId: string) => {
+    if (!onStatSelect) return;
+
+    // Check if any enabled toggle applies to this child
+    for (const attr of enabledToggles) {
+      const grandchildByAttribute = statRelationsByParent.get(childId);
+      const relations = grandchildByAttribute?.get(attr);
+      if (relations && relations.length > 0 && relations[0].child) {
+        // Chain to grandchild with the enabled toggle attribute
+        onStatSelect(relations[0].childStatId);
+        return;
+      }
+    }
+
+    // No applicable toggle, just select the child
+    onStatSelect(childId);
+  };
+
+  // Handle child deselection from dropdown - go back to parent
+  // If a toggle is enabled with single-child path, chain through it
+  const handleChildDeselect = () => {
+    if (!onStatSelect || !displayStatId) return;
+
+    // Check if any enabled toggle has a single-child path
+    for (const attr of enabledToggles) {
+      const singleChild = singleChildAttrs.find(([a]) => a === attr);
+      if (singleChild) {
+        const [, relation] = singleChild;
+        const singleChildId = relation.childStatId;
+        // Check if this single child has grandchildren with the same attribute
+        const grandchildByAttribute = statRelationsByParent.get(singleChildId);
+        const grandchildRelations = grandchildByAttribute?.get(attr);
+        if (grandchildRelations && grandchildRelations.length > 0 && grandchildRelations[0].child) {
+          onStatSelect(grandchildRelations[0].childStatId);
+        } else {
+          onStatSelect(singleChildId);
+        }
+        return;
+      }
+    }
+
+    // No enabled single-child toggle, just go to parent
+    onStatSelect(displayStatId);
+  };
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -257,8 +598,29 @@ export const StatList = ({
               averageLabel={averageLabel}
               onStatSelect={onStatSelect}
               hideValue={HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION && effectiveAreaKind === "COUNTY" && areaEntries.length === 0}
+              grandchildToggles={allToggleAttributes.map((attr) => ({
+                attr,
+                isActive: isToggleAttrActive(attr),
+                isAvailable: isToggleAttrAvailable(attr),
+                onToggle: handleToggle,
+              }))}
             />
           </ul>
+          {/* Child stat attribute dropdowns (only for multi-child attributes) */}
+          {multiChildAttrs.length > 0 && (
+            <div className="mt-2 space-y-2">
+              {multiChildAttrs.map(([attributeName, relations]) => (
+                <ChildStatDropdown
+                  key={attributeName}
+                  attributeName={attributeName}
+                  relations={relations}
+                  selectedChildId={activeChildId}
+                  onStatSelect={(childId) => childId && handleChildSelect(childId)}
+                  onDeselect={handleChildDeselect}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -276,8 +638,9 @@ export const StatList = ({
         ) : (
           <ul className="space-y-2">
             {rows.map((row) => {
-              // Render placeholder line for selected stat (pinned above)
-              if (selectedStatId === row.id) {
+              // Render placeholder line for selected/displayed stat (pinned above)
+              // Use displayStatId to show placeholder for parent when child is selected
+              if (displayStatId === row.id) {
                 return (
                   <li
                     key={row.id}
@@ -298,7 +661,7 @@ export const StatList = ({
                   </li>
                 );
               }
-              
+
               // Render normal stat item
               return (
                 <StatListItem
@@ -319,6 +682,13 @@ export const StatList = ({
   );
 };
 
+interface GrandchildAttrToggle {
+  attr: string;
+  isActive: boolean;
+  isAvailable: boolean;
+  onToggle: (attr: string) => void;
+}
+
 interface StatListItemProps {
   row: StatRow;
   isSelected: boolean;
@@ -326,6 +696,7 @@ interface StatListItemProps {
   averageLabel: string | null;
   onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
   hideValue?: boolean;
+  grandchildToggles?: GrandchildAttrToggle[];
 }
 
 const StatListItem = ({
@@ -335,6 +706,7 @@ const StatListItem = ({
   averageLabel,
   onStatSelect,
   hideValue = false,
+  grandchildToggles = [],
 }: StatListItemProps) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -410,9 +782,37 @@ const StatListItem = ({
       setShowTooltip(false);
       setShowValueTooltip(false);
     }}>
-      <div>
-        <div className="flex items-center gap-2">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{row.name}</span>
+          {/* Grandchild attribute toggles */}
+          {grandchildToggles.length > 0 && (
+            <div className="flex items-center gap-1">
+              {grandchildToggles.map((toggle) => (
+                <button
+                  key={toggle.attr}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (toggle.isAvailable) {
+                      toggle.onToggle(toggle.attr);
+                    }
+                  }}
+                  disabled={!toggle.isAvailable}
+                  className={`px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide rounded transition-colors ${
+                    toggle.isActive && toggle.isAvailable
+                      ? "bg-brand-500 text-white"
+                      : toggle.isAvailable
+                      ? "bg-slate-200 text-slate-600 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                      : "bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-600"
+                  }`}
+                  title={toggle.isAvailable ? `Toggle ${toggle.attr} breakdown` : `${toggle.attr} not available for current selection`}
+                >
+                  {toggle.attr}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
           {row.hasData ? (
