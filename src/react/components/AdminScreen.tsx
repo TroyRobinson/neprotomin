@@ -2175,25 +2175,35 @@ export const AdminScreen = () => {
   }, [selectedStatIds.length, isSelectionMode, handleClearSelection]);
 
   const handleRequestDerivedStat = useCallback(async () => {
-    // If user has selected stats, use those; otherwise pass ALL stats for fuzzy-search mode
-    const hasSelection = selectedIdSet.size > 0;
-    const selection = hasSelection
-      ? sortedStats
-          .filter((stat) => selectedIdSet.has(stat.id))
-          .map<DerivedStatOption>((stat) => ({
-            id: stat.id,
-            name: stat.name,
-            label: stat.label,
-            category: stat.category,
-          }))
-      : stats.map<DerivedStatOption>((stat) => ({
-          id: stat.id,
-          name: stat.name,
-          label: stat.label,
-          category: stat.category,
-        }));
-
     setDerivedError(null);
+
+    // Preserve user selection order (including children) using the full stats map
+    const seenIds = new Set<string>();
+    const selectedStats: StatItem[] = [];
+    for (const id of selectedStatIds) {
+      if (seenIds.has(id)) continue;
+      const stat = statsById.get(id);
+      if (stat) {
+        seenIds.add(id);
+        selectedStats.push(stat);
+      }
+    }
+
+    const baseStats = selectedStats.length ? selectedStats : stats;
+    const selection = baseStats.map<DerivedStatOption>((stat) => ({
+      id: stat.id,
+      name: stat.name,
+      label: stat.label,
+      category: stat.category,
+    }));
+
+    if (selection.length === 0) {
+      // This should rarely happen, but if it does, show error and don't open modal
+      setDerivedError("No stats are available to build a derived stat.");
+      console.warn("handleRequestDerivedStat: No stats available for derived stat creation");
+      return;
+    }
+
     setDerivedSelection(selection);
     setDerivedAvailableYears([]);
 
@@ -2222,7 +2232,7 @@ export const AdminScreen = () => {
     }
 
     setIsDerivedModalOpen(true);
-  }, [selectedIdSet, sortedStats, stats]);
+  }, [selectedStatIds, statsById, stats]);
 
   const handleDerivedModalClose = useCallback(() => {
     setIsDerivedModalOpen(false);
