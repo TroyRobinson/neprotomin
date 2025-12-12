@@ -34,6 +34,13 @@ const readBody = (req: IncomingMessage): Promise<string> => {
   });
 };
 
+const extractFirstJsonObject = (text: string): string | null => {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  return text.slice(start, end + 1);
+};
+
 export default async function handler(req: AISuggestRequest, res: AISuggestResponse) {
   if (req.method !== "POST") {
     respond(res, 405, { error: "Method not allowed" });
@@ -51,40 +58,42 @@ export default async function handler(req: AISuggestRequest, res: AISuggestRespo
       return;
     }
 
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    const apiKey = process.env.OPENROUTER || process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
-      console.warn("OPENROUTER_API_KEY not set - skipping AI suggestion");
-      console.warn("Available env vars:", Object.keys(process.env).filter(k => k.includes('OPEN') || k.includes('API')));
       respond(res, 200, {}); // Return empty response if no API key
       return;
     }
-    console.log("Using OpenRouter API for query:", query);
 
     // Call OpenRouter to get AI suggestion
     const prompt = `You are an expert on U.S. Census Bureau data and the American Community Survey (ACS).
 
-Given a user's search query for Census data, identify the single most relevant Census group ID that best matches what they're looking for.
+Given a user's search query for Census data, identify the single most relevant Census group ID and specific variable that best matches what they're looking for.
 
 Dataset: ${dataset}
 Year: ${year}
 User query: "${query}"
 
-Common Census groups include:
-- B01001: Sex by Age
-- B01002: Median Age
-- B01003: Total Population
-- B12001: Marital Status
+Common Census groups and variables include:
+- B01001: Sex by Age (e.g., B01001_002E = Male total)
+- B01002: Median Age (B01002_001E = Median age)
+- B01003: Total Population (B01003_001E = Total population)
+- B12001: Marital Status (e.g., B12001_004E = Male, now married, B12001_010E = Female, now married)
 - B19001: Household Income
-- B22003: Receipt of Food Stamps/SNAP
+- B22003: Receipt of Food Stamps/SNAP (e.g., B22003_002E = Households receiving SNAP)
 - B25001: Housing Units
 - B25003: Tenure (Owner/Renter Occupied)
 - S1701: Poverty Status
 
+Variable naming convention:
+- Estimate variables end in E (e.g., B12001_004E)
+- Margin of error variables end in M (e.g., B12001_004M)
+- _001E is typically the total/aggregate
+
 Respond with ONLY a JSON object in this exact format (no markdown, no explanation):
-{"groupNumber": "B12001", "reason": "Contains marital status data by sex"}
+{"groupNumber": "B12001", "statId": "B12001_004E", "reason": "Male population currently married"}
 
 If you cannot confidently suggest a group, respond with:
-{"groupNumber": "", "reason": ""}`;
+{"groupNumber": "", "statId": "", "reason": ""}`;
 
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -123,11 +132,27 @@ If you cannot confidently suggest a group, respond with:
 
     // Parse the JSON response from the AI
     try {
-      const parsed = JSON.parse(content);
-      if (parsed.groupNumber && parsed.reason) {
+      const jsonText = extractFirstJsonObject(content) ?? content;
+      const parsed = JSON.parse(jsonText);
+      const groupNumber = typeof parsed.groupNumber === "string" ? parsed.groupNumber : "";
+      const reason = typeof parsed.reason === "string" ? parsed.reason : "";
+      const statIdRaw =
+        typeof parsed.statId === "string"
+          ? parsed.statId
+          : typeof parsed.statID === "string"
+            ? parsed.statID
+            : typeof parsed.variableId === "string"
+              ? parsed.variableId
+              : typeof parsed.variable === "string"
+                ? parsed.variable
+                : "";
+      const statId = statIdRaw || null;
+
+      if (groupNumber && reason) {
         respond(res, 200, {
-          groupNumber: parsed.groupNumber,
-          reason: parsed.reason,
+          groupNumber,
+          statId,
+          reason,
         });
       } else {
         respond(res, 200, {});
