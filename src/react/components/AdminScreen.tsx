@@ -2090,11 +2090,12 @@ export const AdminScreen = () => {
           if (prev.includes(statId)) {
             return prev.filter((id) => id !== statId);
           }
-          // Otherwise, range select from anchor to current
+          // Range select from anchor to current (only works for parent-level stats)
           const anchor = selectionAnchorId ?? prev[prev.length - 1] ?? statId;
           const anchorIndex = statIndexMap.get(anchor);
           const currentIndex = statIndexMap.get(statId);
           if (anchorIndex != null && currentIndex != null) {
+            // Both are parent-level stats: do range selection
             const [start, end] = anchorIndex <= currentIndex ? [anchorIndex, currentIndex] : [currentIndex, anchorIndex];
             const rangeIds = sortedStats.slice(start, end + 1).map((stat) => stat.id);
             const union = new Set(prev);
@@ -2102,6 +2103,10 @@ export const AdminScreen = () => {
             next = sortSelection(Array.from(union));
             return next;
           }
+          // Child/grandchild or mixed levels: just toggle this individual stat
+          // This allows selecting multiple stats across hierarchy levels
+          next = sortSelection([...prev, statId]);
+          return next;
         }
 
         // In selection mode or with Meta/Ctrl, toggle the individual stat
@@ -2120,9 +2125,14 @@ export const AdminScreen = () => {
         return [statId];
       });
 
-      if (!event.shiftKey) {
+      // Update anchor: always update on regular click, or on shift+click for children/grandchildren
+      // (for parent-level shift+click range selection, we keep the original anchor)
+      const currentIndex = statIndexMap.get(statId);
+      if (!event.shiftKey || currentIndex == null) {
+        // Regular click, or shift+click on child/grandchild: update anchor
         setSelectionAnchorId(statId);
       }
+      // Shift+click on parent-level stat: keep existing anchor for range selection
     },
     [selectionAnchorId, sortSelection, sortedStats, statIndexMap, isSelectionMode],
   );
