@@ -902,7 +902,7 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                                 : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
                             }`}
                           >
-                            All categories
+                            All Catgrs.
                           </button>
                           {categoryOptions.map((cat) => (
                             <button

@@ -12,6 +12,7 @@ interface CustomSelectProps {
   onChange: (value: string) => void;
   className?: string;
   disabled?: boolean;
+  compact?: boolean; // If true, shrinks to fit content width instead of filling container
 }
 
 export const CustomSelect: React.FC<CustomSelectProps> = ({
@@ -21,6 +22,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   onChange,
   className = "",
   disabled = false,
+  compact = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -141,7 +143,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         onKeyDown={handleKeyDown}
         disabled={disabled}
         className={`
-          h-7 w-full min-w-32 rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition 
+          h-7 ${compact ? 'w-auto' : 'w-full'} ${compact ? '' : 'min-w-32'} rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition 
           focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 
           dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50
           ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}

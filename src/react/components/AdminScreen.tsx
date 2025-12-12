@@ -1563,7 +1563,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
 type SortOption = "updated" | "created" | "name" | "category";
 const sortOptionLabels: Record<SortOption, string> = {
   updated: "Recently Updated",
-  created: "Recently Created",
+  created: "↓ Created",
   name: "Name (A-Z)",
   category: "Category",
 };
@@ -3131,12 +3131,13 @@ export const AdminScreen = () => {
           {/* Center: Filters - Category (desktop only), Search, Sort (desktop only) */}
           <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
             {/* Category filter - hidden on mobile */}
-            <div className="hidden sm:block">
+            <div className="hidden sm:block shrink-0">
               <CustomSelect
                 value={categoryFilter}
                 onChange={setCategoryFilter}
+                compact
                 options={[
-                  { value: "all", label: "All categories" },
+                  { value: "all", label: "All Catgrs." },
                   ...availableCategories.map((cat) => ({
                     value: cat,
                     label: cat.charAt(0).toUpperCase() + cat.slice(1),
@@ -3146,7 +3147,7 @@ export const AdminScreen = () => {
             </div>
 
             {/* Search input */}
-            <div className="relative w-full sm:w-auto sm:max-w-[200px]">
+            <div className="relative flex-1 min-w-0 sm:max-w-none">
               <input
                 type="text"
                 value={searchQuery}
@@ -3181,10 +3182,11 @@ export const AdminScreen = () => {
             </div>
 
             {/* Sort dropdown - hidden on mobile */}
-            <div className="hidden sm:block">
+            <div className="hidden sm:block shrink-0">
               <CustomSelect
                 value={sortBy}
                 onChange={(val) => setSortBy(val as SortOption)}
+                compact
                 options={(Object.keys(sortOptionLabels) as SortOption[]).map((key) => ({
                   value: key,
                   label: sortOptionLabels[key],
@@ -3213,7 +3215,7 @@ export const AdminScreen = () => {
                 onClick={() => setIsSelectionMode(true)}
                 className="rounded-full border border-slate-200 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
               >
-                Select Stats
+                Select
               </button>
             )}
             <button
@@ -3234,7 +3236,7 @@ export const AdminScreen = () => {
               className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 sm:px-3 sm:py-1.5"
             >
               <span className="text-sm leading-none">+</span>
-              <span>Import Stat</span>
+              <span>Import</span>
             </button>
             <button
               type="button"
@@ -3255,7 +3257,7 @@ export const AdminScreen = () => {
                   strokeLinejoin="round"
                 />
               </svg>
-              <span>Create Stat</span>
+              <span>Create</span>
             </button>
           </div>
         </div>
