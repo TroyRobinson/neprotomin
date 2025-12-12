@@ -81,6 +81,22 @@ interface SidebarProps {
   variant?: "desktop" | "mobile";
   showInsights?: boolean;
   showAdvanced?: boolean;
+  /** Visibility + expansion state for Insights sections (persisted in URL). */
+  insightsState?: {
+    demographicsVisible: boolean;
+    demographicsExpanded: boolean;
+    statVizVisible: boolean;
+    statVizCollapsed: boolean;
+  };
+  /** Update Insights section state (persisted in URL). */
+  onInsightsStateChange?: (
+    next: Partial<{
+      demographicsVisible: boolean;
+      demographicsExpanded: boolean;
+      statVizVisible: boolean;
+      statVizCollapsed: boolean;
+    }>,
+  ) => void;
   className?: string;
   // When incremented, force switch to Statistics tab and hide orgs toggle
   forceHideOrgsNonce?: number;
@@ -145,6 +161,8 @@ export const Sidebar = ({
   variant = "desktop",
   showInsights = true,
   showAdvanced = false,
+  insightsState,
+  onInsightsStateChange,
   className = "",
   forceHideOrgsNonce,
   timeSelection,
@@ -211,10 +229,15 @@ export const Sidebar = ({
     scrollOrgIntoView(orgId, { alignTop: true, padding: 0 });
   }, [scrollOrgIntoView]);
   const { user } = db.useAuth();
-  const isLoggedIn = Boolean(user && !user.isGuest);
-  const canShowInsights = Boolean(showInsights && showAdvanced && isLoggedIn);
-  const shouldShowDemographicsBar = ENABLE_DEMOGRAPHICS_SECTION && canShowInsights;
-  const shouldShowStatVisualization = ENABLE_STATISTICS_VISUALIZATION_SECTION && canShowInsights;
+  const canShowInsights = Boolean(showInsights && showAdvanced);
+
+  const demographicsVisible = insightsState?.demographicsVisible ?? true;
+  const demographicsExpanded = insightsState?.demographicsExpanded ?? false;
+  const statVizVisible = insightsState?.statVizVisible ?? true;
+  const statVizCollapsed = insightsState?.statVizCollapsed ?? false;
+
+  const shouldShowDemographicsBar = ENABLE_DEMOGRAPHICS_SECTION && canShowInsights && demographicsVisible;
+  const shouldShowStatVisualization = ENABLE_STATISTICS_VISUALIZATION_SECTION && canShowInsights && statVizVisible;
 
   // When a category is cleared from the sidebar, also clear any active stat selection
   // so the choropleth overlay matches the category chips behavior on the map.
@@ -610,7 +633,11 @@ export const Sidebar = ({
         <>
           {/* Demographics Bar */}
           {shouldShowDemographicsBar && (
-            <DemographicsBar snapshot={demographicsSnapshot ?? null} />
+            <DemographicsBar
+              snapshot={demographicsSnapshot ?? null}
+              expanded={demographicsExpanded}
+              onExpandedChange={(next) => onInsightsStateChange?.({ demographicsExpanded: next })}
+            />
           )}
 
           {/* Stat Visualization */}
@@ -629,6 +656,8 @@ export const Sidebar = ({
               getZipParentCounty={getZipParentCounty}
               zipScopeCountyName={zipScopeDisplayName}
               stateAvg={stateAvg}
+              collapsed={statVizCollapsed}
+              onCollapsedChange={(next) => onInsightsStateChange?.({ statVizCollapsed: next })}
             />
           )}
         </>

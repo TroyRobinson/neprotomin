@@ -245,6 +245,12 @@ export const ReactMapApp = () => {
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
   const [isDraggingSheet, setIsDraggingSheet] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(() => initialMapState.showAdvanced);
+  const [sidebarInsightsState, setSidebarInsightsState] = useState(() => ({
+    demographicsVisible: initialMapState.sidebarInsights.demographicsVisible,
+    demographicsExpanded: initialMapState.sidebarInsights.demographicsExpanded,
+    statVizVisible: initialMapState.sidebarInsights.statVizVisible,
+    statVizCollapsed: initialMapState.sidebarInsights.statVizCollapsed,
+  }));
   const [legendRangeMode, setLegendRangeMode] = useState<"dynamic" | "scoped" | "global">("dynamic");
   const [mapSettingsOpen, setMapSettingsOpen] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(() => {
@@ -314,11 +320,29 @@ export const ReactMapApp = () => {
   }, [isMobile, viewportHeight]);
 
   const { user, authReady } = useAuthSession();
+  const persistSidebarInsights = showAdvanced;
   const isAdmin = useMemo(() => {
     if (!user || user.isGuest) return false;
     if (typeof user.email !== "string" || user.email.trim().length === 0) return false;
     return isAdminEmail(user.email);
   }, [user]);
+
+  // When Advanced is toggled back on, restore default Insights state.
+  // When Advanced is toggled off, the sections hide and URL params clear.
+  const prevShowAdvancedRef = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    const prev = prevShowAdvancedRef.current;
+    prevShowAdvancedRef.current = showAdvanced;
+    if (prev === undefined) return;
+    if (prev === false && showAdvanced === true) {
+      setSidebarInsightsState({
+        demographicsVisible: true,
+        demographicsExpanded: false,
+        statVizVisible: true,
+        statVizCollapsed: false,
+      });
+    }
+  }, [showAdvanced]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1240,6 +1264,8 @@ export const ReactMapApp = () => {
         selectedZips,
         selectedCounties,
         sidebarTab,
+        sidebarInsightsState,
+        persistSidebarInsights,
       );
     }, 400);
     return () => {
@@ -1247,7 +1273,20 @@ export const ReactMapApp = () => {
         clearTimeout(urlUpdateTimeoutRef.current);
       }
     };
-  }, [cameraState, selectedStatId, categoryFilter, selectedOrgIds, showAdvanced, orgPinsVisible, areasMode, selectedZips, selectedCounties, sidebarTab]);
+  }, [
+    cameraState,
+    selectedStatId,
+    categoryFilter,
+    selectedOrgIds,
+    showAdvanced,
+    orgPinsVisible,
+    areasMode,
+    selectedZips,
+    selectedCounties,
+    sidebarTab,
+    sidebarInsightsState,
+    persistSidebarInsights,
+  ]);
 
   const normalizedZipScope = normalizeScopeLabel(zipScope) ?? FALLBACK_ZIP_SCOPE;
   const defaultCountyScope = useMemo(
@@ -3213,6 +3252,13 @@ export const ReactMapApp = () => {
               selectionLabelOverride={searchSelectionLabel}
               selectionStyleVariant={selectionStyleVariant}
               showAdvanced={showAdvanced}
+              insightsState={sidebarInsightsState}
+              onInsightsStateChange={(patch) =>
+                setSidebarInsightsState((prev) => ({
+                  ...prev,
+                  ...patch,
+                }))
+              }
               initialTab={sidebarTab}
               onTabChange={setSidebarTab}
             />
@@ -3339,6 +3385,13 @@ export const ReactMapApp = () => {
                   variant="mobile"
                   showInsights={true}
                   showAdvanced={showAdvanced}
+                  insightsState={sidebarInsightsState}
+                  onInsightsStateChange={(patch) =>
+                    setSidebarInsightsState((prev) => ({
+                      ...prev,
+                      ...patch,
+                    }))
+                  }
                   className="h-full"
                   initialTab={sidebarTab}
                   onTabChange={setSidebarTab}

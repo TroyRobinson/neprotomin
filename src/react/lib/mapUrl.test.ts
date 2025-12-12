@@ -64,6 +64,13 @@ describe("mapUrl selection persistence", () => {
       ["74129"],
       ["40037"],
       "orgs",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
     );
 
     expect((globalThis as any).window.location.search).toContain("zips=74129");
@@ -82,6 +89,13 @@ describe("mapUrl selection persistence", () => {
       [],
       [],
       "orgs",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
     );
 
     const search = (globalThis as any).window.location.search;
@@ -135,6 +149,13 @@ describe("mapUrl selection persistence", () => {
       [],
       [],
       "stats",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
     );
 
     expect((globalThis as any).window.location.search).toContain("tab=stats");
@@ -152,9 +173,105 @@ describe("mapUrl selection persistence", () => {
       [],
       [],
       "orgs",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
     );
 
     const search = (globalThis as any).window.location.search;
     expect(search).not.toContain("tab=");
+  });
+
+  it("parses sidebar insights visibility + expansion state from URL", () => {
+    const w: WindowLike = {
+      location: { href: "http://example.test/", search: "" },
+      history: {
+        replaceState: vi.fn((_data, _unused, url) => {
+          setWindowUrl(url);
+        }),
+      },
+    };
+    (globalThis as any).window = w;
+
+    setWindowUrl("http://example.test/?sv=false&svc=true&demo=true&demoe=false");
+    const state = getMapStateFromUrl();
+    expect(state.sidebarInsights.hasAnyParam).toBe(true);
+    expect(state.sidebarInsights.statVizVisible).toBe(false);
+    expect(state.sidebarInsights.statVizCollapsed).toBe(true);
+    expect(state.sidebarInsights.demographicsVisible).toBe(true);
+    expect(state.sidebarInsights.demographicsExpanded).toBe(false);
+  });
+
+  it("writes sidebar insights state to URL when persistence is enabled, and clears when disabled", () => {
+    const w: WindowLike = {
+      location: { href: "http://example.test/", search: "" },
+      history: {
+        replaceState: vi.fn((_data, _unused, url) => {
+          setWindowUrl(url);
+        }),
+      },
+    };
+    (globalThis as any).window = w;
+
+    setWindowUrl("http://example.test/");
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      [],
+      false,
+      true,
+      "auto",
+      [],
+      [],
+      "orgs",
+      {
+        statVizVisible: true,
+        statVizCollapsed: true,
+        demographicsVisible: false,
+        demographicsExpanded: true,
+      },
+      true,
+    );
+
+    const search = (globalThis as any).window.location.search;
+    expect(search).toContain("sv=true");
+    expect(search).toContain("svc=true");
+    expect(search).toContain("demo=false");
+    expect(search).toContain("demoe=true");
+
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      [],
+      false,
+      true,
+      "auto",
+      [],
+      [],
+      "orgs",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+    );
+
+    const search2 = (globalThis as any).window.location.search;
+    expect(search2).not.toContain("sv=");
+    expect(search2).not.toContain("svc=");
+    expect(search2).not.toContain("demo=");
+    expect(search2).not.toContain("demoe=");
   });
 });

@@ -7,6 +7,19 @@ export interface MapPosition {
   zoom: number;
 }
 
+export interface SidebarInsightsState {
+  /** Whether the StatViz (trend) section is shown */
+  statVizVisible: boolean;
+  /** Whether the StatViz section is collapsed */
+  statVizCollapsed: boolean;
+  /** Whether the demographics section is shown */
+  demographicsVisible: boolean;
+  /** Whether the demographics section is expanded */
+  demographicsExpanded: boolean;
+  /** True if any sidebar-insights params were present in the URL */
+  hasAnyParam: boolean;
+}
+
 // Areas mode combines boundaryControlMode and boundaryMode:
 // - "auto" = automatic switching based on zoom
 // - "zips" = manual, show ZIP boundaries
@@ -25,6 +38,7 @@ export interface MapState {
   selectedZips: string[];
   selectedCounties: string[];
   sidebarTab: "orgs" | "stats";
+  sidebarInsights: SidebarInsightsState;
 }
 
 // Parse map position from current URL query params
@@ -97,7 +111,61 @@ export function getMapStateFromUrl(): MapState {
   const selectedZips = getSelectedZipsFromUrl();
   const selectedCounties = getSelectedCountiesFromUrl();
   const sidebarTab = getSidebarTabFromUrl();
-  return { position, statId, category, orgIds, showAdvanced, orgPinsVisible, areasMode, selectedZips, selectedCounties, sidebarTab };
+  const sidebarInsights = getSidebarInsightsFromUrl();
+  return {
+    position,
+    statId,
+    category,
+    orgIds,
+    showAdvanced,
+    orgPinsVisible,
+    areasMode,
+    selectedZips,
+    selectedCounties,
+    sidebarTab,
+    sidebarInsights,
+  };
+}
+
+const parseBoolParam = (
+  params: URLSearchParams,
+  key: string,
+): { value: boolean | null; present: boolean } => {
+  const raw = params.get(key);
+  if (raw === null) return { value: null, present: false };
+  if (raw === "true") return { value: true, present: true };
+  if (raw === "false") return { value: false, present: true };
+  return { value: null, present: true };
+};
+
+// Get sidebar "insights" (Demographics + StatViz) visibility + expansion state.
+export function getSidebarInsightsFromUrl(): SidebarInsightsState {
+  if (typeof window === "undefined") {
+    return {
+      statVizVisible: true,
+      statVizCollapsed: false,
+      demographicsVisible: true,
+      demographicsExpanded: false,
+      hasAnyParam: false,
+    };
+  }
+
+  const params = new URLSearchParams(window.location.search);
+
+  const sv = parseBoolParam(params, "sv");
+  const svc = parseBoolParam(params, "svc");
+  const demo = parseBoolParam(params, "demo");
+  const demoe = parseBoolParam(params, "demoe");
+
+  const hasAnyParam = sv.present || svc.present || demo.present || demoe.present;
+
+  return {
+    statVizVisible: sv.value ?? true,
+    statVizCollapsed: svc.value ?? false,
+    demographicsVisible: demo.value ?? true,
+    demographicsExpanded: demoe.value ?? false,
+    hasAnyParam,
+  };
 }
 
 // Get stat ID from URL
@@ -213,6 +281,8 @@ export function updateUrlWithMapState(
   selectedZips: string[],
   selectedCounties: string[],
   sidebarTab: "orgs" | "stats",
+  sidebarInsights: Omit<SidebarInsightsState, "hasAnyParam">,
+  persistSidebarInsights: boolean,
 ): void {
   if (typeof window === "undefined") return;
 
@@ -284,6 +354,19 @@ export function updateUrlWithMapState(
     url.searchParams.set("tab", "stats");
   } else {
     url.searchParams.delete("tab");
+  }
+
+  // Sidebar insights sections (Demographics + StatViz)
+  if (persistSidebarInsights) {
+    url.searchParams.set("sv", sidebarInsights.statVizVisible ? "true" : "false");
+    url.searchParams.set("svc", sidebarInsights.statVizCollapsed ? "true" : "false");
+    url.searchParams.set("demo", sidebarInsights.demographicsVisible ? "true" : "false");
+    url.searchParams.set("demoe", sidebarInsights.demographicsExpanded ? "true" : "false");
+  } else {
+    url.searchParams.delete("sv");
+    url.searchParams.delete("svc");
+    url.searchParams.delete("demo");
+    url.searchParams.delete("demoe");
   }
 
   window.history.replaceState(null, "", url.toString());

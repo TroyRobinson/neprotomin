@@ -72,6 +72,8 @@ interface StatVizProps {
   zipScopeCountyName?: string | null;
   /** True statewide average for the selected stat (computed from all Oklahoma ZIPs) */
   stateAvg?: number | null;
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 }
 
 interface LineChartProps {
@@ -531,8 +533,22 @@ export const StatViz = ({
   getZipParentCounty,
   zipScopeCountyName = null,
   stateAvg = null,
+  collapsed: collapsedProp,
+  onCollapsedChange,
 }: StatVizProps) => {
-  const [collapsed, setCollapsed] = useState(false);
+  const isControlled = typeof collapsedProp === "boolean";
+  const [uncontrolledCollapsed, setUncontrolledCollapsed] = useState(false);
+  const collapsed = isControlled ? (collapsedProp as boolean) : uncontrolledCollapsed;
+  const setCollapsed = useCallback(
+    (next: boolean) => {
+      if (isControlled) {
+        onCollapsedChange?.(next);
+        return;
+      }
+      setUncontrolledCollapsed(next);
+    },
+    [isControlled, onCollapsedChange],
+  );
   const [hoveredLineLabel, setHoveredLineLabel] = useState<string | null>(null);
 
   const areaEntries = useMemo<AreaSeriesEntry[]>(() => {

@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { CombinedDemographicsSnapshot, BreakdownGroup } from "../hooks/useDemographics";
 
 interface DemographicsBarProps {
   snapshot: CombinedDemographicsSnapshot | null;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
 interface BreakdownSegmentDisplay {
@@ -118,8 +120,21 @@ const renderBreakdowns = (groups: Map<string, BreakdownGroup>) => {
   });
 };
 
-export const DemographicsBar = ({ snapshot }: DemographicsBarProps) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+export const DemographicsBar = ({ snapshot, expanded, onExpandedChange }: DemographicsBarProps) => {
+  const isControlled = typeof expanded === "boolean";
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
+  const isExpanded = isControlled ? (expanded as boolean) : uncontrolledExpanded;
+
+  const setIsExpanded = useCallback(
+    (next: boolean) => {
+      if (isControlled) {
+        onExpandedChange?.(next);
+        return;
+      }
+      setUncontrolledExpanded(next);
+    },
+    [isControlled, onExpandedChange],
+  );
   const snapshotKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -133,7 +148,7 @@ export const DemographicsBar = ({ snapshot }: DemographicsBarProps) => {
     snapshotKeyRef.current = key;
     if (prevKey === key || isExpanded) return;
     setIsExpanded(false);
-  }, [snapshot, isExpanded]);
+  }, [snapshot, isExpanded, setIsExpanded]);
 
   if (!snapshot) {
     return (
@@ -149,7 +164,7 @@ export const DemographicsBar = ({ snapshot }: DemographicsBarProps) => {
   const marriedLabel = formatPercent(stats?.marriedPercent);
   const hasBreakdowns = snapshot.breakdowns.size > 0;
   const selectedCount = stats?.selectedCount ?? 0;
-  const toggleExpanded = () => setIsExpanded((prev) => !prev);
+  const toggleExpanded = () => setIsExpanded(!isExpanded);
   const showSelectedPill = selectedCount > 1;
   const headerLabel = stats?.label ?? snapshot.label;
 
