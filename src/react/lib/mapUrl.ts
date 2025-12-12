@@ -1,5 +1,5 @@
 // URL utilities for shareable map positions and state
-// Uses query parameters: ?lat=36.1540&lng=-95.9928&z=12&stat=uuid
+// Uses query parameters: ?lat=36.1540&lng=-95.9928&z=12&stat=uuid&category=Food&orgs=id1,id2
 
 export interface MapPosition {
   lat: number;
@@ -10,6 +10,8 @@ export interface MapPosition {
 export interface MapState {
   position: MapPosition | null;
   statId: string | null;
+  category: string | null;
+  orgIds: string[];
 }
 
 // Parse map position from current URL query params
@@ -70,11 +72,13 @@ export function clearMapPositionFromUrl(): void {
   window.history.replaceState(null, "", url.toString());
 }
 
-// Get full map state from URL (position + stat)
+// Get full map state from URL (position + stat + category + orgs)
 export function getMapStateFromUrl(): MapState {
   const position = getMapPositionFromUrl();
   const statId = getStatIdFromUrl();
-  return { position, statId };
+  const category = getCategoryFromUrl();
+  const orgIds = getOrgIdsFromUrl();
+  return { position, statId, category, orgIds };
 }
 
 // Get stat ID from URL
@@ -82,6 +86,22 @@ export function getStatIdFromUrl(): string | null {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
   return params.get("stat");
+}
+
+// Get category from URL
+export function getCategoryFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  return params.get("category");
+}
+
+// Get org IDs from URL (comma-separated)
+export function getOrgIdsFromUrl(): string[] {
+  if (typeof window === "undefined") return [];
+  const params = new URLSearchParams(window.location.search);
+  const orgsParam = params.get("orgs");
+  if (!orgsParam) return [];
+  return orgsParam.split(",").filter(id => id.trim().length > 0);
 }
 
 // Update URL with stat ID
@@ -99,12 +119,14 @@ export function updateUrlWithStatId(statId: string | null): void {
   window.history.replaceState(null, "", url.toString());
 }
 
-// Update URL with both position and stat
+// Update URL with full map state (position + stat + category + orgs)
 export function updateUrlWithMapState(
   lat: number,
   lng: number,
   zoom: number,
   statId: string | null,
+  category: string | null,
+  orgIds: string[],
 ): void {
   if (typeof window === "undefined") return;
 
@@ -120,6 +142,20 @@ export function updateUrlWithMapState(
     url.searchParams.set("stat", statId);
   } else {
     url.searchParams.delete("stat");
+  }
+
+  // Update category
+  if (category) {
+    url.searchParams.set("category", category);
+  } else {
+    url.searchParams.delete("category");
+  }
+
+  // Update orgs (comma-separated)
+  if (orgIds.length > 0) {
+    url.searchParams.set("orgs", orgIds.join(","));
+  } else {
+    url.searchParams.delete("orgs");
   }
 
   window.history.replaceState(null, "", url.toString());

@@ -177,16 +177,16 @@ export const ReactMapApp = () => {
   const [hoveredArea, setHoveredArea] = useState<AreaId | null>(null);
   const [activeOrganizationId, setActiveOrganizationId] = useState<string | null>(null);
   const [highlightedOrganizationIds, setHighlightedOrganizationIds] = useState<string[] | null>(null);
-  // Direct org selection (from clicking org centroids or small clusters) - takes priority over area-based selection
-  const [selectedOrgIds, setSelectedOrgIds] = useState<string[]>([]);
-  // Track whether the direct org selection originated from the map (vs sidebar click)
-  const [selectedOrgIdsFromMap, setSelectedOrgIdsFromMap] = useState<boolean>(false);
   // Parse initial map state from URL once
   const [initialMapState] = useState(() => getMapStateFromUrl());
   const initialMapPosition = initialMapState.position;
+  // Direct org selection (from clicking org centroids or small clusters) - takes priority over area-based selection
+  const [selectedOrgIds, setSelectedOrgIds] = useState<string[]>(() => initialMapState.orgIds);
+  // Track whether the direct org selection originated from the map (vs sidebar click)
+  const [selectedOrgIdsFromMap, setSelectedOrgIdsFromMap] = useState<boolean>(false);
   const [selectedStatId, setSelectedStatId] = useState<string | null>(() => initialMapState.statId);
   const [secondaryStatId, setSecondaryStatId] = useState<string | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(() => initialMapState.category);
   const [hasAppliedDefaultStat, setHasAppliedDefaultStat] = useState(false);
   const [hasSyncedDefaultCategory, setHasSyncedDefaultCategory] = useState(false);
   const [searchSelectionMeta, setSearchSelectionMeta] = useState<{ term: string; ids: string[] } | null>(null);
@@ -1207,7 +1207,7 @@ export const ReactMapApp = () => {
     }
   }, [autoBoundarySwitch, cameraState, boundaryMode]);
 
-  // Debounced URL update when camera or stat changes
+  // Debounced URL update when camera, stat, category, or selected orgs change
   const urlUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!cameraState) return;
@@ -1218,14 +1218,14 @@ export const ReactMapApp = () => {
     // Debounce URL updates to avoid spam during panning
     urlUpdateTimeoutRef.current = setTimeout(() => {
       const [lng, lat] = cameraState.center;
-      updateUrlWithMapState(lat, lng, cameraState.zoom, selectedStatId);
+      updateUrlWithMapState(lat, lng, cameraState.zoom, selectedStatId, categoryFilter, selectedOrgIds);
     }, 400);
     return () => {
       if (urlUpdateTimeoutRef.current) {
         clearTimeout(urlUpdateTimeoutRef.current);
       }
     };
-  }, [cameraState, selectedStatId]);
+  }, [cameraState, selectedStatId, categoryFilter, selectedOrgIds]);
 
   const normalizedZipScope = normalizeScopeLabel(zipScope) ?? FALLBACK_ZIP_SCOPE;
   const defaultCountyScope = useMemo(
