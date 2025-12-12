@@ -30,7 +30,7 @@ import { type TimeSelection, isOrganizationOpenAtTime, toTimeSelection } from ".
 import { findCitySearchTarget, DEFAULT_CITY_ZOOM } from "./lib/citySearchTargets";
 import { parseFullAddress, geocodeAddress, looksLikeAddress } from "./lib/geocoding";
 import { normalizeForSearch, computeSimilarityFromNormalized } from "./lib/fuzzyMatch";
-import { getMapStateFromUrl, updateUrlWithMapState } from "./lib/mapUrl";
+import { getMapStateFromUrl, updateUrlWithMapState, type AreasMode } from "./lib/mapUrl";
 import { useAuthSession } from "./hooks/useAuthSession";
 import { setStatDataSubscriptionEnabled } from "../state/statData";
 import { MapSettingsModal } from "./components/MapSettingsModal";
@@ -171,15 +171,22 @@ const expandBounds = (
 };
 
 export const ReactMapApp = () => {
-  const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>("zips");
-  const [boundaryControlMode, setBoundaryControlMode] = useState<"auto" | "manual">("auto");
+  // Parse initial map state from URL once (must be first to be available for other initializers)
+  const [initialMapState] = useState(() => getMapStateFromUrl());
+  const initialMapPosition = initialMapState.position;
+  // Initialize boundary state from URL areasMode
+  const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>(() => {
+    const areasMode = initialMapState.areasMode;
+    if (areasMode === "zips" || areasMode === "counties" || areasMode === "none") return areasMode;
+    return "zips"; // default for "auto"
+  });
+  const [boundaryControlMode, setBoundaryControlMode] = useState<"auto" | "manual">(() => {
+    return initialMapState.areasMode === "auto" ? "auto" : "manual";
+  });
   const [areaSelections, setAreaSelections] = useState<AreaSelectionMap>(createInitialAreaSelections);
   const [hoveredArea, setHoveredArea] = useState<AreaId | null>(null);
   const [activeOrganizationId, setActiveOrganizationId] = useState<string | null>(null);
   const [highlightedOrganizationIds, setHighlightedOrganizationIds] = useState<string[] | null>(null);
-  // Parse initial map state from URL once
-  const [initialMapState] = useState(() => getMapStateFromUrl());
-  const initialMapPosition = initialMapState.position;
   // Direct org selection (from clicking org centroids or small clusters) - takes priority over area-based selection
   const [selectedOrgIds, setSelectedOrgIds] = useState<string[]>(() => initialMapState.orgIds);
   // Track whether the direct org selection originated from the map (vs sidebar click)
@@ -1207,7 +1214,10 @@ export const ReactMapApp = () => {
     }
   }, [autoBoundarySwitch, cameraState, boundaryMode]);
 
-  // Debounced URL update when camera, stat, category, selected orgs, or toggles change
+  // Compute areasMode from boundaryControlMode and boundaryMode for URL
+  const areasMode: AreasMode = boundaryControlMode === "auto" ? "auto" : boundaryMode;
+
+  // Debounced URL update when camera, stat, category, selected orgs, toggles, or areas change
   const urlUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!cameraState) return;
@@ -1227,6 +1237,7 @@ export const ReactMapApp = () => {
         selectedOrgIds,
         showAdvanced,
         orgPinsVisible,
+        areasMode,
       );
     }, 400);
     return () => {
@@ -1234,7 +1245,7 @@ export const ReactMapApp = () => {
         clearTimeout(urlUpdateTimeoutRef.current);
       }
     };
-  }, [cameraState, selectedStatId, categoryFilter, selectedOrgIds, showAdvanced, orgPinsVisible]);
+  }, [cameraState, selectedStatId, categoryFilter, selectedOrgIds, showAdvanced, orgPinsVisible, areasMode]);
 
   const normalizedZipScope = normalizeScopeLabel(zipScope) ?? FALLBACK_ZIP_SCOPE;
   const defaultCountyScope = useMemo(

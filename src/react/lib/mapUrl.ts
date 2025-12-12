@@ -7,6 +7,13 @@ export interface MapPosition {
   zoom: number;
 }
 
+// Areas mode combines boundaryControlMode and boundaryMode:
+// - "auto" = automatic switching based on zoom
+// - "zips" = manual, show ZIP boundaries
+// - "counties" = manual, show county boundaries
+// - "none" = no boundaries
+export type AreasMode = "auto" | "zips" | "counties" | "none";
+
 export interface MapState {
   position: MapPosition | null;
   statId: string | null;
@@ -14,6 +21,7 @@ export interface MapState {
   orgIds: string[];
   showAdvanced: boolean;
   orgPinsVisible: boolean;
+  areasMode: AreasMode;
 }
 
 // Parse map position from current URL query params
@@ -74,7 +82,7 @@ export function clearMapPositionFromUrl(): void {
   window.history.replaceState(null, "", url.toString());
 }
 
-// Get full map state from URL (position + stat + category + orgs + toggles)
+// Get full map state from URL (position + stat + category + orgs + toggles + areas)
 export function getMapStateFromUrl(): MapState {
   const position = getMapPositionFromUrl();
   const statId = getStatIdFromUrl();
@@ -82,7 +90,8 @@ export function getMapStateFromUrl(): MapState {
   const orgIds = getOrgIdsFromUrl();
   const showAdvanced = getShowAdvancedFromUrl();
   const orgPinsVisible = getOrgPinsVisibleFromUrl();
-  return { position, statId, category, orgIds, showAdvanced, orgPinsVisible };
+  const areasMode = getAreasModeFromUrl();
+  return { position, statId, category, orgIds, showAdvanced, orgPinsVisible, areasMode };
 }
 
 // Get stat ID from URL
@@ -125,6 +134,17 @@ export function getOrgPinsVisibleFromUrl(): boolean {
   return value === "true";
 }
 
+// Get areas mode from URL (defaults to "auto" if not present)
+export function getAreasModeFromUrl(): AreasMode {
+  if (typeof window === "undefined") return "auto";
+  const params = new URLSearchParams(window.location.search);
+  const value = params.get("areas");
+  if (value === "zips" || value === "counties" || value === "none") {
+    return value;
+  }
+  return "auto";
+}
+
 // Update URL with stat ID
 export function updateUrlWithStatId(statId: string | null): void {
   if (typeof window === "undefined") return;
@@ -140,7 +160,7 @@ export function updateUrlWithStatId(statId: string | null): void {
   window.history.replaceState(null, "", url.toString());
 }
 
-// Update URL with full map state (position + stat + category + orgs + toggles)
+// Update URL with full map state (position + stat + category + orgs + toggles + areas)
 export function updateUrlWithMapState(
   lat: number,
   lng: number,
@@ -150,6 +170,7 @@ export function updateUrlWithMapState(
   orgIds: string[],
   showAdvanced: boolean,
   orgPinsVisible: boolean,
+  areasMode: AreasMode,
 ): void {
   if (typeof window === "undefined") return;
 
@@ -193,6 +214,13 @@ export function updateUrlWithMapState(
     url.searchParams.set("pins", "false");
   } else {
     url.searchParams.delete("pins");
+  }
+
+  // Update areas mode (only if not "auto", since that's the default)
+  if (areasMode !== "auto") {
+    url.searchParams.set("areas", areasMode);
+  } else {
+    url.searchParams.delete("areas");
   }
 
   window.history.replaceState(null, "", url.toString());
