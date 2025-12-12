@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { db } from "../../lib/reactDb";
 import { useAuthSession } from "../hooks/useAuthSession";
 import { useCategories } from "../hooks/useCategories";
 import type { Category, Organization, OrgImportBatch } from "../../types/organization";
 import { CustomSelect } from "./CustomSelect";
+import { ChevronDownIcon } from "@heroicons/react/24/outline";
 
 type AdminOrgsPanelProps = {
-  onSwitchTab: (tab: "stats" | "orgs") => void;
+  onSwitchTab: (tab: "stats" | "orgs" | "batches") => void;
+  initialViewMode?: ViewMode;
 };
 
 type OrgRow = Organization & {
@@ -469,7 +471,7 @@ const OrgImportModal = ({
   );
 };
 
-export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
+export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminOrgsPanelProps) => {
   const { authReady } = useAuthSession();
   const { orgCategories } = useCategories();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -480,13 +482,15 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("orgs");
+  const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
   const [batchStatusFilter, setBatchStatusFilter] = useState<"all" | "success" | "running" | "error">("all");
   const [batchSearch, setBatchSearch] = useState<string>("");
   const [deletedBatchIds, setDeletedBatchIds] = useState<Set<string>>(new Set());
   const [hiddenBatchIds, setHiddenBatchIds] = useState<Set<string>>(new Set());
   const [activeImportBatchId, setActiveImportBatchId] = useState<string | null>(null);
   const [recentlyFinishedBatchId, setRecentlyFinishedBatchId] = useState<string | null>(null);
+  const [isTabDropdownOpen, setIsTabDropdownOpen] = useState(false);
+  const tabDropdownRef = useRef<HTMLDivElement>(null);
 
   const queryEnabled = authReady;
   const allowedCategories = useMemo(() => new Set(orgCategories.map((c) => c.slug)), [orgCategories]);
@@ -582,6 +586,17 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
     const timer = setTimeout(() => setActiveImportBatchId(null), 20000);
     return () => clearTimeout(timer);
   }, [activeBatchFromList, activeImportBatchId, runningBatch]);
+
+  // Close tab dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (tabDropdownRef.current && !tabDropdownRef.current.contains(event.target as Node)) {
+        setIsTabDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const bannerBatch = useMemo(() => {
     if (runningBatch) return runningBatch;
@@ -762,32 +777,75 @@ export const AdminOrgsPanel = ({ onSwitchTab }: AdminOrgsPanelProps) => {
     <div className="flex h-full w-full flex-col overflow-hidden bg-slate-50 dark:bg-slate-900">
       <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
         <div className="flex flex-wrap items-center gap-3">
-          <CustomSelect
-            value={viewMode}
-            onChange={(val) => setViewMode(val as ViewMode)}
-            options={[
-              { value: "orgs", label: "Orgs" },
-              { value: "batches", label: "Batches" },
-            ]}
-            className="w-[120px]"
-          />
-          <div>
+          {/* Tab selector with chevron */}
+          <div ref={tabDropdownRef} className="relative shrink-0">
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 sm:text-xl">
+                {viewMode === "orgs" ? "Orgs" : "Batches"}
+              </h1>
+              <button
+                type="button"
+                onClick={() => setIsTabDropdownOpen(!isTabDropdownOpen)}
+                className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                aria-label="Switch view"
+              >
+                <ChevronDownIcon
+                  className={`h-4 w-4 transition-transform ${isTabDropdownOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+            </div>
+
+            {/* Dropdown menu */}
+            {isTabDropdownOpen && (
+              <div className="absolute left-0 top-full z-50 mt-1 w-32 rounded-lg border border-slate-300 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-950">
+                <ul className="py-1">
+                  {[
+                    { value: "stats" as const, label: "Stats" },
+                    { value: "orgs" as const, label: "Orgs" },
+                    { value: "batches" as const, label: "Batches" },
+                  ].map((tab) => {
+                    const currentTab = viewMode === "orgs" ? "orgs" : viewMode === "batches" ? "batches" : "stats";
+                    const isActive = currentTab === tab.value;
+                    return (
+                      <li key={tab.value}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (tab.value === "stats") {
+                              onSwitchTab("stats");
+                            } else {
+                              setViewMode(tab.value as ViewMode);
+                            }
+                            setIsTabDropdownOpen(false);
+                          }}
+                          className={`w-full px-3 py-2 text-left text-xs ${
+                            isActive
+                              ? "bg-brand-50 text-brand-700 dark:bg-brand-400/15 dark:text-brand-300"
+                              : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {/* Count info */}
+          <div className="shrink-0">
             {viewMode === "orgs" ? (
-              <>
-                <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 sm:text-xl">Orgs</h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {filteredOrgs.length} org{filteredOrgs.length === 1 ? "" : "s"} shown
-                  {search || categoryFilter !== "all" ? ` of ${organizations.length}` : ""}
-                </p>
-              </>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 sm:text-xs">
+                {filteredOrgs.length} org{filteredOrgs.length === 1 ? "" : "s"} shown
+                {search || categoryFilter !== "all" ? ` of ${organizations.length}` : ""}
+              </p>
             ) : (
-              <>
-                <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 sm:text-xl">Import batches</h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {filteredBatches.length} batch{filteredBatches.length === 1 ? "" : "es"} shown
-                  {batchSearch || batchStatusFilter !== "all" ? ` of ${importBatches.length}` : ""}
-                </p>
-              </>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 sm:text-xs">
+                {filteredBatches.length} batch{filteredBatches.length === 1 ? "" : "es"} shown
+                {batchSearch || batchStatusFilter !== "all" ? ` of ${importBatches.length}` : ""}
+              </p>
             )}
           </div>
           {viewMode === "orgs" ? (

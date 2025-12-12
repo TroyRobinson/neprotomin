@@ -15,6 +15,7 @@ import {
   type DerivedStatOption,
 } from "./DerivedStatModal";
 import { AdminOrgsPanel } from "./AdminOrgsPanel";
+import { ChevronDownIcon } from "@heroicons/react/24/outline";
 
 // Stat item from InstantDB stats table
 interface StatItem {
@@ -1584,7 +1585,9 @@ const fuzzyMatch = (text: string, query: string): boolean => {
 export const AdminScreen = () => {
   const { authReady } = useAuthSession();
   const queryEnabled = authReady;
-  const [activeTab, setActiveTab] = useState<"stats" | "orgs">("stats");
+  const [activeTab, setActiveTab] = useState<"stats" | "orgs" | "batches">("stats");
+  const [isTabDropdownOpen, setIsTabDropdownOpen] = useState(false);
+  const tabDropdownRef = useRef<HTMLDivElement>(null);
 
   // Fetch categories from InstantDB
   const { statCategories } = useCategories();
@@ -1680,6 +1683,17 @@ export const AdminScreen = () => {
     if (anyError.operation) debugPayload.operation = anyError.operation;
     console.error("[AdminScreen] Failed to load stats", debugPayload, anyError);
   }, [statsError]);
+
+  // Close tab dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (tabDropdownRef.current && !tabDropdownRef.current.contains(event.target as Node)) {
+        setIsTabDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside as any);
+    return () => document.removeEventListener("mousedown", handleClickOutside as any);
+  }, []);
 
   // State for which stat is being edited (null = none)
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -2972,9 +2986,14 @@ export const AdminScreen = () => {
     setPendingDerivedJobs((prev) => prev.filter((job) => job.id !== jobId));
   }, []);
 
-  // Switch to Orgs admin tab
-  if (activeTab === "orgs") {
-    return <AdminOrgsPanel onSwitchTab={setActiveTab} />;
+  // Switch to Orgs or Batches admin tab
+  if (activeTab === "orgs" || activeTab === "batches") {
+    return (
+      <AdminOrgsPanel
+        onSwitchTab={setActiveTab}
+        initialViewMode={activeTab === "batches" ? "batches" : "orgs"}
+      />
+    );
   }
 
   // Loading state - only block on stats (primary query)
@@ -3015,18 +3034,60 @@ export const AdminScreen = () => {
       {/* Header - single row: Title | filters | New stat */}
       <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
         <div className="flex items-center gap-3">
-          <CustomSelect
-            value={activeTab}
-            onChange={(val) => setActiveTab(val as "stats" | "orgs")}
-            options={[
-              { value: "stats", label: "Stats" },
-              { value: "orgs", label: "Orgs" },
-            ]}
-            className="w-[110px]"
-          />
-          {/* Left: Title and count */}
+          {/* Tab selector with chevron */}
+          <div ref={tabDropdownRef} className="relative shrink-0">
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 sm:text-xl">
+                {activeTab === "stats" ? "Stats" : activeTab === "orgs" ? "Orgs" : "Batches"}
+              </h1>
+              <button
+                type="button"
+                onClick={() => setIsTabDropdownOpen(!isTabDropdownOpen)}
+                className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                aria-label="Switch view"
+              >
+                <ChevronDownIcon
+                  className={`h-4 w-4 transition-transform ${isTabDropdownOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+            </div>
+
+            {/* Dropdown menu */}
+            {isTabDropdownOpen && (
+              <div className="absolute left-0 top-full z-50 mt-1 w-32 rounded-lg border border-slate-300 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-950">
+                <ul className="py-1">
+                  {[
+                    { value: "stats" as const, label: "Stats" },
+                    { value: "orgs" as const, label: "Orgs" },
+                    { value: "batches" as const, label: "Batches" },
+                  ].map((tab) => {
+                    const isActive = activeTab === tab.value;
+                    return (
+                      <li key={tab.value}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab(tab.value);
+                            setIsTabDropdownOpen(false);
+                          }}
+                          className={`w-full px-3 py-2 text-left text-xs ${
+                            isActive
+                              ? "bg-brand-50 text-brand-700 dark:bg-brand-400/15 dark:text-brand-300"
+                              : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {/* Count info */}
           <div className="shrink-0">
-            <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100 sm:text-xl">Stats</h1>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 sm:text-xs">
               {sortedStats.length}{categoryFilter !== "all" || searchQuery ? ` of ${stats.length}` : ""} stat{sortedStats.length !== 1 ? "s" : ""}
               {editingId && <span className="ml-1 text-brand-500">(editing)</span>}
