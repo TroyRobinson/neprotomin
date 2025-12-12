@@ -24,6 +24,7 @@ export interface MapState {
   areasMode: AreasMode;
   selectedZips: string[];
   selectedCounties: string[];
+  sidebarTab: "orgs" | "stats";
 }
 
 // Parse map position from current URL query params
@@ -95,7 +96,8 @@ export function getMapStateFromUrl(): MapState {
   const areasMode = getAreasModeFromUrl();
   const selectedZips = getSelectedZipsFromUrl();
   const selectedCounties = getSelectedCountiesFromUrl();
-  return { position, statId, category, orgIds, showAdvanced, orgPinsVisible, areasMode, selectedZips, selectedCounties };
+  const sidebarTab = getSidebarTabFromUrl();
+  return { position, statId, category, orgIds, showAdvanced, orgPinsVisible, areasMode, selectedZips, selectedCounties, sidebarTab };
 }
 
 // Get stat ID from URL
@@ -173,6 +175,15 @@ export function getSelectedCountiesFromUrl(): string[] {
     .filter((id) => id.length > 0);
 }
 
+// Get sidebar tab from URL (defaults to "orgs")
+export function getSidebarTabFromUrl(): "orgs" | "stats" {
+  if (typeof window === "undefined") return "orgs";
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("tab");
+  if (tab === "stats" || tab === "orgs") return tab;
+  return "orgs";
+}
+
 // Update URL with stat ID
 export function updateUrlWithStatId(statId: string | null): void {
   if (typeof window === "undefined") return;
@@ -201,6 +212,7 @@ export function updateUrlWithMapState(
   areasMode: AreasMode,
   selectedZips: string[],
   selectedCounties: string[],
+  sidebarTab: "orgs" | "stats",
 ): void {
   if (typeof window === "undefined") return;
 
@@ -265,6 +277,13 @@ export function updateUrlWithMapState(
     url.searchParams.set("counties", selectedCounties.join(","));
   } else {
     url.searchParams.delete("counties");
+  }
+
+  // Update sidebar tab (only write if not default "orgs")
+  if (sidebarTab === "stats") {
+    url.searchParams.set("tab", "stats");
+  } else {
+    url.searchParams.delete("tab");
   }
 
   window.history.replaceState(null, "", url.toString());

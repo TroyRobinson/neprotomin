@@ -192,6 +192,7 @@ export const ReactMapApp = () => {
   const [selectedStatId, setSelectedStatId] = useState<string | null>(() => initialMapState.statId);
   const [secondaryStatId, setSecondaryStatId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(() => initialMapState.category);
+  const [sidebarTab, setSidebarTab] = useState<"orgs" | "stats">(() => initialMapState.sidebarTab);
   const [hasAppliedDefaultStat, setHasAppliedDefaultStat] = useState(false);
   const [hasSyncedDefaultCategory, setHasSyncedDefaultCategory] = useState(false);
   const [searchSelectionMeta, setSearchSelectionMeta] = useState<{ term: string; ids: string[] } | null>(null);
@@ -1238,6 +1239,7 @@ export const ReactMapApp = () => {
         areasMode,
         selectedZips,
         selectedCounties,
+        sidebarTab,
       );
     }, 400);
     return () => {
@@ -1245,7 +1247,7 @@ export const ReactMapApp = () => {
         clearTimeout(urlUpdateTimeoutRef.current);
       }
     };
-  }, [cameraState, selectedStatId, categoryFilter, selectedOrgIds, showAdvanced, orgPinsVisible, areasMode, selectedZips, selectedCounties]);
+  }, [cameraState, selectedStatId, categoryFilter, selectedOrgIds, showAdvanced, orgPinsVisible, areasMode, selectedZips, selectedCounties, sidebarTab]);
 
   const normalizedZipScope = normalizeScopeLabel(zipScope) ?? FALLBACK_ZIP_SCOPE;
   const defaultCountyScope = useMemo(
@@ -3211,6 +3213,8 @@ export const ReactMapApp = () => {
               selectionLabelOverride={searchSelectionLabel}
               selectionStyleVariant={selectionStyleVariant}
               showAdvanced={showAdvanced}
+              initialTab={sidebarTab}
+              onTabChange={setSidebarTab}
             />
           )}
         </main>
@@ -3336,6 +3340,8 @@ export const ReactMapApp = () => {
                   showInsights={true}
                   showAdvanced={showAdvanced}
                   className="h-full"
+                  initialTab={sidebarTab}
+                  onTabChange={setSidebarTab}
                 />
               </div>
             </div>

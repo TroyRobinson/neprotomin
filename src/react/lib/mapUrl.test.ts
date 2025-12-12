@@ -63,6 +63,7 @@ describe("mapUrl selection persistence", () => {
       "auto",
       ["74129"],
       ["40037"],
+      "orgs",
     );
 
     expect((globalThis as any).window.location.search).toContain("zips=74129");
@@ -80,10 +81,80 @@ describe("mapUrl selection persistence", () => {
       "auto",
       [],
       [],
+      "orgs",
     );
 
     const search = (globalThis as any).window.location.search;
     expect(search).not.toContain("zips=");
     expect(search).not.toContain("counties=");
+  });
+
+  it("parses sidebar tab from URL and defaults to orgs", () => {
+    const w: WindowLike = {
+      location: { href: "http://example.test/", search: "" },
+      history: {
+        replaceState: vi.fn((_data, _unused, url) => {
+          setWindowUrl(url);
+        }),
+      },
+    };
+    (globalThis as any).window = w;
+
+    setWindowUrl("http://example.test/?tab=stats");
+    const state = getMapStateFromUrl();
+    expect(state.sidebarTab).toBe("stats");
+
+    setWindowUrl("http://example.test/");
+    const state2 = getMapStateFromUrl();
+    expect(state2.sidebarTab).toBe("orgs");
+  });
+
+  it("writes sidebar tab to URL and removes it when default", () => {
+    const w: WindowLike = {
+      location: { href: "http://example.test/", search: "" },
+      history: {
+        replaceState: vi.fn((_data, _unused, url) => {
+          setWindowUrl(url);
+        }),
+      },
+    };
+    (globalThis as any).window = w;
+
+    setWindowUrl("http://example.test/");
+
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      [],
+      false,
+      false,
+      "auto",
+      [],
+      [],
+      "stats",
+    );
+
+    expect((globalThis as any).window.location.search).toContain("tab=stats");
+
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      [],
+      false,
+      false,
+      "auto",
+      [],
+      [],
+      "orgs",
+    );
+
+    const search = (globalThis as any).window.location.search;
+    expect(search).not.toContain("tab=");
   });
 });

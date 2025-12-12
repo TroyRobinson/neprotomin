@@ -96,6 +96,10 @@ interface SidebarProps {
   onZoomToOrg?: (organizationId: string) => void;
   selectionLabelOverride?: string | null;
   selectionStyleVariant?: "default" | "searchResults";
+  // Initial tab state (from URL)
+  initialTab?: "orgs" | "stats";
+  // Callback when tab changes (to update URL)
+  onTabChange?: (tab: "orgs" | "stats") => void;
 }
 
 type TabType = "stats" | "orgs";
@@ -150,11 +154,13 @@ export const Sidebar = ({
   onZoomToOrg,
   selectionLabelOverride = null,
   selectionStyleVariant = "default",
+  initialTab = "orgs",
+  onTabChange,
 }: SidebarProps) => {
   // Fetch categories from InstantDB
   const { sidebarCategories, getCategoryLabel } = useCategories();
 
-  const [activeTab, setActiveTab] = useState<TabType>("orgs");
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(initialOrgPinsVisible);
   const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
   const [issueModalOrg, setIssueModalOrg] = useState<Organization | null>(null);
@@ -564,6 +570,7 @@ export const Sidebar = ({
 
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
+    onTabChange?.(tab);
   };
 
   const tabClasses = (isActive: boolean) =>
