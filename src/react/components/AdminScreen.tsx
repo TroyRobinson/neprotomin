@@ -237,6 +237,7 @@ interface StatListItemProps {
   isExpanded?: boolean;
   onToggleExpand?: () => void;
   childrenCount?: number;
+  onUnlink?: () => void;
 }
 
 // Stat list item component with bar shape and curved corners
@@ -257,6 +258,7 @@ const StatListItem = ({
   isExpanded = false,
   onToggleExpand,
   childrenCount = 0,
+  onUnlink,
 }: StatListItemProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState<EditFormState>(() => createEditForm(stat));
@@ -370,9 +372,21 @@ const StatListItem = ({
                   e.stopPropagation();
                   onToggleExpand?.();
                 }}
-                className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                className="whitespace-nowrap rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
               >
                 {isExpanded ? "Hide children" : `Show ${childrenCount} child${childrenCount === 1 ? "" : "ren"}`}
+              </button>
+            )}
+            {onUnlink && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onUnlink();
+                }}
+                className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 shadow-sm transition hover:bg-rose-50 hover:text-rose-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
+              >
+                Unlink
               </button>
             )}
           </div>
@@ -3263,7 +3277,7 @@ export const AdminScreen = () => {
                                 ? grandChildGroups.reduce((sum, [, rels]) => sum + rels.length, 0)
                                 : 0;
                               return (
-                                <div key={child.id} className="relative space-y-2">
+                                <div key={child.id} className="space-y-2">
                                   <StatListItem
                                     stat={child}
                                     isEditing={editingId === child.id}
@@ -3288,17 +3302,8 @@ export const AdminScreen = () => {
                                             }))
                                         : undefined
                                     }
+                                    onUnlink={() => handleUnlinkRelation(rel.id)}
                                   />
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleUnlinkRelation(rel.id);
-                                    }}
-                                    className="absolute right-3 top-3 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 shadow-sm transition hover:bg-rose-50 hover:text-rose-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
-                                  >
-                                    Unlink
-                                  </button>
                                   {childHasChildren && isChildExpanded && (
                                     <div className="ml-4 space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
                                       {grandChildGroups.map(([gAttr, gRels]) => (
@@ -3325,6 +3330,7 @@ export const AdminScreen = () => {
                                                   selectionMode={false}
                                                   categoryOptions={statCategoryOptions}
                                                   hasChildren={false}
+                                                  onUnlink={() => handleUnlinkRelation(gRel.id)}
                                                 />
                                               );
                                             })}
