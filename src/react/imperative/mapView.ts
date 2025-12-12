@@ -3023,7 +3023,8 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     },
     setBoundaryMode,
     setPinnedZips: (zips: string[]) => {
-      zipSelection.setPinnedIds(zips, { shouldZoom: false, notify: true });
+      // React is the source of truth for pinned IDs; don't echo back via callbacks.
+      zipSelection.setPinnedIds(zips, { shouldZoom: false, notify: false });
     },
     setHoveredZip: (zip: string | null) => {
       hoveredZipFromToolbar = zip;
@@ -3034,7 +3035,8 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       onAreaHoverChange?.(finalHovered ? { kind: "ZIP", id: finalHovered } : null);
     },
     setPinnedCounties: (counties: string[]) => {
-      countySelection.setPinnedIds(counties, { shouldZoom: false, notify: true });
+      // React is the source of truth for pinned IDs; don't echo back via callbacks.
+      countySelection.setPinnedIds(counties, { shouldZoom: false, notify: false });
     },
     setHoveredCounty: (county: string | null) => {
       hoveredCountyFromToolbar = county;
@@ -3045,16 +3047,20 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       onAreaHoverChange?.(finalHovered ? { kind: "COUNTY", id: finalHovered } : null);
     },
     clearTransientSelection: () => {
-      zipSelection.clearTransient({ shouldZoom: false, notify: true });
+      // Called by React to reconcile transient sets; avoid feedback loops.
+      zipSelection.clearTransient({ shouldZoom: false, notify: false });
     },
     addTransientZips: (zips: string[]) => {
-      zipSelection.addTransient(zips, { notify: true });
+      // Called by React to reconcile transient sets; avoid feedback loops.
+      zipSelection.addTransient(zips, { notify: false });
     },
     clearCountyTransientSelection: () => {
-      countySelection.clearTransient({ shouldZoom: false, notify: true });
+      // Called by React to reconcile transient sets; avoid feedback loops.
+      countySelection.clearTransient({ shouldZoom: false, notify: false });
     },
     addTransientCounties: (counties: string[]) => {
-      countySelection.addTransient(counties, { notify: true });
+      // Called by React to reconcile transient sets; avoid feedback loops.
+      countySelection.addTransient(counties, { notify: false });
     },
     fitAllOrganizations,
     setOrganizationPinsVisible: (visible: boolean) => {

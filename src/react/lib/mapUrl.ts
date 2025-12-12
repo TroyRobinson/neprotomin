@@ -22,6 +22,8 @@ export interface MapState {
   showAdvanced: boolean;
   orgPinsVisible: boolean;
   areasMode: AreasMode;
+  selectedZips: string[];
+  selectedCounties: string[];
 }
 
 // Parse map position from current URL query params
@@ -82,7 +84,7 @@ export function clearMapPositionFromUrl(): void {
   window.history.replaceState(null, "", url.toString());
 }
 
-// Get full map state from URL (position + stat + category + orgs + toggles + areas)
+// Get full map state from URL (position + stat + category + orgs + toggles + areas + selections)
 export function getMapStateFromUrl(): MapState {
   const position = getMapPositionFromUrl();
   const statId = getStatIdFromUrl();
@@ -91,7 +93,9 @@ export function getMapStateFromUrl(): MapState {
   const showAdvanced = getShowAdvancedFromUrl();
   const orgPinsVisible = getOrgPinsVisibleFromUrl();
   const areasMode = getAreasModeFromUrl();
-  return { position, statId, category, orgIds, showAdvanced, orgPinsVisible, areasMode };
+  const selectedZips = getSelectedZipsFromUrl();
+  const selectedCounties = getSelectedCountiesFromUrl();
+  return { position, statId, category, orgIds, showAdvanced, orgPinsVisible, areasMode, selectedZips, selectedCounties };
 }
 
 // Get stat ID from URL
@@ -145,6 +149,30 @@ export function getAreasModeFromUrl(): AreasMode {
   return "auto";
 }
 
+// Get selected ZIP codes from URL (comma-separated)
+export function getSelectedZipsFromUrl(): string[] {
+  if (typeof window === "undefined") return [];
+  const params = new URLSearchParams(window.location.search);
+  const zipsParam = params.get("zips");
+  if (!zipsParam) return [];
+  return zipsParam
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+}
+
+// Get selected counties from URL (comma-separated)
+export function getSelectedCountiesFromUrl(): string[] {
+  if (typeof window === "undefined") return [];
+  const params = new URLSearchParams(window.location.search);
+  const countiesParam = params.get("counties");
+  if (!countiesParam) return [];
+  return countiesParam
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+}
+
 // Update URL with stat ID
 export function updateUrlWithStatId(statId: string | null): void {
   if (typeof window === "undefined") return;
@@ -160,7 +188,7 @@ export function updateUrlWithStatId(statId: string | null): void {
   window.history.replaceState(null, "", url.toString());
 }
 
-// Update URL with full map state (position + stat + category + orgs + toggles + areas)
+// Update URL with full map state (position + stat + category + orgs + toggles + areas + selections)
 export function updateUrlWithMapState(
   lat: number,
   lng: number,
@@ -171,6 +199,8 @@ export function updateUrlWithMapState(
   showAdvanced: boolean,
   orgPinsVisible: boolean,
   areasMode: AreasMode,
+  selectedZips: string[],
+  selectedCounties: string[],
 ): void {
   if (typeof window === "undefined") return;
 
@@ -221,6 +251,20 @@ export function updateUrlWithMapState(
     url.searchParams.set("areas", areasMode);
   } else {
     url.searchParams.delete("areas");
+  }
+
+  // Update selected ZIPs (comma-separated)
+  if (selectedZips.length > 0) {
+    url.searchParams.set("zips", selectedZips.join(","));
+  } else {
+    url.searchParams.delete("zips");
+  }
+
+  // Update selected counties (comma-separated)
+  if (selectedCounties.length > 0) {
+    url.searchParams.set("counties", selectedCounties.join(","));
+  } else {
+    url.searchParams.delete("counties");
   }
 
   window.history.replaceState(null, "", url.toString());

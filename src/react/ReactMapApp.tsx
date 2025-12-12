@@ -126,12 +126,6 @@ const createEmptySelection = (): AreaSelectionState => ({
   transient: [],
 });
 
-const createInitialAreaSelections = (): AreaSelectionMap => ({
-  ZIP: createEmptySelection(),
-  COUNTY: createEmptySelection(),
-  TRACT: createEmptySelection(),
-});
-
 const dedupeIds = (ids: string[]): string[] => {
   if (!ids || ids.length === 0) return [];
   const seen = new Set<string>();
@@ -183,7 +177,11 @@ export const ReactMapApp = () => {
   const [boundaryControlMode, setBoundaryControlMode] = useState<"auto" | "manual">(() => {
     return initialMapState.areasMode === "auto" ? "auto" : "manual";
   });
-  const [areaSelections, setAreaSelections] = useState<AreaSelectionMap>(createInitialAreaSelections);
+  const [areaSelections, setAreaSelections] = useState<AreaSelectionMap>(() => ({
+    ZIP: { selected: initialMapState.selectedZips, pinned: [], transient: [] },
+    COUNTY: { selected: initialMapState.selectedCounties, pinned: [], transient: [] },
+    TRACT: createEmptySelection(),
+  }));
   const [hoveredArea, setHoveredArea] = useState<AreaId | null>(null);
   const [activeOrganizationId, setActiveOrganizationId] = useState<string | null>(null);
   const [highlightedOrganizationIds, setHighlightedOrganizationIds] = useState<string[] | null>(null);
@@ -1217,7 +1215,7 @@ export const ReactMapApp = () => {
   // Compute areasMode from boundaryControlMode and boundaryMode for URL
   const areasMode: AreasMode = boundaryControlMode === "auto" ? "auto" : boundaryMode;
 
-  // Debounced URL update when camera, stat, category, selected orgs, toggles, or areas change
+  // Debounced URL update when camera, stat, category, selected orgs, toggles, areas, or selections change
   const urlUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!cameraState) return;
@@ -1238,6 +1236,8 @@ export const ReactMapApp = () => {
         showAdvanced,
         orgPinsVisible,
         areasMode,
+        selectedZips,
+        selectedCounties,
       );
     }, 400);
     return () => {
@@ -1245,7 +1245,7 @@ export const ReactMapApp = () => {
         clearTimeout(urlUpdateTimeoutRef.current);
       }
     };
-  }, [cameraState, selectedStatId, categoryFilter, selectedOrgIds, showAdvanced, orgPinsVisible, areasMode]);
+  }, [cameraState, selectedStatId, categoryFilter, selectedOrgIds, showAdvanced, orgPinsVisible, areasMode, selectedZips, selectedCounties]);
 
   const normalizedZipScope = normalizeScopeLabel(zipScope) ?? FALLBACK_ZIP_SCOPE;
   const defaultCountyScope = useMemo(
