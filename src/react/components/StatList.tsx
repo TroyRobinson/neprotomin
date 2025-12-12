@@ -437,10 +437,18 @@ export const StatList = ({
 
   // Check if a toggle attribute is available (can be clicked)
   const isToggleAttrAvailable = (attr: string): boolean => {
-    // Available if: it's a single-child parent attr, OR grandchild attr is available for active child
+    // If a dropdown child is selected, only available if that child has grandchildren with this attr
+    const hasDropdownChild = isChildFromDropdown(activeChildId);
+    if (hasDropdownChild && activeChildId) {
+      const available = grandchildAttributes.availableForChild.get(activeChildId);
+      return available?.has(attr) ?? false;
+    }
+
+    // No dropdown child selected - check if it's a single-child attr or grandchild-only attr
     const isSingleChildAttr = singleChildAttrs.some(([a]) => a === attr);
     if (isSingleChildAttr) return true;
-    // Check grandchild availability
+
+    // Check grandchild availability for active child
     if (!activeChildId) return false;
     const available = grandchildAttributes.availableForChild.get(activeChildId);
     return available?.has(attr) ?? false;
