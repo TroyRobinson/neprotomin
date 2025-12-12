@@ -1562,7 +1562,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
 // Sort options for stats list
 type SortOption = "updated" | "created" | "name" | "category";
 const sortOptionLabels: Record<SortOption, string> = {
-  updated: "Recently Updated",
+  updated: "↓ Updated",
   created: "↓ Created",
   name: "Name (A-Z)",
   category: "Category",

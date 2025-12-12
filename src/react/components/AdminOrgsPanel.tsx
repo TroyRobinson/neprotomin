@@ -870,17 +870,17 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                   <button
                     type="button"
                     onClick={() => setIsFiltersDropdownOpen(!isFiltersDropdownOpen)}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+                    className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700 shadow-sm transition hover:bg-slate-50 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
-                    <FunnelIcon className="h-4 w-4" />
+                    <FunnelIcon className="h-3.5 w-3.5" />
                     <span>Filters</span>
                     {activeFilterCount > 0 && (
-                      <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-500 px-1.5 text-xs font-semibold text-white">
+                      <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-brand-500 px-1 text-[10px] font-semibold text-white">
                         {activeFilterCount}
                       </span>
                     )}
                     <ChevronDownIcon
-                      className={`h-3.5 w-3.5 transition-transform ${isFiltersDropdownOpen ? "rotate-180" : ""}`}
+                      className={`h-3 w-3 transition-transform ${isFiltersDropdownOpen ? "rotate-180" : ""}`}
                     />
                   </button>
 
@@ -989,10 +989,10 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search name, city, keyword"
-                    className="h-9 w-52 rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    className="h-7 w-52 rounded-lg border border-slate-300 bg-white pl-7 pr-3 text-xs text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                   />
                   <svg
-                    className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+                    className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
                     fill="none"
@@ -1012,9 +1012,9 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                 <button
                   type="button"
                   onClick={() => setIsImportModalOpen(true)}
-                  className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600"
+                  className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 sm:px-3 sm:py-1.5"
                 >
-                  <span className="text-lg leading-none">+</span> Import Orgs
+                  <span className="text-sm leading-none">+</span> Import Orgs
                 </button>
               </div>
             </>
@@ -1035,10 +1035,10 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                   value={batchSearch}
                   onChange={(e) => setBatchSearch(e.target.value)}
                   placeholder="Search batches"
-                  className="h-9 w-48 rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  className="h-7 w-48 rounded-lg border border-slate-300 bg-white pl-7 pr-3 text-xs text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 />
                 <svg
-                  className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+                  className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
                   fill="none"
@@ -1049,9 +1049,9 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
               <button
                 type="button"
                 onClick={() => setIsImportModalOpen(true)}
-                className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600"
+                className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 sm:px-3 sm:py-1.5"
               >
-                <span className="text-lg leading-none">+</span> Import Orgs
+                <span className="text-sm leading-none">+</span> Import Orgs
               </button>
             </div>
           )}
