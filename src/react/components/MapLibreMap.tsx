@@ -14,6 +14,7 @@ interface AreaSelectionChange {
 interface MapLibreMapProps {
   organizations?: Organization[];
   orgPinsVisible?: boolean;
+  initialMapPosition?: { lng: number; lat: number; zoom: number } | null;
   zoomOutRequestNonce?: number;
   // When incremented, explicitly clear the map's category chips
   clearMapCategoryNonce?: number;
@@ -73,6 +74,7 @@ interface MapLibreMapProps {
 export const MapLibreMap = ({
   organizations = [],
   orgPinsVisible = false,
+  initialMapPosition = null,
   zoomOutRequestNonce,
   clearMapCategoryNonce,
   onRequestHideOrgs,
@@ -195,6 +197,7 @@ export const MapLibreMap = ({
 
     const mapController = createMapView({
       initialUserLocation: userLocation,
+      initialMapPosition,
       onHover: (v) => onHoverRef.current?.(v),
       onVisibleIdsChange: (ids, total, all) => onVisibleIdsChangeRef.current?.(ids, total, all),
       onZipSelectionChange: (zips, meta) => {

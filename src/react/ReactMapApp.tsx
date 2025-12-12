@@ -30,6 +30,7 @@ import { type TimeSelection, isOrganizationOpenAtTime, toTimeSelection } from ".
 import { findCitySearchTarget, DEFAULT_CITY_ZOOM } from "./lib/citySearchTargets";
 import { parseFullAddress, geocodeAddress, looksLikeAddress } from "./lib/geocoding";
 import { normalizeForSearch, computeSimilarityFromNormalized } from "./lib/fuzzyMatch";
+import { getMapPositionFromUrl, updateUrlWithMapPosition, type MapPosition } from "./lib/mapUrl";
 import { useAuthSession } from "./hooks/useAuthSession";
 import { setStatDataSubscriptionEnabled } from "../state/statData";
 import { MapSettingsModal } from "./components/MapSettingsModal";
@@ -192,6 +193,8 @@ export const ReactMapApp = () => {
   });
   const [authOpen, setAuthOpen] = useState(false);
   const [cameraState, setCameraState] = useState<{ center: [number, number]; zoom: number } | null>(null);
+  // Initial map position from URL (parsed once on mount)
+  const [initialMapPosition] = useState<MapPosition | null>(() => getMapPositionFromUrl());
   const [hasInteractedWithMap, setHasInteractedWithMap] = useState(false);
   const [sidebarFollowsMap, setSidebarFollowsMap] = useState(true);
   const [orgPinsVisible, setOrgPinsVisible] = useState(true);
@@ -1061,6 +1064,8 @@ export const ReactMapApp = () => {
     seriesByStatIdByKind,
     seriesByStatIdByParent,
     statDataByParent,
+    statRelationsByParent,
+    statRelationsByChild,
     isLoading: areStatsLoading,
   } = useStats({ statDataEnabled: activeScreen !== "admin" });
   const { organizations } = useOrganizations();
@@ -1200,6 +1205,26 @@ export const ReactMapApp = () => {
       setBoundaryMode(nextMode);
     }
   }, [autoBoundarySwitch, cameraState, boundaryMode]);
+
+  // Debounced URL update when camera changes
+  const urlUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!cameraState) return;
+    // Clear any pending update
+    if (urlUpdateTimeoutRef.current) {
+      clearTimeout(urlUpdateTimeoutRef.current);
+    }
+    // Debounce URL updates to avoid spam during panning
+    urlUpdateTimeoutRef.current = setTimeout(() => {
+      const [lng, lat] = cameraState.center;
+      updateUrlWithMapPosition(lat, lng, cameraState.zoom);
+    }, 400);
+    return () => {
+      if (urlUpdateTimeoutRef.current) {
+        clearTimeout(urlUpdateTimeoutRef.current);
+      }
+    };
+  }, [cameraState]);
 
   const normalizedZipScope = normalizeScopeLabel(zipScope) ?? FALLBACK_ZIP_SCOPE;
   const defaultCountyScope = useMemo(
@@ -2664,12 +2689,8 @@ export const ReactMapApp = () => {
     if (statId === null) {
       setSelectedStatId(null);
       setSecondaryStatId(null);
-      if (meta?.clear) {
-        setCategoryFilter(null);
-        // Ensure the map overlay category chip also clears even if
-        // categoryFilter was already null (no state change to trigger effects).
-        setClearMapCategoryNonce((n) => n + 1);
-      }
+      // Note: We intentionally do NOT clear categoryFilter here when deselecting a stat.
+      // The category should remain selected so users can easily select another stat from the same category.
       return;
     }
 
@@ -3009,6 +3030,7 @@ export const ReactMapApp = () => {
               key={isMobile ? "mobile" : "desktop"}
               organizations={availableOrganizations}
               orgPinsVisible={orgPinsVisible}
+              initialMapPosition={initialMapPosition}
               zoomOutRequestNonce={zoomOutNonce}
               clearMapCategoryNonce={clearMapCategoryNonce}
               onRequestHideOrgs={() => {
@@ -3122,6 +3144,8 @@ export const ReactMapApp = () => {
               statsById={statsById}
               seriesByStatIdByKind={seriesByStatIdScoped}
               statDataById={statDataByStatId}
+              statRelationsByParent={statRelationsByParent}
+              statRelationsByChild={statRelationsByChild}
               demographicsSnapshot={activeDemographicsSnapshot ?? combinedSnapshot}
               selectedAreas={selectedAreasMap}
               pinnedAreas={pinnedAreasMap}
@@ -3242,6 +3266,8 @@ export const ReactMapApp = () => {
                     statsById={statsById}
                     seriesByStatIdByKind={seriesByStatIdScoped}
                     statDataById={statDataByStatId}
+                    statRelationsByParent={statRelationsByParent}
+                    statRelationsByChild={statRelationsByChild}
                     demographicsSnapshot={activeDemographicsSnapshot ?? combinedSnapshot}
                     selectedAreas={selectedAreasMap}
                     pinnedAreas={pinnedAreasMap}

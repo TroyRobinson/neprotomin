@@ -61,6 +61,7 @@ interface AreaSelectionChange {
 
 interface MapViewOptions {
   initialUserLocation?: { lng: number; lat: number } | null;
+  initialMapPosition?: { lng: number; lat: number; zoom: number } | null;
   onHover: (idOrIds: string | string[] | null) => void;
   onVisibleIdsChange?: (ids: string[], totalInSource: number, allSourceIds: string[]) => void;
   onZipSelectionChange?: (selectedZips: string[], meta?: { pinned: string[]; transient: string[] }) => void;
@@ -247,6 +248,7 @@ const getCountyAreaBounds = countyAreaEntry.getBounds;
 
 export const createMapView = ({
   initialUserLocation = null,
+  initialMapPosition = null,
   onHover,
   onVisibleIdsChange,
   onZipSelectionChange,
@@ -632,8 +634,10 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   const map = new maplibregl.Map({
     container: mapNode,
     style: getMapStyle(currentTheme),
-    center: [OKLAHOMA_CENTER.longitude, OKLAHOMA_CENTER.latitude],
-    zoom: OKLAHOMA_DEFAULT_ZOOM,
+    center: initialMapPosition
+      ? [initialMapPosition.lng, initialMapPosition.lat]
+      : [OKLAHOMA_CENTER.longitude, OKLAHOMA_CENTER.latitude],
+    zoom: initialMapPosition?.zoom ?? OKLAHOMA_DEFAULT_ZOOM,
     attributionControl: false,
     fadeDuration: 0,
     boxZoom: false,
@@ -1768,10 +1772,13 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   };
 
   map.once("load", () => {
-    map.jumpTo({
-      center: [OKLAHOMA_CENTER.longitude, OKLAHOMA_CENTER.latitude],
-      zoom: OKLAHOMA_DEFAULT_ZOOM,
-    });
+    // Only reset to default if no initial position was provided from URL
+    if (!initialMapPosition) {
+      map.jumpTo({
+        center: [OKLAHOMA_CENTER.longitude, OKLAHOMA_CENTER.latitude],
+        zoom: OKLAHOMA_DEFAULT_ZOOM,
+      });
+    }
 
     map.getCanvas().style.outline = "none";
 
