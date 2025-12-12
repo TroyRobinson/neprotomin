@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Stat, StatRelation, StatRelationsByParent, StatRelationsByChild } from "../../types/stat";
+import { UNDEFINED_STAT_ATTRIBUTE } from "../../types/stat";
 import { formatStatValue } from "../../lib/format";
 import type { StatBoundaryEntry } from "../hooks/useStats";
 
@@ -374,6 +375,8 @@ export const StatList = ({
     const multi: Array<[string, Array<StatRelation & { child: Stat | null }>]> = [];
 
     for (const [attrName, relations] of byAttribute) {
+      // Hide "Undefined" attribute group from the sidebar UI.
+      if (attrName === UNDEFINED_STAT_ATTRIBUTE) continue;
       if (relations.length === 1) {
         single.push([attrName, relations[0]]);
       } else {
@@ -405,6 +408,8 @@ export const StatList = ({
         if (grandchildByAttribute && grandchildByAttribute.size > 0) {
           const attrsForThisChild = new Set<string>();
           for (const [attrName] of grandchildByAttribute) {
+            // Hide "Undefined" attribute group from the sidebar UI.
+            if (attrName === UNDEFINED_STAT_ATTRIBUTE) continue;
             allAttrsSet.add(attrName);
             attrsForThisChild.add(attrName);
           }

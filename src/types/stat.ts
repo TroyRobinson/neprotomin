@@ -22,6 +22,12 @@ export interface StatRelation {
   updatedAt?: number | null;
 }
 
+/**
+ * Sentinel attribute for child stats that should be hidden from the sidebar UI.
+ * Admin UI renders this as "Undefined".
+ */
+export const UNDEFINED_STAT_ATTRIBUTE = "__undefined__";
+
 export type StatRelationsByParent = Map<
   string,
   Map<string, Array<StatRelation & { child: Stat | null }>>

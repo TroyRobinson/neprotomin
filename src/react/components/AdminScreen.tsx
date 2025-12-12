@@ -7,6 +7,7 @@ import { useAuthSession } from "../hooks/useAuthSession";
 import { useCategories } from "../hooks/useCategories";
 import type { Category } from "../../types/organization";
 import type { StatRelation } from "../../types/stat";
+import { UNDEFINED_STAT_ATTRIBUTE } from "../../types/stat";
 import { CustomSelect } from "./CustomSelect";
 import {
   DerivedStatModal,
@@ -645,6 +646,8 @@ type CensusVariablePreview = {
 
 type ImportStatus = "pending" | "running" | "success" | "error";
 
+type ImportRelationship = "none" | "child" | "parent";
+
 interface ImportQueueItem {
   id: string;
   dataset: string;
@@ -653,6 +656,9 @@ interface ImportQueueItem {
   year: number;
   years: number;
   includeMoe: boolean;
+  relationship?: ImportRelationship;
+  statAttribute?: string;
+  importedStatId?: string;
   status: ImportStatus;
   errorMessage?: string;
 }
@@ -984,9 +990,14 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewTotal, setPreviewTotal] = useState(0);
   const [variables, setVariables] = useState<CensusVariablePreview[]>([]);
-  const [selection, setSelection] = useState<
-    Record<string, { selected: boolean; yearEnd: number | null; yearStart: number | null }>
-  >({});
+  type VariableSelection = {
+    selected: boolean;
+    yearEnd: number | null;
+    yearStart: number | null;
+    relationship: ImportRelationship;
+    statAttribute: string;
+  };
+  const [selection, setSelection] = useState<Record<string, VariableSelection>>({});
   const [queueItems, setQueueItems] = useState<ImportQueueItem[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
@@ -1016,6 +1027,18 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
     // Focus group search input when modal opens
     setTimeout(() => groupInputRef.current?.focus(), 50);
   }, [isOpen]);
+
+  const getDefaultSelection = useCallback(
+    (overrides?: Partial<VariableSelection>): VariableSelection => ({
+      selected: false,
+      yearEnd: year,
+      yearStart: null,
+      relationship: "none",
+      statAttribute: "",
+      ...(overrides ?? {}),
+    }),
+    [year],
+  );
 
   // Handle click outside to close modal
   useEffect(() => {
@@ -1108,7 +1131,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
       for (const v of parsed) {
         // Auto-select any AI-suggested variables that exist in this group preview.
         const shouldSelect = suggestedSet.size > 0 && suggestedSet.has(v.name);
-        const entry = { selected: shouldSelect, yearEnd: year, yearStart: year - 2 };
+        const entry = getDefaultSelection({ selected: shouldSelect, yearEnd: year, yearStart: year - 2 });
         defaults[v.name] = entry;
         if (shouldSelect) {
           autoSelected.push({ name: v.name, yearEnd: entry.yearEnd, yearStart: entry.yearStart });
@@ -1134,6 +1157,8 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
               year: qYear,
               years: qYears,
               includeMoe: true,
+              relationship: "none",
+              statAttribute: "",
               status: "pending" as const,
             });
           }
@@ -1155,7 +1180,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
     } finally {
       setIsPreviewLoading(false);
     }
-  }, [dataset, group, year, limit]);
+  }, [dataset, group, year, limit, getDefaultSelection]);
 
   // Helper to calculate year and years from selection
   // If both are set: range from yearStart to yearEnd
@@ -1187,7 +1212,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
   const toggleVariableSelected = useCallback((name: string) => {
     const trimmedGroup = group.trim();
     setSelection((prev) => {
-      const current = prev[name] ?? { selected: false, yearEnd: year, yearStart: null };
+      const current = prev[name] ?? getDefaultSelection();
       const newSelected = !current.selected;
       
       // If selecting, add to queue
@@ -1207,6 +1232,8 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
               year: qYear,
               years: qYears,
               includeMoe: true,
+              relationship: current.relationship ?? "none",
+              statAttribute: current.statAttribute ?? "",
               status: "pending" as const,
             },
           ];
@@ -1221,10 +1248,15 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
       
       return {
         ...prev,
-        [name]: { ...current, selected: newSelected },
+        [name]: {
+          ...current,
+          selected: newSelected,
+          relationship: newSelected ? current.relationship : "none",
+          statAttribute: newSelected ? current.statAttribute : "",
+        },
       };
     });
-  }, [group, dataset, year]);
+  }, [group, dataset, year, getDefaultSelection]);
 
   const removeFromQueue = useCallback((itemId: string, variableName: string) => {
     // Remove from queue
@@ -1235,7 +1267,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
       if (!current) return prev;
       return {
         ...prev,
-        [variableName]: { ...current, selected: false },
+        [variableName]: { ...current, selected: false, relationship: "none", statAttribute: "" },
       };
     });
   }, []);
@@ -1244,7 +1276,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
     (name: string, field: "yearEnd" | "yearStart", value: number | null) => {
       const trimmedGroup = group.trim();
       setSelection((prev) => {
-        const current = prev[name] ?? { selected: true, yearEnd: year, yearStart: null };
+        const current = prev[name] ?? getDefaultSelection({ selected: true });
         const updated = { ...current, [field]: value };
         
         // Update corresponding queue item if selected
@@ -1265,15 +1297,139 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
         };
       });
     },
-    [year, group],
+    [year, group, getDefaultSelection],
   );
+
+  const setVariableRelationship = useCallback(
+    (name: string, relationship: ImportRelationship) => {
+      if (isRunning) return;
+      const trimmedGroup = group.trim();
+
+      setSelection((prev) => {
+        const current = prev[name] ?? getDefaultSelection();
+        const nextSelected = current.selected ? current.selected : true;
+
+        const nextForName: VariableSelection = {
+          ...current,
+          selected: nextSelected,
+          relationship,
+          statAttribute: relationship === "child" ? current.statAttribute : "",
+        };
+
+        const next: Record<string, VariableSelection> = { ...prev, [name]: nextForName };
+
+        // Enforce: only one "parent" per import.
+        if (relationship === "parent") {
+          for (const [key, value] of Object.entries(next)) {
+            if (key === name) continue;
+            if (value?.relationship === "parent") {
+              next[key] = { ...value, relationship: "none" };
+            }
+          }
+        }
+
+        // Keep queue in sync (add if needed, update relationship, clear other parents).
+        if (trimmedGroup) {
+          const { year: qYear, years: qYears } = getYearRange(nextForName, year);
+          const id = `${dataset}::${trimmedGroup}::${name}`;
+          setQueueItems((prevQueue) => {
+            const hasItem = prevQueue.some((item) => item.id === id);
+            let nextQueue = hasItem
+              ? prevQueue.map((item) =>
+                  item.id === id
+                    ? {
+                        ...item,
+                        year: qYear,
+                        years: qYears,
+                        relationship,
+                        statAttribute: nextForName.statAttribute,
+                      }
+                    : item,
+                )
+              : [
+                  ...prevQueue,
+                  {
+                    id,
+                    dataset,
+                    group: trimmedGroup,
+                    variable: name,
+                    year: qYear,
+                    years: qYears,
+                    includeMoe: true,
+                    relationship,
+                    statAttribute: nextForName.statAttribute,
+                    status: "pending" as const,
+                  },
+                ];
+
+            if (relationship === "parent") {
+              nextQueue = nextQueue.map((item) =>
+                item.id !== id && item.relationship === "parent"
+                  ? { ...item, relationship: "none" as const }
+                  : item,
+              );
+            }
+            return nextQueue;
+          });
+        }
+
+        return next;
+      });
+    },
+    [dataset, getDefaultSelection, getYearRange, group, isRunning, year],
+  );
+
+  const updateVariableStatAttribute = useCallback(
+    (name: string, statAttribute: string) => {
+      if (isRunning) return;
+      const trimmedGroup = group.trim();
+      setSelection((prev) => {
+        const current = prev[name] ?? getDefaultSelection();
+        const nextSelected = current.selected ? current.selected : true;
+        const nextForName: VariableSelection = {
+          ...current,
+          selected: nextSelected,
+          relationship: "child",
+          statAttribute,
+        };
+        const next = { ...prev, [name]: nextForName };
+
+        if (trimmedGroup) {
+          setQueueItems((prevQueue) =>
+            prevQueue.map((item) =>
+              item.variable === name && item.group === trimmedGroup
+                ? { ...item, relationship: "child", statAttribute }
+                : item,
+            ),
+          );
+        }
+
+        return next;
+      });
+    },
+    [getDefaultSelection, group, isRunning],
+  );
+
+  const relationshipConfigError = useMemo(() => {
+    const parents = queueItems.filter((q) => q.relationship === "parent");
+    const children = queueItems.filter((q) => q.relationship === "child");
+    if (parents.length > 1) return "Only one Parent is allowed per import.";
+    if (children.length > 0 && parents.length !== 1) return "Select exactly one Parent when using Child relationships.";
+    return null;
+  }, [queueItems]);
 
   const handleRunQueue = useCallback(async () => {
     if (isRunning || queueItems.length === 0) return;
+    if (relationshipConfigError) {
+      setPreviewError(relationshipConfigError);
+      return;
+    }
     setIsRunning(true);
     setCurrentYearProcessing(null);
     const itemsSnapshot = queueItems.slice();
     const importedStatIds: string[] = [];
+    const importedByItemId = new Map<string, string>();
+    const erroredItemIds = new Set<string>();
     try {
       for (let index = 0; index < itemsSnapshot.length; index += 1) {
         const item = itemsSnapshot[index];
@@ -1286,6 +1442,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
         );
         // When importing multiple years, split into per-year requests to keep each server call small.
         let itemErrored = false;
+        let itemStatId: string | null = null;
         const yearsToProcess =
           item.years > 1 ? Array.from({ length: item.years }, (_, idx) => item.year - idx) : [item.year];
 
@@ -1317,11 +1474,21 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
               );
               // Stop processing remaining years for this item on error
               itemErrored = true;
+              erroredItemIds.add(item.id);
               throw new Error(message);
             }
             const statId = typeof payload.statId === "string" ? payload.statId : null;
             if (statId && !importedStatIds.includes(statId)) {
               importedStatIds.push(statId);
+            }
+            if (statId) {
+              itemStatId = statId;
+              importedByItemId.set(item.id, statId);
+              setQueueItems((prev) =>
+                prev.map((q, i) =>
+                  i === index ? { ...q, importedStatId: statId } : q,
+                ),
+              );
             }
             setCurrentYearProcessing(null);
           } catch (err) {
@@ -1334,6 +1501,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
               ),
             );
             itemErrored = true;
+            erroredItemIds.add(item.id);
             setCurrentYearProcessing(null);
             break;
           }
@@ -1343,10 +1511,72 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
         setQueueItems((prev) =>
           prev.map((q, i) =>
             i === index && !itemErrored
-              ? { ...q, status: "success", errorMessage: undefined }
+              ? { ...q, status: "success", errorMessage: undefined, importedStatId: itemStatId ?? q.importedStatId }
               : q,
           ),
         );
+      }
+      // Create parent/child stat relationships if configured.
+      const parentItem = itemsSnapshot.find(
+        (q) => q.relationship === "parent" && !erroredItemIds.has(q.id) && importedByItemId.has(q.id),
+      );
+      const childItems = itemsSnapshot.filter(
+        (q) => q.relationship === "child" && !erroredItemIds.has(q.id) && importedByItemId.has(q.id),
+      );
+      if (childItems.length > 0 && parentItem) {
+        const parentStatId = importedByItemId.get(parentItem.id)!;
+        const now = Date.now();
+        const candidates = childItems
+          .map((child) => {
+            const childStatId = importedByItemId.get(child.id)!;
+            if (!childStatId || childStatId === parentStatId) return null;
+            const rawAttr = typeof child.statAttribute === "string" ? child.statAttribute.trim() : "";
+            const statAttribute = rawAttr ? rawAttr : UNDEFINED_STAT_ATTRIBUTE;
+            const relationKey = `${parentStatId}::${childStatId}::${statAttribute}`;
+            return { relationKey, parentStatId, childStatId, statAttribute };
+          })
+          .filter((v): v is { relationKey: string; parentStatId: string; childStatId: string; statAttribute: string } => v !== null);
+
+        const uniqueByKey = new Map<string, (typeof candidates)[number]>();
+        for (const c of candidates) uniqueByKey.set(c.relationKey, c);
+        const unique = Array.from(uniqueByKey.values());
+
+        if (unique.length > 0) {
+          try {
+            const { data } = await db.queryOnce({
+              statRelations: {
+                $: {
+                  where: { relationKey: { $in: unique.map((u) => u.relationKey) } },
+                  fields: ["relationKey"],
+                },
+              },
+            });
+            const existing = new Set(
+              Array.isArray((data as any)?.statRelations)
+                ? (data as any).statRelations
+                    .map((r: any) => (typeof r?.relationKey === "string" ? r.relationKey : null))
+                    .filter(Boolean)
+                : [],
+            );
+            const txs = unique
+              .filter((u) => !existing.has(u.relationKey))
+              .map((u) =>
+                db.tx.statRelations[createId()].update({
+                  relationKey: u.relationKey,
+                  parentStatId: u.parentStatId,
+                  childStatId: u.childStatId,
+                  statAttribute: u.statAttribute,
+                  createdAt: now,
+                  updatedAt: now,
+                }),
+              );
+            if (txs.length > 0) {
+              await db.transact(txs);
+            }
+          } catch (err) {
+            console.error("Failed to create stat relationships after import", err);
+          }
+        }
       }
     } finally {
       setIsRunning(false);
@@ -1356,7 +1586,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
         onImported(importedStatIds);
       }
     }
-  }, [queueItems, isRunning, onImported, category]);
+  }, [queueItems, isRunning, onImported, category, relationshipConfigError]);
 
   if (!isOpen) return null;
 
@@ -1575,12 +1805,15 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
               <button
                 type="button"
                 onClick={handleRunQueue}
-                disabled={isRunning || queueItems.length === 0}
+                disabled={isRunning || queueItems.length === 0 || Boolean(relationshipConfigError)}
                 className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-60"
               >
                 {isRunning ? "Running imports…" : "Start import"}
               </button>
             </div>
+            {relationshipConfigError && (
+              <p className="mt-2 text-[11px] text-rose-600 dark:text-rose-400">{relationshipConfigError}</p>
+            )}
           </div>
 
           {/* Preview section - order-2 on mobile, order-1 on desktop (above other sections) */}
@@ -1594,24 +1827,28 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
               )}
               <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-[11px] dark:border-slate-700 dark:bg-slate-900">
                 {/* Desktop header - hidden on mobile */}
-                <div className="mb-2 hidden grid-cols-3 gap-4 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500 sm:grid dark:text-slate-400">
+                <div className="mb-2 hidden grid-cols-4 gap-4 px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500 sm:grid dark:text-slate-400">
                   <span className="pl-6">Variable</span>
                   <span>Year Range</span>
                   <span>Coverage</span>
+                  <span>Relationship</span>
                 </div>
             <div className="space-y-1">
               {variables.map((v) => {
-                const sel = selection[v.name] ?? { selected: false, yearEnd: year, yearStart: year - 2 };
+                const sel = selection[v.name] ?? getDefaultSelection({ yearEnd: year, yearStart: year - 2 });
+                const rel = sel.relationship ?? "none";
+                const relationshipLabel = rel === "none" ? "None" : rel === "child" ? "Child" : "Parent";
                 return (
                   <label
                     key={v.name}
-                    className="grid cursor-pointer grid-cols-[1fr_auto] items-center gap-4 rounded-lg border-t border-slate-100 px-1.5 py-1.5 first:border-t-0 hover:bg-slate-50 sm:grid-cols-3 dark:border-slate-800/70 dark:hover:bg-slate-800/60"
+                    className="grid cursor-pointer grid-cols-[1fr_auto] items-center gap-4 rounded-lg border-t border-slate-100 px-1.5 py-1.5 first:border-t-0 hover:bg-slate-50 sm:grid-cols-4 dark:border-slate-800/70 dark:hover:bg-slate-800/60"
                   >
                     <div className="flex items-center gap-2">
                       <input
                         type="checkbox"
                         checked={sel.selected}
                         onChange={() => toggleVariableSelected(v.name)}
+                        disabled={isRunning}
                         className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-500 dark:bg-slate-900"
                       />
                       <div className="flex min-w-0 flex-col">
@@ -1621,6 +1858,40 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                         <span className="text-[10px] text-slate-500 dark:text-slate-400">
                           {v.inferredType} · {v.statName}
                         </span>
+                        {/* Mobile: relationship controls */}
+                        <div className="mt-1 flex items-center gap-2 sm:hidden">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const next: ImportRelationship =
+                                rel === "none" ? "child" : rel === "child" ? "parent" : "none";
+                              setVariableRelationship(v.name, next);
+                            }}
+                            disabled={isRunning}
+                            className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                            title="Click to cycle relationship"
+                          >
+                            {relationshipLabel}
+                          </button>
+                          {rel === "child" && (
+                            <div className="flex min-w-0 flex-col">
+                              <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                                statAttribute
+                              </span>
+                              <input
+                                type="text"
+                                value={sel.statAttribute ?? ""}
+                                onChange={(e) => updateVariableStatAttribute(v.name, e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                disabled={isRunning}
+                                className="w-32 rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+                                placeholder="optional"
+                              />
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                     {/* Year range - stacks vertically on mobile */}
@@ -1634,6 +1905,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                           updateSelectionField(v.name, "yearStart", val ? Number(val) : null);
                         }}
                         onClick={(e) => e.stopPropagation()}
+                        disabled={isRunning}
                         className="w-14 appearance-none rounded border border-slate-300 bg-white px-1.5 py-0.5 text-center text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 sm:text-left dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                       />
                       <span className="hidden sm:inline">to</span>
@@ -1646,11 +1918,46 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                           updateSelectionField(v.name, "yearEnd", val ? Number(val) : null);
                         }}
                         onClick={(e) => e.stopPropagation()}
+                        disabled={isRunning}
                         className="w-14 appearance-none rounded border border-slate-300 bg-white px-1.5 py-0.5 text-center text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 sm:text-left dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                       />
                     </div>
                     <div className="hidden text-[10px] text-slate-500 sm:block dark:text-slate-400">
                       {v.zipCount} ZIPs · {v.countyCount} counties
+                    </div>
+                    {/* Desktop: relationship controls */}
+                    <div className="hidden sm:flex sm:items-center sm:justify-end sm:gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const next: ImportRelationship =
+                            rel === "none" ? "child" : rel === "child" ? "parent" : "none";
+                          setVariableRelationship(v.name, next);
+                        }}
+                        disabled={isRunning}
+                        className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        title="Click to cycle relationship"
+                      >
+                        {relationshipLabel}
+                      </button>
+                      {rel === "child" && (
+                        <div className="flex flex-col">
+                          <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                            statAttribute
+                          </span>
+                          <input
+                            type="text"
+                            value={sel.statAttribute ?? ""}
+                            onChange={(e) => updateVariableStatAttribute(v.name, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            disabled={isRunning}
+                            className="w-28 rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+                            placeholder="optional"
+                          />
+                        </div>
+                      )}
                     </div>
                   </label>
                 );
@@ -3415,7 +3722,11 @@ export const AdminScreen = () => {
               const isExpanded = expandedParentId === stat.id;
               const childGroups = hasChildren
                 ? Array.from(statRelationsByParent.get(stat.id)!.entries()).sort(([a], [b]) =>
-                    a.localeCompare(b),
+                    a === UNDEFINED_STAT_ATTRIBUTE
+                      ? 1
+                      : b === UNDEFINED_STAT_ATTRIBUTE
+                        ? -1
+                        : a.localeCompare(b),
                   )
                 : [];
               const childCount = hasChildren
@@ -3449,7 +3760,7 @@ export const AdminScreen = () => {
                       {childGroups.map(([attribute, relations]) => (
                         <div key={attribute} className="space-y-2">
                           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            {attribute}
+                            {attribute === UNDEFINED_STAT_ATTRIBUTE ? "Undefined" : attribute}
                           </div>
                           <div className="space-y-2">
                             {relations.map((rel) => {
@@ -3459,7 +3770,11 @@ export const AdminScreen = () => {
                               const isChildExpanded = expandedChildIds[child.id] === true;
                               const grandChildGroups = childHasChildren
                                 ? Array.from(statRelationsByParent.get(child.id)!.entries()).sort(([a, b]) =>
-                                    a.localeCompare(b),
+                                    a === UNDEFINED_STAT_ATTRIBUTE
+                                      ? 1
+                                      : b === UNDEFINED_STAT_ATTRIBUTE
+                                        ? -1
+                                        : a.localeCompare(b),
                                   )
                                 : [];
                               const grandChildCount = childHasChildren
@@ -3499,7 +3814,7 @@ export const AdminScreen = () => {
                                       {grandChildGroups.map(([gAttr, gRels]) => (
                                         <div key={gAttr} className="space-y-1">
                                           <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                            {gAttr}
+                                            {gAttr === UNDEFINED_STAT_ATTRIBUTE ? "Undefined" : gAttr}
                                           </div>
                                           <div className="space-y-1">
                                             {gRels.map((gRel) => {
