@@ -4,7 +4,7 @@ import { useAuthSession } from "../hooks/useAuthSession";
 import { useCategories } from "../hooks/useCategories";
 import type { Category, Organization, OrgImportBatch } from "../../types/organization";
 import { CustomSelect } from "./CustomSelect";
-import { ChevronDownIcon } from "@heroicons/react/24/outline";
+import { ChevronDownIcon, FunnelIcon } from "@heroicons/react/24/outline";
 
 type AdminOrgsPanelProps = {
   onSwitchTab: (tab: "stats" | "orgs" | "batches") => void;
@@ -491,6 +491,8 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
   const [recentlyFinishedBatchId, setRecentlyFinishedBatchId] = useState<string | null>(null);
   const [isTabDropdownOpen, setIsTabDropdownOpen] = useState(false);
   const tabDropdownRef = useRef<HTMLDivElement>(null);
+  const [isFiltersDropdownOpen, setIsFiltersDropdownOpen] = useState(false);
+  const filtersDropdownRef = useRef<HTMLDivElement>(null);
 
   const queryEnabled = authReady;
   const allowedCategories = useMemo(() => new Set(orgCategories.map((c) => c.slug)), [orgCategories]);
@@ -587,11 +589,14 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
     return () => clearTimeout(timer);
   }, [activeBatchFromList, activeImportBatchId, runningBatch]);
 
-  // Close tab dropdown when clicking outside
+  // Close tab and filters dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (tabDropdownRef.current && !tabDropdownRef.current.contains(event.target as Node)) {
         setIsTabDropdownOpen(false);
+      }
+      if (filtersDropdownRef.current && !filtersDropdownRef.current.contains(event.target as Node)) {
+        setIsFiltersDropdownOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -773,6 +778,15 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
     [orgCategories],
   );
 
+  // Count active filters
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (categoryFilter !== "all") count++;
+    if (statusFilter !== "all") count++;
+    if (moderationFilter !== "all") count++;
+    return count;
+  }, [categoryFilter, statusFilter, moderationFilter]);
+
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-slate-50 dark:bg-slate-900">
       <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
@@ -851,35 +865,123 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
           {viewMode === "orgs" ? (
             <>
               <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
-                <CustomSelect
-                  value={categoryFilter}
-                  onChange={setCategoryFilter}
-                  options={[
-                    { value: "all", label: "All categories" },
-                    ...categoryOptions,
-                  ]}
-                />
-                <CustomSelect
-                  value={statusFilter}
-                  onChange={setStatusFilter}
-                  options={[
-                    { value: "all", label: "All statuses" },
-                    { value: "active", label: "Active" },
-                    { value: "moved", label: "Moved" },
-                    { value: "closed", label: "Closed" },
-                  ]}
-                />
-                <CustomSelect
-                  value={moderationFilter}
-                  onChange={setModerationFilter}
-                  options={[
-                    { value: "all", label: "All moderation" },
-                    { value: "approved", label: "Approved" },
-                    { value: "pending", label: "Pending" },
-                    { value: "declined", label: "Declined" },
-                    { value: "removed", label: "Removed" },
-                  ]}
-                />
+                {/* Multi-select Filters dropdown */}
+                <div ref={filtersDropdownRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsFiltersDropdownOpen(!isFiltersDropdownOpen)}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    <FunnelIcon className="h-4 w-4" />
+                    <span>Filters</span>
+                    {activeFilterCount > 0 && (
+                      <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-500 px-1.5 text-xs font-semibold text-white">
+                        {activeFilterCount}
+                      </span>
+                    )}
+                    <ChevronDownIcon
+                      className={`h-3.5 w-3.5 transition-transform ${isFiltersDropdownOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+
+                  {/* Filters dropdown menu */}
+                  {isFiltersDropdownOpen && (
+                    <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-lg border border-slate-300 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-950">
+                      <div className="max-h-96 overflow-y-auto py-2">
+                        {/* Categories Section */}
+                        <div className="px-3 py-2">
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Categories
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setCategoryFilter("all")}
+                            className={`w-full rounded px-2 py-1.5 text-left text-xs ${
+                              categoryFilter === "all"
+                                ? "bg-brand-50 text-brand-700 dark:bg-brand-400/15 dark:text-brand-300"
+                                : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                            }`}
+                          >
+                            All categories
+                          </button>
+                          {categoryOptions.map((cat) => (
+                            <button
+                              key={cat.value}
+                              type="button"
+                              onClick={() => setCategoryFilter(cat.value)}
+                              className={`w-full rounded px-2 py-1.5 text-left text-xs ${
+                                categoryFilter === cat.value
+                                  ? "bg-brand-50 text-brand-700 dark:bg-brand-400/15 dark:text-brand-300"
+                                  : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                              }`}
+                            >
+                              {cat.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Divider */}
+                        <div className="mx-3 border-t border-slate-200 dark:border-slate-700" />
+
+                        {/* Status Section */}
+                        <div className="px-3 py-2">
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Status
+                          </div>
+                          {[
+                            { value: "all", label: "All statuses" },
+                            { value: "active", label: "Active" },
+                            { value: "moved", label: "Moved" },
+                            { value: "closed", label: "Closed" },
+                          ].map((status) => (
+                            <button
+                              key={status.value}
+                              type="button"
+                              onClick={() => setStatusFilter(status.value)}
+                              className={`w-full rounded px-2 py-1.5 text-left text-xs ${
+                                statusFilter === status.value
+                                  ? "bg-brand-50 text-brand-700 dark:bg-brand-400/15 dark:text-brand-300"
+                                  : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                              }`}
+                            >
+                              {status.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Divider */}
+                        <div className="mx-3 border-t border-slate-200 dark:border-slate-700" />
+
+                        {/* Moderation Section */}
+                        <div className="px-3 py-2">
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Moderation
+                          </div>
+                          {[
+                            { value: "all", label: "All moderation" },
+                            { value: "approved", label: "Approved" },
+                            { value: "pending", label: "Pending" },
+                            { value: "declined", label: "Declined" },
+                            { value: "removed", label: "Removed" },
+                          ].map((mod) => (
+                            <button
+                              key={mod.value}
+                              type="button"
+                              onClick={() => setModerationFilter(mod.value)}
+                              className={`w-full rounded px-2 py-1.5 text-left text-xs ${
+                                moderationFilter === mod.value
+                                  ? "bg-brand-50 text-brand-700 dark:bg-brand-400/15 dark:text-brand-300"
+                                  : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                              }`}
+                            >
+                              {mod.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <div className="relative">
@@ -912,7 +1014,7 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                   onClick={() => setIsImportModalOpen(true)}
                   className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600"
                 >
-                  <span className="text-lg leading-none">+</span> Import Org
+                  <span className="text-lg leading-none">+</span> Import Orgs
                 </button>
               </div>
             </>
@@ -944,6 +1046,13 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(true)}
+                className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600"
+              >
+                <span className="text-lg leading-none">+</span> Import Orgs
+              </button>
             </div>
           )}
         </div>
