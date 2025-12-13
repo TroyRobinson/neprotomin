@@ -1831,7 +1831,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                   <span className="pl-6">Variable</span>
                   <span>Year Range</span>
                   <span>Coverage</span>
-                  <span>Relationship</span>
+                  <span className="text-center">Relationship</span>
                 </div>
             <div className="space-y-1">
               {variables.map((v) => {
@@ -1925,8 +1925,9 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                     <div className="hidden text-[10px] text-slate-500 sm:block dark:text-slate-400">
                       {v.zipCount} ZIPs · {v.countyCount} counties
                     </div>
-                    {/* Desktop: relationship controls */}
-                    <div className="hidden sm:flex sm:items-center sm:justify-end sm:gap-2">
+                    {/* Desktop: relationship controls (button centered, statAttribute grows right) */}
+                    <div className="hidden sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-2">
+                      <div />
                       <button
                         type="button"
                         onClick={(e) => {
@@ -1937,26 +1938,30 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                           setVariableRelationship(v.name, next);
                         }}
                         disabled={isRunning}
-                        className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        className="justify-self-center rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                         title="Click to cycle relationship"
                       >
                         {relationshipLabel}
                       </button>
-                      {rel === "child" && (
-                        <div className="flex flex-col">
-                          <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                            statAttribute
-                          </span>
-                          <input
-                            type="text"
-                            value={sel.statAttribute ?? ""}
-                            onChange={(e) => updateVariableStatAttribute(v.name, e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                            disabled={isRunning}
-                            className="w-28 rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
-                            placeholder="optional"
-                          />
+                      {rel === "child" ? (
+                        <div className="min-w-0 justify-self-stretch">
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                              statAttribute
+                            </span>
+                            <input
+                              type="text"
+                              value={sel.statAttribute ?? ""}
+                              onChange={(e) => updateVariableStatAttribute(v.name, e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              disabled={isRunning}
+                              className="w-full rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+                              placeholder="optional"
+                            />
+                          </div>
                         </div>
+                      ) : (
+                        <div />
                       )}
                     </div>
                   </label>
