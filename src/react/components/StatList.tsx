@@ -3,6 +3,7 @@ import type { Stat, StatRelation, StatRelationsByParent, StatRelationsByChild } 
 import { UNDEFINED_STAT_ATTRIBUTE } from "../../types/stat";
 import { formatStatValue } from "../../lib/format";
 import type { StatBoundaryEntry } from "../hooks/useStats";
+import { CustomSelect } from "./CustomSelect";
 
 // Feature flag: Hide stat values when at county level with no selection
 const HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION = true;
@@ -92,15 +93,6 @@ const ChildStatDropdown = ({
   onStatSelect,
   onDeselect,
 }: ChildStatDropdownProps) => {
-  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const childId = e.target.value;
-    if (childId === "__none__") {
-      onDeselect?.();
-    } else if (childId && childId !== "") {
-      onStatSelect?.(childId);
-    }
-  };
-
   // Filter out relations with null children
   const validRelations = relations.filter((r) => r.child !== null);
   if (validRelations.length === 0) return null;
@@ -110,25 +102,31 @@ const ChildStatDropdown = ({
     ? selectedChildId
     : "__none__";
 
+  const options = [
+    { value: "__none__", label: `No ${attributeName.toLowerCase()}` },
+    ...validRelations.map((relation) => ({
+      value: relation.childStatId,
+      label: relation.child?.label || relation.child?.name || relation.childStatId,
+    })),
+  ];
+
   return (
     <div className="flex items-center gap-2">
       <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 whitespace-nowrap min-w-[60px]">
         {attributeName}
       </label>
-      <select
-        className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 shadow-sm transition-colors hover:border-brand-300 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-500"
-        onChange={handleChange}
+      <CustomSelect
         value={currentValue}
-      >
-        <option value="__none__">
-          No {attributeName.toLowerCase()}
-        </option>
-        {validRelations.map((relation) => (
-          <option key={relation.childStatId} value={relation.childStatId}>
-            {relation.child?.label || relation.child?.name || relation.childStatId}
-          </option>
-        ))}
-      </select>
+        options={options}
+        onChange={(childId) => {
+          if (childId === "__none__") {
+            onDeselect?.();
+            return;
+          }
+          onStatSelect?.(childId);
+        }}
+        className="flex-1"
+      />
     </div>
   );
 };
