@@ -465,6 +465,16 @@ export const StatList = ({
     // Then check if it's actually in effect (i.e., we're at or below that level)
     if (!selectedStatId || !rootParentId) return false;
 
+    // If a dropdown child is selected, treat toggles as applying to that child's grandchildren.
+    // This avoids confusing "stuck active" behavior when an attribute name (e.g. "Percent") exists
+    // both as a direct child attribute of the parent and as a grandchild attribute under the dropdown child.
+    const hasDropdownChild = isChildFromDropdown(activeChildId);
+    if (hasDropdownChild && activeChildId) {
+      const grandchildByAttribute = statRelationsByParent.get(activeChildId);
+      const relations = grandchildByAttribute?.get(attr);
+      return relations?.some((r) => r.childStatId === selectedStatId) ?? false;
+    }
+
     // Check if it's active via single-child attr
     const singleChild = singleChildAttrs.find(([a]) => a === attr);
     if (singleChild) {
@@ -476,15 +486,8 @@ export const StatList = ({
     // Check grandchild case
     if (intermediateChildId) {
       const grandchildByAttribute = statRelationsByParent.get(intermediateChildId);
-      if (grandchildByAttribute?.has(attr)) {
-        return true;
-      }
-    }
-
-    // Check if toggle is enabled and available for current child
-    if (activeChildId) {
-      const available = grandchildAttributes.availableForChild.get(activeChildId);
-      if (available?.has(attr)) return true;
+      const relations = grandchildByAttribute?.get(attr);
+      return relations?.some((r) => r.childStatId === selectedStatId) ?? false;
     }
 
     return false;
@@ -516,6 +519,13 @@ export const StatList = ({
     // selection. Otherwise, interpret it as "select this toggle".
     const isToggleInEffect = (() => {
       if (!selectedStatId) return false;
+
+      // In dropdown-child mode, toggles apply to the selected child's grandchildren.
+      if (hasDropdownChild && activeChildId) {
+        const grandchildByAttribute = statRelationsByParent.get(activeChildId);
+        const relations = grandchildByAttribute?.get(attr);
+        return relations?.some((r) => r.childStatId === selectedStatId) ?? false;
+      }
 
       // Single-child attribute toggle: in effect if we're on that child (or on a grandchild under it)
       if (singleChild) {
