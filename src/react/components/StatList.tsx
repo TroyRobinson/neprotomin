@@ -508,7 +508,35 @@ export const StatList = ({
     const singleChild = singleChildAttrs.find(([a]) => a === attr);
     const hasDropdownChild = isChildFromDropdown(activeChildId);
 
-    if (isCurrentlyEnabled) {
+    // IMPORTANT UX DETAIL:
+    // `enabledToggles` is a persisted "preference" set (so toggles can stay on when switching children).
+    // But for single-child attributes like "Percent" vs "Change (...)", users expect these buttons to
+    // behave like a *selection* (radio-ish), not like an on/off flag. The previous logic treated
+    // "enabled but not currently selected" as "turn off", which caused a 2-click switch.
+    //
+    // Only treat a click as "turn OFF" when this toggle is actually *in effect* for the current
+    // selection. Otherwise, interpret it as "select this toggle".
+    const isToggleInEffect = (() => {
+      if (!selectedStatId) return false;
+
+      // Single-child attribute toggle: in effect if we're on that child (or on a grandchild under it)
+      if (singleChild) {
+        const [, relation] = singleChild;
+        return selectedStatId === relation.childStatId || intermediateChildId === relation.childStatId;
+      }
+
+      // Grandchild toggle: in effect only if the currently selected stat is a grandchild that matches
+      // this attribute under the current intermediate child.
+      if (intermediateChildId) {
+        const grandchildByAttribute = statRelationsByParent.get(intermediateChildId);
+        const relations = grandchildByAttribute?.get(attr);
+        return relations?.some((r) => r.childStatId === selectedStatId) ?? false;
+      }
+
+      return false;
+    })();
+
+    if (isCurrentlyEnabled && isToggleInEffect) {
       // Turn OFF: remove from enabled
       setEnabledToggles((prev) => {
         const next = new Set(prev);
