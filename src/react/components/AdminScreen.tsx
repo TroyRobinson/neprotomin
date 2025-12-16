@@ -975,6 +975,7 @@ interface NewStatModalProps {
     string,
     { id: string; name: string; label: string | null | undefined }
   >;
+  availableStats: StatItem[];
 }
 
 const NewStatModal = ({
@@ -983,6 +984,7 @@ const NewStatModal = ({
   onImported,
   categoryOptions,
   existingCensusStats,
+  availableStats,
 }: NewStatModalProps) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const groupInputRef = useRef<HTMLInputElement>(null);
@@ -1017,6 +1019,9 @@ const NewStatModal = ({
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
   const [currentYearProcessing, setCurrentYearProcessing] = useState<number | null>(null);
   const [lastSubmittedGroup, setLastSubmittedGroup] = useState<string>(""); // Track last previewed group
+  const [isParentSearchOpen, setIsParentSearchOpen] = useState(false);
+  const [parentSearch, setParentSearch] = useState("");
+  const [manualParent, setManualParent] = useState<{ id: string; name: string; label: string | null; category?: string } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1038,6 +1043,9 @@ const NewStatModal = ({
     setCurrentIndex(null);
     setLastSubmittedGroup("");
     setRunGroupSearch(null);
+    setIsParentSearchOpen(false);
+    setParentSearch("");
+    setManualParent(null);
     // Focus group search input when modal opens
     setTimeout(() => groupInputRef.current?.focus(), 50);
   }, [isOpen]);
@@ -1057,6 +1065,74 @@ const NewStatModal = ({
     }),
     [year],
   );
+
+  const clearParentSelections = useCallback(() => {
+    setQueueItems((prevQueue) =>
+      prevQueue.map((item) =>
+        item.relationship === "parent" ? { ...item, relationship: "none" as const } : item,
+      ),
+    );
+    setSelection((prev) => {
+      const next = { ...prev };
+      for (const [key, value] of Object.entries(prev)) {
+        if (value?.relationship === "parent") {
+          next[key] = { ...value, relationship: "none" };
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const parentSearchResults = useMemo(() => {
+    const term = parentSearch.trim().toLowerCase();
+    const limitResults = 30;
+    if (!term) return availableStats.slice(0, limitResults);
+    const matches = availableStats.filter((stat) => {
+      const label = (stat.label ?? "").toLowerCase();
+      const name = stat.name.toLowerCase();
+      const neId = (stat.neId ?? "").toLowerCase();
+      return (
+        label.includes(term) ||
+        name.includes(term) ||
+        neId.includes(term)
+      );
+    });
+    return matches.slice(0, limitResults);
+  }, [availableStats, parentSearch]);
+
+  const handleSelectManualParent = useCallback(
+    (stat: StatItem) => {
+      if (isRunning) return;
+      setManualParent({ id: stat.id, name: stat.name, label: stat.label ?? null, category: stat.category });
+      clearParentSelections();
+      // If the user chooses a manual parent after selecting variables,
+      // default existing queued imports to Child so they get linked.
+      setQueueItems((prevQueue) =>
+        prevQueue.map((item) =>
+          item.relationship === "none" || item.relationship == null
+            ? { ...item, relationship: "child" as const }
+            : item,
+        ),
+      );
+      setSelection((prev) => {
+        const next = { ...prev };
+        for (const [key, value] of Object.entries(prev)) {
+          if (!value?.selected || value.lockedImported) continue;
+          if (value.relationship === "none") {
+            next[key] = { ...value, relationship: "child" };
+          }
+        }
+        return next;
+      });
+      setIsParentSearchOpen(false);
+    },
+    [clearParentSelections, isRunning],
+  );
+
+  const handleClearManualParent = useCallback(() => {
+    if (isRunning) return;
+    setManualParent(null);
+  }, [isRunning]);
 
   // Handle click outside to close modal
   useEffect(() => {
@@ -1243,6 +1319,10 @@ const NewStatModal = ({
       const current = prev[name] ?? getDefaultSelection();
       if (current.lockedImported) return prev;
       const newSelected = !current.selected;
+      const effectiveRelationship: ImportRelationship =
+        newSelected && manualParent && current.relationship === "none"
+          ? "child"
+          : current.relationship;
       
       // If selecting, add to queue
       if (newSelected && trimmedGroup) {
@@ -1261,7 +1341,7 @@ const NewStatModal = ({
               year: qYear,
               years: qYears,
               includeMoe: true,
-              relationship: current.relationship ?? "none",
+              relationship: effectiveRelationship ?? "none",
               statAttribute: current.statAttribute ?? "",
               status: "pending" as const,
             },
@@ -1280,12 +1360,12 @@ const NewStatModal = ({
         [name]: {
           ...current,
           selected: newSelected,
-          relationship: newSelected ? current.relationship : "none",
+          relationship: newSelected ? effectiveRelationship : "none",
           statAttribute: newSelected ? current.statAttribute : "",
         },
       };
     });
-  }, [group, dataset, year, getDefaultSelection]);
+  }, [dataset, getDefaultSelection, getYearRange, group, manualParent, year]);
 
   const removeFromQueue = useCallback((itemId: string, variableName: string) => {
     // Remove from queue
@@ -1352,6 +1432,9 @@ const NewStatModal = ({
 
         // Enforce: only one "parent" per import.
         if (normalizedRelationship === "parent") {
+          if (manualParent) {
+            setManualParent(null);
+          }
           for (const [key, value] of Object.entries(next)) {
             if (key === name) continue;
             if (value?.relationship === "parent") {
@@ -1421,7 +1504,7 @@ const NewStatModal = ({
         return next;
       });
     },
-    [dataset, getDefaultSelection, getYearRange, group, isRunning, year],
+    [dataset, getDefaultSelection, getYearRange, group, isRunning, manualParent, year],
   );
 
   const updateVariableStatAttribute = useCallback(
@@ -1462,11 +1545,14 @@ const NewStatModal = ({
     const importedParents = Object.values(selection).filter(
       (s) => s.relationship === "parent" && s.lockedImported && Boolean(s.importedStatId),
     );
-    const parentCount = parents.length + importedParents.length;
+    const parentCount = parents.length + importedParents.length + (manualParent ? 1 : 0);
     if (parentCount > 1) return "Only one Parent is allowed per import.";
+    if (manualParent && queueItems.length > 0 && children.length === 0) {
+      return "Parent selected but no Child stats selected. Mark at least one variable as Child.";
+    }
     if (children.length > 0 && parentCount !== 1) return "Select exactly one Parent when using Child relationships.";
     return null;
-  }, [queueItems, selection]);
+  }, [manualParent, queueItems, selection]);
 
   const handleRunQueue = useCallback(async () => {
     if (isRunning || queueItems.length === 0) return;
@@ -1576,9 +1662,11 @@ const NewStatModal = ({
       const childItems = itemsSnapshot.filter(
         (q) => q.relationship === "child" && !erroredItemIds.has(q.id) && importedByItemId.has(q.id),
       );
-      const parentStatId = parentItem
-        ? importedByItemId.get(parentItem.id)
-        : importedParentSelection?.importedStatId ?? null;
+      const parentStatId = manualParent?.id
+        ? manualParent.id
+        : parentItem
+          ? importedByItemId.get(parentItem.id)
+          : importedParentSelection?.importedStatId ?? null;
       if (childItems.length > 0 && parentStatId) {
         const parentId = parentStatId;
         const now = Date.now();
@@ -1642,7 +1730,7 @@ const NewStatModal = ({
         onImported(importedStatIds);
       }
     }
-  }, [queueItems, isRunning, onImported, category, relationshipConfigError, selection]);
+  }, [category, isRunning, manualParent, onImported, queueItems, relationshipConfigError, selection]);
 
   if (!isOpen) return null;
 
@@ -1880,6 +1968,101 @@ const NewStatModal = ({
                 <p className="mb-1.5 px-1 text-[10px] text-slate-400 dark:text-slate-500">
                   {variables.length} of {previewTotal} in {lastSubmittedGroup} (+ MOE)
                 </p>
+              )}
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Relationships
+                  </span>
+                  {manualParent && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                      Parent: {manualParent.label || manualParent.name}
+                      <button
+                        type="button"
+                        onClick={handleClearManualParent}
+                        disabled={isRunning}
+                        className="text-emerald-700 transition hover:text-emerald-900 disabled:opacity-50 dark:text-emerald-300 dark:hover:text-emerald-100"
+                        title="Clear parent selection"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsParentSearchOpen((open) => !open)}
+                  disabled={isRunning}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  + Parent
+                </button>
+              </div>
+              {isParentSearchOpen && (
+                <div className="mb-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-700 dark:bg-slate-900/40">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      value={parentSearch}
+                      onChange={(e) => setParentSearch(e.target.value)}
+                      placeholder="Search existing stats by name/label"
+                      disabled={isRunning}
+                      className="w-full flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setParentSearch("")}
+                      disabled={isRunning}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+                    {parentSearchResults.length === 0 ? (
+                      <p className="px-3 py-2 text-[10px] text-slate-500 dark:text-slate-400">
+                        No matching stats found.
+                      </p>
+                    ) : (
+                      parentSearchResults.map((stat) => (
+                        <button
+                          key={stat.id}
+                          type="button"
+                          onClick={() => handleSelectManualParent(stat)}
+                          disabled={isRunning}
+                          className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-800 dark:hover:bg-slate-800/70"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-[11px] font-medium text-slate-800 dark:text-slate-100">
+                              {stat.label || stat.name}
+                            </div>
+                            <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">
+                              {stat.label ? stat.name : ""}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
+                              {stat.category}
+                            </span>
+                            {stat.source && (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                                {stat.source}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Picking a parent here will not add it to the queue; it only links imported children to that stat.
+                  </p>
+                  {manualParent && (
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Tip: selecting a variable now defaults its relationship to Child.
+                    </p>
+                  )}
+                </div>
               )}
               <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-[11px] dark:border-slate-700 dark:bg-slate-900">
                 {/* Desktop header - hidden on mobile */}
@@ -3946,6 +4129,7 @@ export const AdminScreen = () => {
         onImported={handleImportedFromModal}
         categoryOptions={statCategoryOptions}
         existingCensusStats={censusStatsByVariable}
+        availableStats={stats}
       />
       {isGroupModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-6">
