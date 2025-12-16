@@ -4129,37 +4129,90 @@ export const AdminScreen = () => {
     [],
   );
 
+  // Recursively collect all descendant stat IDs
+  const collectDescendants = useCallback(
+    (parentId: string, collected = new Set<string>()): Set<string> => {
+      if (collected.has(parentId)) return collected; // Prevent infinite loops
+      collected.add(parentId);
+
+      const byAttr = statRelationsByParent.get(parentId);
+      if (!byAttr) return collected;
+
+      // For each attribute group under this parent
+      for (const relations of byAttr.values()) {
+        for (const rel of relations) {
+          if (rel.childStatId) {
+            collectDescendants(rel.childStatId, collected);
+          }
+        }
+      }
+
+      return collected;
+    },
+    [statRelationsByParent],
+  );
+
   const handleDeleteStat = useCallback(
     async (statId: string) => {
       if (deletingId) return;
+
+      // Collect all descendants (children, grandchildren, etc.)
+      const allStatIds = collectDescendants(statId);
+      const descendantCount = allStatIds.size - 1; // Exclude the parent itself
+
       if (typeof window !== "undefined") {
-        const confirmed = window.confirm(
-          "Delete this stat and all associated data (statData rows)? This cannot be undone.",
-        );
+        const message = descendantCount > 0
+          ? `Delete this stat, ${descendantCount} descendant stat${descendantCount === 1 ? '' : 's'}, and all associated data? This cannot be undone.`
+          : "Delete this stat and all associated data (statData rows)? This cannot be undone.";
+        const confirmed = window.confirm(message);
         if (!confirmed) return;
       }
+
       setDeletingId(statId);
       try {
-        const rows = (statDataResponse?.statData ?? []).filter(
-          (row: any) => row && typeof row.id === "string" && row.statId === statId,
-        );
         const txs: any[] = [];
-        for (const row of rows) {
-          txs.push(db.tx.statData[row.id as string].delete());
+
+        // For each stat (parent + descendants), delete all statData rows
+        for (const id of allStatIds) {
+          const rows = (statDataResponse?.statData ?? []).filter(
+            (row: any) => row && typeof row.id === "string" && row.statId === id,
+          );
+          for (const row of rows) {
+            txs.push(db.tx.statData[row.id as string].delete());
+          }
         }
-        txs.push(db.tx.stats[statId].delete());
+
+        // Delete all statRelations involving any of these stats
+        const allRelations = statsData?.statRelations ?? [];
+        for (const rel of allRelations) {
+          if (
+            rel &&
+            typeof rel.id === "string" &&
+            (allStatIds.has(rel.parentStatId) || allStatIds.has(rel.childStatId))
+          ) {
+            txs.push(db.tx.statRelations[rel.id].delete());
+          }
+        }
+
+        // Delete all stats (parent + descendants)
+        for (const id of allStatIds) {
+          txs.push(db.tx.stats[id].delete());
+        }
+
         if (txs.length > 0) {
           await db.transact(txs);
         }
-        setEditingId((current) => (current === statId ? null : current));
-        setRecentStatIds((prev) => prev.filter((id) => id !== statId));
+
+        // Clean up UI state for all deleted stats
+        setEditingId((current) => (allStatIds.has(current ?? "") ? null : current));
+        setRecentStatIds((prev) => prev.filter((id) => !allStatIds.has(id)));
       } catch (err) {
         console.error("Failed to delete stat:", err);
       } finally {
         setDeletingId((current) => (current === statId ? null : current));
       }
     },
-    [statDataResponse?.statData, deletingId],
+    [statDataResponse?.statData, statsData?.statRelations, deletingId, collectDescendants],
   );
 
   const handleImportedFromModal = useCallback((statIds: string[]) => {
