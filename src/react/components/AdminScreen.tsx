@@ -4129,41 +4129,96 @@ export const AdminScreen = () => {
     [],
   );
 
-  // Recursively collect all descendant stat IDs
-  const collectDescendants = useCallback(
-    (parentId: string, collected = new Set<string>()): Set<string> => {
-      if (collected.has(parentId)) return collected; // Prevent infinite loops
-      collected.add(parentId);
+  // Recursively collect orphaned descendants (children with no other parents outside the deletion set)
+  // Returns: { toDelete: Set of stat IDs to delete, toUnlink: Set of relation IDs to just unlink }
+  const collectOrphanedDescendants = useCallback(
+    (
+      rootId: string,
+      toDelete = new Set<string>(),
+      toUnlink = new Set<string>(),
+    ): { toDelete: Set<string>; toUnlink: Set<string> } => {
+      if (toDelete.has(rootId)) return { toDelete, toUnlink }; // Prevent infinite loops
+      toDelete.add(rootId);
 
-      const byAttr = statRelationsByParent.get(parentId);
-      if (!byAttr) return collected;
+      const byAttr = statRelationsByParent.get(rootId);
+      if (!byAttr) return { toDelete, toUnlink };
 
-      // For each attribute group under this parent
+      // For each child relation under this parent
       for (const relations of byAttr.values()) {
         for (const rel of relations) {
-          if (rel.childStatId) {
-            collectDescendants(rel.childStatId, collected);
+          const childId = rel.childStatId;
+          if (!childId || toDelete.has(childId)) continue;
+
+          // Check if this child has OTHER parents (not in toDelete set)
+          const childParentRels = statRelationsByChild.get(childId) ?? [];
+          const otherParents = childParentRels.filter(
+            (r) => !toDelete.has(r.parentStatId),
+          );
+
+          if (otherParents.length === 0) {
+            // Child would be orphaned → cascade delete
+            collectOrphanedDescendants(childId, toDelete, toUnlink);
+          } else {
+            // Child has other parents → just unlink from this parent
+            toUnlink.add(rel.id);
           }
         }
       }
 
-      return collected;
+      return { toDelete, toUnlink };
     },
-    [statRelationsByParent],
+    [statRelationsByParent, statRelationsByChild],
+  );
+
+  // Count how many OTHER parents a stat has (for warning messages)
+  const countOtherParents = useCallback(
+    (statId: string): number => {
+      const parentRels = statRelationsByChild.get(statId) ?? [];
+      return parentRels.length;
+    },
+    [statRelationsByChild],
   );
 
   const handleDeleteStat = useCallback(
     async (statId: string) => {
       if (deletingId) return;
 
-      // Collect all descendants (children, grandchildren, etc.)
-      const allStatIds = collectDescendants(statId);
-      const descendantCount = allStatIds.size - 1; // Exclude the parent itself
+      // Check if this stat is a child with multiple parents
+      const parentCount = countOtherParents(statId);
 
+      // Collect orphaned descendants and relations to unlink
+      const { toDelete, toUnlink } = collectOrphanedDescendants(statId);
+      const descendantCount = toDelete.size - 1; // Exclude the root stat itself
+      const unlinkCount = toUnlink.size;
+
+      // Build confirmation message
       if (typeof window !== "undefined") {
-        const message = descendantCount > 0
-          ? `Delete this stat, ${descendantCount} descendant stat${descendantCount === 1 ? '' : 's'}, and all associated data? This cannot be undone.`
-          : "Delete this stat and all associated data (statData rows)? This cannot be undone.";
+        let message: string;
+
+        if (parentCount > 1) {
+          // This stat is connected to multiple parents - warn user
+          message = `This stat is a child of ${parentCount} parent stat${parentCount === 1 ? '' : 's'}. ` +
+            `Deleting will remove it from ALL parents.`;
+          if (descendantCount > 0) {
+            message += `\n\nThis will also delete ${descendantCount} orphaned descendant${descendantCount === 1 ? '' : 's'}.`;
+          }
+          if (unlinkCount > 0) {
+            message += `\n\n${unlinkCount} child stat${unlinkCount === 1 ? '' : 's'} with other parents will be unlinked but NOT deleted.`;
+          }
+          message += `\n\nThis cannot be undone. Continue?`;
+        } else if (descendantCount > 0 || unlinkCount > 0) {
+          message = `Delete this stat and all associated data?`;
+          if (descendantCount > 0) {
+            message += `\n\n${descendantCount} orphaned descendant${descendantCount === 1 ? '' : 's'} will also be deleted.`;
+          }
+          if (unlinkCount > 0) {
+            message += `\n\n${unlinkCount} child stat${unlinkCount === 1 ? '' : 's'} with other parents will be unlinked but NOT deleted.`;
+          }
+          message += `\n\nThis cannot be undone.`;
+        } else {
+          message = "Delete this stat and all associated data (statData rows)? This cannot be undone.";
+        }
+
         const confirmed = window.confirm(message);
         if (!confirmed) return;
       }
@@ -4172,8 +4227,8 @@ export const AdminScreen = () => {
       try {
         const txs: any[] = [];
 
-        // For each stat (parent + descendants), delete all statData rows
-        for (const id of allStatIds) {
+        // Delete statData rows for all stats being deleted
+        for (const id of toDelete) {
           const rows = (statDataResponse?.statData ?? []).filter(
             (row: any) => row && typeof row.id === "string" && row.statId === id,
           );
@@ -4182,20 +4237,23 @@ export const AdminScreen = () => {
           }
         }
 
-        // Delete all statRelations involving any of these stats
+        // Delete relations where BOTH parent and child are in toDelete set
+        // OR just the relation ID is in toUnlink set
         const allRelations = statsData?.statRelations ?? [];
         for (const rel of allRelations) {
-          if (
-            rel &&
-            typeof rel.id === "string" &&
-            (allStatIds.has(rel.parentStatId) || allStatIds.has(rel.childStatId))
-          ) {
+          if (!rel || typeof rel.id !== "string") continue;
+
+          if (toUnlink.has(rel.id)) {
+            // This is a relation to a child with other parents - just unlink
+            txs.push(db.tx.statRelations[rel.id].delete());
+          } else if (toDelete.has(rel.parentStatId) || toDelete.has(rel.childStatId)) {
+            // Both sides are being deleted, or this stat is a child being removed from all parents
             txs.push(db.tx.statRelations[rel.id].delete());
           }
         }
 
-        // Delete all stats (parent + descendants)
-        for (const id of allStatIds) {
+        // Delete all stats in the toDelete set
+        for (const id of toDelete) {
           txs.push(db.tx.stats[id].delete());
         }
 
@@ -4204,15 +4262,15 @@ export const AdminScreen = () => {
         }
 
         // Clean up UI state for all deleted stats
-        setEditingId((current) => (allStatIds.has(current ?? "") ? null : current));
-        setRecentStatIds((prev) => prev.filter((id) => !allStatIds.has(id)));
+        setEditingId((current) => (toDelete.has(current ?? "") ? null : current));
+        setRecentStatIds((prev) => prev.filter((id) => !toDelete.has(id)));
       } catch (err) {
         console.error("Failed to delete stat:", err);
       } finally {
         setDeletingId((current) => (current === statId ? null : current));
       }
     },
-    [statDataResponse?.statData, statsData?.statRelations, deletingId, collectDescendants],
+    [statDataResponse?.statData, statsData?.statRelations, deletingId, collectOrphanedDescendants, countOtherParents],
   );
 
   const handleImportedFromModal = useCallback((statIds: string[]) => {
