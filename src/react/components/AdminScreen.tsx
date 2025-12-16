@@ -1022,6 +1022,11 @@ const NewStatModal = ({
   const [isParentSearchOpen, setIsParentSearchOpen] = useState(false);
   const [parentSearch, setParentSearch] = useState("");
   const [manualParent, setManualParent] = useState<{ id: string; name: string; label: string | null; category?: string } | null>(null);
+  const [addPercent, setAddPercent] = useState(false);
+  const [addChange, setAddChange] = useState(false);
+  const [percentDenominatorId, setPercentDenominatorId] = useState<string>("");
+  const [isDenominatorSearchOpen, setIsDenominatorSearchOpen] = useState(false);
+  const [denominatorSearch, setDenominatorSearch] = useState("");
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1046,6 +1051,11 @@ const NewStatModal = ({
     setIsParentSearchOpen(false);
     setParentSearch("");
     setManualParent(null);
+    setAddPercent(false);
+    setAddChange(false);
+    setPercentDenominatorId("");
+    setIsDenominatorSearchOpen(false);
+    setDenominatorSearch("");
     // Focus group search input when modal opens
     setTimeout(() => groupInputRef.current?.focus(), 50);
   }, [isOpen]);
@@ -1133,6 +1143,59 @@ const NewStatModal = ({
     if (isRunning) return;
     setManualParent(null);
   }, [isRunning]);
+
+  const changeOptionDisabled = useMemo(() => {
+    if (queueItems.length === 0) return true;
+    return queueItems.some((item) => item.years <= 1);
+  }, [queueItems]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (changeOptionDisabled && addChange) {
+      setAddChange(false);
+    }
+  }, [addChange, changeOptionDisabled, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!addPercent) {
+      setPercentDenominatorId("");
+      setIsDenominatorSearchOpen(false);
+      setDenominatorSearch("");
+    }
+  }, [addPercent, isOpen]);
+
+  const denominatorStats = useMemo(() => {
+    return availableStats.filter((stat) => typeof stat.neId === "string" && stat.neId.startsWith("census:"));
+  }, [availableStats]);
+
+  const selectedDenominator = useMemo(() => {
+    if (!percentDenominatorId) return null;
+    return availableStats.find((s) => s.id === percentDenominatorId) ?? null;
+  }, [availableStats, percentDenominatorId]);
+
+  const denominatorSearchResults = useMemo(() => {
+    const term = denominatorSearch.trim().toLowerCase();
+    const limitResults = 30;
+    const candidates = denominatorStats;
+    if (!term) return candidates.slice(0, limitResults);
+    const matches = candidates.filter((stat) => {
+      const label = (stat.label ?? "").toLowerCase();
+      const name = stat.name.toLowerCase();
+      const neId = (stat.neId ?? "").toLowerCase();
+      return label.includes(term) || name.includes(term) || neId.includes(term);
+    });
+    return matches.slice(0, limitResults);
+  }, [denominatorSearch, denominatorStats]);
+
+  const handleSelectDenominator = useCallback(
+    (stat: StatItem) => {
+      if (isRunning) return;
+      setPercentDenominatorId(stat.id);
+      setIsDenominatorSearchOpen(false);
+    },
+    [isRunning],
+  );
 
   // Handle click outside to close modal
   useEffect(() => {
@@ -1554,10 +1617,310 @@ const NewStatModal = ({
     return null;
   }, [manualParent, queueItems, selection]);
 
+  const createChangeDerivedChild = useCallback(
+    async (parentStatId: string, startYear: string, endYear: string): Promise<string | null> => {
+      if (!parentStatId || !startYear || !endYear || startYear >= endYear) return null;
+
+      try {
+        const { data: existingRelData } = await db.queryOnce({
+          statRelations: {
+            $: {
+              where: { parentStatId, statAttribute: "Change" },
+              fields: ["childStatId"],
+            },
+          },
+        });
+        const existingRel = Array.isArray((existingRelData as any)?.statRelations)
+          ? (existingRelData as any).statRelations.find((r: any) => typeof r?.childStatId === "string")
+          : null;
+        if (existingRel?.childStatId) return existingRel.childStatId as string;
+
+        const { data: parentStatsData } = await db.queryOnce({
+          stats: { $: { where: { id: parentStatId }, fields: ["id", "name", "label", "category"] } },
+        });
+        const parentMeta = Array.isArray((parentStatsData as any)?.stats)
+          ? (parentStatsData as any).stats[0]
+          : null;
+        if (!parentMeta || typeof parentMeta?.name !== "string") return null;
+
+        const baseName = String(parentMeta.name);
+        const baseLabel = typeof parentMeta.label === "string" && parentMeta.label.trim() ? parentMeta.label : baseName;
+        const derivedName = `${baseName} (change)`;
+        const derivedLabel = `${baseLabel} (change)`;
+        const derivedCategory = typeof parentMeta.category === "string" ? parentMeta.category : "";
+        const derivedSource = "Derived, Census";
+
+        const { data: statDataResponse } = await db.queryOnce({
+          statData: {
+            $: {
+              where: { statId: parentStatId, name: "root" },
+              fields: ["parentArea", "boundaryType", "date", "data"],
+            },
+          },
+        });
+        const rawRows = Array.isArray((statDataResponse as any)?.statData)
+          ? ((statDataResponse as any).statData as any[])
+          : [];
+
+        type RowsByDate = Map<string, Record<string, number>>;
+        const byContext = new Map<
+          string,
+          { parentArea: string | null; boundaryType: string | null; rowsByDate: RowsByDate }
+        >();
+
+        for (const row of rawRows) {
+          if (!row || typeof row !== "object") continue;
+          const parentArea = typeof row.parentArea === "string" ? row.parentArea : null;
+          const boundaryType = typeof row.boundaryType === "string" ? row.boundaryType : null;
+          const date = typeof row.date === "string" ? row.date : typeof row.date === "number" ? String(row.date) : null;
+          if (!date) continue;
+          const dataMap = normalizeDataMap(row.data);
+          const ctxKey = `${parentArea ?? ""}|${boundaryType ?? ""}`;
+          if (!byContext.has(ctxKey)) {
+            byContext.set(ctxKey, { parentArea, boundaryType, rowsByDate: new Map() });
+          }
+          byContext.get(ctxKey)!.rowsByDate.set(date, dataMap);
+        }
+
+        const derivedRows: RootStatDataRow[] = [];
+        let nonEmptyCount = 0;
+        const isFiniteNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+        for (const ctx of byContext.values()) {
+          const startData = ctx.rowsByDate.get(startYear);
+          const endData = ctx.rowsByDate.get(endYear);
+          if (!startData || !endData) continue;
+          const changeData: Record<string, number> = {};
+          for (const [area, startVal] of Object.entries(startData)) {
+            const endVal = endData[area];
+            if (!isFiniteNum(startVal) || !isFiniteNum(endVal) || startVal === 0) continue;
+            changeData[area] = (endVal - startVal) / startVal;
+          }
+          if (Object.keys(changeData).length > 0) {
+            nonEmptyCount += 1;
+          }
+          derivedRows.push({
+            parentArea: ctx.parentArea,
+            boundaryType: ctx.boundaryType,
+            date: `${startYear}-${endYear}`,
+            data: changeData,
+          });
+        }
+
+        if (nonEmptyCount === 0) return null;
+
+        const now = Date.now();
+        const newStatId = createId();
+        const relationKey = `${parentStatId}::${newStatId}::Change`;
+        const txs: any[] = [
+          db.tx.stats[newStatId].update({
+            name: derivedName,
+            label: derivedLabel,
+            category: derivedCategory,
+            source: derivedSource,
+            goodIfUp: null,
+            featured: false,
+            homeFeatured: false,
+            active: true,
+            createdOn: now,
+            lastUpdated: now,
+          }),
+          db.tx.statRelations[createId()].update({
+            relationKey,
+            parentStatId,
+            childStatId: newStatId,
+            statAttribute: "Change",
+            createdAt: now,
+            updatedAt: now,
+          }),
+        ];
+
+        for (const row of derivedRows) {
+          txs.push(
+            db.tx.statData[createId()].update({
+              statId: newStatId,
+              name: "root",
+              parentArea: row.parentArea ?? undefined,
+              boundaryType: row.boundaryType ?? undefined,
+              date: row.date ?? undefined,
+              type: "percent_change",
+              data: row.data,
+              source: derivedSource,
+              statTitle: derivedLabel,
+              createdOn: now,
+              lastUpdated: now,
+            }),
+          );
+        }
+
+        for (let i = 0; i < txs.length; i += MAX_DERIVED_TX_BATCH) {
+          await db.transact(txs.slice(i, i + MAX_DERIVED_TX_BATCH));
+        }
+
+        return newStatId;
+      } catch (err) {
+        console.error("Failed to create change-over-time derived stat during import", err);
+        return null;
+      }
+    },
+    [],
+  );
+
+  const createPercentDerivedChild = useCallback(
+    async (parentStatId: string, denominatorStatId: string): Promise<string | null> => {
+      if (!parentStatId || !denominatorStatId) return null;
+
+      try {
+        const { data: existingRelData } = await db.queryOnce({
+          statRelations: {
+            $: {
+              where: { parentStatId, statAttribute: "Percent" },
+              fields: ["childStatId"],
+            },
+          },
+        });
+        const existingRel = Array.isArray((existingRelData as any)?.statRelations)
+          ? (existingRelData as any).statRelations.find((r: any) => typeof r?.childStatId === "string")
+          : null;
+        if (existingRel?.childStatId) return existingRel.childStatId as string;
+
+        const { data: statsData } = await db.queryOnce({
+          stats: {
+            $: {
+              where: { id: { $in: [parentStatId, denominatorStatId] } },
+              fields: ["id", "name", "label", "category"],
+            },
+          },
+        });
+        const rows = Array.isArray((statsData as any)?.stats) ? ((statsData as any).stats as any[]) : [];
+        const parentMeta = rows.find((r) => r?.id === parentStatId);
+        const denominatorMeta = rows.find((r) => r?.id === denominatorStatId);
+        if (!parentMeta || !denominatorMeta) return null;
+
+        const baseName = String(parentMeta.name);
+        const baseLabel =
+          typeof parentMeta.label === "string" && parentMeta.label.trim() ? parentMeta.label : baseName;
+        const derivedName = `${baseName} (percent)`;
+        const derivedLabel = `${baseLabel} (percent)`;
+        const derivedCategory = typeof parentMeta.category === "string" ? parentMeta.category : "";
+        const derivedSource = "Derived, Census";
+
+        const { data: statDataResponse } = await db.queryOnce({
+          statData: {
+            $: {
+              where: { name: "root", statId: { $in: [parentStatId, denominatorStatId] } },
+              fields: ["statId", "parentArea", "boundaryType", "date", "data"],
+            },
+          },
+        });
+        const rawRows = Array.isArray((statDataResponse as any)?.statData)
+          ? ((statDataResponse as any).statData as any[])
+          : [];
+
+        const perStat = new Map<string, Map<string, RootStatDataRow>>();
+        for (const row of rawRows) {
+          if (!row || typeof row !== "object") continue;
+          const statId = typeof row.statId === "string" ? row.statId : null;
+          if (!statId) continue;
+          const parentArea = typeof row.parentArea === "string" ? row.parentArea : null;
+          const boundaryType = typeof row.boundaryType === "string" ? row.boundaryType : null;
+          const rawDate = row.date;
+          const date = typeof rawDate === "string" ? rawDate : typeof rawDate === "number" ? String(rawDate) : null;
+          const dataMap = normalizeDataMap((row as any).data);
+          const normalized: RootStatDataRow = { parentArea, boundaryType, date, data: dataMap };
+          const key = buildRowKey(normalized);
+          if (!perStat.has(statId)) perStat.set(statId, new Map());
+          perStat.get(statId)!.set(key, normalized);
+        }
+
+        const numeratorRows = perStat.get(parentStatId);
+        const denominatorRows = perStat.get(denominatorStatId);
+        if (!numeratorRows?.size || !denominatorRows?.size) return null;
+
+        const derivedRows: RootStatDataRow[] = [];
+        let nonEmptyCount = 0;
+        for (const [key, bRow] of denominatorRows.entries()) {
+          const aRow = numeratorRows.get(key);
+          if (!aRow) continue;
+          const derivedData = computeDerivedValues(aRow.data ?? {}, bRow.data ?? {}, "percent");
+          if (Object.keys(derivedData).length > 0) {
+            nonEmptyCount += 1;
+          }
+          derivedRows.push({
+            parentArea: bRow.parentArea,
+            boundaryType: bRow.boundaryType,
+            date: bRow.date,
+            data: derivedData,
+          });
+        }
+
+        if (nonEmptyCount === 0) return null;
+
+        const now = Date.now();
+        const newStatId = createId();
+        const relationKey = `${parentStatId}::${newStatId}::Percent`;
+        const txs: any[] = [
+          db.tx.stats[newStatId].update({
+            name: derivedName,
+            label: derivedLabel,
+            category: derivedCategory,
+            source: derivedSource,
+            goodIfUp: null,
+            featured: false,
+            homeFeatured: false,
+            active: true,
+            createdOn: now,
+            lastUpdated: now,
+          }),
+          db.tx.statRelations[createId()].update({
+            relationKey,
+            parentStatId,
+            childStatId: newStatId,
+            statAttribute: "Percent",
+            createdAt: now,
+            updatedAt: now,
+          }),
+        ];
+
+        for (const row of derivedRows) {
+          txs.push(
+            db.tx.statData[createId()].update({
+              statId: newStatId,
+              name: "root",
+              parentArea: row.parentArea ?? undefined,
+              boundaryType: row.boundaryType ?? undefined,
+              date: row.date ?? undefined,
+              type: "percent",
+              data: row.data,
+              source: derivedSource,
+              statTitle: derivedLabel,
+              createdOn: now,
+              lastUpdated: now,
+            }),
+          );
+        }
+
+        for (let i = 0; i < txs.length; i += MAX_DERIVED_TX_BATCH) {
+          await db.transact(txs.slice(i, i + MAX_DERIVED_TX_BATCH));
+        }
+
+        return newStatId;
+      } catch (err) {
+        console.error("Failed to create percent derived stat during import", err);
+        return null;
+      }
+    },
+    [],
+  );
+
   const handleRunQueue = useCallback(async () => {
     if (isRunning || queueItems.length === 0) return;
     if (relationshipConfigError) {
       setPreviewError(relationshipConfigError);
+      return;
+    }
+    if (addPercent && !percentDenominatorId) {
+      setPreviewError("Select a denominator before starting imports.");
       return;
     }
     setIsRunning(true);
@@ -1651,6 +2014,23 @@ const NewStatModal = ({
               : q,
           ),
         );
+
+        if (!itemErrored && itemStatId) {
+          if (addPercent && percentDenominatorId) {
+            const derivedId = await createPercentDerivedChild(itemStatId, percentDenominatorId);
+            if (derivedId && !importedStatIds.includes(derivedId)) {
+              importedStatIds.push(derivedId);
+            }
+          }
+          if (addChange && item.years > 1) {
+            const endYear = String(item.year);
+            const startYear = String(item.year - item.years + 1);
+            const derivedId = await createChangeDerivedChild(itemStatId, startYear, endYear);
+            if (derivedId && !importedStatIds.includes(derivedId)) {
+              importedStatIds.push(derivedId);
+            }
+          }
+        }
       }
       // Create parent/child stat relationships if configured.
       const parentItem = itemsSnapshot.find(
@@ -1730,7 +2110,20 @@ const NewStatModal = ({
         onImported(importedStatIds);
       }
     }
-  }, [category, isRunning, manualParent, onImported, queueItems, relationshipConfigError, selection]);
+  }, [
+    addChange,
+    addPercent,
+    category,
+    createChangeDerivedChild,
+    createPercentDerivedChild,
+    isRunning,
+    manualParent,
+    onImported,
+    percentDenominatorId,
+    queueItems,
+    relationshipConfigError,
+    selection,
+  ]);
 
   if (!isOpen) return null;
 
@@ -1930,6 +2323,35 @@ const NewStatModal = ({
               )}
             </div>
 
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Add:</span>
+                <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={addPercent}
+                    onChange={(e) => setAddPercent(e.target.checked)}
+                    disabled={isRunning}
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900"
+                  />
+                  Percentage
+                </label>
+                <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={addChange}
+                    onChange={(e) => setAddChange(e.target.checked)}
+                    disabled={isRunning || changeOptionDisabled}
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900"
+                  />
+                  Change
+                </label>
+                {queueItems.length > 0 && changeOptionDisabled && (
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">(all need 2+ years)</span>
+                )}
+              </div>
+            </div>
+
             {/* Apply Category + Start Import row */}
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3 dark:border-slate-700">
               <div className="flex flex-wrap items-center gap-2">
@@ -1945,16 +2367,91 @@ const NewStatModal = ({
                   ]}
                   className="min-w-36"
                 />
+                {addPercent && (
+                  <button
+                    type="button"
+                    onClick={() => setIsDenominatorSearchOpen((open) => !open)}
+                    disabled={isRunning}
+                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium shadow-sm transition disabled:opacity-60 ${
+                      percentDenominatorId
+                        ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-900/20 dark:text-rose-300 dark:hover:bg-rose-900/30"
+                    }`}
+                  >
+                    {percentDenominatorId
+                      ? `Denominator: ${selectedDenominator?.label || selectedDenominator?.name || "Selected"}`
+                      : "Denominator needed"}
+                  </button>
+                )}
               </div>
               <button
                 type="button"
                 onClick={handleRunQueue}
-                disabled={isRunning || queueItems.length === 0 || Boolean(relationshipConfigError)}
+                disabled={
+                  isRunning ||
+                  queueItems.length === 0 ||
+                  Boolean(relationshipConfigError) ||
+                  (addPercent && !percentDenominatorId)
+                }
                 className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-60"
               >
                 {isRunning ? "Running imports…" : "Start import"}
               </button>
             </div>
+            {addPercent && isDenominatorSearchOpen && (
+              <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-700 dark:bg-slate-900/40">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    value={denominatorSearch}
+                    onChange={(e) => setDenominatorSearch(e.target.value)}
+                    placeholder="Search imported stats for denominator..."
+                    disabled={isRunning}
+                    className="w-full flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setDenominatorSearch("")}
+                    disabled={isRunning}
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+                  {denominatorSearchResults.length === 0 ? (
+                    <p className="px-3 py-2 text-[10px] text-slate-500 dark:text-slate-400">
+                      No matching imported stats found.
+                    </p>
+                  ) : (
+                    denominatorSearchResults.map((stat) => (
+                      <button
+                        key={stat.id}
+                        type="button"
+                        onClick={() => handleSelectDenominator(stat)}
+                        disabled={isRunning}
+                        className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-800 dark:hover:bg-slate-800/70"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-[11px] font-medium text-slate-800 dark:text-slate-100">
+                            {stat.label || stat.name}
+                          </div>
+                          <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">
+                            {stat.label ? stat.name : ""}
+                          </div>
+                        </div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                          {stat.category}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  This denominator is used to create “(percent)” child stats for each imported stat.
+                </p>
+              </div>
+            )}
             {relationshipConfigError && (
               <p className="mt-2 text-[11px] text-rose-600 dark:text-rose-400">{relationshipConfigError}</p>
             )}
