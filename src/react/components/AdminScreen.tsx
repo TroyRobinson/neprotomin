@@ -4227,13 +4227,23 @@ export const AdminScreen = () => {
       try {
         const txs: any[] = [];
 
-        // Delete statData rows for all stats being deleted
-        for (const id of toDelete) {
-          const rows = (statDataResponse?.statData ?? []).filter(
-            (row: any) => row && typeof row.id === "string" && row.statId === id,
-          );
-          for (const row of rows) {
-            txs.push(db.tx.statData[row.id as string].delete());
+        // Query for ALL statData rows for the stats being deleted (not just "root")
+        // The cached statDataResponse only has "root" rows, so we need a fresh query
+        const statIdsToDelete = Array.from(toDelete);
+        const { data: allStatDataResponse } = await db.queryOnce({
+          statData: {
+            $: {
+              where: { statId: { $in: statIdsToDelete } },
+              fields: ["id", "statId"],
+            },
+          },
+        });
+
+        // Delete ALL statData rows for stats being deleted
+        const allStatDataRows = (allStatDataResponse as any)?.statData ?? [];
+        for (const row of allStatDataRows) {
+          if (row && typeof row.id === "string") {
+            txs.push(db.tx.statData[row.id].delete());
           }
         }
 
@@ -4270,7 +4280,7 @@ export const AdminScreen = () => {
         setDeletingId((current) => (current === statId ? null : current));
       }
     },
-    [statDataResponse?.statData, statsData?.statRelations, deletingId, collectOrphanedDescendants, countOtherParents],
+    [statsData?.statRelations, deletingId, collectOrphanedDescendants, countOtherParents],
   );
 
   const handleImportedFromModal = useCallback((statIds: string[]) => {
