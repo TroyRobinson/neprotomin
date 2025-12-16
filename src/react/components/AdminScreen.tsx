@@ -971,9 +971,19 @@ interface NewStatModalProps {
   onClose: () => void;
   onImported: (statIds: string[]) => void;
   categoryOptions: Array<{ value: string; label: string }>;
+  existingCensusStats: Map<
+    string,
+    { id: string; name: string; label: string | null | undefined }
+  >;
 }
 
-const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatModalProps) => {
+const NewStatModal = ({
+  isOpen,
+  onClose,
+  onImported,
+  categoryOptions,
+  existingCensusStats,
+}: NewStatModalProps) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const groupInputRef = useRef<HTMLInputElement>(null);
   const [runGroupSearch, setRunGroupSearch] = useState<(() => void) | null>(null);
@@ -996,6 +1006,10 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
     yearStart: number | null;
     relationship: ImportRelationship;
     statAttribute: string;
+    lockedImported: boolean;
+    importedStatId: string | null;
+    importedStatLabel: string | null;
+    importedStatName: string | null;
   };
   const [selection, setSelection] = useState<Record<string, VariableSelection>>({});
   const [queueItems, setQueueItems] = useState<ImportQueueItem[]>([]);
@@ -1035,6 +1049,10 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
       yearStart: null,
       relationship: "none",
       statAttribute: "",
+      lockedImported: false,
+      importedStatId: null,
+      importedStatLabel: null,
+      importedStatName: null,
       ...(overrides ?? {}),
     }),
     [year],
@@ -1125,15 +1143,25 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
       setPreviewTotal(total);
       setLastSubmittedGroup(trimmedGroup); // Track what was previewed
 
-      const defaults: Record<string, { selected: boolean; yearEnd: number; yearStart: number | null }> = {};
+      const defaults: Record<string, VariableSelection> = {};
       const suggestedSet = new Set((suggestedStatIds ?? []).filter(Boolean));
       const autoSelected: Array<{ name: string; yearEnd: number; yearStart: number | null }> = [];
       for (const v of parsed) {
+        const importedStat = existingCensusStats.get(v.name);
+        const isImported = Boolean(importedStat);
         // Auto-select any AI-suggested variables that exist in this group preview.
-        const shouldSelect = suggestedSet.size > 0 && suggestedSet.has(v.name);
-        const entry = getDefaultSelection({ selected: shouldSelect, yearEnd: year, yearStart: year - 2 });
+        const shouldSelect = isImported || (suggestedSet.size > 0 && suggestedSet.has(v.name));
+        const entry = getDefaultSelection({
+          selected: shouldSelect,
+          yearEnd: year,
+          yearStart: isImported ? null : year - 2,
+          lockedImported: isImported,
+          importedStatId: importedStat?.id ?? null,
+          importedStatLabel: importedStat?.label ?? null,
+          importedStatName: importedStat?.name ?? null,
+        });
         defaults[v.name] = entry;
-        if (shouldSelect) {
+        if (shouldSelect && !isImported) {
           autoSelected.push({ name: v.name, yearEnd: entry.yearEnd, yearStart: entry.yearStart });
         }
       }
@@ -1180,7 +1208,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
     } finally {
       setIsPreviewLoading(false);
     }
-  }, [dataset, group, year, limit, getDefaultSelection]);
+  }, [dataset, existingCensusStats, getDefaultSelection, group, limit, year]);
 
   // Helper to calculate year and years from selection
   // If both are set: range from yearStart to yearEnd
@@ -1213,6 +1241,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
     const trimmedGroup = group.trim();
     setSelection((prev) => {
       const current = prev[name] ?? getDefaultSelection();
+      if (current.lockedImported) return prev;
       const newSelected = !current.selected;
       
       // If selecting, add to queue
@@ -1277,6 +1306,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
       const trimmedGroup = group.trim();
       setSelection((prev) => {
         const current = prev[name] ?? getDefaultSelection({ selected: true });
+        if (current.lockedImported) return prev;
         const updated = { ...current, [field]: value };
         
         // Update corresponding queue item if selected
@@ -1307,25 +1337,40 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
 
       setSelection((prev) => {
         const current = prev[name] ?? getDefaultSelection();
-        const nextSelected = current.selected ? current.selected : true;
+        const normalizedRelationship =
+          current.lockedImported && relationship === "child" ? "none" : relationship;
+        const nextSelected = current.lockedImported ? true : current.selected ? current.selected : true;
 
         const nextForName: VariableSelection = {
           ...current,
           selected: nextSelected,
-          relationship,
-          statAttribute: relationship === "child" ? current.statAttribute : "",
+          relationship: normalizedRelationship,
+          statAttribute: normalizedRelationship === "child" ? current.statAttribute : "",
         };
 
         const next: Record<string, VariableSelection> = { ...prev, [name]: nextForName };
 
         // Enforce: only one "parent" per import.
-        if (relationship === "parent") {
+        if (normalizedRelationship === "parent") {
           for (const [key, value] of Object.entries(next)) {
             if (key === name) continue;
             if (value?.relationship === "parent") {
               next[key] = { ...value, relationship: "none" };
             }
           }
+        }
+
+        // Already-imported stats should not be added to the queue, but can be chosen as Parent.
+        if (current.lockedImported) {
+          if (normalizedRelationship === "parent" && trimmedGroup) {
+            // Clear any queued parent selections.
+            setQueueItems((prevQueue) =>
+              prevQueue.map((item) =>
+                item.relationship === "parent" ? { ...item, relationship: "none" as const } : item,
+              ),
+            );
+          }
+          return next;
         }
 
         // Keep queue in sync (add if needed, update relationship, clear other parents).
@@ -1341,7 +1386,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                         ...item,
                         year: qYear,
                         years: qYears,
-                        relationship,
+                        relationship: normalizedRelationship,
                         statAttribute: nextForName.statAttribute,
                       }
                     : item,
@@ -1356,13 +1401,13 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                     year: qYear,
                     years: qYears,
                     includeMoe: true,
-                    relationship,
+                    relationship: normalizedRelationship,
                     statAttribute: nextForName.statAttribute,
                     status: "pending" as const,
                   },
                 ];
 
-            if (relationship === "parent") {
+            if (normalizedRelationship === "parent") {
               nextQueue = nextQueue.map((item) =>
                 item.id !== id && item.relationship === "parent"
                   ? { ...item, relationship: "none" as const }
@@ -1385,6 +1430,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
       const trimmedGroup = group.trim();
       setSelection((prev) => {
         const current = prev[name] ?? getDefaultSelection();
+        if (current.lockedImported) return prev;
         const nextSelected = current.selected ? current.selected : true;
         const nextForName: VariableSelection = {
           ...current,
@@ -1413,10 +1459,14 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
   const relationshipConfigError = useMemo(() => {
     const parents = queueItems.filter((q) => q.relationship === "parent");
     const children = queueItems.filter((q) => q.relationship === "child");
-    if (parents.length > 1) return "Only one Parent is allowed per import.";
-    if (children.length > 0 && parents.length !== 1) return "Select exactly one Parent when using Child relationships.";
+    const importedParents = Object.values(selection).filter(
+      (s) => s.relationship === "parent" && s.lockedImported && Boolean(s.importedStatId),
+    );
+    const parentCount = parents.length + importedParents.length;
+    if (parentCount > 1) return "Only one Parent is allowed per import.";
+    if (children.length > 0 && parentCount !== 1) return "Select exactly one Parent when using Child relationships.";
     return null;
-  }, [queueItems]);
+  }, [queueItems, selection]);
 
   const handleRunQueue = useCallback(async () => {
     if (isRunning || queueItems.length === 0) return;
@@ -1520,20 +1570,26 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
       const parentItem = itemsSnapshot.find(
         (q) => q.relationship === "parent" && !erroredItemIds.has(q.id) && importedByItemId.has(q.id),
       );
+      const importedParentSelection = Object.values(selection).find(
+        (s) => s.relationship === "parent" && s.lockedImported && s.importedStatId,
+      );
       const childItems = itemsSnapshot.filter(
         (q) => q.relationship === "child" && !erroredItemIds.has(q.id) && importedByItemId.has(q.id),
       );
-      if (childItems.length > 0 && parentItem) {
-        const parentStatId = importedByItemId.get(parentItem.id)!;
+      const parentStatId = parentItem
+        ? importedByItemId.get(parentItem.id)
+        : importedParentSelection?.importedStatId ?? null;
+      if (childItems.length > 0 && parentStatId) {
+        const parentId = parentStatId;
         const now = Date.now();
         const candidates = childItems
           .map((child) => {
             const childStatId = importedByItemId.get(child.id)!;
-            if (!childStatId || childStatId === parentStatId) return null;
+            if (!childStatId || childStatId === parentId) return null;
             const rawAttr = typeof child.statAttribute === "string" ? child.statAttribute.trim() : "";
             const statAttribute = rawAttr ? rawAttr : UNDEFINED_STAT_ATTRIBUTE;
-            const relationKey = `${parentStatId}::${childStatId}::${statAttribute}`;
-            return { relationKey, parentStatId, childStatId, statAttribute };
+            const relationKey = `${parentId}::${childStatId}::${statAttribute}`;
+            return { relationKey, parentStatId: parentId, childStatId, statAttribute };
           })
           .filter((v): v is { relationKey: string; parentStatId: string; childStatId: string; statAttribute: string } => v !== null);
 
@@ -1586,7 +1642,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
         onImported(importedStatIds);
       }
     }
-  }, [queueItems, isRunning, onImported, category, relationshipConfigError]);
+  }, [queueItems, isRunning, onImported, category, relationshipConfigError, selection]);
 
   if (!isOpen) return null;
 
@@ -1838,6 +1894,14 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                 const sel = selection[v.name] ?? getDefaultSelection({ yearEnd: year, yearStart: year - 2 });
                 const rel = sel.relationship ?? "none";
                 const relationshipLabel = rel === "none" ? "None" : rel === "child" ? "Child" : "Parent";
+                const nextRelationship = (current: ImportRelationship) =>
+                  sel.lockedImported
+                    ? (current === "parent" ? "none" : "parent")
+                    : current === "none"
+                      ? "child"
+                      : current === "child"
+                        ? "parent"
+                        : "none";
                 return (
                   <label
                     key={v.name}
@@ -1848,8 +1912,8 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                         type="checkbox"
                         checked={sel.selected}
                         onChange={() => toggleVariableSelected(v.name)}
-                        disabled={isRunning}
-                        className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-500 dark:bg-slate-900"
+                        disabled={isRunning || sel.lockedImported}
+                        className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-500 focus:ring-brand-400 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 dark:border-slate-500 dark:bg-slate-900 disabled:dark:border-slate-800 disabled:dark:bg-slate-800"
                       />
                       <div className="flex min-w-0 flex-col">
                         <span className="font-medium text-slate-800 dark:text-slate-100">
@@ -1858,6 +1922,11 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                         <span className="text-[10px] text-slate-500 dark:text-slate-400">
                           {v.inferredType} · {v.statName}
                         </span>
+                        {sel.lockedImported && (
+                          <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                            Imported as "{sel.importedStatLabel ?? sel.importedStatName ?? v.statName}"
+                          </span>
+                        )}
                         {/* Mobile: relationship controls */}
                         <div className="mt-1 flex items-center gap-2 sm:hidden">
                           <button
@@ -1865,9 +1934,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              const next: ImportRelationship =
-                                rel === "none" ? "child" : rel === "child" ? "parent" : "none";
-                              setVariableRelationship(v.name, next);
+                              setVariableRelationship(v.name, nextRelationship(rel));
                             }}
                             disabled={isRunning}
                             className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -1885,7 +1952,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                                 value={sel.statAttribute ?? ""}
                                 onChange={(e) => updateVariableStatAttribute(v.name, e.target.value)}
                                 onClick={(e) => e.stopPropagation()}
-                                disabled={isRunning}
+                                disabled={isRunning || sel.lockedImported}
                                 className="w-32 rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                                 placeholder="optional"
                               />
@@ -1905,7 +1972,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                           updateSelectionField(v.name, "yearStart", val ? Number(val) : null);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        disabled={isRunning}
+                        disabled={isRunning || sel.lockedImported}
                         className="w-14 appearance-none rounded border border-slate-300 bg-white px-1.5 py-0.5 text-center text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 sm:text-left dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                       />
                       <span className="hidden sm:inline">to</span>
@@ -1918,7 +1985,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                           updateSelectionField(v.name, "yearEnd", val ? Number(val) : null);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        disabled={isRunning}
+                        disabled={isRunning || sel.lockedImported}
                         className="w-14 appearance-none rounded border border-slate-300 bg-white px-1.5 py-0.5 text-center text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 sm:text-left dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                       />
                     </div>
@@ -1933,9 +2000,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          const next: ImportRelationship =
-                            rel === "none" ? "child" : rel === "child" ? "parent" : "none";
-                          setVariableRelationship(v.name, next);
+                          setVariableRelationship(v.name, nextRelationship(rel));
                         }}
                         disabled={isRunning}
                         className="justify-self-center rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -1954,7 +2019,7 @@ const NewStatModal = ({ isOpen, onClose, onImported, categoryOptions }: NewStatM
                               value={sel.statAttribute ?? ""}
                               onChange={(e) => updateVariableStatAttribute(v.name, e.target.value)}
                               onClick={(e) => e.stopPropagation()}
-                              disabled={isRunning}
+                              disabled={isRunning || sel.lockedImported}
                               className="w-full rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                               placeholder="optional"
                             />
@@ -2139,6 +2204,17 @@ export const AdminScreen = () => {
     if (!statsData?.stats) return [];
     return statsData.stats.map(parseStat).filter((s): s is StatItem => s !== null);
   }, [statsData?.stats]);
+
+  const censusStatsByVariable = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; label: string | null | undefined }>();
+    for (const stat of stats) {
+      if (typeof stat.neId === "string" && stat.neId.startsWith("census:")) {
+        const variable = stat.neId.slice("census:".length);
+        map.set(variable, { id: stat.id, name: stat.name, label: stat.label });
+      }
+    }
+    return map;
+  }, [stats]);
 
   const statsById = useMemo(() => {
     const map = new Map<string, StatItem>();
@@ -3869,6 +3945,7 @@ export const AdminScreen = () => {
         onClose={() => setIsNewStatOpen(false)}
         onImported={handleImportedFromModal}
         categoryOptions={statCategoryOptions}
+        existingCensusStats={censusStatsByVariable}
       />
       {isGroupModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-6">
