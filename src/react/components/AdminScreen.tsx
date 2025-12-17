@@ -3131,6 +3131,112 @@ export const AdminScreen = () => {
   const [isGrouping, setIsGrouping] = useState(false);
   const [expandedParentId, setExpandedParentId] = useState<string | null>(null);
   const [expandedChildIds, setExpandedChildIds] = useState<Record<string, boolean>>({});
+  const [editingRelationAttribute, setEditingRelationAttribute] = useState<{
+    parentStatId: string;
+    attribute: string;
+  } | null>(null);
+  const [editingRelationAttributeDraft, setEditingRelationAttributeDraft] = useState("");
+  const [isUpdatingRelationAttribute, setIsUpdatingRelationAttribute] = useState(false);
+  const relationAttributeInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleStartEditingRelationAttribute = useCallback((parentStatId: string, attribute: string) => {
+    setEditingRelationAttribute({ parentStatId, attribute });
+    setEditingRelationAttributeDraft(attribute === UNDEFINED_STAT_ATTRIBUTE ? "" : attribute);
+  }, []);
+
+  const handleCancelEditingRelationAttribute = useCallback(() => {
+    setEditingRelationAttribute(null);
+    setEditingRelationAttributeDraft("");
+  }, []);
+
+  const handleCommitRelationAttribute = useCallback(
+    async (parentStatId: string, currentAttribute: string, draft: string) => {
+      if (isUpdatingRelationAttribute) return;
+
+      const normalized = draft.trim();
+      const nextAttribute = normalized ? normalized : UNDEFINED_STAT_ATTRIBUTE;
+      if (nextAttribute === currentAttribute) {
+        handleCancelEditingRelationAttribute();
+        return;
+      }
+
+      const byAttr = statRelationsByParent.get(parentStatId);
+      const relations = byAttr?.get(currentAttribute) ?? [];
+      if (relations.length === 0) {
+        handleCancelEditingRelationAttribute();
+        return;
+      }
+
+      const keysBeingReplaced = new Set(relations.map((rel) => rel.relationKey));
+      const existingKeys = new Set<string>();
+      if (byAttr) {
+        for (const rels of byAttr.values()) {
+          for (const rel of rels) existingKeys.add(rel.relationKey);
+        }
+      }
+      for (const key of keysBeingReplaced) existingKeys.delete(key);
+
+      const now = Date.now();
+      const nextKeys: string[] = [];
+      const conflicts: string[] = [];
+
+      for (const rel of relations) {
+        const nextKey = `${parentStatId}::${rel.childStatId}::${nextAttribute}`;
+        nextKeys.push(nextKey);
+        if (existingKeys.has(nextKey)) {
+          const child = statsById.get(rel.childStatId);
+          conflicts.push(child ? child.label || child.name : rel.childStatId);
+        }
+      }
+
+      if (conflicts.length > 0) {
+        if (typeof window !== "undefined") {
+          window.alert(
+            `Cannot rename attribute because these child stats already have a relation under "${nextAttribute}":\n\n${conflicts.join(
+              "\n",
+            )}`,
+          );
+        }
+        return;
+      }
+
+      const txs = relations.map((rel, index) =>
+        db.tx.statRelations[rel.id].update({
+          relationKey: nextKeys[index],
+          statAttribute: nextAttribute,
+          updatedAt: now,
+        }),
+      );
+
+      try {
+        setIsUpdatingRelationAttribute(true);
+        await db.transact(txs);
+        setGroupNotice(
+          `Updated attribute: ${
+            currentAttribute === UNDEFINED_STAT_ATTRIBUTE ? "Undefined" : currentAttribute
+          } → ${nextAttribute === UNDEFINED_STAT_ATTRIBUTE ? "Undefined" : nextAttribute}`,
+        );
+        handleCancelEditingRelationAttribute();
+      } catch (err) {
+        console.error("Failed to update stat relation attribute", err);
+        if (typeof window !== "undefined") {
+          window.alert(err instanceof Error ? err.message : "Failed to update stat relation attribute.");
+        }
+      } finally {
+        setIsUpdatingRelationAttribute(false);
+      }
+    },
+    [handleCancelEditingRelationAttribute, isUpdatingRelationAttribute, statRelationsByParent, statsById],
+  );
+
+  useEffect(() => {
+    if (!editingRelationAttribute) return;
+    const timeout = setTimeout(() => {
+      relationAttributeInputRef.current?.focus();
+      relationAttributeInputRef.current?.select();
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [editingRelationAttribute]);
 
   const parentOptions = useMemo(
     () =>
@@ -4641,9 +4747,37 @@ export const AdminScreen = () => {
                     <div className="ml-4 mt-1 space-y-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
                       {childGroups.map(([attribute, relations]) => (
                         <div key={attribute} className="space-y-2">
-                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            {attribute === UNDEFINED_STAT_ATTRIBUTE ? "Undefined" : attribute}
-                          </div>
+                          {editingRelationAttribute?.parentStatId === stat.id &&
+                          editingRelationAttribute.attribute === attribute ? (
+                            <input
+                              ref={relationAttributeInputRef}
+                              value={editingRelationAttributeDraft}
+                              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                                setEditingRelationAttributeDraft(e.target.value)
+                              }
+                              onBlur={() => handleCancelEditingRelationAttribute()}
+                              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleCommitRelationAttribute(stat.id, attribute, editingRelationAttributeDraft);
+                                } else if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  handleCancelEditingRelationAttribute();
+                                }
+                              }}
+                              className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 shadow-sm outline-none ring-brand-200 focus:border-brand-400 focus:ring-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:ring-brand-900/40 dark:focus:border-brand-500"
+                              placeholder="Attribute (blank = undefined)"
+                              disabled={isUpdatingRelationAttribute}
+                            />
+                          ) : (
+                            <div
+                              className="cursor-text select-text text-xs font-semibold uppercase tracking-wide text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                              title="Double-click to edit attribute"
+                              onDoubleClick={() => handleStartEditingRelationAttribute(stat.id, attribute)}
+                            >
+                              {attribute === UNDEFINED_STAT_ATTRIBUTE ? "Undefined" : attribute}
+                            </div>
+                          )}
                           <div className="space-y-2">
                             {relations.map((rel) => {
                               const child = statsById.get(rel.childStatId);
@@ -4695,9 +4829,37 @@ export const AdminScreen = () => {
                                     <div className="ml-4 space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
                                       {grandChildGroups.map(([gAttr, gRels]) => (
                                         <div key={gAttr} className="space-y-1">
-                                          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                            {gAttr === UNDEFINED_STAT_ATTRIBUTE ? "Undefined" : gAttr}
-                                          </div>
+                                          {editingRelationAttribute?.parentStatId === child.id &&
+                                          editingRelationAttribute.attribute === gAttr ? (
+                                            <input
+                                              ref={relationAttributeInputRef}
+                                              value={editingRelationAttributeDraft}
+                                              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                                                setEditingRelationAttributeDraft(e.target.value)
+                                              }
+                                              onBlur={() => handleCancelEditingRelationAttribute()}
+                                              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                                                if (e.key === "Enter") {
+                                                  e.preventDefault();
+                                                  handleCommitRelationAttribute(child.id, gAttr, editingRelationAttributeDraft);
+                                                } else if (e.key === "Escape") {
+                                                  e.preventDefault();
+                                                  handleCancelEditingRelationAttribute();
+                                                }
+                                              }}
+                                              className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700 shadow-sm outline-none ring-brand-200 focus:border-brand-400 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:ring-brand-900/40 dark:focus:border-brand-500"
+                                              placeholder="Attribute (blank = undefined)"
+                                              disabled={isUpdatingRelationAttribute}
+                                            />
+                                          ) : (
+                                            <div
+                                              className="cursor-text select-text text-[10px] font-semibold uppercase tracking-wide text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                                              title="Double-click to edit attribute"
+                                              onDoubleClick={() => handleStartEditingRelationAttribute(child.id, gAttr)}
+                                            >
+                                              {gAttr === UNDEFINED_STAT_ATTRIBUTE ? "Undefined" : gAttr}
+                                            </div>
+                                          )}
                                           <div className="space-y-1">
                                             {gRels.map((gRel) => {
                                               const grandChild = statsById.get(gRel.childStatId);
