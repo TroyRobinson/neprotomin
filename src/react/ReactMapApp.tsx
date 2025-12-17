@@ -34,6 +34,7 @@ import { getMapStateFromUrl, updateUrlWithMapState, type AreasMode } from "./lib
 import { useAuthSession } from "./hooks/useAuthSession";
 import { setStatDataSubscriptionEnabled } from "../state/statData";
 import { MapSettingsModal } from "./components/MapSettingsModal";
+import { useCensusImportQueue } from "./hooks/useCensusImportQueue";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type ScreenName = "map" | "report" | "roadmap" | "data" | "queue" | "addOrg" | "admin";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
@@ -165,6 +166,7 @@ const expandBounds = (
 };
 
 export const ReactMapApp = () => {
+  const { isRunning: isCensusImportRunning } = useCensusImportQueue();
   // Parse initial map state from URL once (must be first to be available for other initializers)
   const [initialMapState] = useState(() => getMapStateFromUrl());
   const initialMapPosition = initialMapState.position;
@@ -3493,7 +3495,7 @@ export const ReactMapApp = () => {
         style={{ visibility: activeScreen === "admin" ? "visible" : "hidden", top: topBarHeight }}
         className="absolute left-0 right-0 bottom-0 z-30"
       >
-        {activeScreen === "admin" && (
+        {(activeScreen === "admin" || isCensusImportRunning) && (
           <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-slate-500">Loading admin…</div>}>
             <div className="flex h-full w-full overflow-hidden bg-white pb-safe dark:bg-slate-900">
               <AdminScreen />

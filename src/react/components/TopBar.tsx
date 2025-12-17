@@ -4,6 +4,8 @@ import { track } from "@vercel/analytics";
 import { db } from "../../lib/reactDb";
 import { isAdminEmail } from "../../lib/admin";
 import { themeController } from "../imperative/theme";
+import { useCensusImportQueue } from "../hooks/useCensusImportQueue";
+import { QueueListIcon } from "@heroicons/react/24/outline";
 
 // ============================================================================
 // Enable Features
@@ -158,10 +160,20 @@ export const TopBar = ({
   const [showThemeButtonMobile, setShowThemeButtonMobile] = useState(true);
   // Desktop "More" dropdown state
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const {
+    queueItems: importQueueItems,
+    isRunning: isImportRunning,
+    currentItemId: currentImportItemId,
+    currentYearProcessing: currentImportYearProcessing,
+    isDropdownOpen: isImportQueueOpen,
+    setIsDropdownOpen: setIsImportQueueOpen,
+    toggleDropdown: toggleImportQueueDropdown,
+  } = useCensusImportQueue();
   const mobileActionsRef = useRef<HTMLDivElement | null>(null);
   const mobileSearchFormRef = useRef<HTMLFormElement | null>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const importQueueRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const unsubscribe = themeController.subscribe((current) => {
@@ -178,6 +190,19 @@ export const TopBar = ({
       setIsMoreMenuOpen(false);
     }
   }, [isMobile]);
+
+  useEffect(() => {
+    if (!isImportQueueOpen) return;
+    const handleClickOutside = (event: globalThis.MouseEvent) => {
+      if (importQueueRef.current && !importQueueRef.current.contains(event.target as Node)) {
+        setIsImportQueueOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isImportQueueOpen, setIsImportQueueOpen]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -397,6 +422,7 @@ export const TopBar = ({
   const showAdminLink =
     !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
   const showRoadmapLink = !isLoading && user != null && !user.isGuest;
+  const showImportQueue = showQueueLink;
 
   const queueQuery = useMemo(
     () =>
@@ -416,6 +442,16 @@ export const TopBar = ({
   const pendingQueueCount = queueData?.organizations?.length ?? 0;
   const showQueueBadge = pendingQueueCount > 0;
   const queueBadgeLabel = pendingQueueCount > 99 ? "99+" : pendingQueueCount.toString();
+
+  const importQueueTotal = importQueueItems.length;
+  const importQueueActiveCount = importQueueItems.filter(
+    (item) => item.status === "pending" || item.status === "running",
+  ).length;
+  const importQueueCompletedCount = importQueueItems.filter((item) => item.status === "success").length;
+  const importQueueProgress =
+    importQueueTotal === 0 ? 0 : Math.round((importQueueCompletedCount / importQueueTotal) * 100);
+  const showImportQueueBadge = importQueueActiveCount > 0;
+  const importQueueBadgeLabel = importQueueActiveCount > 99 ? "99+" : importQueueActiveCount.toString();
 
   return (
     <>
@@ -705,6 +741,95 @@ export const TopBar = ({
                   <LogoutIcon />
                 </span>
               </button>
+            )}
+            {showImportQueue && (
+              <div ref={importQueueRef} className="relative">
+                <button
+                  type="button"
+                  onClick={toggleImportQueueDropdown}
+                  className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+                  aria-label="Toggle import queue"
+                  aria-expanded={isImportQueueOpen}
+                >
+                  <QueueListIcon className="h-5 w-5" />
+                  {showImportQueueBadge && (
+                    <span className="absolute -top-1 -right-1 min-w-[1.1rem] rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">
+                      {importQueueBadgeLabel}
+                    </span>
+                  )}
+                </button>
+                {isImportQueueOpen && (
+                  <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-slate-200 bg-white p-3 text-[11px] shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Import queue
+                      </span>
+                      {importQueueTotal > 0 && (
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                          {importQueueCompletedCount}/{importQueueTotal}
+                        </span>
+                      )}
+                    </div>
+                    {isImportRunning && (
+                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                        <div
+                          className="h-full rounded-full bg-brand-500 transition-all dark:bg-brand-400"
+                          style={{ width: `${importQueueProgress}%` }}
+                        />
+                      </div>
+                    )}
+                    <div className="mt-3 max-h-72 space-y-1 overflow-y-auto">
+                      {importQueueItems.length === 0 ? (
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          No imports queued yet.
+                        </p>
+                      ) : (
+                        importQueueItems.map((item) => {
+                          const isCurrent = item.id === currentImportItemId && isImportRunning;
+                          return (
+                            <div
+                              key={item.id}
+                              className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="truncate font-medium text-slate-800 dark:text-slate-100">
+                                    {item.variable}
+                                  </div>
+                                  <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">
+                                    {item.group} · {item.years > 1 ? `${item.year - item.years + 1} to ${item.year}` : item.year}
+                                  </div>
+                                </div>
+                                <div className="shrink-0 text-[10px] text-slate-500 dark:text-slate-400">
+                                  {item.status === "pending" && "Queued"}
+                                  {item.status === "running" && (
+                                    <span className="text-brand-600 dark:text-brand-400">
+                                      {isCurrent && currentImportYearProcessing
+                                        ? `Loading ${currentImportYearProcessing}…`
+                                        : "Running…"}
+                                    </span>
+                                  )}
+                                  {item.status === "success" && (
+                                    <span className="text-emerald-600 dark:text-emerald-400">Done</span>
+                                  )}
+                                  {item.status === "error" && (
+                                    <span className="text-rose-600 dark:text-rose-400">Error</span>
+                                  )}
+                                </div>
+                              </div>
+                              {item.status === "error" && item.errorMessage && (
+                                <div className="mt-1 truncate text-[9px] text-rose-500 dark:text-rose-400">
+                                  {item.errorMessage}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
             {/* Location button moved onto map overlay */}
             <button

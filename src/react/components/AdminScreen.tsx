@@ -6,9 +6,11 @@ import { db } from "../../lib/reactDb";
 import { isDevEnv } from "../../lib/env";
 import { useAuthSession } from "../hooks/useAuthSession";
 import { useCategories } from "../hooks/useCategories";
+import { useCensusImportQueue } from "../hooks/useCensusImportQueue";
 import type { Category } from "../../types/organization";
 import type { StatRelation } from "../../types/stat";
 import { UNDEFINED_STAT_ATTRIBUTE } from "../../types/stat";
+import type { ImportQueueItem, ImportRelationship } from "../types/censusImport";
 import { CustomSelect } from "./CustomSelect";
 import {
   DerivedStatModal,
@@ -645,25 +647,6 @@ type CensusVariablePreview = {
   countyCount: number;
 };
 
-type ImportStatus = "pending" | "running" | "success" | "error";
-
-type ImportRelationship = "none" | "child" | "parent";
-
-interface ImportQueueItem {
-  id: string;
-  dataset: string;
-  group: string;
-  variable: string;
-  year: number;
-  years: number;
-  includeMoe: boolean;
-  relationship?: ImportRelationship;
-  statAttribute?: string;
-  importedStatId?: string;
-  status: ImportStatus;
-  errorMessage?: string;
-}
-
 // Category options are now fetched from InstantDB via useCategories hook
 
 // Heuristic: group IDs are typically like B22003, S1701, DP02, etc.
@@ -1015,10 +998,19 @@ const NewStatModal = ({
     importedStatName: string | null;
   };
   const [selection, setSelection] = useState<Record<string, VariableSelection>>({});
-  const [queueItems, setQueueItems] = useState<ImportQueueItem[]>([]);
-  const [isRunning, setIsRunning] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState<number | null>(null);
-  const [currentYearProcessing, setCurrentYearProcessing] = useState<number | null>(null);
+  const {
+    queueItems,
+    setQueueItems,
+    isRunning,
+    setIsRunning,
+    currentItemId,
+    setCurrentItemId,
+    currentYearProcessing,
+    setCurrentYearProcessing,
+    openDropdown: openImportQueueDropdown,
+  } = useCensusImportQueue();
+  const queueItemsRef = useRef<ImportQueueItem[]>(queueItems);
+  const isProcessingRef = useRef(false);
   const [lastSubmittedGroup, setLastSubmittedGroup] = useState<string>(""); // Track last previewed group
   const [isParentSearchOpen, setIsParentSearchOpen] = useState(false);
   const [parentSearch, setParentSearch] = useState("");
@@ -1028,6 +1020,10 @@ const NewStatModal = ({
   const [percentDenominatorId, setPercentDenominatorId] = useState<string>("");
   const [isDenominatorSearchOpen, setIsDenominatorSearchOpen] = useState(false);
   const [denominatorSearch, setDenominatorSearch] = useState("");
+
+  useEffect(() => {
+    queueItemsRef.current = queueItems;
+  }, [queueItems]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1044,9 +1040,6 @@ const NewStatModal = ({
     setPreviewTotal(0);
     setVariables([]);
     setSelection({});
-    setQueueItems([]);
-    setIsRunning(false);
-    setCurrentIndex(null);
     setLastSubmittedGroup("");
     setRunGroupSearch(null);
     setIsParentSearchOpen(false);
@@ -1075,6 +1068,17 @@ const NewStatModal = ({
       ...(overrides ?? {}),
     }),
     [year],
+  );
+
+  const mergeQueueItems = useCallback(
+    (prevQueue: ImportQueueItem[], items: ImportQueueItem[]) => {
+      if (items.length === 0) return prevQueue;
+      const existing = new Set(prevQueue.map((item) => item.id));
+      const nextItems = items.filter((item) => !existing.has(item.id));
+      if (nextItems.length === 0) return prevQueue;
+      return isRunning ? [...nextItems, ...prevQueue] : [...prevQueue, ...nextItems];
+    },
+    [isRunning],
   );
 
   const clearParentSelections = useCallback(() => {
@@ -1113,7 +1117,6 @@ const NewStatModal = ({
 
   const handleSelectManualParent = useCallback(
     (stat: StatItem) => {
-      if (isRunning) return;
       setManualParent({ id: stat.id, name: stat.name, label: stat.label ?? null, category: stat.category });
       clearParentSelections();
       // If the user chooses a manual parent after selecting variables,
@@ -1137,13 +1140,12 @@ const NewStatModal = ({
       });
       setIsParentSearchOpen(false);
     },
-    [clearParentSelections, isRunning],
+    [clearParentSelections],
   );
 
   const handleClearManualParent = useCallback(() => {
-    if (isRunning) return;
     setManualParent(null);
-  }, [isRunning]);
+  }, []);
 
   const changeOptionDisabled = useMemo(() => {
     if (queueItems.length === 0) return true;
@@ -1191,16 +1193,15 @@ const NewStatModal = ({
 
   const handleSelectDenominator = useCallback(
     (stat: StatItem) => {
-      if (isRunning) return;
       setPercentDenominatorId(stat.id);
       setIsDenominatorSearchOpen(false);
     },
-    [isRunning],
+    [],
   );
 
   // Handle click outside to close modal
   useEffect(() => {
-    if (!isOpen || isRunning) return;
+    if (!isOpen) return;
     const handleClickOutside = (e: globalThis.MouseEvent) => {
       if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
         onClose();
@@ -1214,11 +1215,11 @@ const NewStatModal = ({
       clearTimeout(timeout);
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isOpen, isRunning, onClose]);
+  }, [isOpen, onClose]);
 
   // Handle ESC key to close modal
   useEffect(() => {
-    if (!isOpen || isRunning) return;
+    if (!isOpen) return;
     const handleKeyDown = (e: globalThis.KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -1229,7 +1230,7 @@ const NewStatModal = ({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen, isRunning, onClose]);
+  }, [isOpen, onClose]);
 
   const handlePreview = useCallback(async (groupOverride?: string, suggestedStatIds?: string[] | null) => {
     const trimmedGroup = (groupOverride ?? group).trim();
@@ -1308,30 +1309,25 @@ const NewStatModal = ({
 
       // Mirror the manual checkbox behavior: if we auto-select variables, add them to the queue too.
       if (autoSelected.length) {
-        setQueueItems((prevQueue) => {
-          const next = [...prevQueue];
-          for (const sel of autoSelected) {
-            const exists = next.some((item) => item.variable === sel.name && item.group === trimmedGroup);
-            if (exists) continue;
-            const qYear = sel.yearEnd;
-            const qYears =
-              sel.yearStart !== null ? Math.max(1, sel.yearEnd - sel.yearStart + 1) : 1;
-            const key = `${resolvedDataset}::${trimmedGroup}::${sel.name}`;
-            next.push({
-              id: key,
-              dataset: resolvedDataset,
-              group: trimmedGroup,
-              variable: sel.name,
-              year: qYear,
-              years: qYears,
-              includeMoe: true,
-              relationship: "none",
-              statAttribute: "",
-              status: "pending" as const,
-            });
-          }
-          return next;
+        const nextItems = autoSelected.map((sel) => {
+          const qYear = sel.yearEnd;
+          const qYears =
+            sel.yearStart !== null ? Math.max(1, sel.yearEnd - sel.yearStart + 1) : 1;
+          const key = `${resolvedDataset}::${trimmedGroup}::${sel.name}`;
+          return {
+            id: key,
+            dataset: resolvedDataset,
+            group: trimmedGroup,
+            variable: sel.name,
+            year: qYear,
+            years: qYears,
+            includeMoe: true,
+            relationship: "none" as const,
+            statAttribute: "",
+            status: "pending" as const,
+          };
         });
+        setQueueItems((prevQueue) => mergeQueueItems(prevQueue, nextItems));
       }
 
       setSelection(defaults);
@@ -1348,7 +1344,7 @@ const NewStatModal = ({
     } finally {
       setIsPreviewLoading(false);
     }
-  }, [dataset, existingCensusStats, getDefaultSelection, group, limit, year]);
+  }, [dataset, existingCensusStats, getDefaultSelection, group, limit, mergeQueueItems, year]);
 
   // Helper to calculate year and years from selection
   // If both are set: range from yearStart to yearEnd
@@ -1377,6 +1373,7 @@ const NewStatModal = ({
     }
   };
 
+
   const toggleVariableSelected = useCallback((name: string) => {
     const trimmedGroup = group.trim();
     setSelection((prev) => {
@@ -1392,25 +1389,19 @@ const NewStatModal = ({
       if (newSelected && trimmedGroup) {
         const { year: qYear, years: qYears } = getYearRange(current, year);
         const key = `${dataset}::${trimmedGroup}::${name}`;
-        setQueueItems((prevQueue) => {
-          const exists = prevQueue.some((item) => item.variable === name && item.group === trimmedGroup);
-          if (exists) return prevQueue;
-          return [
-            ...prevQueue,
-            {
-              id: key,
-              dataset,
-              group: trimmedGroup,
-              variable: name,
-              year: qYear,
-              years: qYears,
-              includeMoe: true,
-              relationship: effectiveRelationship ?? "none",
-              statAttribute: current.statAttribute ?? "",
-              status: "pending" as const,
-            },
-          ];
-        });
+        const nextItem: ImportQueueItem = {
+          id: key,
+          dataset,
+          group: trimmedGroup,
+          variable: name,
+          year: qYear,
+          years: qYears,
+          includeMoe: true,
+          relationship: effectiveRelationship ?? "none",
+          statAttribute: current.statAttribute ?? "",
+          status: "pending",
+        };
+        setQueueItems((prevQueue) => mergeQueueItems(prevQueue, [nextItem]));
       }
       // If deselecting, remove from queue
       if (!newSelected && trimmedGroup) {
@@ -1429,7 +1420,7 @@ const NewStatModal = ({
         },
       };
     });
-  }, [dataset, getDefaultSelection, getYearRange, group, manualParent, year]);
+  }, [dataset, getDefaultSelection, getYearRange, group, manualParent, mergeQueueItems, year]);
 
   const removeFromQueue = useCallback((itemId: string, variableName: string) => {
     // Remove from queue
@@ -1476,7 +1467,6 @@ const NewStatModal = ({
 
   const setVariableRelationship = useCallback(
     (name: string, relationship: ImportRelationship) => {
-      if (isRunning) return;
       const trimmedGroup = group.trim();
 
       setSelection((prev) => {
@@ -1538,8 +1528,7 @@ const NewStatModal = ({
                       }
                     : item,
                 )
-              : [
-                  ...prevQueue,
+              : mergeQueueItems(prevQueue, [
                   {
                     id,
                     dataset,
@@ -1550,9 +1539,9 @@ const NewStatModal = ({
                     includeMoe: true,
                     relationship: normalizedRelationship,
                     statAttribute: nextForName.statAttribute,
-                    status: "pending" as const,
+                    status: "pending",
                   },
-                ];
+                ]);
 
             if (normalizedRelationship === "parent") {
               nextQueue = nextQueue.map((item) =>
@@ -1568,12 +1557,11 @@ const NewStatModal = ({
         return next;
       });
     },
-    [dataset, getDefaultSelection, getYearRange, group, isRunning, manualParent, year],
+    [dataset, getDefaultSelection, getYearRange, group, manualParent, mergeQueueItems, year],
   );
 
   const updateVariableStatAttribute = useCallback(
     (name: string, statAttribute: string) => {
-      if (isRunning) return;
       const trimmedGroup = group.trim();
       setSelection((prev) => {
         const current = prev[name] ?? getDefaultSelection();
@@ -1600,7 +1588,7 @@ const NewStatModal = ({
         return next;
       });
     },
-    [getDefaultSelection, group, isRunning],
+    [getDefaultSelection, group],
   );
 
   const relationshipConfigError = useMemo(() => {
@@ -1915,7 +1903,7 @@ const NewStatModal = ({
   );
 
   const handleRunQueue = useCallback(async () => {
-    if (isRunning || queueItems.length === 0) return;
+    if (queueItemsRef.current.length === 0) return;
     if (relationshipConfigError) {
       setPreviewError(relationshipConfigError);
       return;
@@ -1924,27 +1912,40 @@ const NewStatModal = ({
       setPreviewError("Select a denominator before starting imports.");
       return;
     }
+
+    openImportQueueDropdown();
+    onClose();
+
+    if (isRunning || isProcessingRef.current) return;
+
     setIsRunning(true);
+    setCurrentItemId(null);
     setCurrentYearProcessing(null);
-    const itemsSnapshot = queueItems.slice();
+    isProcessingRef.current = true;
+
     const importedStatIds: string[] = [];
     const importedByItemId = new Map<string, string>();
     const erroredItemIds = new Set<string>();
+
     try {
-      for (let index = 0; index < itemsSnapshot.length; index += 1) {
-        const item = itemsSnapshot[index];
-        if (item.status === "success") continue;
-        setCurrentIndex(index);
+      while (true) {
+        const nextItem = queueItemsRef.current.find((item) => item.status === "pending");
+        if (!nextItem) break;
+
+        setCurrentItemId(nextItem.id);
         setQueueItems((prev) =>
-          prev.map((q, i) =>
-            i === index ? { ...q, status: "running", errorMessage: undefined } : q,
+          prev.map((q) =>
+            q.id === nextItem.id ? { ...q, status: "running", errorMessage: undefined } : q,
           ),
         );
+
         // When importing multiple years, split into per-year requests to keep each server call small.
         let itemErrored = false;
         let itemStatId: string | null = null;
         const yearsToProcess =
-          item.years > 1 ? Array.from({ length: item.years }, (_, idx) => item.year - idx) : [item.year];
+          nextItem.years > 1
+            ? Array.from({ length: nextItem.years }, (_, idx) => nextItem.year - idx)
+            : [nextItem.year];
 
         for (const year of yearsToProcess) {
           try {
@@ -1953,12 +1954,12 @@ const NewStatModal = ({
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                dataset: item.dataset,
-                group: item.group,
-                variable: item.variable,
+                dataset: nextItem.dataset,
+                group: nextItem.group,
+                variable: nextItem.variable,
                 year,
                 years: 1,
-                includeMoe: item.includeMoe,
+                includeMoe: nextItem.includeMoe,
                 category: category,
               }),
             });
@@ -1968,13 +1969,13 @@ const NewStatModal = ({
                 (payload && typeof payload.error === "string" && payload.error) ||
                 `Import failed with status ${response.status}.`;
               setQueueItems((prev) =>
-                prev.map((q, i) =>
-                  i === index ? { ...q, status: "error", errorMessage: message } : q,
+                prev.map((q) =>
+                  q.id === nextItem.id ? { ...q, status: "error", errorMessage: message } : q,
                 ),
               );
               // Stop processing remaining years for this item on error
               itemErrored = true;
-              erroredItemIds.add(item.id);
+              erroredItemIds.add(nextItem.id);
               throw new Error(message);
             }
             const statId = typeof payload.statId === "string" ? payload.statId : null;
@@ -1983,10 +1984,10 @@ const NewStatModal = ({
             }
             if (statId) {
               itemStatId = statId;
-              importedByItemId.set(item.id, statId);
+              importedByItemId.set(nextItem.id, statId);
               setQueueItems((prev) =>
-                prev.map((q, i) =>
-                  i === index ? { ...q, importedStatId: statId } : q,
+                prev.map((q) =>
+                  q.id === nextItem.id ? { ...q, importedStatId: statId } : q,
                 ),
               );
             }
@@ -1994,14 +1995,14 @@ const NewStatModal = ({
           } catch (err) {
             console.error("Census import request failed", err);
             setQueueItems((prev) =>
-              prev.map((q, i) =>
-                i === index
+              prev.map((q) =>
+                q.id === nextItem.id
                   ? { ...q, status: "error", errorMessage: "Network error during import." }
                   : q,
               ),
             );
             itemErrored = true;
-            erroredItemIds.add(item.id);
+            erroredItemIds.add(nextItem.id);
             setCurrentYearProcessing(null);
             break;
           }
@@ -2009,9 +2010,14 @@ const NewStatModal = ({
 
         // If we never marked this item as error, treat it as success.
         setQueueItems((prev) =>
-          prev.map((q, i) =>
-            i === index && !itemErrored
-              ? { ...q, status: "success", errorMessage: undefined, importedStatId: itemStatId ?? q.importedStatId }
+          prev.map((q) =>
+            q.id === nextItem.id && !itemErrored
+              ? {
+                  ...q,
+                  status: "success",
+                  errorMessage: undefined,
+                  importedStatId: itemStatId ?? q.importedStatId,
+                }
               : q,
           ),
         );
@@ -2023,9 +2029,9 @@ const NewStatModal = ({
               importedStatIds.push(derivedId);
             }
           }
-          if (addChange && item.years > 1) {
-            const endYear = String(item.year);
-            const startYear = String(item.year - item.years + 1);
+          if (addChange && nextItem.years > 1) {
+            const endYear = String(nextItem.year);
+            const startYear = String(nextItem.year - nextItem.years + 1);
             const derivedId = await createChangeDerivedChild(itemStatId, startYear, endYear);
             if (derivedId && !importedStatIds.includes(derivedId)) {
               importedStatIds.push(derivedId);
@@ -2033,6 +2039,8 @@ const NewStatModal = ({
           }
         }
       }
+
+      const itemsSnapshot = queueItemsRef.current.slice();
       // Create parent/child stat relationships if configured.
       const parentItem = itemsSnapshot.find(
         (q) => q.relationship === "parent" && !erroredItemIds.has(q.id) && importedByItemId.has(q.id),
@@ -2060,7 +2068,10 @@ const NewStatModal = ({
             const relationKey = `${parentId}::${childStatId}::${statAttribute}`;
             return { relationKey, parentStatId: parentId, childStatId, statAttribute };
           })
-          .filter((v): v is { relationKey: string; parentStatId: string; childStatId: string; statAttribute: string } => v !== null);
+          .filter(
+            (v): v is { relationKey: string; parentStatId: string; childStatId: string; statAttribute: string } =>
+              v !== null,
+          );
 
         const uniqueByKey = new Map<string, (typeof candidates)[number]>();
         for (const c of candidates) uniqueByKey.set(c.relationKey, c);
@@ -2105,8 +2116,9 @@ const NewStatModal = ({
       }
     } finally {
       setIsRunning(false);
-      setCurrentIndex(null);
+      setCurrentItemId(null);
       setCurrentYearProcessing(null);
+      isProcessingRef.current = false;
       if (importedStatIds.length > 0) {
         onImported(importedStatIds);
       }
@@ -2119,9 +2131,10 @@ const NewStatModal = ({
     createPercentDerivedChild,
     isRunning,
     manualParent,
+    onClose,
     onImported,
+    openImportQueueDropdown,
     percentDenominatorId,
-    queueItems,
     relationshipConfigError,
     selection,
   ]);
@@ -2149,8 +2162,7 @@ const NewStatModal = ({
           <button
             type="button"
             onClick={onClose}
-            disabled={isRunning}
-            className="rounded-full p-1 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800"
+            className="rounded-full p-1 text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -2260,8 +2272,8 @@ const NewStatModal = ({
                 </p>
               ) : (
                 <div className="max-h-56 space-y-1 overflow-y-auto text-[11px]">
-                  {queueItems.map((item, index) => {
-                    const isCurrent = currentIndex === index && isRunning;
+                  {queueItems.map((item) => {
+                    const isCurrent = currentItemId === item.id && isRunning;
                     return (
                       <div
                         key={item.id}
@@ -2332,8 +2344,7 @@ const NewStatModal = ({
                     type="checkbox"
                     checked={addPercent}
                     onChange={(e) => setAddPercent(e.target.checked)}
-                    disabled={isRunning}
-                    className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900"
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-900"
                   />
                   Percentage
                 </label>
@@ -2342,7 +2353,7 @@ const NewStatModal = ({
                     type="checkbox"
                     checked={addChange}
                     onChange={(e) => setAddChange(e.target.checked)}
-                    disabled={isRunning || changeOptionDisabled}
+                    disabled={changeOptionDisabled}
                     className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900"
                   />
                   Change
@@ -2372,8 +2383,7 @@ const NewStatModal = ({
                   <button
                     type="button"
                     onClick={() => setIsDenominatorSearchOpen((open) => !open)}
-                    disabled={isRunning}
-                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium shadow-sm transition disabled:opacity-60 ${
+                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium shadow-sm transition ${
                       percentDenominatorId
                         ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                         : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-900/20 dark:text-rose-300 dark:hover:bg-rose-900/30"
@@ -2389,7 +2399,6 @@ const NewStatModal = ({
                 type="button"
                 onClick={handleRunQueue}
                 disabled={
-                  isRunning ||
                   queueItems.length === 0 ||
                   Boolean(relationshipConfigError) ||
                   (addPercent && !percentDenominatorId)
@@ -2407,13 +2416,11 @@ const NewStatModal = ({
                     value={denominatorSearch}
                     onChange={(e) => setDenominatorSearch(e.target.value)}
                     placeholder="Search imported stats for denominator..."
-                    disabled={isRunning}
                     className="w-full flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                   />
                   <button
                     type="button"
                     onClick={() => setDenominatorSearch("")}
-                    disabled={isRunning}
                     className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                   >
                     Clear
@@ -2430,7 +2437,6 @@ const NewStatModal = ({
                         key={stat.id}
                         type="button"
                         onClick={() => handleSelectDenominator(stat)}
-                        disabled={isRunning}
                         className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-800 dark:hover:bg-slate-800/70"
                       >
                         <div className="min-w-0">
@@ -2478,7 +2484,6 @@ const NewStatModal = ({
                       <button
                         type="button"
                         onClick={handleClearManualParent}
-                        disabled={isRunning}
                         className="text-emerald-700 transition hover:text-emerald-900 disabled:opacity-50 dark:text-emerald-300 dark:hover:text-emerald-100"
                         title="Clear parent selection"
                       >
@@ -2490,7 +2495,6 @@ const NewStatModal = ({
                 <button
                   type="button"
                   onClick={() => setIsParentSearchOpen((open) => !open)}
-                  disabled={isRunning}
                   className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                   + Parent
@@ -2504,13 +2508,11 @@ const NewStatModal = ({
                       value={parentSearch}
                       onChange={(e) => setParentSearch(e.target.value)}
                       placeholder="Search existing stats by name/label"
-                      disabled={isRunning}
                       className="w-full flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                     />
                     <button
                       type="button"
                       onClick={() => setParentSearch("")}
-                      disabled={isRunning}
                       className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                     >
                       Clear
@@ -2527,7 +2529,6 @@ const NewStatModal = ({
                           key={stat.id}
                           type="button"
                           onClick={() => handleSelectManualParent(stat)}
-                          disabled={isRunning}
                           className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-800 dark:hover:bg-slate-800/70"
                         >
                           <div className="min-w-0">
@@ -2593,7 +2594,7 @@ const NewStatModal = ({
                         type="checkbox"
                         checked={sel.selected}
                         onChange={() => toggleVariableSelected(v.name)}
-                        disabled={isRunning || sel.lockedImported}
+                        disabled={sel.lockedImported}
                         className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-500 focus:ring-brand-400 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 dark:border-slate-500 dark:bg-slate-900 disabled:dark:border-slate-800 disabled:dark:bg-slate-800"
                       />
                       <div className="flex min-w-0 flex-col">
@@ -2617,7 +2618,6 @@ const NewStatModal = ({
                               e.stopPropagation();
                               setVariableRelationship(v.name, nextRelationship(rel));
                             }}
-                            disabled={isRunning}
                             className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                             title="Click to cycle relationship"
                           >
@@ -2633,7 +2633,7 @@ const NewStatModal = ({
                                 value={sel.statAttribute ?? ""}
                                 onChange={(e) => updateVariableStatAttribute(v.name, e.target.value)}
                                 onClick={(e) => e.stopPropagation()}
-                                disabled={isRunning || sel.lockedImported}
+                                disabled={sel.lockedImported}
                                 className="w-32 rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                                 placeholder="optional"
                               />
@@ -2653,7 +2653,7 @@ const NewStatModal = ({
                           updateSelectionField(v.name, "yearStart", val ? Number(val) : null);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        disabled={isRunning || sel.lockedImported}
+                        disabled={sel.lockedImported}
                         className="w-14 appearance-none rounded border border-slate-300 bg-white px-1.5 py-0.5 text-center text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 sm:text-left dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                       />
                       <span className="hidden sm:inline">to</span>
@@ -2666,7 +2666,7 @@ const NewStatModal = ({
                           updateSelectionField(v.name, "yearEnd", val ? Number(val) : null);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        disabled={isRunning || sel.lockedImported}
+                        disabled={sel.lockedImported}
                         className="w-14 appearance-none rounded border border-slate-300 bg-white px-1.5 py-0.5 text-center text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 sm:text-left dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                       />
                     </div>
@@ -2683,7 +2683,6 @@ const NewStatModal = ({
                           e.stopPropagation();
                           setVariableRelationship(v.name, nextRelationship(rel));
                         }}
-                        disabled={isRunning}
                         className="justify-self-center rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                         title="Click to cycle relationship"
                       >
@@ -2700,7 +2699,7 @@ const NewStatModal = ({
                               value={sel.statAttribute ?? ""}
                               onChange={(e) => updateVariableStatAttribute(v.name, e.target.value)}
                               onClick={(e) => e.stopPropagation()}
-                              disabled={isRunning || sel.lockedImported}
+                              disabled={sel.lockedImported}
                               className="w-full rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                               placeholder="optional"
                             />

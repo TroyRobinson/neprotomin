@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import { ReactMapApp } from "./ReactMapApp";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { CensusImportQueueProvider } from "./hooks/useCensusImportQueue";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "../style.css";
 
@@ -14,9 +15,13 @@ if (!container) {
 const root = createRoot(container);
 root.render(
   <ErrorBoundary>
-    <Suspense fallback={<div className="flex h-screen items-center justify-center text-sm text-slate-500">Loading…</div>}>
-      <ReactMapApp />
-    </Suspense>
+    <CensusImportQueueProvider>
+      <Suspense
+        fallback={<div className="flex h-screen items-center justify-center text-sm text-slate-500">Loading…</div>}
+      >
+        <ReactMapApp />
+      </Suspense>
+    </CensusImportQueueProvider>
     <Analytics />
   </ErrorBoundary>
 );
@@ -37,4 +42,3 @@ if (import.meta.hot) {
     root.unmount();
   });
 }
-
