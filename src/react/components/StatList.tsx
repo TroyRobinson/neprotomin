@@ -1,12 +1,15 @@
 import { useMemo, useState } from "react";
+import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import type { Stat, StatRelation, StatRelationsByParent, StatRelationsByChild } from "../../types/stat";
 import { UNDEFINED_STAT_ATTRIBUTE } from "../../types/stat";
 import { formatStatValue } from "../../lib/format";
 import type { StatBoundaryEntry } from "../hooks/useStats";
+import { computeSimilarityFromNormalized, normalizeForSearch } from "../lib/fuzzyMatch";
 import { CustomSelect } from "./CustomSelect";
 
 // Feature flag: Hide stat values when at county level with no selection
 const HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION = true;
+const STAT_SEARCH_MATCH_THRESHOLD = 0.4;
 
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type SelectedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
@@ -148,6 +151,8 @@ export const StatList = ({
   countyScopeDisplayName = null,
 }: StatListProps) => {
   const areaEntries = useMemo(() => buildAreaEntries(selectedAreas), [selectedAreas]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const normalizedQuery = useMemo(() => normalizeForSearch(searchQuery), [searchQuery]);
 
   // Determine which boundary level to use: prefer activeAreaKind if set, otherwise infer from selections
   const effectiveAreaKind = useMemo<SupportedAreaKind | null>(() => {
@@ -293,6 +298,19 @@ export const StatList = ({
 
     return result;
   }, [statsById, statDataById, areaEntries, categoryFilter, effectiveAreaKind, zipScopeDisplayName, countyScopeDisplayName, areaNameLookup, childIdSet]);
+
+  const filteredRows = useMemo(() => {
+    if (!normalizedQuery) return rows;
+    return rows.filter((row) => {
+      const normalizedName = normalizeForSearch(row.name);
+      if (!normalizedName) return false;
+      if (normalizedName.includes(normalizedQuery) || normalizedQuery.includes(normalizedName)) {
+        return true;
+      }
+      const score = computeSimilarityFromNormalized(normalizedName, normalizedQuery);
+      return score >= STAT_SEARCH_MATCH_THRESHOLD;
+    });
+  }, [rows, normalizedQuery]);
 
   const subtitle = useMemo(() => {
     if (areaEntries.length === 1) {
@@ -690,18 +708,44 @@ export const StatList = ({
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-4 pt-2 pb-6">
+        <div className="pt-2">
+          <div className="flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 shadow-sm transition-colors focus-within:border-brand-200 focus-within:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:focus-within:border-slate-600 dark:focus-within:bg-slate-800/70">
+            <MagnifyingGlassIcon className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search stats"
+              aria-label="Search statistics"
+              className="w-full bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none dark:text-slate-200 dark:placeholder:text-slate-500"
+              spellCheck={false}
+            />
+            {searchQuery.trim().length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="rounded-full p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+                aria-label="Clear search"
+              >
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
         {subtitle && (
           <p className="px-1 pt-2 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
             {subtitle}
           </p>
         )}
-        {rows.length === 0 ? (
+        {filteredRows.length === 0 ? (
           <p className="px-1 pt-2 text-xs text-slate-500 dark:text-slate-400">
-            No statistics to display for the current selection.
+            {normalizedQuery
+              ? "No statistics match your search."
+              : "No statistics to display for the current selection."}
           </p>
         ) : (
           <ul className="space-y-2">
-            {rows.map((row) => {
+            {filteredRows.map((row) => {
               // Render placeholder line for selected/displayed stat (pinned above)
               // Use displayStatId to show placeholder for parent when child is selected
               if (displayStatId === row.id) {
