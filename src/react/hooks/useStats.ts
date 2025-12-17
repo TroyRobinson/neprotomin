@@ -93,12 +93,33 @@ export const useStats = ({ statDataEnabled = true }: UseStatsOptions = {}) => {
       : null,
   );
 
-  // Cache the last valid data response to prevent UI flashes during transient loading states
-  const cachedDataRef = useRef(data);
-  if (data) {
-    cachedDataRef.current = data;
+  // Cache each payload slice so disabling statData doesn't wipe the last good statData payload.
+  type QueryData = NonNullable<typeof data>;
+  const cachedStatsRef = useRef<QueryData["stats"] | undefined>(undefined);
+  const cachedStatRelationsRef = useRef<QueryData["statRelations"] | undefined>(undefined);
+  const cachedStatDataRef = useRef<QueryData["statData"] | undefined>(undefined);
+
+  if (Array.isArray(data?.stats)) {
+    cachedStatsRef.current = data.stats;
   }
-  const effectiveData = data || cachedDataRef.current;
+  if (Array.isArray(data?.statRelations)) {
+    cachedStatRelationsRef.current = data.statRelations;
+  }
+  if (Array.isArray(data?.statData) && data.statData.length > 0) {
+    cachedStatDataRef.current = data.statData;
+  }
+
+  const effectiveData = {
+    stats: Array.isArray(data?.stats)
+      ? data?.stats
+      : cachedStatsRef.current,
+    statRelations: Array.isArray(data?.statRelations)
+      ? data?.statRelations
+      : cachedStatRelationsRef.current,
+    statData: Array.isArray(data?.statData)
+      ? data?.statData
+      : cachedStatDataRef.current,
+  };
 
   // Normalize stats once to reuse everywhere
   const statsById = useMemo(() => {

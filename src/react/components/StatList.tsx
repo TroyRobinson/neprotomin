@@ -196,7 +196,24 @@ export const StatList = ({
 
     for (const s of stats) {
       const entryMap = statDataById.get(s.id);
-      if (!entryMap) continue;
+      const fallbackEntry = entryMap
+        ? (entryMap.COUNTY ?? entryMap.ZIP ?? Object.values(entryMap)[0])
+        : undefined;
+      if (!fallbackEntry) {
+        result.push({
+          id: s.id,
+          name: s.label || s.name,
+          value: 0,
+          score: 0,
+          type: "count",
+          contextAvg: 0,
+          hasData: false,
+          goodIfUp: s.goodIfUp,
+          aggregationMethod: "raw",
+          aggregationDescription: "",
+        });
+        continue;
+      }
 
       const contextAvgByKind = new Map<SupportedAreaKind, number>();
       for (const kind of SUPPORTED_KINDS) {
@@ -205,14 +222,14 @@ export const StatList = ({
       }
 
       // Use COUNTY data when at county level, otherwise prefer ZIP
-      const fallbackEntry = preferCounty
+      const effectiveFallbackEntry = preferCounty
         ? (entryMap.COUNTY ?? entryMap.ZIP ?? Object.values(entryMap)[0])
         : (entryMap.ZIP ?? entryMap.COUNTY ?? Object.values(entryMap)[0]);
-      if (!fallbackEntry) continue;
+      if (!effectiveFallbackEntry) continue;
 
       const fallbackContextAvg = preferCounty
-        ? (contextAvgByKind.get("COUNTY") ?? contextAvgByKind.get("ZIP") ?? computeContextAverage(fallbackEntry))
-        : (contextAvgByKind.get("ZIP") ?? contextAvgByKind.get("COUNTY") ?? computeContextAverage(fallbackEntry));
+        ? (contextAvgByKind.get("COUNTY") ?? contextAvgByKind.get("ZIP") ?? computeContextAverage(effectiveFallbackEntry))
+        : (contextAvgByKind.get("ZIP") ?? contextAvgByKind.get("COUNTY") ?? computeContextAverage(effectiveFallbackEntry));
 
       const valuesForSelection = areaEntries
         .map((area) => {
@@ -224,7 +241,7 @@ export const StatList = ({
         })
         .filter((v): v is { area: AreaEntry; entry: StatBoundaryEntry; value: number } => v !== null);
 
-      const isPercent = fallbackEntry.type === "percent";
+      const isPercent = effectiveFallbackEntry.type === "percent";
       
       let displayValue = fallbackContextAvg;
       let aggregationMethod: "sum" | "average" | "raw" = "average";
@@ -281,7 +298,7 @@ export const StatList = ({
         name: s.label || s.name,
         value: displayValue,
         score,
-        type: fallbackEntry.type,
+        type: effectiveFallbackEntry.type,
         contextAvg: fallbackContextAvg,
         hasData: valuesForSelection.length > 0 || areaEntries.length === 0,
         goodIfUp: s.goodIfUp,
