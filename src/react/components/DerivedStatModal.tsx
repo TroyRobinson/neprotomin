@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Category } from "../../types/organization";
 import { CustomSelect } from "./CustomSelect";
 
@@ -234,6 +235,7 @@ export const DerivedStatModal = ({
   const [endYear, setEndYear] = useState<string>("");
   // For sum formula: list of operand stat IDs (minimum 2)
   const [sumOperandIds, setSumOperandIds] = useState<string[]>([]);
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const isSingleStatMode = stats.length === 1;
 
   // Years for the currently selected base stat (numerator) in change_over_time mode
@@ -255,6 +257,7 @@ export const DerivedStatModal = ({
     if (!isOpen) return;
     setLabel("");
     setCategory(stats[0]?.category ?? "");
+    setHasAttemptedSubmit(false);
     // Default to change_over_time in single-stat mode, otherwise percent
     setFormula(isSingleStatMode ? "change_over_time" : defaultFormula);
 
@@ -361,6 +364,7 @@ export const DerivedStatModal = ({
   const isValid = !nameRequired && validationMessage === null;
 
   const handleSubmit = () => {
+    setHasAttemptedSubmit(true);
     if (!isValid || isSubmitting) return;
     onSubmit({
       name: generatedName,
@@ -415,9 +419,9 @@ export const DerivedStatModal = ({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/55 p-4"
       onClick={handleBackdropClick}
     >
       <div
@@ -805,9 +809,9 @@ export const DerivedStatModal = ({
         </div>
         </div>
 
-        {(validationMessage || errorMessage) && (
+        {((hasAttemptedSubmit && validationMessage) || errorMessage) && (
           <div className="shrink-0 px-6 text-xs text-rose-600 dark:text-rose-400">
-            {validationMessage ?? errorMessage}
+            {hasAttemptedSubmit ? validationMessage ?? errorMessage : errorMessage}
           </div>
         )}
 
@@ -821,7 +825,7 @@ export const DerivedStatModal = ({
             Cancel
           </button>
           <div className="relative flex items-center">
-            {nameRequired && !isSubmitting && (
+            {hasAttemptedSubmit && nameRequired && !isSubmitting && (
               <span className="absolute -top-5 right-0 text-[10px] text-rose-500 dark:text-rose-400">Name is required</span>
             )}
             <button
@@ -856,6 +860,7 @@ export const DerivedStatModal = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

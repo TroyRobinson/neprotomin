@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import type { KeyboardEvent, ChangeEvent, MouseEvent } from "react";
 import { id as createId } from "@instantdb/react";
 import { db } from "../../lib/reactDb";
@@ -2132,8 +2133,8 @@ const NewStatModal = ({
   const progressPercent =
     totalItems === 0 ? 0 : Math.round((completedCount / totalItems) * 100);
 
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4">
       <div ref={modalRef} className="relative my-auto w-full max-w-4xl rounded-2xl bg-white p-4 shadow-xl sm:p-6 dark:bg-slate-900">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -2718,7 +2719,8 @@ const NewStatModal = ({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
