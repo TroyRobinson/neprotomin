@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../../lib/reactDb";
 import { useAuthSession } from "./useAuthSession";
 import type {
@@ -14,6 +14,8 @@ import { normalizeScopeLabel } from "../../lib/scopeLabels";
 import { isDevEnv } from "../../lib/env";
 
 type SupportedAreaKind = Extract<AreaKind, "ZIP" | "COUNTY">;
+
+const STAT_DATA_CACHE_TTL_MS = 20 * 60 * 1000;
 
 export interface SeriesEntry {
   date: string;
@@ -47,6 +49,18 @@ export const useStats = ({ statDataEnabled = true }: UseStatsOptions = {}) => {
 
   // Query stats and statData directly from InstantDB
   // Wait for auth to be ready to avoid race conditions (especially in Safari)
+  const [statDataRefreshRequested, setStatDataRefreshRequested] = useState(false);
+  const [lastStatDataAt, setLastStatDataAt] = useState<number | null>(null);
+
+  // Cache each payload slice so disabling statData doesn't wipe the last good statData payload.
+  const cachedStatsRef = useRef<any[] | undefined>(undefined);
+  const cachedStatRelationsRef = useRef<any[] | undefined>(undefined);
+  const cachedStatDataRef = useRef<any[] | undefined>(undefined);
+
+  const shouldIncludeStatData =
+    statDataEnabled &&
+    (statDataRefreshRequested || !cachedStatDataRef.current || lastStatDataAt === null);
+
   const { data, isLoading, error } = db.useQuery(
     queryEnabled
       ? {
@@ -70,7 +84,7 @@ export const useStats = ({ statDataEnabled = true }: UseStatsOptions = {}) => {
               order: { sortOrder: "asc" as const },
             },
           },
-          ...(statDataEnabled
+          ...(shouldIncludeStatData
             ? {
                 statData: {
                   $: {
@@ -93,21 +107,37 @@ export const useStats = ({ statDataEnabled = true }: UseStatsOptions = {}) => {
       : null,
   );
 
-  // Cache each payload slice so disabling statData doesn't wipe the last good statData payload.
-  type QueryData = NonNullable<typeof data>;
-  const cachedStatsRef = useRef<QueryData["stats"] | undefined>(undefined);
-  const cachedStatRelationsRef = useRef<QueryData["statRelations"] | undefined>(undefined);
-  const cachedStatDataRef = useRef<QueryData["statData"] | undefined>(undefined);
-
   if (Array.isArray(data?.stats)) {
     cachedStatsRef.current = data.stats;
   }
   if (Array.isArray(data?.statRelations)) {
     cachedStatRelationsRef.current = data.statRelations;
   }
-  if (Array.isArray(data?.statData) && data.statData.length > 0) {
+
+  useEffect(() => {
+    if (!Array.isArray(data?.statData) || data.statData.length === 0) return;
     cachedStatDataRef.current = data.statData;
-  }
+    setLastStatDataAt(Date.now());
+    if (statDataRefreshRequested) {
+      setStatDataRefreshRequested(false);
+    }
+  }, [data?.statData, statDataRefreshRequested]);
+
+  useEffect(() => {
+    if (!statDataEnabled) return;
+    if (lastStatDataAt === null) return;
+    if (typeof window === "undefined") return;
+    const age = Date.now() - lastStatDataAt;
+    if (age >= STAT_DATA_CACHE_TTL_MS) {
+      if (!statDataRefreshRequested) setStatDataRefreshRequested(true);
+      return;
+    }
+    const timeout = window.setTimeout(
+      () => setStatDataRefreshRequested(true),
+      STAT_DATA_CACHE_TTL_MS - age,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [lastStatDataAt, statDataEnabled, statDataRefreshRequested]);
 
   const effectiveData = {
     stats: Array.isArray(data?.stats)
