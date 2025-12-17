@@ -434,9 +434,9 @@ export const StatList = ({
     return Array.from(attrs).sort();
   }, [singleChildAttrs, grandchildAttributes.allAttributes]);
 
-  // Track which toggle attributes the user has intentionally turned ON
-  // This persists when switching children, so the toggle stays on for the new child
-  const [enabledToggles, setEnabledToggles] = useState<Set<string>>(new Set());
+  // Track the user's preferred toggle attribute (e.g. "Percent" vs "Change").
+  // This persists when switching children so the selection stays consistent.
+  const [preferredToggleAttr, setPreferredToggleAttr] = useState<string | null>(null);
 
   // Check if a toggle attribute is available (can be clicked)
   const isToggleAttrAvailable = (attr: string): boolean => {
@@ -459,8 +459,8 @@ export const StatList = ({
 
   // Check if a toggle attribute is currently active (derived from selection + enabled state)
   const isToggleAttrActive = (attr: string): boolean => {
-    // First check if it's enabled by user
-    if (!enabledToggles.has(attr)) return false;
+    // Only the preferred toggle can be active.
+    if (preferredToggleAttr !== attr) return false;
 
     // Then check if it's actually in effect (i.e., we're at or below that level)
     if (!selectedStatId || !rootParentId) return false;
@@ -505,12 +505,12 @@ export const StatList = ({
   const handleToggle = (attr: string) => {
     if (!onStatSelect || !displayStatId) return;
 
-    const isCurrentlyEnabled = enabledToggles.has(attr);
+    const isPreferred = preferredToggleAttr === attr;
     const singleChild = singleChildAttrs.find(([a]) => a === attr);
     const hasDropdownChild = isChildFromDropdown(activeChildId);
 
     // IMPORTANT UX DETAIL:
-    // `enabledToggles` is a persisted "preference" set (so toggles can stay on when switching children).
+    // `preferredToggleAttr` is a persisted selection (so toggles can stay on when switching children).
     // But for single-child attributes like "Percent" vs "Change (...)", users expect these buttons to
     // behave like a *selection* (radio-ish), not like an on/off flag. The previous logic treated
     // "enabled but not currently selected" as "turn off", which caused a 2-click switch.
@@ -544,13 +544,9 @@ export const StatList = ({
       return false;
     })();
 
-    if (isCurrentlyEnabled && isToggleInEffect) {
-      // Turn OFF: remove from enabled
-      setEnabledToggles((prev) => {
-        const next = new Set(prev);
-        next.delete(attr);
-        return next;
-      });
+    if (isPreferred && isToggleInEffect) {
+      // Turn OFF: clear preferred selection
+      setPreferredToggleAttr(null);
 
       // If a child is selected from dropdown, stay on that child (just remove grandchild)
       if (hasDropdownChild && activeChildId) {
@@ -558,11 +554,14 @@ export const StatList = ({
       } else if (singleChild) {
         // Only single-child toggle was active, go back to parent
         onStatSelect(displayStatId);
+      } else if (intermediateChildId) {
+        // Grandchild-only toggle under a single-child path: go back up to the intermediate child.
+        onStatSelect(intermediateChildId);
       }
       // If neither, no selection change needed
     } else {
-      // Turn ON: add to enabled, select down the hierarchy
-      setEnabledToggles((prev) => new Set(prev).add(attr));
+      // Turn ON: set preferred selection, then select down the hierarchy
+      setPreferredToggleAttr(attr);
 
       // If a child is selected from dropdown, chain to that child's grandchild
       if (hasDropdownChild && activeChildId) {
@@ -587,13 +586,14 @@ export const StatList = ({
     }
   };
 
-  // Handle child selection from dropdown
-  // If a toggle is already enabled and the child has grandchildren with that attribute, chain to grandchild
+  // Handle child selection from dropdown.
+  // If the preferred toggle applies to this child, chain to its matching grandchild.
   const handleChildSelect = (childId: string) => {
     if (!onStatSelect) return;
 
-    // Check if any enabled toggle applies to this child
-    for (const attr of enabledToggles) {
+    // If the preferred toggle applies to this child, chain to that grandchild.
+    if (preferredToggleAttr) {
+      const attr = preferredToggleAttr;
       const grandchildByAttribute = statRelationsByParent.get(childId);
       const relations = grandchildByAttribute?.get(attr);
       if (relations && relations.length > 0 && relations[0].child) {
@@ -607,13 +607,14 @@ export const StatList = ({
     onStatSelect(childId);
   };
 
-  // Handle child deselection from dropdown - go back to parent
-  // If a toggle is enabled with single-child path, chain through it
+  // Handle child deselection from dropdown - go back to parent.
+  // If the preferred toggle has a single-child path, chain through it.
   const handleChildDeselect = () => {
     if (!onStatSelect || !displayStatId) return;
 
-    // Check if any enabled toggle has a single-child path
-    for (const attr of enabledToggles) {
+    // If the preferred toggle has a single-child path, chain through it.
+    if (preferredToggleAttr) {
+      const attr = preferredToggleAttr;
       const singleChild = singleChildAttrs.find(([a]) => a === attr);
       if (singleChild) {
         const [, relation] = singleChild;
