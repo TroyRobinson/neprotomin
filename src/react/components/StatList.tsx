@@ -724,7 +724,7 @@ export const StatList = ({
       )}
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-4 pt-2 pb-6">
+      <div className={`flex-1 overflow-y-auto px-4 pt-2 pb-6 ${displayStatId ? 'bg-slate-50 dark:bg-slate-900/30' : ''}`}>
         <div className="pt-2 mb-2">
           <div className="flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 shadow-sm transition-colors focus-within:border-brand-200 focus-within:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:focus-within:border-slate-600 dark:focus-within:bg-slate-800/70">
             <MagnifyingGlassIcon className="h-4 w-4 text-slate-400 dark:text-slate-500" />
