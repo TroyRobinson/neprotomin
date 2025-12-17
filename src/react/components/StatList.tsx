@@ -371,21 +371,27 @@ export const StatList = ({
 
     const single: Array<[string, StatRelation & { child: Stat | null }]> = [];
     const multi: Array<[string, Array<StatRelation & { child: Stat | null }>]> = [];
+    const filteredByAttribute = new Map<string, Array<StatRelation & { child: Stat | null }>>();
 
     for (const [attrName, relations] of byAttribute) {
       // Hide "Undefined" attribute group from the sidebar UI.
       if (attrName === UNDEFINED_STAT_ATTRIBUTE) continue;
-      if (relations.length === 1) {
-        single.push([attrName, relations[0]]);
+      // Filter out orphaned relations (relation exists but the target stat row is missing).
+      const validRelations = relations.filter((r) => r.child !== null);
+      if (validRelations.length === 0) continue;
+      filteredByAttribute.set(attrName, validRelations);
+
+      if (validRelations.length === 1) {
+        single.push([attrName, validRelations[0]]);
       } else {
-        multi.push([attrName, relations]);
+        multi.push([attrName, validRelations]);
       }
     }
 
     return {
       singleChildAttrs: single.sort(([a], [b]) => a.localeCompare(b)),
       multiChildAttrs: multi.sort(([a], [b]) => a.localeCompare(b)),
-      allChildrenByAttr: byAttribute,
+      allChildrenByAttr: filteredByAttribute,
     };
   }, [displayStatId, statRelationsByParent]);
 
@@ -405,13 +411,17 @@ export const StatList = ({
         const grandchildByAttribute = statRelationsByParent.get(childId);
         if (grandchildByAttribute && grandchildByAttribute.size > 0) {
           const attrsForThisChild = new Set<string>();
-          for (const [attrName] of grandchildByAttribute) {
+          for (const [attrName, relations] of grandchildByAttribute) {
             // Hide "Undefined" attribute group from the sidebar UI.
             if (attrName === UNDEFINED_STAT_ATTRIBUTE) continue;
+            // Only expose attributes that have at least one valid grandchild stat.
+            if (!relations.some((r) => r.child !== null)) continue;
             allAttrsSet.add(attrName);
             attrsForThisChild.add(attrName);
           }
-          availableForChild.set(childId, attrsForThisChild);
+          if (attrsForThisChild.size > 0) {
+            availableForChild.set(childId, attrsForThisChild);
+          }
         }
       }
     }
@@ -567,8 +577,9 @@ export const StatList = ({
       if (hasDropdownChild && activeChildId) {
         const grandchildByAttribute = statRelationsByParent.get(activeChildId);
         const relations = grandchildByAttribute?.get(attr);
-        if (relations && relations.length > 0 && relations[0].child) {
-          onStatSelect(relations[0].childStatId);
+        const target = relations?.find((r) => r.child !== null);
+        if (target) {
+          onStatSelect(target.childStatId);
         }
         // If no grandchild available for this attr, just stay on child (toggle is enabled for future)
       } else if (singleChild) {
@@ -577,8 +588,9 @@ export const StatList = ({
         const singleChildId = relation.childStatId;
         const grandchildByAttribute = statRelationsByParent.get(singleChildId);
         const grandchildRelations = grandchildByAttribute?.get(attr);
-        if (grandchildRelations && grandchildRelations.length > 0 && grandchildRelations[0].child) {
-          onStatSelect(grandchildRelations[0].childStatId);
+        const target = grandchildRelations?.find((r) => r.child !== null);
+        if (target) {
+          onStatSelect(target.childStatId);
         } else {
           onStatSelect(singleChildId);
         }
@@ -596,9 +608,10 @@ export const StatList = ({
       const attr = preferredToggleAttr;
       const grandchildByAttribute = statRelationsByParent.get(childId);
       const relations = grandchildByAttribute?.get(attr);
-      if (relations && relations.length > 0 && relations[0].child) {
+      const target = relations?.find((r) => r.child !== null);
+      if (target) {
         // Chain to grandchild with the enabled toggle attribute
-        onStatSelect(relations[0].childStatId);
+        onStatSelect(target.childStatId);
         return;
       }
     }
@@ -622,8 +635,9 @@ export const StatList = ({
         // Check if this single child has grandchildren with the same attribute
         const grandchildByAttribute = statRelationsByParent.get(singleChildId);
         const grandchildRelations = grandchildByAttribute?.get(attr);
-        if (grandchildRelations && grandchildRelations.length > 0 && grandchildRelations[0].child) {
-          onStatSelect(grandchildRelations[0].childStatId);
+        const target = grandchildRelations?.find((r) => r.child !== null);
+        if (target) {
+          onStatSelect(target.childStatId);
         } else {
           onStatSelect(singleChildId);
         }
