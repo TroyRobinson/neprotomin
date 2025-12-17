@@ -11,6 +11,8 @@ interface CensusImportQueueContextValue {
   setCurrentItemId: Dispatch<SetStateAction<string | null>>;
   currentYearProcessing: number | null;
   setCurrentYearProcessing: Dispatch<SetStateAction<number | null>>;
+  derivedStatusLabel: string | null;
+  setDerivedStatusLabel: Dispatch<SetStateAction<string | null>>;
   isDropdownOpen: boolean;
   setIsDropdownOpen: Dispatch<SetStateAction<boolean>>;
   openDropdown: () => void;
@@ -25,6 +27,7 @@ export const CensusImportQueueProvider = ({ children }: { children: ReactNode })
   const [isRunning, setIsRunning] = useState(false);
   const [currentItemId, setCurrentItemId] = useState<string | null>(null);
   const [currentYearProcessing, setCurrentYearProcessing] = useState<number | null>(null);
+  const [derivedStatusLabel, setDerivedStatusLabel] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const value = useMemo(
@@ -37,13 +40,15 @@ export const CensusImportQueueProvider = ({ children }: { children: ReactNode })
       setCurrentItemId,
       currentYearProcessing,
       setCurrentYearProcessing,
+      derivedStatusLabel,
+      setDerivedStatusLabel,
       isDropdownOpen,
       setIsDropdownOpen,
       openDropdown: () => setIsDropdownOpen(true),
       closeDropdown: () => setIsDropdownOpen(false),
       toggleDropdown: () => setIsDropdownOpen((prev) => !prev),
     }),
-    [currentItemId, currentYearProcessing, isDropdownOpen, isRunning, queueItems],
+    [currentItemId, currentYearProcessing, derivedStatusLabel, isDropdownOpen, isRunning, queueItems],
   );
 
   return <CensusImportQueueContext.Provider value={value}>{children}</CensusImportQueueContext.Provider>;

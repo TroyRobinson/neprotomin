@@ -1003,11 +1003,9 @@ const NewStatModal = ({
     setQueueItems,
     isRunning,
     setIsRunning,
-    currentItemId,
     setCurrentItemId,
-    currentYearProcessing,
     setCurrentYearProcessing,
-    openDropdown: openImportQueueDropdown,
+    setDerivedStatusLabel,
   } = useCensusImportQueue();
   const queueItemsRef = useRef<ImportQueueItem[]>(queueItems);
   const isProcessingRef = useRef(false);
@@ -1025,34 +1023,42 @@ const NewStatModal = ({
     queueItemsRef.current = queueItems;
   }, [queueItems]);
 
+  const resetModalState = useCallback(
+    (shouldFocus: boolean) => {
+      const now = new Date();
+      const defaultYear = now.getUTCFullYear() - 2;
+      setDataset("acs/acs5");
+      setGroup("");
+      setYear(defaultYear);
+      setLimit(20);
+      setCategory(null);
+      setStep(1);
+      setIsPreviewLoading(false);
+      setPreviewError(null);
+      setPreviewTotal(0);
+      setVariables([]);
+      setSelection({});
+      setLastSubmittedGroup("");
+      setRunGroupSearch(null);
+      setIsParentSearchOpen(false);
+      setParentSearch("");
+      setManualParent(null);
+      setAddPercent(false);
+      setAddChange(false);
+      setPercentDenominatorId("");
+      setIsDenominatorSearchOpen(false);
+      setDenominatorSearch("");
+      if (shouldFocus) {
+        setTimeout(() => groupInputRef.current?.focus(), 50);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!isOpen) return;
-    const now = new Date();
-    const defaultYear = now.getUTCFullYear() - 2;
-    setDataset("acs/acs5");
-    setGroup("");
-    setYear(defaultYear);
-    setLimit(20);
-    setCategory(null);
-    setStep(1);
-    setIsPreviewLoading(false);
-    setPreviewError(null);
-    setPreviewTotal(0);
-    setVariables([]);
-    setSelection({});
-    setLastSubmittedGroup("");
-    setRunGroupSearch(null);
-    setIsParentSearchOpen(false);
-    setParentSearch("");
-    setManualParent(null);
-    setAddPercent(false);
-    setAddChange(false);
-    setPercentDenominatorId("");
-    setIsDenominatorSearchOpen(false);
-    setDenominatorSearch("");
-    // Focus group search input when modal opens
-    setTimeout(() => groupInputRef.current?.focus(), 50);
-  }, [isOpen]);
+    resetModalState(true);
+  }, [isOpen, resetModalState]);
 
   const getDefaultSelection = useCallback(
     (overrides?: Partial<VariableSelection>): VariableSelection => ({
@@ -1147,10 +1153,59 @@ const NewStatModal = ({
     setManualParent(null);
   }, []);
 
+  // Helper to calculate year and years from selection
+  // If both are set: range from yearStart to yearEnd
+  // If only yearEnd: single year (yearEnd)
+  // If only yearStart: single year (yearStart)
+  // If neither: use default year
+  const getYearRange = (sel: { yearEnd: number | null; yearStart: number | null }, defaultYear: number) => {
+    const hasStart = sel.yearStart !== null;
+    const hasEnd = sel.yearEnd !== null;
+
+    if (hasStart && hasEnd) {
+      // Range: yearStart to yearEnd
+      const start = sel.yearStart!;
+      const end = sel.yearEnd!;
+      const years = Math.max(1, end - start + 1);
+      return { year: end, years };
+    } else if (hasEnd) {
+      // Single year: yearEnd only
+      return { year: sel.yearEnd!, years: 1 };
+    } else if (hasStart) {
+      // Single year: yearStart only
+      return { year: sel.yearStart!, years: 1 };
+    } else {
+      // Neither set, use default
+      return { year: defaultYear, years: 1 };
+    }
+  };
+
+  const pendingSelections = useMemo(() => {
+    return variables
+      .map((variable) => {
+        const sel = selection[variable.name];
+        if (!sel || !sel.selected || sel.lockedImported) return null;
+        return { variable: variable.name, ...getYearRange(sel, year) };
+      })
+      .filter((item): item is { variable: string; year: number; years: number } => item !== null);
+  }, [getYearRange, selection, variables, year]);
+
+  const pendingSelectionCount = pendingSelections.length;
+
+  const variableMetaByName = useMemo(() => {
+    return new Map(variables.map((variable) => [variable.name, variable]));
+  }, [variables]);
+
+  const pendingGroupLabel = useMemo(() => {
+    const trimmedLast = lastSubmittedGroup.trim();
+    const trimmedGroup = group.trim();
+    return trimmedLast || trimmedGroup || "";
+  }, [group, lastSubmittedGroup]);
+
   const changeOptionDisabled = useMemo(() => {
-    if (queueItems.length === 0) return true;
-    return queueItems.some((item) => item.years <= 1);
-  }, [queueItems]);
+    if (pendingSelections.length === 0) return true;
+    return pendingSelections.some((item) => item.years <= 1);
+  }, [pendingSelections]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1307,6 +1362,8 @@ const NewStatModal = ({
         }
       }
 
+      const variableByName = new Map(parsed.map((entry) => [entry.name, entry]));
+
       // Mirror the manual checkbox behavior: if we auto-select variables, add them to the queue too.
       if (autoSelected.length) {
         const nextItems = autoSelected.map((sel) => {
@@ -1314,11 +1371,13 @@ const NewStatModal = ({
           const qYears =
             sel.yearStart !== null ? Math.max(1, sel.yearEnd - sel.yearStart + 1) : 1;
           const key = `${resolvedDataset}::${trimmedGroup}::${sel.name}`;
+          const variableMeta = variableByName.get(sel.name);
           return {
             id: key,
             dataset: resolvedDataset,
             group: trimmedGroup,
             variable: sel.name,
+            statLabel: variableMeta?.statName || variableMeta?.label || sel.name,
             year: qYear,
             years: qYears,
             includeMoe: true,
@@ -1346,34 +1405,6 @@ const NewStatModal = ({
     }
   }, [dataset, existingCensusStats, getDefaultSelection, group, limit, mergeQueueItems, year]);
 
-  // Helper to calculate year and years from selection
-  // If both are set: range from yearStart to yearEnd
-  // If only yearEnd: single year (yearEnd)
-  // If only yearStart: single year (yearStart)
-  // If neither: use default year
-  const getYearRange = (sel: { yearEnd: number | null; yearStart: number | null }, defaultYear: number) => {
-    const hasStart = sel.yearStart !== null;
-    const hasEnd = sel.yearEnd !== null;
-    
-    if (hasStart && hasEnd) {
-      // Range: yearStart to yearEnd
-      const start = sel.yearStart!;
-      const end = sel.yearEnd!;
-      const years = Math.max(1, end - start + 1);
-      return { year: end, years };
-    } else if (hasEnd) {
-      // Single year: yearEnd only
-      return { year: sel.yearEnd!, years: 1 };
-    } else if (hasStart) {
-      // Single year: yearStart only
-      return { year: sel.yearStart!, years: 1 };
-    } else {
-      // Neither set, use default
-      return { year: defaultYear, years: 1 };
-    }
-  };
-
-
   const toggleVariableSelected = useCallback((name: string) => {
     const trimmedGroup = group.trim();
     setSelection((prev) => {
@@ -1389,11 +1420,13 @@ const NewStatModal = ({
       if (newSelected && trimmedGroup) {
         const { year: qYear, years: qYears } = getYearRange(current, year);
         const key = `${dataset}::${trimmedGroup}::${name}`;
+        const variableMeta = variableMetaByName.get(name);
         const nextItem: ImportQueueItem = {
           id: key,
           dataset,
           group: trimmedGroup,
           variable: name,
+          statLabel: variableMeta?.statName || variableMeta?.label || name,
           year: qYear,
           years: qYears,
           includeMoe: true,
@@ -1420,21 +1453,7 @@ const NewStatModal = ({
         },
       };
     });
-  }, [dataset, getDefaultSelection, getYearRange, group, manualParent, mergeQueueItems, year]);
-
-  const removeFromQueue = useCallback((itemId: string, variableName: string) => {
-    // Remove from queue
-    setQueueItems((prev) => prev.filter((item) => item.id !== itemId));
-    // Deselect the variable
-    setSelection((prev) => {
-      const current = prev[variableName];
-      if (!current) return prev;
-      return {
-        ...prev,
-        [variableName]: { ...current, selected: false, relationship: "none", statAttribute: "" },
-      };
-    });
-  }, []);
+  }, [dataset, getDefaultSelection, getYearRange, group, manualParent, mergeQueueItems, variableMetaByName, year]);
 
   const updateSelectionField = useCallback(
     (name: string, field: "yearEnd" | "yearStart", value: number | null) => {
@@ -1514,6 +1533,7 @@ const NewStatModal = ({
         if (trimmedGroup) {
           const { year: qYear, years: qYears } = getYearRange(nextForName, year);
           const id = `${dataset}::${trimmedGroup}::${name}`;
+          const variableMeta = variableMetaByName.get(name);
           setQueueItems((prevQueue) => {
             const hasItem = prevQueue.some((item) => item.id === id);
             let nextQueue = hasItem
@@ -1534,6 +1554,7 @@ const NewStatModal = ({
                     dataset,
                     group: trimmedGroup,
                     variable: name,
+                    statLabel: variableMeta?.statName || variableMeta?.label || name,
                     year: qYear,
                     years: qYears,
                     includeMoe: true,
@@ -1557,7 +1578,7 @@ const NewStatModal = ({
         return next;
       });
     },
-    [dataset, getDefaultSelection, getYearRange, group, manualParent, mergeQueueItems, year],
+    [dataset, getDefaultSelection, getYearRange, group, manualParent, mergeQueueItems, variableMetaByName, year],
   );
 
   const updateVariableStatAttribute = useCallback(
@@ -1592,19 +1613,20 @@ const NewStatModal = ({
   );
 
   const relationshipConfigError = useMemo(() => {
-    const parents = queueItems.filter((q) => q.relationship === "parent");
-    const children = queueItems.filter((q) => q.relationship === "child");
-    const importedParents = Object.values(selection).filter(
+    const selectedValues = Object.values(selection).filter((s) => s.selected);
+    const parents = selectedValues.filter((s) => s.relationship === "parent" && !s.lockedImported);
+    const children = selectedValues.filter((s) => s.relationship === "child" && !s.lockedImported);
+    const importedParents = selectedValues.filter(
       (s) => s.relationship === "parent" && s.lockedImported && Boolean(s.importedStatId),
     );
     const parentCount = parents.length + importedParents.length + (manualParent ? 1 : 0);
     if (parentCount > 1) return "Only one Parent is allowed per import.";
-    if (manualParent && queueItems.length > 0 && children.length === 0) {
+    if (manualParent && pendingSelectionCount > 0 && children.length === 0) {
       return "Parent selected but no Child stats selected. Mark at least one variable as Child.";
     }
     if (children.length > 0 && parentCount !== 1) return "Select exactly one Parent when using Child relationships.";
     return null;
-  }, [manualParent, queueItems, selection]);
+  }, [manualParent, pendingSelectionCount, selection]);
 
   const createChangeDerivedChild = useCallback(
     async (parentStatId: string, startYear: string, endYear: string): Promise<string | null> => {
@@ -1903,7 +1925,7 @@ const NewStatModal = ({
   );
 
   const handleRunQueue = useCallback(async () => {
-    if (queueItemsRef.current.length === 0) return;
+    if (pendingSelectionCount === 0) return;
     if (relationshipConfigError) {
       setPreviewError(relationshipConfigError);
       return;
@@ -1912,10 +1934,7 @@ const NewStatModal = ({
       setPreviewError("Select a denominator before starting imports.");
       return;
     }
-
-    openImportQueueDropdown();
-    onClose();
-
+    resetModalState(true);
     if (isRunning || isProcessingRef.current) return;
 
     setIsRunning(true);
@@ -2024,15 +2043,19 @@ const NewStatModal = ({
 
         if (!itemErrored && itemStatId) {
           if (addPercent && percentDenominatorId) {
+            setDerivedStatusLabel("Percent stat");
             const derivedId = await createPercentDerivedChild(itemStatId, percentDenominatorId);
+            setDerivedStatusLabel(null);
             if (derivedId && !importedStatIds.includes(derivedId)) {
               importedStatIds.push(derivedId);
             }
           }
           if (addChange && nextItem.years > 1) {
+            setDerivedStatusLabel("Change stat");
             const endYear = String(nextItem.year);
             const startYear = String(nextItem.year - nextItem.years + 1);
             const derivedId = await createChangeDerivedChild(itemStatId, startYear, endYear);
+            setDerivedStatusLabel(null);
             if (derivedId && !importedStatIds.includes(derivedId)) {
               importedStatIds.push(derivedId);
             }
@@ -2118,6 +2141,7 @@ const NewStatModal = ({
       setIsRunning(false);
       setCurrentItemId(null);
       setCurrentYearProcessing(null);
+      setDerivedStatusLabel(null);
       isProcessingRef.current = false;
       if (importedStatIds.length > 0) {
         onImported(importedStatIds);
@@ -2131,20 +2155,16 @@ const NewStatModal = ({
     createPercentDerivedChild,
     isRunning,
     manualParent,
-    onClose,
     onImported,
-    openImportQueueDropdown,
+    pendingSelectionCount,
     percentDenominatorId,
+    resetModalState,
     relationshipConfigError,
+    setDerivedStatusLabel,
     selection,
   ]);
 
   if (!isOpen) return null;
-
-  const totalItems = queueItems.length;
-  const completedCount = queueItems.filter((item) => item.status === "success").length;
-  const progressPercent =
-    totalItems === 0 ? 0 : Math.round((completedCount / totalItems) * 100);
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4">
@@ -2253,86 +2273,17 @@ const NewStatModal = ({
 
           <div className="order-3 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:order-3 dark:border-slate-700 dark:bg-slate-900/40">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-              Queue
+              Pending Import
             </h3>
 
-            {isRunning && (
-              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                <div
-                  className="h-full rounded-full bg-brand-500 transition-all dark:bg-brand-400"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-            )}
-
-            <div className="mt-2 grid grid-cols-1 gap-2">
-              {queueItems.length === 0 ? (
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  No imports queued yet. Select variables from the preview below to add them.
-                </p>
+            <div className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+              {pendingSelectionCount === 0 ? (
+                <p>No variables pending import yet. Select variables from the preview below.</p>
               ) : (
-                <div className="max-h-56 space-y-1 overflow-y-auto text-[11px]">
-                  {queueItems.map((item) => {
-                    const isCurrent = currentItemId === item.id && isRunning;
-                    return (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between gap-2 rounded-lg bg-white px-2 py-1.5 shadow-sm dark:bg-slate-900"
-                      >
-                        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="truncate font-medium text-slate-800 dark:text-slate-100">
-                              {item.variable}
-                            </span>
-                            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                              {item.group}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400">
-                            <span>
-                              {item.years > 1
-                                ? `${item.year - item.years + 1} to ${item.year}`
-                                : item.year}
-                            </span>
-                            <span>dataset: {item.dataset}</span>
-                          </div>
-                        </div>
-                        <div className="shrink-0 text-right text-[10px]">
-                          {item.status === "pending" && (
-                            <button
-                              type="button"
-                              onClick={() => removeFromQueue(item.id, item.variable)}
-                              className="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-                              title="Remove from queue"
-                            >
-                              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          )}
-                          {item.status === "running" && (
-                            <span className="text-brand-600 dark:text-brand-400">
-                              {isCurrent && currentYearProcessing
-                                ? `Loading ${currentYearProcessing}…`
-                                : "Running…"}
-                            </span>
-                          )}
-                          {item.status === "success" && (
-                            <span className="text-emerald-600 dark:text-emerald-400">Done</span>
-                          )}
-                          {item.status === "error" && (
-                            <span className="text-rose-600 dark:text-rose-400">Error</span>
-                          )}
-                          {item.status === "error" && item.errorMessage && (
-                            <div className="mt-0.5 max-w-xs truncate text-[9px] text-rose-500 dark:text-rose-400">
-                              {item.errorMessage}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <p>
+                  {pendingSelectionCount} variable{pendingSelectionCount === 1 ? "" : "s"}
+                  {pendingGroupLabel ? ` from ${pendingGroupLabel}` : ""} pending import.
+                </p>
               )}
             </div>
 
@@ -2358,7 +2309,7 @@ const NewStatModal = ({
                   />
                   Change
                 </label>
-                {queueItems.length > 0 && changeOptionDisabled && (
+                {pendingSelectionCount > 0 && changeOptionDisabled && (
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">(all need 2+ years)</span>
                 )}
               </div>
@@ -2399,13 +2350,13 @@ const NewStatModal = ({
                 type="button"
                 onClick={handleRunQueue}
                 disabled={
-                  queueItems.length === 0 ||
+                  pendingSelectionCount === 0 ||
                   Boolean(relationshipConfigError) ||
                   (addPercent && !percentDenominatorId)
                 }
                 className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-60"
               >
-                {isRunning ? "Running imports…" : "Start import"}
+                Start import
               </button>
             </div>
             {addPercent && isDenominatorSearchOpen && (

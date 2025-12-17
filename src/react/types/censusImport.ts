@@ -7,6 +7,7 @@ export interface ImportQueueItem {
   dataset: string;
   group: string;
   variable: string;
+  statLabel?: string;
   year: number;
   years: number;
   includeMoe: boolean;

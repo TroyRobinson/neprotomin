@@ -165,6 +165,7 @@ export const TopBar = ({
     isRunning: isImportRunning,
     currentItemId: currentImportItemId,
     currentYearProcessing: currentImportYearProcessing,
+    derivedStatusLabel: importDerivedStatusLabel,
     isDropdownOpen: isImportQueueOpen,
     setIsDropdownOpen: setIsImportQueueOpen,
     toggleDropdown: toggleImportQueueDropdown,
@@ -786,6 +787,9 @@ export const TopBar = ({
                       ) : (
                         importQueueItems.map((item) => {
                           const isCurrent = item.id === currentImportItemId && isImportRunning;
+                          const yearRangeLabel =
+                            item.years > 1 ? `${item.year - item.years + 1} to ${item.year}` : item.year;
+                          const subtitle = `${item.variable} · ${item.group} · ${yearRangeLabel}`;
                           return (
                             <div
                               key={item.id}
@@ -794,19 +798,21 @@ export const TopBar = ({
                               <div className="flex items-center justify-between gap-2">
                                 <div className="min-w-0">
                                   <div className="truncate font-medium text-slate-800 dark:text-slate-100">
-                                    {item.variable}
+                                    {item.statLabel || item.variable}
                                   </div>
                                   <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">
-                                    {item.group} · {item.years > 1 ? `${item.year - item.years + 1} to ${item.year}` : item.year}
+                                    {subtitle}
                                   </div>
                                 </div>
                                 <div className="shrink-0 text-[10px] text-slate-500 dark:text-slate-400">
                                   {item.status === "pending" && "Queued"}
                                   {item.status === "running" && (
                                     <span className="text-brand-600 dark:text-brand-400">
-                                      {isCurrent && currentImportYearProcessing
-                                        ? `Loading ${currentImportYearProcessing}…`
-                                        : "Running…"}
+                                      {isCurrent && importDerivedStatusLabel
+                                        ? `Loading ${importDerivedStatusLabel}…`
+                                        : isCurrent && currentImportYearProcessing
+                                          ? `Loading ${currentImportYearProcessing}…`
+                                          : "Running…"}
                                     </span>
                                   )}
                                   {item.status === "success" && (
