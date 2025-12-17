@@ -422,9 +422,9 @@ export const DerivedStatModal = ({
     >
       <div
         ref={modalRef}
-        className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+        className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
       >
-        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
+        <div className="flex shrink-0 items-start justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Create derived stat</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -443,7 +443,8 @@ export const DerivedStatModal = ({
           </button>
         </div>
 
-        <div className="grid gap-6 px-6 py-5 sm:grid-cols-5">
+        <div className="overflow-y-auto">
+          <div className="grid gap-6 px-6 py-5 sm:grid-cols-5">
           <div className="space-y-4 sm:col-span-3">
             <div>
               <label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -802,14 +803,15 @@ export const DerivedStatModal = ({
             </p>
           </div>
         </div>
+        </div>
 
         {(validationMessage || errorMessage) && (
-          <div className="px-6 text-xs text-rose-600 dark:text-rose-400">
+          <div className="shrink-0 px-6 text-xs text-rose-600 dark:text-rose-400">
             {validationMessage ?? errorMessage}
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4 dark:border-slate-800">
+        <div className="shrink-0 flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4 dark:border-slate-800">
           <button
             type="button"
             onClick={onClose}
