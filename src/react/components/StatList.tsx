@@ -183,7 +183,7 @@ export const StatList = ({
     // Only show context average label when areas are actually selected
     if (areaEntries.length === 0) return null;
     if (effectiveAreaKind === "COUNTY") return "State Avg";
-    if (effectiveAreaKind === "ZIP") return "City Avg";
+    if (effectiveAreaKind === "ZIP") return "County Avg";
     return null;
   }, [effectiveAreaKind, areaEntries.length]);
 
@@ -730,7 +730,7 @@ export const StatList = ({
               isSelected={true}
               isHeader={true}
               isSecondary={false}
-              averageLabel={averageLabel}
+              averageLabel={null}
               onStatSelect={onStatSelect}
               hideValue={true}
               categoryLabel={!categoryFilter && selectedStatRow.category ? getCategoryLabel(selectedStatRow.category) : null}
@@ -999,12 +999,12 @@ const StatListItem = ({
             <>
               {averageLabel && (
                 <span
-                  className="mr-2 inline-flex items-center gap-1 text-[10px] uppercase tracking-wide"
+                  className="mr-2 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide font-semibold"
                   onMouseEnter={handleAvgHover}
                   onMouseLeave={() => setShowTooltip(false)}
                 >
                   {averageLabel}
-                  <span className="font-semibold text-slate-500 dark:text-slate-300">
+                  <span className="font-normal">
                     {formatStatValue(row.contextAvg, row.type)}
                   </span>
                 </span>
