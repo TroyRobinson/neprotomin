@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import type { Stat, StatRelation, StatRelationsByParent, StatRelationsByChild } from "../../types/stat";
 import { UNDEFINED_STAT_ATTRIBUTE } from "../../types/stat";
@@ -517,6 +517,30 @@ export const StatList = ({
   // Track the user's preferred toggle attribute (e.g. "Percent" vs "Change").
   // This persists when switching children so the selection stays consistent.
   const [preferredToggleAttr, setPreferredToggleAttr] = useState<string | null>(null);
+
+  // Synchronize preferredToggleAttr when selectedStatId changes externally (e.g. from map chips)
+  useEffect(() => {
+    if (!selectedStatId) return;
+
+    // Find the attribute associated with the selected stat by looking at its parent relations
+    const relations = statRelationsByChild.get(selectedStatId);
+    if (!relations || relations.length === 0) return;
+
+    // We look for an attribute that matches one of our toggles in the ancestry
+    let currId = selectedStatId;
+    while (currId) {
+      const rels = statRelationsByChild.get(currId);
+      if (!rels || rels.length === 0) break;
+      const attr = rels[0].statAttribute;
+      if (allToggleAttributes.includes(attr)) {
+        setPreferredToggleAttr(attr);
+        break;
+      }
+      currId = rels[0].parentStatId;
+      // Stop if we hit the root displayed stat
+      if (currId === displayStatId) break;
+    }
+  }, [selectedStatId, statRelationsByChild, allToggleAttributes, displayStatId]);
 
   // Check if a toggle attribute is available (can be clicked)
   const isToggleAttrAvailable = (attr: string): boolean => {

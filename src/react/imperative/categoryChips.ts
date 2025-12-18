@@ -34,6 +34,9 @@ const CATEGORY_CHIP_SELECTED_CLASSES =
 const STAT_CHIP_SELECTED_CLASSES =
   "border-transparent bg-brand-100 text-brand-700 shadow-floating hover:bg-brand-100 dark:bg-brand-400/20 dark:text-white";
 
+const CATEGORY_CHIP_INACTIVE_FEATURED_CLASSES =
+  "border-slate-300 bg-slate-200 text-slate-700 shadow-sm hover:bg-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200";
+
 const MOBILE_STAT_CHIP_SELECTED_CLASSES =
   "border-transparent bg-brand-100 text-brand-700 shadow-floating hover:bg-brand-100 dark:bg-brand-400/80 dark:text-white px-3 py-1 text-xs";
 
@@ -335,20 +338,49 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   };
 
   const update = () => {
-    // Reorder buttons so selected chip comes first
-    if (selectedId) {
+    const selectedStat = selectedStatId ? allStats.find(s => s.id === selectedStatId) : null;
+    const selectedStatCategory = selectedStat?.category;
+
+    // Reorder buttons so relevant chips come first
+    if (selectedStatId) {
+      // Find the category entry for the selected stat
+      const statCategoryEntry = entries.find(e => e.categoryId === selectedStatCategory);
+      
+      if (statCategoryEntry) {
+        // If stat's category is featured, put it first
+        list.insertBefore(statCategoryEntry.button, list.firstChild);
+        // Put stat chip right after its category chip
+        if (statWrapper.parentElement !== list) list.appendChild(statWrapper);
+        list.insertBefore(statWrapper, statCategoryEntry.button.nextSibling);
+        
+        // If there's ALSO a selected filter category and it's different, put it BEFORE the stat's category
+        if (selectedId && selectedId !== selectedStatCategory) {
+          const selectedEntry = entries.find(e => e.categoryId === selectedId);
+          if (selectedEntry) {
+            list.insertBefore(selectedEntry.button, list.firstChild);
+          }
+        }
+      } else {
+        // Stat's category not featured - put stat chip first
+        if (statWrapper.parentElement !== list) list.appendChild(statWrapper);
+        list.insertBefore(statWrapper, list.firstChild);
+        
+        // If there's a selected filter category, put it BEFORE the stat chip
+        if (selectedId) {
+          const selectedEntry = entries.find(e => e.categoryId === selectedId);
+          if (selectedEntry) {
+            list.insertBefore(selectedEntry.button, list.firstChild);
+          }
+        }
+      }
+    } else if (selectedId) {
+      // Normal category selection reordering
       const selectedEntry = entries.find(e => e.categoryId === selectedId);
       if (selectedEntry) {
         list.insertBefore(selectedEntry.button, list.firstChild);
-        // Ensure stats wrapper renders immediately after the selected chip
         if (statWrapper.parentElement !== list) list.appendChild(statWrapper);
-        // Order: selected category -> stat chips -> orgs chip (always at right end)
         list.insertBefore(statWrapper, selectedEntry.button.nextSibling);
       }
-    } else if (selectedStatId) {
-      // If stat is selected but no category, move stat wrapper to the beginning
-      if (statWrapper.parentElement !== list) list.appendChild(statWrapper);
-      list.insertBefore(statWrapper, list.firstChild);
     }
     
     // Always position orgs chip at the right end (after all category and stat chips)
@@ -363,17 +395,32 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
     entries.forEach(({ button, closeIcon, categoryId }) => {
       const isSelected = selectedId === categoryId;
-      button.setAttribute("aria-pressed", `${isSelected}`);
-      button.className = `${CATEGORY_CHIP_CLASSES} ${
-        isSelected ? CATEGORY_CHIP_SELECTED_CLASSES : CATEGORY_CHIP_NEUTRAL_CLASSES
-      }`;
-      toggleCloseIcon(closeIcon, isSelected);
+      const isStatCategory = selectedStatCategory === categoryId;
 
-      // Hide category chips if:
-      // 1. A different category is selected, OR
-      // 2. A stat is selected but no category is selected
-      const shouldHide = (selectedId && selectedId !== categoryId) || (selectedStatId && !selectedId);
-      applyChipVisibility(button, !shouldHide);
+      let shouldShow = false;
+      if (selectedStatId) {
+        // If stat is selected, only show its category (if featured) or the active filter category
+        shouldShow = isStatCategory || isSelected;
+      } else if (selectedId) {
+        // If filter is active but no stat, only show the filter category
+        shouldShow = isSelected;
+      } else {
+        // If nothing selected, show all featured categories
+        shouldShow = true;
+      }
+
+      button.setAttribute("aria-pressed", `${isSelected}`);
+      
+      if (isSelected) {
+        button.className = `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_SELECTED_CLASSES}`;
+      } else if (selectedStatId && isStatCategory) {
+        button.className = `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_INACTIVE_FEATURED_CLASSES}`;
+      } else {
+        button.className = `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES}`;
+      }
+      
+      toggleCloseIcon(closeIcon, isSelected);
+      applyChipVisibility(button, shouldShow);
     });
 
     // Update stats UI region
@@ -674,26 +721,23 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     // Determine which stats to show:
     // - Desktop: show the selected stat if one exists, otherwise show category stats if a category is selected
     // - Mobile: always show only the selected stat
-    // Only show stats that are active (active === true)
+    // Only show stats that are active (active !== false)
     let stats: Stat[] = [];
     if (isMobile) {
       if (selectedStatId) {
-        const selectedStat = allStats.find((s) => s.id === selectedStatId && s.active === true);
+        const selectedStat = allStats.find((s) => s.id === selectedStatId && s.active !== false);
         stats = selectedStat ? [selectedStat] : [];
       }
     } else if (selectedStatId) {
-      const selectedStat = allStats.find((s) => s.id === selectedStatId && s.active === true);
+      const selectedStat = allStats.find((s) => s.id === selectedStatId && s.active !== false);
       if (selectedStat) {
-        // If we also have a category selected, include other stats from that category too
-        // so the user can easily switch between stats in the same category.
-        if (selectedId && selectedStat.category === selectedId) {
-          stats = allStats.filter((s) => s.category === selectedId && s.active === true);
-        } else {
-          stats = [selectedStat];
-        }
+        // Always show just the selected stat by itself as a chip
+        stats = [selectedStat];
       }
     } else if (selectedId) {
-      stats = allStats.filter((s) => s.category === selectedId && s.active === true);
+      stats = allStats.filter(
+        (s) => s.category === selectedId && s.active !== false && s.featured === true,
+      );
     }
 
     // Rebuild if set changed (simple rebuild for clarity)
@@ -797,7 +841,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       return;
     }
 
-    const stat = allStats.find((s) => s.id === secondaryStatId && s.active === true);
+    const stat = allStats.find((s) => s.id === secondaryStatId && s.active !== false);
     if (!stat) {
       return;
     }
@@ -835,7 +879,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   // Subscribe to stats after helpers are defined
   unsubscribeStats = statsStore.subscribe((rows) => {
     allStats = rows;
-    renderStatChips();
+    update();
     renderSecondaryStatChip();
   });
 
