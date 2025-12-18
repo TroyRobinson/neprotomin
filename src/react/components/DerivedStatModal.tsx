@@ -33,6 +33,8 @@ interface DerivedStatModalProps {
   categories: string[];
   availableYears?: string[]; // Legacy: years for a single selected stat
   availableYearsByStat?: Record<string, string[]>; // Years per stat id for change_over_time
+  yearsLoadingByStatId?: Record<string, boolean>;
+  onRequestYears?: (statId: string) => void;
   onClose: () => void;
   onSubmit: (payload: DerivedStatModalSubmit) => void;
   isSubmitting?: boolean;
@@ -221,6 +223,8 @@ export const DerivedStatModal = ({
   categories,
   availableYears = [],
   availableYearsByStat,
+  yearsLoadingByStatId,
+  onRequestYears,
   onClose,
   onSubmit,
   isSubmitting = false,
@@ -237,6 +241,7 @@ export const DerivedStatModal = ({
   const [sumOperandIds, setSumOperandIds] = useState<string[]>([]);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const isSingleStatMode = stats.length === 1;
+  const requestedYearsRef = useRef<Set<string>>(new Set());
 
   // Years for the currently selected base stat (numerator) in change_over_time mode
   const yearsForBaseStat = useMemo(() => {
@@ -252,6 +257,25 @@ export const DerivedStatModal = ({
 
   // Use fuzzy-search mode when many stats (passed all stats, not pre-selected)
   const useFuzzySearch = stats.length > FUZZY_SEARCH_THRESHOLD;
+
+  const isYearsLoading = Boolean(numeratorId && yearsLoadingByStatId?.[numeratorId]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      requestedYearsRef.current.clear();
+    }
+  }, [isOpen]);
+
+  // Load year options on-demand (avoid background statData scans in Admin).
+  useEffect(() => {
+    if (!isOpen || formula !== "change_over_time") return;
+    if (!numeratorId) return;
+    if (yearsForBaseStat.length > 0) return;
+    if (!onRequestYears) return;
+    if (requestedYearsRef.current.has(numeratorId)) return;
+    requestedYearsRef.current.add(numeratorId);
+    onRequestYears(numeratorId);
+  }, [isOpen, formula, numeratorId, yearsForBaseStat.length, onRequestYears]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -505,6 +529,15 @@ export const DerivedStatModal = ({
             {/* Year + base stat selection for change_over_time */}
             {formula === "change_over_time" ? (
               <div className="mt-4 space-y-3">
+                {yearsForBaseStat.length === 0 && (
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                    {numeratorId
+                      ? isYearsLoading
+                        ? "Loading available years…"
+                        : "No year data found (or still loading)."
+                      : "Select a base stat to load years."}
+                  </div>
+                )}
                 {stats.length > 1 ? (
                   <div>
                     <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -557,9 +590,12 @@ export const DerivedStatModal = ({
                     <select
                       value={startYear}
                       onChange={(e) => setStartYear(e.target.value)}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || yearsForBaseStat.length === 0}
                       className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
                     >
+                      <option value="" disabled>
+                        Select…
+                      </option>
                       {yearsForBaseStat.map((year) => (
                         <option key={year} value={year} disabled={year >= endYear}>
                           {year}
@@ -584,9 +620,12 @@ export const DerivedStatModal = ({
                     <select
                       value={endYear}
                       onChange={(e) => setEndYear(e.target.value)}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || yearsForBaseStat.length === 0}
                       className="h-7 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
                     >
+                      <option value="" disabled>
+                        Select…
+                      </option>
                       {yearsForBaseStat.map((year) => (
                         <option key={year} value={year} disabled={year <= startYear}>
                           {year}

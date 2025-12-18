@@ -38,11 +38,25 @@ interface StatItem {
 }
 
 interface StatDataSummary {
-  years: string[];
   boundaryTypes: string[];
-  yearsLabel: string;
   boundaryLabel: string;
-  rowCount: number;
+  latestDate: string | null;
+  updatedAt: number | null;
+  contextsCount: number;
+  sample:
+    | {
+        parentArea: string;
+        boundaryType: string;
+        date: string;
+        type: string;
+        count: number;
+        sum: number;
+        avg: number;
+        min: number;
+        max: number;
+        updatedAt: number;
+      }
+    | null;
 }
 
 interface RootStatDataRow {
@@ -51,11 +65,6 @@ interface RootStatDataRow {
   date: string | null;
   data: Record<string, number>;
 }
-
-type StatRelationGroup = {
-  attribute: string;
-  relations: Array<StatRelation & { child: StatItem | null }>;
-};
 
 const buildStatDataSummaryKey = (
   statId: string,
@@ -114,6 +123,19 @@ const MAX_DERIVED_TX_BATCH = 10;
 
 const buildRowKey = (row: RootStatDataRow) =>
   `${row.parentArea ?? ""}::${row.boundaryType ?? ""}::${row.date ?? ""}`;
+
+const formatMetricValue = (value: number): string =>
+  value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+const shouldPreferAvgMetric = (type: string): boolean => {
+  const normalized = type.toLowerCase();
+  return (
+    normalized.includes("percent") ||
+    normalized.includes("rate") ||
+    normalized.includes("ratio") ||
+    normalized.includes("index")
+  );
+};
 
 // Compute derived values based on formula type
 const computeDerivedValues = (
@@ -292,6 +314,14 @@ const StatListItem = ({
 }: StatListItemProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState<EditFormState>(() => createEditForm(stat));
+  const sampleMetric =
+    summary?.sample
+      ? (() => {
+          const preferAvg = shouldPreferAvgMetric(summary.sample.type);
+          const value = preferAvg ? summary.sample.avg : summary.sample.sum;
+          return { label: preferAvg ? "avg" : "sum", value };
+        })()
+      : null;
 
   // Reset form when entering edit mode or when stat changes
   useEffect(() => {
@@ -445,12 +475,20 @@ const StatListItem = ({
               )}
             </span>
           )}
-          {summary && summary.years.length > 0 && (
+          {summary && summary.latestDate && (
             <span className="flex items-center gap-1">
               <span className="font-medium">Data:</span>
-              <span>{summary.yearsLabel}</span>
+              <span>{summary.latestDate}</span>
               {summary.boundaryLabel && (
                 <span className="text-slate-400 dark:text-slate-500">· {summary.boundaryLabel}</span>
+              )}
+              {summary.sample && sampleMetric && (
+                <span className="text-slate-400 dark:text-slate-500">
+                  · n={summary.sample.count.toLocaleString()} {sampleMetric.label}={formatMetricValue(sampleMetric.value)}
+                </span>
+              )}
+              {typeof summary.updatedAt === "number" && Number.isFinite(summary.updatedAt) && (
+                <span className="text-slate-400 dark:text-slate-500">· updated {formatDate(summary.updatedAt)}</span>
               )}
             </span>
           )}
@@ -599,14 +637,25 @@ const StatListItem = ({
       {/* Info section: Years, Areas, IDs - compact inline */}
       <div className="mt-2 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {summary && summary.years.length > 0 && (
+          {summary && summary.latestDate && (
             <span>
-              <span className="font-medium">Years:</span> {summary.yearsLabel}
+              <span className="font-medium">Latest:</span> {summary.latestDate}
             </span>
           )}
           {summary && summary.boundaryLabel && (
             <span>
               <span className="font-medium">Areas:</span> {summary.boundaryLabel}
+            </span>
+          )}
+          {summary && summary.sample && sampleMetric && (
+            <span>
+              <span className="font-medium">Sample:</span>{" "}
+              {summary.sample.boundaryType} · n={summary.sample.count.toLocaleString()} {sampleMetric.label}={formatMetricValue(sampleMetric.value)}
+            </span>
+          )}
+          {typeof summary?.updatedAt === "number" && Number.isFinite(summary.updatedAt) && (
+            <span>
+              <span className="font-medium">Summary updated:</span> {formatDate(summary.updatedAt)}
             </span>
           )}
           {stat.neId && (
@@ -621,7 +670,7 @@ const StatListItem = ({
           </span>
           {summary && (
             <span>
-              <span className="font-medium">Area-Data Rows:</span> {summary.rowCount.toLocaleString()}
+              <span className="font-medium">Summary contexts:</span> {summary.contextsCount.toLocaleString()}
             </span>
           )}
         </div>
@@ -2822,21 +2871,35 @@ export const AdminScreen = () => {
       : null,
   );
 
-  // State to control statData query (for retry logic)
-  const [statDataQueryEnabled, setStatDataQueryEnabled] = useState(true);
+  // State to control statDataSummaries query (for retry logic)
+  const [statSummariesQueryEnabled, setStatSummariesQueryEnabled] = useState(true);
 
-  // Secondary query: statData for summaries (separate, may be slow/timeout)
+  // Secondary query: statDataSummaries (small, avoids scanning statData)
   const {
-    data: statDataResponse,
-    isLoading: statDataLoading,
-    error: statDataError,
+    data: statSummariesResponse,
+    isLoading: statSummariesLoading,
+    error: statSummariesError,
   } = db.useQuery(
-    statsQueryEnabled && statDataQueryEnabled
+    statsQueryEnabled && statSummariesQueryEnabled
       ? {
-          statData: {
+          statDataSummaries: {
             $: {
               where: { name: "root" },
-              fields: ["id", "statId", "boundaryType", "date", "name", "parentArea"],
+              fields: [
+                "id",
+                "statId",
+                "parentArea",
+                "boundaryType",
+                "date",
+                "type",
+                "count",
+                "sum",
+                "avg",
+                "min",
+                "max",
+                "updatedAt",
+              ],
+              limit: 10000,
               order: { statId: "asc" as const },
             },
           },
@@ -2845,21 +2908,28 @@ export const AdminScreen = () => {
   );
 
   // Retry callback: briefly disable then re-enable the query
-  const retryStatData = useCallback(() => {
-    setStatDataQueryEnabled(false);
-    setTimeout(() => setStatDataQueryEnabled(true), 50);
+  const retryStatSummaries = useCallback(() => {
+    setStatSummariesQueryEnabled(false);
+    setTimeout(() => setStatSummariesQueryEnabled(true), 50);
   }, []);
 
-  // Log statData errors but don't block the screen
+  const showBackfillSummariesHelp = useCallback(() => {
+    const cmd = "npm run admin:backfill:stat-summaries";
+    window.alert(
+      `Stat summaries are missing/unavailable.\n\nTo rebuild them, run:\n\n${cmd}\n\nRequires INSTANT_APP_ADMIN_TOKEN in your environment.`,
+    );
+  }, []);
+
+  // Log statDataSummaries errors but don't block the screen
   useEffect(() => {
-    if (!statDataError) return;
+    if (!statSummariesError) return;
     if (!IS_DEV) return;
-    const anyError = statDataError as any;
-    console.warn("[AdminScreen] statData query failed (summaries unavailable)", {
+    const anyError = statSummariesError as any;
+    console.warn("[AdminScreen] statDataSummaries query failed", {
       message: anyError.message,
       hint: anyError.hint,
     });
-  }, [statDataError]);
+  }, [statSummariesError]);
 
   useEffect(() => {
     if (!statsError) return;
@@ -2898,7 +2968,8 @@ export const AdminScreen = () => {
   const [derivedSelection, setDerivedSelection] = useState<DerivedStatOption[]>([]);
   const [isDerivedSubmitting, setIsDerivedSubmitting] = useState(false);
   const [derivedError, setDerivedError] = useState<string | null>(null);
-  const [derivedAvailableYears, setDerivedAvailableYears] = useState<string[]>([]);
+  const [derivedYearsByStatId, setDerivedYearsByStatId] = useState<Map<string, string[]>>(new Map());
+  const [derivedYearsLoading, setDerivedYearsLoading] = useState<Set<string>>(new Set());
   const [pendingDerivedJobs, setPendingDerivedJobs] = useState<PendingDerivedJob[]>([]);
 
   // Filter, sort, and search state
@@ -3470,6 +3541,59 @@ export const AdminScreen = () => {
     setIsSelectionMode(false);
   }, []);
 
+  const requestDerivedYearsForStat = useCallback(
+    async (statId: string) => {
+      const trimmedId = statId.trim();
+      if (!trimmedId) return;
+
+      if (derivedYearsByStatId.has(trimmedId)) return;
+      if (derivedYearsLoading.has(trimmedId)) return;
+
+      setDerivedYearsLoading((prev) => {
+        if (prev.has(trimmedId)) return prev;
+        const next = new Set(prev);
+        next.add(trimmedId);
+        return next;
+      });
+
+      try {
+        const { data } = await db.queryOnce({
+          statData: {
+            $: {
+              where: { statId: trimmedId, name: "root" },
+              fields: ["date"],
+              limit: 10000,
+            },
+          },
+        });
+
+        const rows = (data as any)?.statData ?? [];
+        const years = new Set<string>();
+        for (const row of rows) {
+          if (typeof row?.date === "string" && row.date.trim()) {
+            years.add(row.date.trim());
+          }
+        }
+        const sortedYears = Array.from(years).sort();
+        setDerivedYearsByStatId((prev) => {
+          const next = new Map(prev);
+          next.set(trimmedId, sortedYears);
+          return next;
+        });
+      } catch (err) {
+        console.warn("Failed to fetch years for stat", err);
+      } finally {
+        setDerivedYearsLoading((prev) => {
+          if (!prev.has(trimmedId)) return prev;
+          const next = new Set(prev);
+          next.delete(trimmedId);
+          return next;
+        });
+      }
+    },
+    [derivedYearsByStatId, derivedYearsLoading],
+  );
+
   // ESC key clears selection and exits selection mode
   useEffect(() => {
     const handleKeyDown = (e: globalThis.KeyboardEvent) => {
@@ -3512,40 +3636,16 @@ export const AdminScreen = () => {
     }
 
     setDerivedSelection(selection);
-    setDerivedAvailableYears([]);
-
-    // For single stat selection, fetch available years for change_over_time
-    if (selection.length === 1) {
-      try {
-        const { data } = await db.queryOnce({
-          statData: {
-            $: {
-              where: { statId: selection[0].id, name: "root" },
-              fields: ["date"],
-            },
-          },
-        });
-        const rows = (data as any)?.statData ?? [];
-        const years = new Set<string>();
-        for (const row of rows) {
-          if (typeof row?.date === "string" && row.date.trim()) {
-            years.add(row.date.trim());
-          }
-        }
-        setDerivedAvailableYears(Array.from(years).sort());
-      } catch (err) {
-        console.warn("Failed to fetch years for stat", err);
-      }
-    }
-
     setIsDerivedModalOpen(true);
-  }, [selectedStatIds, statsById, stats]);
+    if (selection.length === 1) {
+      void requestDerivedYearsForStat(selection[0].id);
+    }
+  }, [selectedStatIds, statsById, stats, requestDerivedYearsForStat]);
 
   const handleDerivedModalClose = useCallback(() => {
     setIsDerivedModalOpen(false);
     setDerivedSelection([]);
     setDerivedError(null);
-    setDerivedAvailableYears([]);
   }, []);
 
   const handleDerivedSubmit = useCallback(
@@ -3695,7 +3795,6 @@ export const AdminScreen = () => {
 
           setIsDerivedModalOpen(false);
           setDerivedSelection([]);
-          setDerivedAvailableYears([]);
           setSelectedStatIds([]);
           setSelectionAnchorId(null);
           setIsDerivedSubmitting(false);
@@ -4098,7 +4197,6 @@ export const AdminScreen = () => {
           // Close modal and clear selection; job crumb will track completion
           setIsDerivedModalOpen(false);
           setDerivedSelection([]);
-          setDerivedAvailableYears([]);
           setSelectedStatIds([]);
           setSelectionAnchorId(null);
           setDerivedError(null);
@@ -4125,30 +4223,16 @@ export const AdminScreen = () => {
 
   // (definition moved above)
 
-  const [statDataSummaryByStatId, setStatDataSummaryByStatId] = useState<
-    Map<string, StatDataSummary>
-  >(new Map());
-
+  const [cachedSummaryRows, setCachedSummaryRows] = useState<any[]>([]);
   useEffect(() => {
-    const rows = (statDataResponse?.statData ?? []) as any[];
-    // If there are no rows (e.g. transient error), keep the last successful summaries
-    if (!rows.length) return;
+    const rows = (statSummariesResponse as any)?.statDataSummaries;
+    if (!Array.isArray(rows)) return;
+    setCachedSummaryRows(rows);
+  }, [statSummariesResponse]);
 
+  const statDataSummaryByStatId = useMemo(() => {
     const map = new Map<string, StatDataSummary>();
-
-    const formatYearsLabel = (years: string[]): string => {
-      if (years.length === 0) return "";
-      const numericYears = years
-        .map((y) => Number(y))
-        .filter((n) => Number.isFinite(n))
-        .sort((a, b) => a - b)
-        .map((n) => String(n));
-      const uniqueYears = Array.from(new Set(numericYears.length ? numericYears : years.sort()));
-      if (uniqueYears.length <= 2) return uniqueYears.join(", ");
-      const first = uniqueYears[0];
-      const last = uniqueYears[uniqueYears.length - 1];
-      return `${first}–${last}`;
-    };
+    const rows = cachedSummaryRows;
 
     const formatBoundaryLabel = (types: string[]): string => {
       if (types.length === 0) return "";
@@ -4160,59 +4244,110 @@ export const AdminScreen = () => {
       return pretty.join(" + ");
     };
 
+    const scoreSample = (row: any): number => {
+      const boundaryType = typeof row?.boundaryType === "string" ? row.boundaryType : "";
+      const parentArea = typeof row?.parentArea === "string" ? row.parentArea.toLowerCase() : "";
+      let score = 0;
+      if (boundaryType === "ZIP") score += 10;
+      if (boundaryType === "COUNTY") score += 5;
+      if (parentArea.includes("tulsa")) score += 3;
+      return score;
+    };
+
     for (const row of rows) {
       const statId = typeof row?.statId === "string" ? (row.statId as string) : null;
       if (!statId) continue;
-      const boundaryType = typeof row.boundaryType === "string" ? (row.boundaryType as string) : null;
-      const rawDate = row.date;
+      if (row?.name && row.name !== "root") continue;
+      const boundaryType = typeof row?.boundaryType === "string" ? (row.boundaryType as string) : null;
+      const rawDate = row?.date;
       const date =
         typeof rawDate === "string"
           ? rawDate
           : typeof rawDate === "number"
-          ? String(rawDate)
-          : null;
+            ? String(rawDate)
+            : null;
+      const updatedAt = typeof row?.updatedAt === "number" && Number.isFinite(row.updatedAt) ? (row.updatedAt as number) : null;
+      if (!date) continue;
 
       let entry = map.get(statId);
       if (!entry) {
-        entry = { years: [], boundaryTypes: [], yearsLabel: "", boundaryLabel: "", rowCount: 0 };
+        entry = {
+          boundaryTypes: [],
+          boundaryLabel: "",
+          latestDate: null,
+          updatedAt: null,
+          contextsCount: 0,
+          sample: null,
+        };
         map.set(statId, entry);
       }
-      entry.rowCount += 1;
-      if (date && !entry.years.includes(date)) {
-        entry.years.push(date);
-      }
+
+      entry.contextsCount += 1;
       if (boundaryType && !entry.boundaryTypes.includes(boundaryType)) {
         entry.boundaryTypes.push(boundaryType);
+      }
+      if (!entry.latestDate || date.localeCompare(entry.latestDate) > 0) {
+        entry.latestDate = date;
+      }
+      if (updatedAt !== null && (entry.updatedAt === null || updatedAt > entry.updatedAt)) {
+        entry.updatedAt = updatedAt;
+      }
+
+      const type = typeof row?.type === "string" ? row.type : "count";
+      const count = typeof row?.count === "number" && Number.isFinite(row.count) ? row.count : 0;
+      const sum = typeof row?.sum === "number" && Number.isFinite(row.sum) ? row.sum : 0;
+      const avg = typeof row?.avg === "number" && Number.isFinite(row.avg) ? row.avg : 0;
+      const min = typeof row?.min === "number" && Number.isFinite(row.min) ? row.min : 0;
+      const max = typeof row?.max === "number" && Number.isFinite(row.max) ? row.max : 0;
+      const parentArea = typeof row?.parentArea === "string" ? row.parentArea : "";
+
+      const candidate = {
+        parentArea,
+        boundaryType: boundaryType ?? "",
+        date,
+        type,
+        count,
+        sum,
+        avg,
+        min,
+        max,
+        updatedAt: updatedAt ?? 0,
+      };
+
+      const hasSample = Boolean(entry.sample);
+      if (!hasSample) {
+        entry.sample = candidate;
+      } else if (candidate.date.localeCompare(entry.sample!.date) > 0) {
+        entry.sample = candidate;
+      } else if (candidate.date === entry.sample!.date && scoreSample(candidate) > scoreSample(entry.sample)) {
+        entry.sample = candidate;
       }
     }
 
     for (const entry of map.values()) {
-      entry.years.sort();
       entry.boundaryTypes.sort();
-      entry.yearsLabel = formatYearsLabel(entry.years);
       entry.boundaryLabel = formatBoundaryLabel(entry.boundaryTypes);
     }
 
-    setStatDataSummaryByStatId(map);
-  }, [statDataResponse?.statData]);
+    return map;
+  }, [cachedSummaryRows]);
 
   // Available years per stat id for derived modal (from summaries + single-stat fallback)
   const derivedAvailableYearsByStat = useMemo(() => {
     const result: Record<string, string[]> = {};
-    for (const opt of derivedSelection) {
-      const summary = statDataSummaryByStatId.get(opt.id);
-      if (summary && summary.years.length) {
-        result[opt.id] = summary.years;
-      }
-    }
-    if (derivedSelection.length === 1) {
-      const only = derivedSelection[0];
-      if (!result[only.id] && derivedAvailableYears.length) {
-        result[only.id] = [...derivedAvailableYears];
-      }
+    for (const [statId, years] of derivedYearsByStatId.entries()) {
+      result[statId] = years;
     }
     return result;
-  }, [derivedSelection, statDataSummaryByStatId, derivedAvailableYears]);
+  }, [derivedYearsByStatId]);
+
+  const derivedYearsLoadingByStatId = useMemo(() => {
+    const result: Record<string, boolean> = {};
+    for (const statId of derivedYearsLoading) {
+      result[statId] = true;
+    }
+    return result;
+  }, [derivedYearsLoading]);
 
   // Clear pending derived jobs when their stats appear in the stats list
   useEffect(() => {
@@ -4360,8 +4495,8 @@ export const AdminScreen = () => {
       try {
         const txs: any[] = [];
 
-        // Query for ALL statData rows for the stats being deleted (not just "root")
-        // The cached statDataResponse only has "root" rows, so we need a fresh query
+        // Query for ALL statData rows for the stats being deleted (not just "root").
+        // Admin only subscribes to statDataSummaries (no statData row ids), so we need a fresh query here.
         const statIdsToDelete = Array.from(toDelete);
         const { data: allStatDataResponse } = await db.queryOnce({
           statData: {
@@ -4540,17 +4675,30 @@ export const AdminScreen = () => {
               {sortedStats.length}{categoryFilter !== "all" || searchQuery ? ` of ${stats.length}` : ""} stat{sortedStats.length !== 1 ? "s" : ""}
               {editingId && <span className="ml-1 text-brand-500">(editing)</span>}
               {isSaving && <span className="ml-1 text-amber-500">Saving…</span>}
-              {statDataLoading && <span className="ml-1 text-slate-400">· loading summaries…</span>}
-              {statDataError && !statDataLoading && statDataSummaryByStatId.size === 0 && (
+              {statSummariesLoading && <span className="ml-1 text-slate-400">· loading summaries…</span>}
+              {statSummariesError && !statSummariesLoading && (
                 <span className="ml-1 text-amber-500">
-                  · summaries unavailable{" "}
+                  · {statDataSummaryByStatId.size === 0 ? "summaries unavailable" : "summaries stale (using cache)"}{" "}
                   <button
                     type="button"
-                    onClick={retryStatData}
+                    onClick={retryStatSummaries}
                     className="text-brand-500 underline hover:text-brand-600 dark:text-brand-400 dark:hover:text-brand-300"
                   >
                     retry
                   </button>
+                  {statDataSummaryByStatId.size === 0 && (
+                    <>
+                      {" "}
+                      ·{" "}
+                      <button
+                        type="button"
+                        onClick={showBackfillSummariesHelp}
+                        className="text-brand-500 underline hover:text-brand-600 dark:text-brand-400 dark:hover:text-brand-300"
+                      >
+                        backfill summaries
+                      </button>
+                    </>
+                  )}
                 </span>
               )}
             </p>
@@ -5029,8 +5177,9 @@ export const AdminScreen = () => {
         isOpen={isDerivedModalOpen}
         stats={derivedSelection}
         categories={statCategoryOptions.map((c) => c.value)}
-        availableYears={derivedAvailableYears}
         availableYearsByStat={derivedAvailableYearsByStat}
+        yearsLoadingByStatId={derivedYearsLoadingByStatId}
+        onRequestYears={requestDerivedYearsForStat}
         onClose={handleDerivedModalClose}
         onSubmit={handleDerivedSubmit}
         isSubmitting={isDerivedSubmitting}

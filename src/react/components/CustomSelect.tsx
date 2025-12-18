@@ -147,7 +147,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         onKeyDown={handleKeyDown}
         disabled={disabled}
         className={`
-          h-7 ${compact ? 'w-auto' : 'w-full'} ${compact ? '' : 'min-w-32'} rounded-lg border border-slate-300 bg-white pl-3 pr-8 text-xs text-slate-700 shadow-sm transition 
+          ${compact ? 'h-6 text-[10px]' : 'h-7 text-xs'} ${compact ? 'w-auto' : 'w-full'} ${compact ? '' : 'min-w-32'} rounded-lg border border-slate-300 bg-white pl-2 pr-7 text-slate-700 shadow-sm transition 
           focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 
           dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50
           ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
@@ -169,12 +169,12 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       </button>
 
       {/* Custom dropdown arrow */}
-      <div className="absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 pointer-events-none text-slate-400 dark:text-slate-500">
+      <div className={`absolute ${compact ? 'right-1.5' : 'right-2'} top-1/2 h-3 w-3 -translate-y-1/2 pointer-events-none text-slate-400 dark:text-slate-500`}>
         <svg 
           viewBox="0 0 20 20" 
           fill="currentColor" 
           aria-hidden="true"
-          className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          className={`transition-transform ${isOpen ? 'rotate-180' : ''} ${compact ? 'h-2.5 w-2.5' : 'h-3 w-3'}`}
         >
           <path 
             fillRule="evenodd" 

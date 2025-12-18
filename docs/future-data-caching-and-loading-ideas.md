@@ -1,153 +1,120 @@
-# Future data caching + loading ideas
+# Data caching + loading ideas (and what we shipped)
 
-This doc summarizes possible next steps to make the app feel faster and more reliable, especially around “big number” stat data and Admin workflows.
+This doc tracks decisions and UX goals around “big number” stat data and Admin workflows, with an emphasis on refresh/new-tab performance and reliability.
 
----
+## Status (implemented)
+
+As of **2025-12-18**, we implemented a first full pass of stat caching + load-on-demand:
+
+- **IndexedDB persistent cache** for `statDataSummaries` and full `statData` maps (`src/lib/persistentStatsCache.ts`).
+- **Fast cold start**: `statDataSummaries` hydrate from IndexedDB immediately so sidebar numbers render on refresh/new tab (`src/react/hooks/useStats.ts`).
+- **Map load-on-demand**: choropleth maps are fetched only for the active stat(s) + relevant scope(s), not via an “all statData” subscription (`src/state/statData.ts`, `src/react/imperative/mapView.ts`).
+- **TTL + eviction**: 2h refresh TTL + LRU cap (by entry count) for heavy maps.
+- **Cross-tab behavior**:
+  - BroadcastChannel events for cache clears and updates.
+  - A `localStorage` lock to prevent duplicate refresh work across tabs (`acquireCacheLock`).
+- **UX controls**:
+  - “Clear cached data” in Map Settings (`src/react/components/MapSettingsModal.tsx`).
+  - Optional “Preload recent stats when idle” toggle (off by default).
 
 ## 1) Persisting heavy data across refresh / new tabs
 
-### Does it make sense?
+### Why we do it
 
-Often yes—because our heaviest payload is per‑stat `statData` (ZIP/county maps). Instant’s client cache is great *within a tab*, but a new tab/refresh starts “cold”, so the user sees placeholders and we re-download large payloads.
+Our heaviest payload is per-stat `statData` (ZIP/county maps). Instant’s client cache is good *within a tab*, but a refresh/new tab starts cold. Persisting the right pieces improves perceived load and reduces `operation-timed-out` risk.
 
-**Benefits**
-
-- Faster perceived load when opening a new tab or refreshing.
-- Fewer large Instant queries → fewer `operation-timed-out` failures.
-- Better UX for “selection mode” (values for selected ZIPs/counties require full maps).
-
-**Costs / risks**
-
-- Complexity: storage, invalidation, versioning, edge cases.
-- Disk/quota: storing ZIP maps for many stats can be large.
-- Staleness: user may see cached values briefly until background refresh completes.
-- Consistency: Instant is realtime; local persistence can diverge if we don’t refresh.
-
-### What to store locally (suggested)
+### What we store (current)
 
 Store *only what improves UX most per byte*:
 
-1. **Stat summaries** (`statDataSummaries`) for the current map mode (ZIP or COUNTY)
+1. **Stat summaries** (`statDataSummaries`)
 
-- Small, fast to store, makes “no selection” list values instant on reload.
+- Small; makes “no selection” list values quick on reload.
+- Cached in IndexedDB keyed by `(parentArea, boundaryType)`.
 
 2. **Full stat maps** (`statData`) selectively
 
-- Always cache:
-  - currently selected primary stat (+ secondary stat if set)
-  - last N “recently viewed” stats (LRU)
-- Optionally cache:
-  - “top visible” stats in the sidebar (first page) after idle
+- Cached in IndexedDB keyed by `(statId, parentArea, boundaryType)` storing the latest `date` map + metadata.
+- Hydrated immediately on selection to make switch-back fast.
 
-3. **Small metadata**
+3. **Metadata**
 
-- Last refresh timestamp
-- Cache schema version (so we can invalidate when the app changes)
-- The scopes used (e.g., ZIP parent scope label), so we can decide if cached data is relevant
+- Cache schema version (invalidate when the app changes).
+- `savedAt`/`lastAccessedAt` for TTL and eviction.
+- Optional `summaryUpdatedAt` (used to skip redundant refreshes).
 
-### How to manage it (guardrails)
+### How the app decides what to fetch (current)
 
-**Storage choice**
+- Prefer `statDataSummaries` to identify the latest `date` per `(statId,parentArea,boundaryType)` and fetch only those full maps.
+- If summaries are missing or don’t match, fall back to querying `statData` directly and selecting the latest date client-side (slower, but avoids “blank choropleth” failures).
+- Normalize/alias parent areas to tolerate historical naming differences (e.g. `Tulsa` vs `Tulsa County`).
 
-- Use **IndexedDB** (best for large structured data).
-- Avoid `localStorage` for big payloads (small quota + blocks UI thread).
+### Guardrails (current)
 
-**TTL + refresh policy**
+- **Storage**: IndexedDB (avoid `localStorage` for large payloads).
+- **TTL**: 2 hours; refresh is background/best-effort (stale-while-revalidate).
+- **Eviction**: LRU by entry count for cached maps (future: add a byte-size cap if needed).
+- **Cross-tab**: one tab performs refresh work; other tabs rehydrate on cache-update events.
 
-- TTL: 2 hours is reasonable.
-- On app start:
-  - hydrate UI from cache immediately
-  - in the background, refresh only if TTL expired (or if the user explicitly refreshes)
+## 2) Admin screen & modals: loading UX + data optimizations
 
-**Size limits**
+### Current assessment
 
-- Hard cap: e.g. max \~10–25MB, or max N stats.
-- Eviction: LRU (least recently used) for `statData` maps.
+Admin reliability issues usually come from two places:
 
-**Correctness**
+- **Unbounded reads** (scanning `statData` when a summary would do).
+- **Retry UX** that can spam queries (e.g. “summaries unavailable \[retry\]” loops).
 
-- Validate payload shape before using cached data.
-- Key by `(statId, boundaryType, parentArea, date)` (or an equivalent stable composite).
-- If cache schema version changes, clear old cache.
+With the `statDataSummaries` split and load-on-demand for map choropleths, Admin does not *need* major new caching—but it does benefit from a disciplined “summary-first, maps only on demand” approach and better retry/progress UX.
 
-**UX controls**
+### Recommendations (concise, technical)
 
-- Add a small “Clear cached data” action in Settings for troubleshooting.
-- Prefer showing “Using cached values…” + a subtle “Updating…” indicator during background refresh.
+**Admin stat cards / tables**
 
----
+- Default to **summary-only reads**:
+  - Query `statDataSummaries` with tight `fields` and targeted `where`.
+  - Show `updatedAt`, `date`, `count`, and a representative metric (`avg`/`sum` depending on stat type) without loading maps.
+- Use a **two-stage render**:
+  - Stage 1: skeleton while summaries load.
+  - Stage 2: show summary metrics; only load maps for an explicit “Preview”/expand action.
 
-## 2) Admin screen: should it use summaries/batching too?
+**Derived stat modal**
 
-### Where it can help
+- Modal open should be cheap:
+  - On open: load `stats` + the relevant `statDataSummaries` needed for dropdown options (boundary availability, years).
+  - On “Run”: fetch only the exact `statData` maps required by the chosen inputs (statId + parentArea + boundaryType + date).
+- Use `queryOnce` for the heavy “Run” phase; avoid background subscriptions that can compete with import work.
 
-The Admin screen does heavy work (imports, derived-stat generation) and historically had to “turn off” heavy live stat subscriptions to avoid timeouts. With the recent split between:
+**Import preview / import queue / admin workflows**
 
-- lightweight `statDataSummaries` (rollups)
-- heavy `statData` (ZIP/county maps)
-- “load-on-demand” batching for `statData`
+- Avoid turning a “Preview” screen into a data scan:
+  - Prefer server-side summaries generated during import.
+  - If a preview needs sampling, cap it (limit) and render progressively.
+- Make statuses explicit:
+  - `starting` → `running` → `success/error` with timestamps and a stable “Retry” button.
+  - Don’t auto-retry aggressively; use exponential backoff + jitter.
 
-…Admin can often be made faster and more reliable by leaning on summaries + smaller targeted queries.
+**Fixing “summaries unavailable / retry”**
 
-**Potential improvements**
+- Treat missing summaries as **recoverable**, not an immediate hard error:
+  - If prior summary exists, render it with “Updating…” and keep the UI usable.
+  - Only show an error after a small number of failures or a time budget.
+- Provide explicit recovery actions:
+  - “Backfill summaries” (admin-only) using `scripts/admin/backfillStatDataSummaries.ts`.
+  - Optional “Rebuild summaries for this stat” if we add a targeted backfill path later.
+- Avoid silent fallback to scanning `statData` across the whole dataset:
+  - If falling back, keep it scoped (statId + parentArea + boundaryType) and make it user-triggered if it might be large.
 
-1. **Admin stat cards**
+### When Admin doesn’t need major changes
 
-- Use `statDataSummaries` to show “latest value/coverage/updatedAt” without loading full maps.
-- Show “years available” from summary dates (or a small per-stat query for distinct dates if needed).
-
-2. **Derived stat modal**
-
-- Populate “years available” and boundary availability from summaries first.
-- Only fetch full `statData` maps for the selected source stats when the user actually runs the derivation.
-
-3. **Fixing “summaries unavailable / retry”**
-
-- Most of that pain comes from schema mismatch (summaryKey not unique) or relying on heavy queries during imports.
-- If Admin always prefers summaries for display and only pulls full maps at “run” time, it should reduce retry loops.
-
-### When changes may be unnecessary
-
-If Admin already:
-
-- disables heavy subscriptions during import (good)
-- uses the Admin SDK server-side for imports (good)
-- writes/upserts `statDataSummaries` during import (good)
-
-…then the biggest remaining Admin wins are mostly UX + targeted reads (avoid scanning full `statData` for “preview” purposes).
-
----
+If Admin is already summary-first (cards/tables) and only pulls full maps at “Run/Preview” time, then remaining wins are mostly UX polish (skeletons, debounced retries, explicit actions).
 
 ## 3) Org data: do we need similar optimizations?
 
-### Current state (relative)
+Organizations are typically much smaller per row than stat maps. Unless we’re pulling large optional fields for every org (e.g. `raw`, long text) in the main list query, org performance is usually fine.
 
-Organizations can be numerous, but each org row is typically much smaller than `statData` maps. So the org side is *usually* in a better spot than stats—unless we’re fetching large optional fields for every org (e.g., `raw`, `hours`, long text) in the main query.
+If org loading ever becomes a bottleneck:
 
-### Potential optimizations (if needed)
-
-1. **Split “list” vs “details”**
-
-- List query: only fields required for map + sidebar list (id, name, lat/lon, category, status, maybe hours summary).
-- Details query: fetch heavier fields only when an org is expanded or opened.
-
-2. **Limit fields**
-
-- Use Instant’s `$: { fields: [...] }` where possible to keep payload lean.
-
-3. **Avoid re-fetch loops**
-
-- Keep a stable subscription alive for org list data (avoid turning it on/off).
-- Debounce expensive derived computations (search index building) and cache results in memory.
-
-4. **Optional persistence**
-
-- Persist lightweight org list results in IndexedDB (similar TTL rules), but this is usually lower priority than stat maps.
-
-### When org changes are probably not worth it
-
-If org performance is already acceptable and the main timeouts are from `statData`/summaries, focus first on:
-
-- summaries query size/reliability
-- selection-mode behavior (only fetch full maps when required)
-- caching selected/recent stat maps
+- Split “list” vs “details” queries (list uses minimal fields; details fetched on expand).
+- Use Instant `$: { fields: [...] }` to keep payload lean.
+- Debounce expensive derived computations (e.g. search index building) and cache results in memory.
