@@ -6,6 +6,7 @@ import { formatStatValue } from "../../lib/format";
 import type { StatBoundaryEntry } from "../hooks/useStats";
 import { computeSimilarityFromNormalized, normalizeForSearch } from "../lib/fuzzyMatch";
 import { CustomSelect } from "./CustomSelect";
+import { useCategories } from "../hooks/useCategories";
 
 // Feature flag: Hide stat values when at county level with no selection
 const HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION = true;
@@ -41,6 +42,7 @@ type StatRow = {
   goodIfUp?: boolean;
   aggregationMethod: "sum" | "average" | "raw";
   aggregationDescription: string;
+  category?: string;
 };
 
 interface StatListProps {
@@ -162,6 +164,7 @@ export const StatList = ({
   zipScopeDisplayName = null,
   countyScopeDisplayName = null,
 }: StatListProps) => {
+  const { getCategoryLabel } = useCategories();
   const areaEntries = useMemo(() => buildAreaEntries(selectedAreas), [selectedAreas]);
   const [searchQuery, setSearchQuery] = useState("");
   const normalizedQuery = useMemo(() => normalizeForSearch(searchQuery), [searchQuery]);
@@ -324,6 +327,7 @@ export const StatList = ({
         goodIfUp: s.goodIfUp,
         aggregationMethod,
         aggregationDescription,
+        category: s.category,
       });
     }
 
@@ -719,7 +723,7 @@ export const StatList = ({
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Fixed area: Pinned selected stat */}
       {selectedStatRow && (
-        <div className="border-b border-slate-200 dark:border-slate-700 px-4 pt-0 pb-2 shadow-md">
+        <div className="border-t border-b border-slate-200 dark:border-slate-700 px-4 pt-0 pb-2 shadow-md bg-slate-50 dark:bg-slate-800/50">
           <ul>
             <StatListItem
               row={selectedStatRow}
@@ -729,6 +733,7 @@ export const StatList = ({
               averageLabel={averageLabel}
               onStatSelect={onStatSelect}
               hideValue={true}
+              categoryLabel={!categoryFilter && selectedStatRow.category ? getCategoryLabel(selectedStatRow.category) : null}
               grandchildToggles={allToggleAttributes.map((attr) => ({
                 attr,
                 isActive: isToggleAttrActive(attr),
@@ -756,7 +761,7 @@ export const StatList = ({
       )}
 
       {/* Scrollable content */}
-      <div className={`flex-1 overflow-y-auto px-4 pt-2 pb-6 ${displayStatId ? 'bg-slate-50 dark:bg-slate-900/30' : ''}`}>
+      <div className="flex-1 overflow-y-auto px-4 pt-2 pb-6 bg-slate-100 dark:bg-slate-800">
         <div className="pt-2 mb-2">
           <div className="flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 shadow-sm transition-colors focus-within:border-brand-200 focus-within:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:focus-within:border-slate-600 dark:focus-within:bg-slate-800/70">
             <MagnifyingGlassIcon className="h-4 w-4 text-slate-400 dark:text-slate-500" />
@@ -802,6 +807,7 @@ export const StatList = ({
                 isSecondary={secondaryStatId === row.id}
                 averageLabel={averageLabel}
                 onStatSelect={onStatSelect}
+                categoryLabel={!categoryFilter && row.category ? getCategoryLabel(row.category) : null}
                 hideValue={HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION && effectiveAreaKind === "COUNTY" && areaEntries.length === 0}
               />
             ))}
@@ -828,6 +834,7 @@ interface StatListItemProps {
   hideValue?: boolean;
   grandchildToggles?: GrandchildAttrToggle[];
   isHeader?: boolean;
+  categoryLabel?: string | null;
 }
 
 const StatListItem = ({
@@ -839,6 +846,7 @@ const StatListItem = ({
   hideValue = false,
   grandchildToggles = [],
   isHeader = false,
+  categoryLabel = null,
 }: StatListItemProps) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -919,8 +927,17 @@ const StatListItem = ({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`text-sm ${isHeader ? "font-medium" : "font-normal"} text-slate-600 dark:text-slate-300`}>{row.name}</span>
-          {/* Grandchild attribute toggles */}
-          {grandchildToggles.length > 0 && (
+          {!isHeader && categoryLabel && (
+            <span className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-light ml-1">
+              {categoryLabel}
+            </span>
+          )}
+          {isHeader && categoryLabel && (
+            <span className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-light ml-1 pr-2">
+              {categoryLabel}
+            </span>
+          )}
+          {!isHeader && grandchildToggles.length > 0 && (
             <div className="flex items-center gap-1">
               {grandchildToggles.map((toggle) => (
                 <button
@@ -937,8 +954,8 @@ const StatListItem = ({
                     toggle.isActive && toggle.isAvailable
                       ? "bg-brand-500 text-white"
                       : toggle.isAvailable
-                      ? "bg-slate-200 text-slate-600 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
-                      : "bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-600"
+                      ? "bg-slate-200/50 text-slate-600 hover:bg-slate-200 dark:bg-slate-700/40 dark:text-slate-300 dark:hover:bg-slate-700/60"
+                      : "bg-slate-100/50 text-slate-400 cursor-not-allowed dark:bg-slate-800/30 dark:text-slate-600"
                   }`}
                   title={toggle.isAvailable ? `Toggle ${toggle.attr} breakdown` : `${toggle.attr} not available for current selection`}
                 >
@@ -948,6 +965,35 @@ const StatListItem = ({
             </div>
           )}
         </div>
+        
+        {isHeader && grandchildToggles.length > 0 && (
+          <div className="flex items-center gap-1 mt-1.5 mb-1">
+            {grandchildToggles.map((toggle) => (
+              <button
+                key={toggle.attr}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (toggle.isAvailable) {
+                    toggle.onToggle(toggle.attr);
+                  }
+                }}
+                disabled={!toggle.isAvailable}
+                className={`px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide rounded transition-colors ${
+                  toggle.isActive && toggle.isAvailable
+                    ? "bg-brand-500 text-white"
+                    : toggle.isAvailable
+                    ? "bg-slate-200/50 text-slate-600 hover:bg-slate-200 dark:bg-slate-700/40 dark:text-slate-300 dark:hover:bg-slate-700/60"
+                    : "bg-slate-100/50 text-slate-400 cursor-not-allowed dark:bg-slate-800/30 dark:text-slate-600"
+                }`}
+                title={toggle.isAvailable ? `Toggle ${toggle.attr} breakdown` : `${toggle.attr} not available for current selection`}
+              >
+                {toggle.attr}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
           {row.hasData ? (
             <>
@@ -970,7 +1016,7 @@ const StatListItem = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className={`flex items-center gap-2 ${isHeader ? "self-start pt-0.5" : ""}`}>
         {!hideValue && (
           <span
             className={`text-sm font-normal ${valueColorClass}`}
