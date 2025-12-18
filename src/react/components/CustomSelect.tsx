@@ -32,6 +32,10 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const selectedOption = options.find(option => option.value === value);
+  const longestLabel = options.reduce((longest, opt) => 
+    opt.label.length > longest.length ? opt.label : longest, 
+    ''
+  );
 
   // Calculate dropdown position to stay within viewport
   useLayoutEffect(() => {
@@ -133,7 +137,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   };
 
   return (
-    <div ref={selectRef} className={`relative ${className}`}>
+    <div ref={selectRef} className={`relative ${compact ? 'inline-block' : 'w-full'} ${className}`}>
       {/* Select Button */}
       <button
         ref={buttonRef}
@@ -148,14 +152,20 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50
           ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
           ${isOpen ? 'border-brand-400 ring-1 ring-brand-200 dark:border-brand-300 dark:ring-brand-800/50' : ''}
+          ${compact ? 'inline-grid grid-cols-1 items-center' : ''}
         `}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-labelledby={id ? `${id}-label` : undefined}
       >
-        <span className="block truncate text-left">
+        <span className={`block truncate text-left ${compact ? 'col-start-1 row-start-1' : ''}`}>
           {selectedOption?.label || 'Select an option'}
         </span>
+        {compact && (
+          <span className="invisible col-start-1 row-start-1 block whitespace-nowrap" aria-hidden="true">
+            {longestLabel}
+          </span>
+        )}
       </button>
 
       {/* Custom dropdown arrow */}

@@ -572,26 +572,9 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   const setSelectedStat = (statId: string | null) => {
     selectedStatId = statId;
-    // If a stat is being programmatically selected, try to select the matching category
-    // if it's an official category. Otherwise, just show the stat without a category.
-    if (selectedStatId) {
-      const stat = allStats.find((s) => s.id === selectedStatId);
-      if (stat && stat.category !== selectedId) {
-        // Only set the category if it's one of the official map categories
-        const isOfficialCategory = mapCategories.some((c) => c.slug === stat.category);
-        if (isOfficialCategory) {
-          selectedId = stat.category;
-          update();
-          return; // update() will call renderStatChips and apply selection styles
-        } else {
-          // Non-official category: clear category selection but keep stat selected
-          selectedId = null;
-          update();
-          return;
-        }
-      }
-    }
-    updateStatSelectionStyles();
+    // We no longer automatically select the matching category when a stat is selected.
+    // This allows stats to be viewed independently of the category filter.
+    update();
   };
 
   const formatStatChipLabel = (name: string): string => {
@@ -689,7 +672,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     statWrapper.classList.remove("hidden");
 
     // Determine which stats to show:
-    // - Desktop: show category stats when a category is selected, otherwise show the selected stat
+    // - Desktop: show the selected stat if one exists, otherwise show category stats if a category is selected
     // - Mobile: always show only the selected stat
     // Only show stats that are active (active === true)
     let stats: Stat[] = [];
@@ -698,11 +681,19 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
         const selectedStat = allStats.find((s) => s.id === selectedStatId && s.active === true);
         stats = selectedStat ? [selectedStat] : [];
       }
-    } else if (selectedId) {
-      stats = allStats.filter((s) => s.category === selectedId && s.active === true);
     } else if (selectedStatId) {
       const selectedStat = allStats.find((s) => s.id === selectedStatId && s.active === true);
-      stats = selectedStat ? [selectedStat] : [];
+      if (selectedStat) {
+        // If we also have a category selected, include other stats from that category too
+        // so the user can easily switch between stats in the same category.
+        if (selectedId && selectedStat.category === selectedId) {
+          stats = allStats.filter((s) => s.category === selectedId && s.active === true);
+        } else {
+          stats = [selectedStat];
+        }
+      }
+    } else if (selectedId) {
+      stats = allStats.filter((s) => s.category === selectedId && s.active === true);
     }
 
     // Rebuild if set changed (simple rebuild for clarity)

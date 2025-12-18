@@ -196,7 +196,6 @@ export const ReactMapApp = () => {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(() => initialMapState.category);
   const [sidebarTab, setSidebarTab] = useState<"orgs" | "stats">(() => initialMapState.sidebarTab);
   const [hasAppliedDefaultStat, setHasAppliedDefaultStat] = useState(false);
-  const [hasSyncedDefaultCategory, setHasSyncedDefaultCategory] = useState(false);
   const [searchSelectionMeta, setSearchSelectionMeta] = useState<{ term: string; ids: string[] } | null>(null);
   const [activeScreen, setActiveScreen] = useState<ScreenName>(() => {
     if (typeof window === "undefined") return "map";
@@ -1784,20 +1783,6 @@ export const ReactMapApp = () => {
       setHasAppliedDefaultStat(true);
     }
   }, [areStatsLoading, hasAppliedDefaultStat, statsById]);
-
-  useEffect(() => {
-    if (hasSyncedDefaultCategory) return;
-    if (categoryFilter) {
-      setHasSyncedDefaultCategory(true);
-      return;
-    }
-    if (!selectedStatId) return;
-    const stat = statsById.get(selectedStatId);
-    if (stat?.category) {
-      setCategoryFilter(stat.category);
-      setHasSyncedDefaultCategory(true);
-    }
-  }, [categoryFilter, hasSyncedDefaultCategory, selectedStatId, statsById]);
 
   // When the stat changes, clear any map-driven org selection so the views stay in sync.
   const previousSelectedStatIdRef = useRef<string | null>(null);

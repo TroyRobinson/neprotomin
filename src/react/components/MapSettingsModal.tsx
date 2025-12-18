@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { clearPersistentStatsCache } from "../../lib/persistentStatsCache";
 
 interface MapSettingsModalProps {
   open: boolean;
@@ -14,6 +15,7 @@ export const MapSettingsModal: React.FC<MapSettingsModalProps> = ({
   onChangeRangeMode,
 }) => {
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const [isClearingCache, setIsClearingCache] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -105,6 +107,32 @@ export const MapSettingsModal: React.FC<MapSettingsModalProps> = ({
                   </p>
                 </div>
               </label>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+            <div className="font-medium text-slate-800 dark:text-slate-100">Data cache</div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Clears cached stat summaries/maps stored on this device.
+            </p>
+            <div className="mt-3">
+              <button
+                type="button"
+                disabled={isClearingCache}
+                onClick={async () => {
+                  if (isClearingCache) return;
+                  if (typeof window !== "undefined") {
+                    const ok = window.confirm("Clear cached stat data on this device?");
+                    if (!ok) return;
+                  }
+                  setIsClearingCache(true);
+                  await clearPersistentStatsCache();
+                  setIsClearingCache(false);
+                }}
+                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                {isClearingCache ? "Clearing…" : "Clear cached data"}
+              </button>
             </div>
           </div>
         </div>

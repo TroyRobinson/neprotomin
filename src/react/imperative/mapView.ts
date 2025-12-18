@@ -10,7 +10,7 @@ import { OKLAHOMA_CENTER, OKLAHOMA_DEFAULT_ZOOM } from "../../types/organization
 import { themeController } from "./theme";
 // palettes/hover are used inside boundary layer helpers now
 import { createCategoryChips } from "./categoryChips";
-import { statDataStore } from "../../state/statData";
+import { setStatDataPriorityStatIds, setStatDataScopeParentAreas, statDataStore } from "../../state/statData";
 import type { StatDataByParentArea } from "../../state/statData";
 import { createZipFloatingTitle, type ZipFloatingTitleController } from "./components/zipFloatingTitle";
 import { createZipLabels, type ZipLabelsController } from "./components/zipLabels";
@@ -295,6 +295,7 @@ export const createMapView = ({
       selectedStatId = statId;
       secondaryStatId = null;
       categoryChips.setSecondaryStat(null);
+      syncStatDataStoreFocus();
       refreshStatVisuals();
       if (typeof onStatSelectionChange === 'function') {
         onStatSelectionChange(selectedStatId);
@@ -302,6 +303,7 @@ export const createMapView = ({
     },
     onSecondaryStatChange: (statId) => {
       secondaryStatId = statId;
+      syncStatDataStoreFocus();
       refreshStatVisuals();
 
       // Notify React layer
@@ -467,6 +469,14 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     return Array.from(set);
   };
 
+  const syncStatDataStoreFocus = () => {
+    const statIds = [selectedStatId, secondaryStatId].filter(
+      (id): id is string => typeof id === "string" && id.trim().length > 0,
+    );
+    setStatDataPriorityStatIds(statIds);
+    setStatDataScopeParentAreas(getScopeAreaNames());
+  };
+
   const mergeStatEntries = (existing: StatDataEntry | undefined, incoming: StatDataEntry): StatDataEntry => {
     const data = { ...(existing?.data ?? {}), ...incoming.data };
     const values = Object.values(data).filter(
@@ -614,12 +624,14 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     const countyChanged = countyId && countyId !== activeZipParentCountyId;
     activeZipParentCountyId = countyId;
     if (normalizedCurrent === normalizedNext && !countyChanged) {
+      setStatDataScopeParentAreas(getScopeAreaNames());
       recomputeScopedStatData();
       emitScopeChange();
       refreshStatVisuals();
       return;
     }
     activeZipParentArea = normalizedNext;
+    setStatDataScopeParentAreas(getScopeAreaNames());
     recomputeScopedStatData();
     refreshStatVisuals();
     emitScopeChange();
@@ -997,6 +1009,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     categoryChips.setSelectedStat(null);
     secondaryStatId = null;
     categoryChips.setSecondaryStat(null);
+    syncStatDataStoreFocus();
     refreshStatVisuals();
     if (typeof onStatSelectionChange === 'function') {
       onStatSelectionChange(null);
@@ -1006,6 +1019,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   const clearSecondaryStat = () => {
     secondaryStatId = null;
     categoryChips.setSecondaryStat(null);
+    syncStatDataStoreFocus();
     refreshStatVisuals();
     if (typeof onSecondaryStatChange === 'function') {
       onSecondaryStatChange(null);
@@ -3011,6 +3025,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       categoryChips.setSelectedStat(statId);
       secondaryStatId = null;
       categoryChips.setSecondaryStat(null);
+      syncStatDataStoreFocus();
       refreshStatVisuals();
       if (typeof onStatSelectionChange === 'function') {
         onStatSelectionChange(selectedStatId);
@@ -3019,6 +3034,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     setSecondaryStat: (statId: string | null) => {
       secondaryStatId = statId;
       categoryChips.setSecondaryStat(statId);
+      syncStatDataStoreFocus();
       refreshStatVisuals();
     },
     setBoundaryMode,

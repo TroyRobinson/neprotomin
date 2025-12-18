@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../../lib/reactDb";
 import { useAuthSession } from "./useAuthSession";
+import {
+  PERSISTED_STAT_CACHE_TTL_MS,
+  readStatSummaryCache,
+  subscribeToCacheEvents,
+  writeStatSummaryCache,
+  type StatBoundaryType as PersistedBoundaryType,
+  type StatSummaryRow as PersistedStatSummaryRow,
+} from "../../lib/persistentStatsCache";
 import type {
   Stat,
   StatRelation,
@@ -15,7 +23,7 @@ import { isDevEnv } from "../../lib/env";
 
 type SupportedAreaKind = Extract<AreaKind, "ZIP" | "COUNTY">;
 
-const STAT_DATA_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const STAT_DATA_CACHE_TTL_MS = PERSISTED_STAT_CACHE_TTL_MS;
 const NAME_FOR_SORT = (stat: Stat) => (stat.label || stat.name || "").toLowerCase();
 
 export interface SeriesEntry {
@@ -65,6 +73,20 @@ export const useStats = ({
 }: UseStatsOptions = {}) => {
   const { authReady } = useAuthSession();
   const queryEnabled = authReady;
+
+  // Persisted summaries: hydrate immediately from IndexedDB so sidebar values render on refresh/new tab.
+  const persistedSummaryRowsRef = useRef<any[]>([]);
+  const [persistedSummaryRowsVersion, setPersistedSummaryRowsVersion] = useState(0);
+  const [cacheClearNonce, setCacheClearNonce] = useState(0);
+  useEffect(() => {
+    return subscribeToCacheEvents((event) => {
+      if (event.type === "cleared") {
+        persistedSummaryRowsRef.current = [];
+        setPersistedSummaryRowsVersion((v) => v + 1);
+        setCacheClearNonce((v) => v + 1);
+      }
+    });
+  }, []);
 
   // Query stats and statData directly from InstantDB
   // Wait for auth to be ready to avoid race conditions (especially in Safari)
@@ -380,6 +402,51 @@ export const useStats = ({
     (area) => area !== fallbackParentArea,
   );
 
+  const summaryKindsKey = useMemo(
+    () => summaryKinds.slice().sort().join("|"),
+    [summaryKinds],
+  );
+
+  useEffect(() => {
+    if (!statDataEnabled) return;
+    if (typeof window === "undefined") return;
+
+    let cancelled = false;
+    const hydrate = async () => {
+      const parentAreas = [fallbackParentArea, primaryScopedParentArea].filter(
+        (value): value is string => typeof value === "string" && value.length > 0,
+      );
+      if (parentAreas.length === 0) return;
+
+      const rows: any[] = [];
+      for (const parentArea of parentAreas) {
+        for (const kind of summaryKinds) {
+          const boundaryType = kind as PersistedBoundaryType;
+          const cached = await readStatSummaryCache({ parentArea, boundaryType });
+          if (cached?.rows?.length) {
+            rows.push(...cached.rows);
+          }
+        }
+      }
+
+      if (cancelled) return;
+      if (rows.length === 0) return;
+      persistedSummaryRowsRef.current = rows;
+      setPersistedSummaryRowsVersion((v) => v + 1);
+    };
+
+    hydrate().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    statDataEnabled,
+    fallbackParentArea,
+    primaryScopedParentArea,
+    summaryKindsKey,
+    cacheClearNonce,
+  ]);
+
   // Fetch statewide summaries first (fast and always available), then optionally
   // fetch the current scope (e.g. Tulsa County) in a second small query.
   const {
@@ -436,7 +503,7 @@ export const useStats = ({
     });
   }
 
-  const summaryRows = useMemo(() => {
+  const liveSummaryRows = useMemo(() => {
     const unwrapRows = (resp: any): any[] =>
       Array.isArray(resp?.statDataSummaries)
         ? (resp.statDataSummaries as any[])
@@ -446,6 +513,98 @@ export const useStats = ({
     const rows = [...unwrapRows(fallbackSummariesResp), ...unwrapRows(scopedSummariesResp)];
     return rows;
   }, [fallbackSummariesResp, scopedSummariesResp]);
+
+  let liveSummaryRowsMaxUpdatedAt = 0;
+  for (const row of liveSummaryRows) {
+    const updatedAt = typeof row?.updatedAt === "number" && Number.isFinite(row.updatedAt) ? row.updatedAt : 0;
+    if (updatedAt > liveSummaryRowsMaxUpdatedAt) liveSummaryRowsMaxUpdatedAt = updatedAt;
+  }
+  const liveSummaryRowsVersion = `${liveSummaryRows.length}:${liveSummaryRowsMaxUpdatedAt}`;
+
+  const summaryRows = useMemo(() => {
+    const persisted = persistedSummaryRowsRef.current;
+    if (!persisted.length) return liveSummaryRows;
+    // Order matters: live rows appended last so they win when we reduce into Maps below.
+    return [...persisted, ...liveSummaryRows];
+  }, [liveSummaryRows, persistedSummaryRowsVersion]);
+
+  // Persist live summaries (small) so refresh/new-tab renders sidebar values instantly.
+  const summariesPersistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!statDataEnabled) return;
+    if (typeof window === "undefined") return;
+    if (liveSummaryRows.length === 0) return;
+
+    if (summariesPersistTimeoutRef.current) {
+      clearTimeout(summariesPersistTimeoutRef.current);
+    }
+
+    summariesPersistTimeoutRef.current = setTimeout(() => {
+      const parentsToPersist = new Set<string>();
+      parentsToPersist.add(fallbackParentArea);
+      if (primaryScopedParentArea) parentsToPersist.add(primaryScopedParentArea);
+
+      const toPersistedRow = (row: any): PersistedStatSummaryRow | null => {
+        const statId = typeof row?.statId === "string" ? row.statId : null;
+        const name = row?.name === "root" ? ("root" as const) : null;
+        const parentArea = normalizeScopeLabel(typeof row?.parentArea === "string" ? row.parentArea : null);
+        const boundaryType =
+          typeof row?.boundaryType === "string" ? (row.boundaryType as PersistedBoundaryType) : null;
+        const date = typeof row?.date === "string" ? row.date : typeof row?.date === "number" ? String(row.date) : null;
+        const type = typeof row?.type === "string" ? row.type : null;
+        const updatedAt = typeof row?.updatedAt === "number" && Number.isFinite(row.updatedAt) ? row.updatedAt : null;
+        if (!statId || !name || !parentArea || !boundaryType || !date || !type || updatedAt === null) return null;
+        if (!parentsToPersist.has(parentArea)) return null;
+        if (!SUPPORTED_AREA_KINDS.includes(boundaryType as SupportedAreaKind)) return null;
+        return {
+          statId,
+          name,
+          parentArea,
+          boundaryType,
+          date,
+          type,
+          count: typeof row?.count === "number" && Number.isFinite(row.count) ? row.count : 0,
+          sum: typeof row?.sum === "number" && Number.isFinite(row.sum) ? row.sum : 0,
+          avg: typeof row?.avg === "number" && Number.isFinite(row.avg) ? row.avg : 0,
+          min: typeof row?.min === "number" && Number.isFinite(row.min) ? row.min : undefined,
+          max: typeof row?.max === "number" && Number.isFinite(row.max) ? row.max : undefined,
+          updatedAt,
+        };
+      };
+
+      const rowsByKey = new Map<string, PersistedStatSummaryRow[]>();
+      for (const row of liveSummaryRows) {
+        const persisted = toPersistedRow(row);
+        if (!persisted) continue;
+        const key = `${persisted.parentArea}::${persisted.boundaryType}`;
+        const bucket = rowsByKey.get(key) ?? [];
+        bucket.push(persisted);
+        rowsByKey.set(key, bucket);
+      }
+
+      for (const [key, rows] of rowsByKey.entries()) {
+        const [parentArea, boundaryType] = key.split("::");
+        if (!parentArea || !boundaryType) continue;
+        writeStatSummaryCache({
+          parentArea,
+          boundaryType: boundaryType as PersistedBoundaryType,
+          rows,
+        }).catch(() => {});
+      }
+    }, 400);
+
+    return () => {
+      if (summariesPersistTimeoutRef.current) {
+        clearTimeout(summariesPersistTimeoutRef.current);
+      }
+    };
+  }, [
+    liveSummaryRowsVersion,
+    statDataEnabled,
+    fallbackParentArea,
+    primaryScopedParentArea,
+    summaryKindsKey,
+  ]);
 
   // Instant can stream large query results and/or mutate arrays in-place.
   // Use a lightweight "version" key so our memo recomputes as rows arrive/refresh.

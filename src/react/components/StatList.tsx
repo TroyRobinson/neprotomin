@@ -125,8 +125,8 @@ const ChildStatDropdown = ({
   ];
 
   return (
-    <div className="flex items-center gap-2">
-      <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 whitespace-nowrap min-w-[60px]">
+    <div className="flex items-center gap-4">
+      <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 whitespace-nowrap">
         {attributeName}
       </label>
       <CustomSelect
@@ -139,7 +139,7 @@ const ChildStatDropdown = ({
           }
           onStatSelect?.(childId);
         }}
-        className="flex-1"
+        compact={true}
       />
     </div>
   );
@@ -724,10 +724,11 @@ export const StatList = ({
             <StatListItem
               row={selectedStatRow}
               isSelected={true}
+              isHeader={true}
               isSecondary={false}
               averageLabel={averageLabel}
               onStatSelect={onStatSelect}
-              hideValue={HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION && effectiveAreaKind === "COUNTY" && areaEntries.length === 0}
+              hideValue={true}
               grandchildToggles={allToggleAttributes.map((attr) => ({
                 attr,
                 isActive: isToggleAttrActive(attr),
@@ -738,7 +739,7 @@ export const StatList = ({
           </ul>
           {/* Child stat attribute dropdowns (only for multi-child attributes) */}
           {multiChildAttrs.length > 0 && (
-            <div className="mt-2 space-y-2">
+            <div className="mt-1 space-y-2">
               {multiChildAttrs.map(([attributeName, relations]) => (
                 <ChildStatDropdown
                   key={attributeName}
@@ -793,44 +794,17 @@ export const StatList = ({
           </p>
         ) : (
           <ul className="space-y-2">
-            {filteredRows.map((row) => {
-              // Render placeholder line for selected/displayed stat (pinned above)
-              // Use displayStatId to show placeholder for parent when child is selected
-              if (displayStatId === row.id) {
-                return (
-                  <li
-                    key={row.id}
-                    className="py-2"
-                    aria-hidden="true"
-                  >
-                    {secondaryStatId === null && variant !== "mobile" ? (
-                      <div className="flex items-center gap-2">
-                        <div className="h-px flex-1 bg-brand-300/40 dark:bg-brand-400/30" />
-                        <span className="text-[9px] text-brand-500/60 dark:text-brand-400/50 whitespace-nowrap">
-                          Shift+click another stat for secondary
-                        </span>
-                        <div className="h-px flex-1 bg-brand-300/40 dark:bg-brand-400/30" />
-                      </div>
-                    ) : (
-                      <div className="h-px bg-brand-300/40 dark:bg-brand-400/30" />
-                    )}
-                  </li>
-                );
-              }
-
-              // Render normal stat item
-              return (
-                <StatListItem
-                  key={row.id}
-                  row={row}
-                  isSelected={false}
-                  isSecondary={secondaryStatId === row.id}
-                  averageLabel={averageLabel}
-                  onStatSelect={onStatSelect}
-                  hideValue={HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION && effectiveAreaKind === "COUNTY" && areaEntries.length === 0}
-                />
-              );
-            })}
+            {filteredRows.map((row) => (
+              <StatListItem
+                key={row.id}
+                row={row}
+                isSelected={displayStatId === row.id}
+                isSecondary={secondaryStatId === row.id}
+                averageLabel={averageLabel}
+                onStatSelect={onStatSelect}
+                hideValue={HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION && effectiveAreaKind === "COUNTY" && areaEntries.length === 0}
+              />
+            ))}
           </ul>
         )}
       </div>
@@ -853,6 +827,7 @@ interface StatListItemProps {
   onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
   hideValue?: boolean;
   grandchildToggles?: GrandchildAttrToggle[];
+  isHeader?: boolean;
 }
 
 const StatListItem = ({
@@ -863,6 +838,7 @@ const StatListItem = ({
   onStatSelect,
   hideValue = false,
   grandchildToggles = [],
+  isHeader = false,
 }: StatListItemProps) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -873,7 +849,7 @@ const StatListItem = ({
   // Only apply color when there's a selection (averageLabel is shown)
   const valueColorClass = (() => {
     if (!averageLabel || typeof row.goodIfUp !== 'boolean') {
-      return 'text-slate-700 dark:text-slate-200';
+      return 'text-slate-500 dark:text-slate-400';
     }
 
     const isAboveAverage = row.value > row.contextAvg;
@@ -925,7 +901,9 @@ const StatListItem = ({
   const common =
     "group relative flex items-center justify-between rounded-2xl border px-3 py-2 shadow-sm transition-colors cursor-pointer select-none";
 
-  const className = isSelected
+  const className = isHeader
+    ? "group relative flex items-center justify-between px-0 pt-2 pb-1 transition-colors cursor-pointer select-none"
+    : isSelected
     ? `${common} border-2 border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-400/15`
     : isSecondary
     ? `${common} border-2 border-teal-500 bg-teal-50 dark:border-teal-400 dark:bg-teal-400/15`
@@ -940,7 +918,7 @@ const StatListItem = ({
     }}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{row.name}</span>
+          <span className={`text-sm ${isHeader ? "font-medium" : "font-normal"} text-slate-600 dark:text-slate-300`}>{row.name}</span>
           {/* Grandchild attribute toggles */}
           {grandchildToggles.length > 0 && (
             <div className="flex items-center gap-1">
@@ -987,7 +965,7 @@ const StatListItem = ({
               )}
             </>
           ) : (
-            <span className="italic text-slate-400 dark:text-slate-500">No data for selection</span>
+            <span className="italic text-slate-400 dark:text-slate-500">Click to load data</span>
           )}
         </div>
       </div>
@@ -995,7 +973,7 @@ const StatListItem = ({
       <div className="flex items-center gap-2">
         {!hideValue && (
           <span
-            className={`text-sm font-semibold ${valueColorClass}`}
+            className={`text-sm font-normal ${valueColorClass}`}
             onMouseEnter={handleValueHover}
             onMouseLeave={() => setShowValueTooltip(false)}
           >
