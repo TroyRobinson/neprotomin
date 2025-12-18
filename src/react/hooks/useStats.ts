@@ -44,6 +44,9 @@ interface UseStatsOptions {
   statDataEnabled?: boolean;
   priorityStatIds?: string[];
   categoryFilter?: string | null;
+  zipScopes?: string[];
+  countyScopes?: string[];
+  summaryKinds?: SupportedAreaKind[];
   initialBatchSize?: number;
   batchSize?: number;
   enableTrickle?: boolean;
@@ -53,6 +56,9 @@ export const useStats = ({
   statDataEnabled = true,
   priorityStatIds = [],
   categoryFilter = null,
+  zipScopes = [],
+  countyScopes = [],
+  summaryKinds = SUPPORTED_AREA_KINDS,
   initialBatchSize = 12,
   batchSize = 12,
   enableTrickle = true,
@@ -68,7 +74,7 @@ export const useStats = ({
   // Cache each payload slice so disabling statData doesn't wipe the last good statData payload.
   const cachedStatsRef = useRef<any[] | undefined>(undefined);
   const cachedStatRelationsRef = useRef<any[] | undefined>(undefined);
-  const cachedStatDataByIdRef = useRef<Map<string, any>>(new Map());
+  const cachedStatDataByKeyRef = useRef<Map<string, any>>(new Map());
   const [statDataCacheVersion, setStatDataCacheVersion] = useState(0);
   const [loadedStatIds, setLoadedStatIds] = useState<Set<string>>(new Set());
   const [batchGeneration, setBatchGeneration] = useState(0);
@@ -172,10 +178,20 @@ export const useStats = ({
     return map;
   }, [statRelationsRows]);
 
+  const statDataRowKey = (row: any): string | null => {
+    const statId = typeof row?.statId === "string" ? row.statId : null;
+    const name = typeof row?.name === "string" ? row.name : null;
+    const parentArea = typeof row?.parentArea === "string" ? row.parentArea : null;
+    const boundaryType = typeof row?.boundaryType === "string" ? row.boundaryType : null;
+    const date = typeof row?.date === "string" ? row.date : typeof row?.date === "number" ? String(row.date) : null;
+    if (!statId || !name || !parentArea || !boundaryType || !date) return null;
+    return `${statId}::${name}::${parentArea}::${boundaryType}::${date}`;
+  };
+
   // Seed loaded set from any cached statData (initial render after cache restore)
   useEffect(() => {
     if (loadedStatIds.size > 0) return;
-    const cached = Array.from(cachedStatDataByIdRef.current.values());
+    const cached = Array.from(cachedStatDataByKeyRef.current.values());
     if (cached.length === 0) return;
     const next = new Set<string>();
     for (const row of cached) {
@@ -223,7 +239,9 @@ export const useStats = ({
       }
     };
 
-    for (const id of priorityIds) addWithChildren(id, 2);
+    // Priority: fetch only the stat itself (not its children) so selecting a stat
+    // reliably loads the choropleth data without creating a huge $in batch.
+    for (const id of priorityIds) addWithChildren(id, 0);
     for (const id of orderedStatIds) {
       if (!enableTrickle && batch.length >= Math.max(priorityIds.length, initialBatchSize)) break;
       if (batch.length >= Math.max(priorityIds.length, desired)) break;
@@ -256,7 +274,7 @@ export const useStats = ({
           statData: {
             $: {
               where: { name: "root", statId: { $in: batchIds } },
-              fields: ["id", "statId", "name", "parentArea", "boundaryType", "date", "type", "data"],
+              fields: ["statId", "name", "parentArea", "boundaryType", "date", "type", "data"],
               order: { date: "asc" as const },
             },
           },
@@ -282,11 +300,12 @@ export const useStats = ({
     processedBatchKeyRef.current = batchKey;
 
     const rows = Array.isArray(statDataResp?.statData) ? (statDataResp.statData as any[]) : [];
+    if (rows.length === 0) return;
     let didMerge = false;
     for (const row of rows) {
-      const rowId = typeof row?.id === "string" ? row.id : null;
-      if (!rowId) continue;
-      cachedStatDataByIdRef.current.set(rowId, row);
+      const key = statDataRowKey(row);
+      if (!key) continue;
+      cachedStatDataByKeyRef.current.set(key, row);
       didMerge = true;
     }
     if (didMerge) {
@@ -297,10 +316,11 @@ export const useStats = ({
     const requested = lastRequestedBatchIdsRef.current;
     setLoadedStatIds((prev) => {
       const next = new Set(prev);
-      for (const id of requested) next.add(id);
       for (const row of rows) {
         if (row && typeof row.statId === "string") next.add(row.statId);
       }
+      // Only mark requested IDs "loaded" if we actually received rows.
+      for (const id of requested) next.add(id);
       return next;
     });
 
@@ -310,20 +330,20 @@ export const useStats = ({
   }, [queryEnabled, shouldIncludeStatData, statDataLoading, statDataResp, statDataRefreshRequested]);
 
   const cachedStatDataRows = useMemo(
-    () => Array.from(cachedStatDataByIdRef.current.values()),
+    () => Array.from(cachedStatDataByKeyRef.current.values()),
     [statDataCacheVersion],
   );
 
   const statDataRows = useMemo(() => {
     const merged = new Map<string, any>();
     for (const row of cachedStatDataRows) {
-      const rowId = typeof row?.id === "string" ? row.id : null;
-      if (rowId) merged.set(rowId, row);
+      const key = statDataRowKey(row);
+      if (key) merged.set(key, row);
     }
     const incoming = Array.isArray(statDataResp?.statData) ? (statDataResp.statData as any[]) : [];
     for (const row of incoming) {
-      const rowId = typeof row?.id === "string" ? row.id : null;
-      if (rowId) merged.set(rowId, row);
+      const key = statDataRowKey(row);
+      if (key) merged.set(key, row);
     }
     return Array.from(merged.values());
   }, [cachedStatDataRows, statDataResp?.statData]);
@@ -337,6 +357,134 @@ export const useStats = ({
   const isLoading = statsLoading || statDataLoading;
   const error = statsError || statDataError;
 
+  const summaryParentAreas = useMemo(() => {
+    const set = new Set<string>();
+    // Always include the statewide bucket as a fallback.
+    // Many stats only have parentArea="Oklahoma" (especially right after imports),
+    // so if the user is scoped to a county (e.g. "Tulsa") we still want summary
+    // values to appear in the sidebar.
+    set.add(normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP) ?? "Oklahoma");
+    set.add(normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.COUNTY) ?? "Oklahoma");
+    // Only include the primary scopes (not all neighbors) to keep the summary
+    // query small and avoid Instant operation timeouts.
+    const primaryZipScope = typeof zipScopes[0] === "string" ? normalizeScopeLabel(zipScopes[0]) : null;
+    const primaryCountyScope =
+      typeof countyScopes[0] === "string" ? normalizeScopeLabel(countyScopes[0]) : null;
+    if (primaryZipScope) set.add(primaryZipScope);
+    if (primaryCountyScope) set.add(primaryCountyScope);
+    return Array.from(set);
+  }, [countyScopes, zipScopes]);
+
+  const fallbackParentArea = normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP) ?? "Oklahoma";
+  const primaryScopedParentArea = summaryParentAreas.find(
+    (area) => area !== fallbackParentArea,
+  );
+
+  // Fetch statewide summaries first (fast and always available), then optionally
+  // fetch the current scope (e.g. Tulsa County) in a second small query.
+  const {
+    data: fallbackSummariesResp,
+    error: fallbackSummariesError,
+  } = db.useQuery(
+    queryEnabled && statDataEnabled
+      ? {
+          statDataSummaries: {
+            $: {
+              where: {
+                name: "root",
+                boundaryType: { $in: summaryKinds },
+                parentArea: fallbackParentArea,
+              },
+              limit: 10000,
+              order: { statId: "asc" as const },
+              fields: ["statId", "name", "parentArea", "boundaryType", "date", "type", "count", "sum", "avg", "updatedAt"],
+            },
+          },
+        }
+      : null,
+  );
+
+  const {
+    data: scopedSummariesResp,
+    error: scopedSummariesError,
+  } = db.useQuery(
+    queryEnabled && statDataEnabled && Boolean(primaryScopedParentArea) && primaryScopedParentArea !== fallbackParentArea
+      ? {
+          statDataSummaries: {
+            $: {
+              where: {
+                name: "root",
+                boundaryType: { $in: summaryKinds },
+                parentArea: primaryScopedParentArea!,
+              },
+              limit: 10000,
+              order: { statId: "asc" as const },
+              fields: ["statId", "name", "parentArea", "boundaryType", "date", "type", "count", "sum", "avg", "updatedAt"],
+            },
+          },
+        }
+      : null,
+  );
+
+  if (isDevEnv() && (fallbackSummariesError || scopedSummariesError)) {
+    console.warn("[useStats] statDataSummaries query error", {
+      fallbackParentArea,
+      primaryScopedParentArea,
+      kinds: summaryKinds,
+      fallbackSummariesError,
+      scopedSummariesError,
+    });
+  }
+
+  const summaryRows = useMemo(() => {
+    const unwrapRows = (resp: any): any[] =>
+      Array.isArray(resp?.statDataSummaries)
+        ? (resp.statDataSummaries as any[])
+        : Array.isArray(resp?.data?.statDataSummaries)
+          ? (resp.data.statDataSummaries as any[])
+          : [];
+    const rows = [...unwrapRows(fallbackSummariesResp), ...unwrapRows(scopedSummariesResp)];
+    return rows;
+  }, [fallbackSummariesResp, scopedSummariesResp]);
+
+  // Instant can stream large query results and/or mutate arrays in-place.
+  // Use a lightweight "version" key so our memo recomputes as rows arrive/refresh.
+  let summaryRowsMaxUpdatedAt = 0;
+  for (const row of summaryRows) {
+    const updatedAt = typeof row?.updatedAt === "number" && Number.isFinite(row.updatedAt) ? row.updatedAt : 0;
+    if (updatedAt > summaryRowsMaxUpdatedAt) summaryRowsMaxUpdatedAt = updatedAt;
+  }
+  const summaryRowsVersion = `${summaryRows.length}:${summaryRowsMaxUpdatedAt}`;
+
+  const statDataSummaryByParent = useMemo(() => {
+    const map = new Map<string, Map<string, Partial<Record<SupportedAreaKind, any>>>>();
+
+    for (const row of summaryRows) {
+      const statId = typeof row?.statId === "string" ? row.statId : null;
+      const name = typeof row?.name === "string" ? row.name : null;
+      if (!statId || name !== "root") continue;
+      const boundaryType = typeof row?.boundaryType === "string" ? (row.boundaryType as SupportedAreaKind) : null;
+      if (!boundaryType || !SUPPORTED_AREA_KINDS.includes(boundaryType)) continue;
+      const parentArea = normalizeScopeLabel(typeof row?.parentArea === "string" ? row.parentArea : null);
+      if (!parentArea) continue;
+      const entry = {
+        type: typeof row?.type === "string" ? row.type : "count",
+        date: typeof row?.date === "string" ? row.date : "",
+        count: typeof row?.count === "number" && Number.isFinite(row.count) ? row.count : 0,
+        sum: typeof row?.sum === "number" && Number.isFinite(row.sum) ? row.sum : 0,
+        avg: typeof row?.avg === "number" && Number.isFinite(row.avg) ? row.avg : 0,
+        min: typeof row?.min === "number" && Number.isFinite(row.min) ? row.min : 0,
+        max: typeof row?.max === "number" && Number.isFinite(row.max) ? row.max : 0,
+      };
+      const byParent = map.get(statId) ?? new Map<string, Partial<Record<SupportedAreaKind, any>>>();
+      const parentEntry = byParent.get(parentArea) ?? {};
+      parentEntry[boundaryType] = entry;
+      byParent.set(parentArea, parentEntry);
+      map.set(statId, byParent);
+    }
+    return map;
+  }, [summaryRowsVersion]);
+
   // Build time series per stat and area kind (ZIP vs COUNTY for now)
   const seriesByStatIdByKind = useMemo(() => {
     const map = new Map<string, SeriesByKind>();
@@ -344,7 +492,6 @@ export const useStats = ({
 
     for (const row of effectiveData.statData) {
       if (
-        !row?.id ||
         typeof row.statId !== "string" ||
         row.name !== "root" ||
         typeof row.boundaryType !== "string"
@@ -354,13 +501,18 @@ export const useStats = ({
       const boundaryType = row.boundaryType as SupportedAreaKind;
       if (!SUPPORTED_AREA_KINDS.includes(boundaryType)) continue;
       const expectedParent = DEFAULT_PARENT_AREA_BY_KIND[boundaryType];
-      if (expectedParent && row.parentArea !== expectedParent) continue;
-      if (typeof row.date !== "string" || typeof row.type !== "string" || typeof row.data !== "object") {
+      const normalizedParent = normalizeScopeLabel(typeof row.parentArea === "string" ? row.parentArea : null);
+      if (expectedParent && normalizedParent !== normalizeScopeLabel(expectedParent)) continue;
+      if (
+        (typeof row.date !== "string" && typeof row.date !== "number") ||
+        typeof row.type !== "string" ||
+        typeof row.data !== "object"
+      ) {
         continue;
       }
 
       const entry: SeriesEntry = {
-        date: row.date,
+        date: typeof row.date === "string" ? row.date : String(row.date),
         type: row.type,
         data: (row.data ?? {}) as Record<string, number>,
         parentArea: typeof row.parentArea === "string" ? (row.parentArea as string) : null,
@@ -410,7 +562,6 @@ export const useStats = ({
 
     for (const row of effectiveData.statData) {
       if (
-        !row?.id ||
         typeof row.statId !== "string" ||
         row.name !== "root" ||
         typeof row.boundaryType !== "string"
@@ -458,7 +609,6 @@ export const useStats = ({
 
     for (const row of effectiveData.statData) {
       if (
-        !row?.id ||
         typeof row.statId !== "string" ||
         row.name !== "root" ||
         typeof row.boundaryType !== "string"
@@ -649,6 +799,7 @@ export const useStats = ({
     seriesByStatIdByParent,
     statDataByBoundary,
     statDataByParent,
+    statDataSummaryByParent,
     statRelationsByParent,
     statRelationsByChild,
     isLoading,

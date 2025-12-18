@@ -24,6 +24,15 @@ const ENABLE_STATISTICS_VISUALIZATION_SECTION = true;
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type SelectedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
 type PinnedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
+type StatSummaryEntry = {
+  type: string;
+  date: string;
+  count: number;
+  sum: number;
+  avg: number;
+  min: number;
+  max: number;
+};
 
 interface SidebarProps {
   // Organization data
@@ -39,6 +48,7 @@ interface SidebarProps {
   highlightedOrganizationIds?: string[] | null;
   demographicsSnapshot?: CombinedDemographicsSnapshot | null;
   statsById?: Map<string, Stat>;
+  statSummariesById?: Map<string, Partial<Record<SupportedAreaKind, StatSummaryEntry>>>;
   seriesByStatIdByKind?: Map<string, SeriesByKind>;
   statDataById?: Map<string, Partial<Record<SupportedAreaKind, StatBoundaryEntry>>>;
   statRelationsByParent?: StatRelationsByParent;
@@ -125,6 +135,7 @@ export const Sidebar = ({
   highlightedOrganizationIds = null,
   demographicsSnapshot = null,
   statsById = new Map(),
+  statSummariesById = new Map(),
   seriesByStatIdByKind = new Map(),
   statDataById = new Map(),
   statRelationsByParent = new Map(),
@@ -794,6 +805,7 @@ export const Sidebar = ({
           <StatList
             variant={variant}
             statsById={statsById}
+            statSummariesById={statSummariesById}
             statDataById={statDataById}
             statRelationsByParent={statRelationsByParent}
             statRelationsByChild={statRelationsByChild}

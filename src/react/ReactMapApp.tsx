@@ -1092,15 +1092,61 @@ export const ReactMapApp = () => {
     zipScope,
   });
 
+  const normalizedZipScope = normalizeScopeLabel(zipScope) ?? FALLBACK_ZIP_SCOPE;
+  const defaultCountyScope = useMemo(
+    () => normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.COUNTY ?? "Oklahoma") ?? "Oklahoma",
+    [],
+  );
+  const normalizedNeighborScopes = useMemo(() => {
+    const set = new Set<string>();
+    for (const scope of zipNeighborScopes) {
+      const normalized = normalizeScopeLabel(scope);
+      if (normalized) set.add(normalized);
+    }
+    return Array.from(set);
+  }, [zipNeighborScopes]);
+
+  const legendZipScopes = useMemo(() => {
+    const set = new Set<string>();
+    if (normalizedZipScope) set.add(normalizedZipScope);
+    for (const scope of normalizedNeighborScopes) set.add(scope);
+    return Array.from(set);
+  }, [normalizedNeighborScopes, normalizedZipScope]);
+
+  const relevantScopes = useMemo(() => {
+    const set = new Set<string>();
+    if (normalizedZipScope) set.add(normalizedZipScope);
+    for (const scope of normalizedNeighborScopes) set.add(scope);
+    if (set.size === 0) set.add(FALLBACK_ZIP_SCOPE);
+    return Array.from(set);
+  }, [normalizedZipScope, normalizedNeighborScopes]);
+
+  const countyScopes = useMemo(() => {
+    const set = new Set<string>();
+    if (defaultCountyScope) set.add(defaultCountyScope);
+    for (const scope of normalizedNeighborScopes) set.add(scope);
+    if (normalizedZipScope) set.add(normalizedZipScope);
+    return Array.from(set);
+  }, [defaultCountyScope, normalizedNeighborScopes, normalizedZipScope]);
+
   const priorityStatIds = useMemo(
     () => [selectedStatId, secondaryStatId].filter((id): id is string => typeof id === "string"),
     [selectedStatId, secondaryStatId],
   );
+  const shouldPrefetchFullStatData =
+    selectedZips.length > 0 || selectedCounties.length > 0;
+
+  const summaryKinds = useMemo(() => {
+    if (boundaryMode === "counties") return ["COUNTY"] as const;
+    return ["ZIP"] as const;
+  }, [boundaryMode]);
+
   const {
     statsById,
     seriesByStatIdByKind,
     seriesByStatIdByParent,
     statDataByParent,
+    statDataSummaryByParent,
     statRelationsByParent,
     statRelationsByChild,
     isLoading: areStatsLoading,
@@ -1108,9 +1154,12 @@ export const ReactMapApp = () => {
     statDataEnabled: activeScreen !== "admin",
     priorityStatIds,
     categoryFilter,
-    initialBatchSize: 12,
-    batchSize: 12,
-    enableTrickle: true,
+    zipScopes: relevantScopes,
+    countyScopes,
+    summaryKinds: summaryKinds as any,
+    initialBatchSize: shouldPrefetchFullStatData ? 12 : 0,
+    batchSize: shouldPrefetchFullStatData ? 12 : 0,
+    enableTrickle: shouldPrefetchFullStatData,
   });
   const { organizations } = useOrganizations();
   const { recentOrganizations } = useRecentOrganizations();
@@ -1301,43 +1350,6 @@ export const ReactMapApp = () => {
     persistSidebarInsights,
   ]);
 
-  const normalizedZipScope = normalizeScopeLabel(zipScope) ?? FALLBACK_ZIP_SCOPE;
-  const defaultCountyScope = useMemo(
-    () => normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.COUNTY ?? "Oklahoma") ?? "Oklahoma",
-    [],
-  );
-  const normalizedNeighborScopes = useMemo(() => {
-    const set = new Set<string>();
-    for (const scope of zipNeighborScopes) {
-      const normalized = normalizeScopeLabel(scope);
-      if (normalized) set.add(normalized);
-    }
-    return Array.from(set);
-  }, [zipNeighborScopes]);
-
-  const legendZipScopes = useMemo(() => {
-    const set = new Set<string>();
-    if (normalizedZipScope) set.add(normalizedZipScope);
-    for (const scope of normalizedNeighborScopes) set.add(scope);
-    return Array.from(set);
-  }, [normalizedNeighborScopes, normalizedZipScope]);
-
-  const relevantScopes = useMemo(() => {
-    const set = new Set<string>();
-    if (normalizedZipScope) set.add(normalizedZipScope);
-    for (const scope of normalizedNeighborScopes) set.add(scope);
-    if (set.size === 0) set.add(FALLBACK_ZIP_SCOPE);
-    return Array.from(set);
-  }, [normalizedZipScope, normalizedNeighborScopes]);
-
-  const countyScopes = useMemo(() => {
-    const set = new Set<string>();
-    if (defaultCountyScope) set.add(defaultCountyScope);
-    for (const scope of normalizedNeighborScopes) set.add(scope);
-    if (normalizedZipScope) set.add(normalizedZipScope);
-    return Array.from(set);
-  }, [defaultCountyScope, normalizedNeighborScopes, normalizedZipScope]);
-
   const mergeStatEntry = (
     existing: StatBoundaryEntry | undefined,
     incoming: StatBoundaryEntry,
@@ -1433,6 +1445,71 @@ export const ReactMapApp = () => {
     }
     return map;
   }, [statDataByParent, relevantScopes, countyScopes, normalizedZipScope, legendZipScopes, legendRangeMode]);
+
+  type StatSummaryEntry = {
+    type: string;
+    date: string;
+    count: number;
+    sum: number;
+    avg: number;
+    min: number;
+    max: number;
+  };
+
+  const statSummariesByStatId = useMemo(() => {
+    const mergeSummary = (
+      existing: StatSummaryEntry | undefined,
+      incoming: StatSummaryEntry,
+    ): StatSummaryEntry => {
+      const count = (existing?.count ?? 0) + (incoming.count ?? 0);
+      const sum = (existing?.sum ?? 0) + (incoming.sum ?? 0);
+      const avg = count > 0 ? sum / count : 0;
+      const min = existing ? Math.min(existing.min, incoming.min) : incoming.min;
+      const max = existing ? Math.max(existing.max, incoming.max) : incoming.max;
+      const date = existing && existing.date.localeCompare(incoming.date) >= 0 ? existing.date : incoming.date;
+      return {
+        type: existing?.type ?? incoming.type,
+        date,
+        count,
+        sum,
+        avg,
+        min: Number.isFinite(min) ? min : 0,
+        max: Number.isFinite(max) ? max : 0,
+      };
+    };
+
+    const map = new Map<string, Partial<Record<"ZIP" | "COUNTY", StatSummaryEntry>>>();
+    for (const [statId, byParent] of statDataSummaryByParent.entries()) {
+      const aggregate: Partial<Record<"ZIP" | "COUNTY", StatSummaryEntry>> = {};
+
+      let hasScopedZip = false;
+      for (const scope of relevantScopes) {
+        const incoming = byParent.get(scope)?.ZIP as StatSummaryEntry | undefined;
+        if (incoming) {
+          hasScopedZip = true;
+          aggregate.ZIP = mergeSummary(aggregate.ZIP, incoming);
+        }
+      }
+      if (!hasScopedZip) {
+        const statewide = byParent.get(FALLBACK_ZIP_SCOPE)?.ZIP as StatSummaryEntry | undefined;
+        if (statewide) {
+          aggregate.ZIP = mergeSummary(aggregate.ZIP, statewide);
+        }
+      }
+
+      for (const scope of countyScopes) {
+        const incoming = byParent.get(scope)?.COUNTY as StatSummaryEntry | undefined;
+        if (incoming) {
+          aggregate.COUNTY = mergeSummary(aggregate.COUNTY, incoming);
+        }
+      }
+
+      if (Object.keys(aggregate).length > 0) {
+        map.set(statId, aggregate);
+      }
+    }
+    return map;
+  }, [countyScopes, relevantScopes, statDataSummaryByParent]);
 
   // Compute true statewide averages (from Oklahoma bucket, not scoped data)
   const stateAvgByStatId = useMemo(() => {
@@ -3222,6 +3299,7 @@ export const ReactMapApp = () => {
               activeOrganizationId={activeOrganizationId}
               highlightedOrganizationIds={highlightedOrganizationIds ?? undefined}
               statsById={statsById}
+              statSummariesById={statSummariesByStatId}
               seriesByStatIdByKind={seriesByStatIdScoped}
               statDataById={statDataByStatId}
               statRelationsByParent={statRelationsByParent}
@@ -3354,6 +3432,7 @@ export const ReactMapApp = () => {
                     activeOrganizationId={activeOrganizationId}
                     highlightedOrganizationIds={highlightedOrganizationIds ?? undefined}
                     statsById={statsById}
+                    statSummariesById={statSummariesByStatId}
                     seriesByStatIdByKind={seriesByStatIdScoped}
                     statDataById={statDataByStatId}
                     statRelationsByParent={statRelationsByParent}

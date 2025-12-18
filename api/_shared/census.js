@@ -498,6 +498,9 @@ const buildPayloadKey = (payload) =>
 const buildExistingKey = (row) =>
   `${row.boundaryType}::${row.parentArea}::${row.date}::${row.name ?? "root"}`;
 
+const buildSummaryKey = ({ statId, name, parentArea, boundaryType }) =>
+  `${statId}::${name ?? "root"}::${parentArea}::${boundaryType}`;
+
 const fetchExistingStatDataMap = async (db, statId, dates) => {
   const dateFilter = Array.from(new Set((dates || []).filter(Boolean).map(String)));
   const resp = await db.query({
@@ -517,6 +520,53 @@ const fetchExistingStatDataMap = async (db, statId, dates) => {
   return map;
 };
 
+const fetchExistingStatDataSummaryMap = async (db, summaryKeys) => {
+  const keys = Array.from(new Set((summaryKeys || []).filter(Boolean)));
+  if (keys.length === 0) return new Map();
+  const resp = await db.query({
+    statDataSummaries: {
+      $: {
+        where: { summaryKey: { $in: keys } },
+        fields: ["id", "summaryKey", "date"],
+      },
+    },
+  });
+  const rows = unwrapQuery(resp, "statDataSummaries");
+  const map = new Map();
+  for (const row of rows) {
+    const summaryKey = typeof row?.summaryKey === "string" ? row.summaryKey : null;
+    const id = typeof row?.id === "string" ? row.id : null;
+    const date = typeof row?.date === "string" ? row.date : null;
+    if (!summaryKey || !id) continue;
+    map.set(summaryKey, { id, date });
+  }
+  return map;
+};
+
+const computeNumericSummary = (dataMap) => {
+  let count = 0;
+  let sum = 0;
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (const value of dataMap.values()) {
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    count += 1;
+    sum += value;
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  if (count === 0) {
+    return { count: 0, sum: 0, avg: 0, min: 0, max: 0 };
+  }
+  return {
+    count,
+    sum,
+    avg: sum / count,
+    min,
+    max,
+  };
+};
+
 // Keep each transact extremely small to avoid 5s admin timeouts.
 const MAX_TX_BATCH = 1;
 
@@ -526,6 +576,15 @@ export const applyStatDataPayloads = async (db, payloads) => {
   const statId = payloads[0].statId;
   const dates = payloads.map((p) => p.year);
   const existing = await fetchExistingStatDataMap(db, statId, dates);
+  const summaryKeys = payloads.map((p) =>
+    buildSummaryKey({
+      statId: p.statId,
+      name: p.name ?? "root",
+      parentArea: p.parentArea,
+      boundaryType: p.boundaryType,
+    }),
+  );
+  const existingSummaries = await fetchExistingStatDataSummaryMap(db, summaryKeys);
   const operations = [];
 
   const enqueue = async () => {
@@ -568,6 +627,44 @@ export const applyStatDataPayloads = async (db, payloads) => {
 
     operations.push(tx.statData[targetId].update(record));
     existing.set(key, { ...record, id: targetId });
+
+    const summaryKey = buildSummaryKey({
+      statId: payload.statId,
+      name: payload.name ?? "root",
+      parentArea: payload.parentArea,
+      boundaryType: payload.boundaryType,
+    });
+    const incomingDate = String(payload.year);
+    const existingSummary = existingSummaries.get(summaryKey);
+    const shouldUpdateSummary =
+      !existingSummary ||
+      (typeof existingSummary.date === "string" &&
+        incomingDate.localeCompare(existingSummary.date) >= 0);
+
+    if (shouldUpdateSummary) {
+      const summary = computeNumericSummary(payload.data);
+      const summaryId = existingSummary?.id ?? id();
+      const summaryRecord = {
+        summaryKey,
+        statId: payload.statId,
+        name: payload.name ?? "root",
+        parentArea: payload.parentArea,
+        boundaryType: payload.boundaryType,
+        date: incomingDate,
+        type: payload.statType,
+        count: summary.count,
+        sum: summary.sum,
+        avg: summary.avg,
+        min: summary.min,
+        max: summary.max,
+        updatedAt: now,
+      };
+      if (!existingSummary) {
+        summaryRecord.createdAt = now;
+      }
+      operations.push(tx.statDataSummaries[summaryId].update(summaryRecord));
+      existingSummaries.set(summaryKey, { id: summaryId, date: incomingDate });
+    }
 
     if (operations.length >= MAX_TX_BATCH) {
       await enqueue();

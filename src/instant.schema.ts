@@ -165,6 +165,24 @@ const _schema = i.schema({
       createdOn: i.number().indexed().optional(),
       lastUpdated: i.number().indexed().optional(),
     }),
+    // Lightweight rollups for statData rows so the UI can render values without loading full ZIP maps.
+    // One row per (statId, name, parentArea, boundaryType), representing the latest date available.
+    statDataSummaries: i.entity({
+      summaryKey: i.string().unique().indexed(), // `${statId}::${name}::${parentArea}::${boundaryType}`
+      statId: i.string().indexed(),
+      name: i.string().indexed(), // "root" (matches statData.name)
+      parentArea: i.string().indexed(),
+      boundaryType: i.string().indexed(), // "ZIP" | "COUNTY"
+      date: i.string().indexed(), // latest date for this key
+      type: i.string().indexed(),
+      count: i.number(), // number of numeric entries in the data map
+      sum: i.number(), // sum of numeric entries (useful for "count"/"currency"/etc.)
+      avg: i.number(), // average of numeric entries (useful for "percent"/rates)
+      min: i.number(),
+      max: i.number(),
+      updatedAt: i.number().indexed(),
+      createdAt: i.number().indexed().optional(),
+    }),
     // Parent/child relationships between stats
     statRelations: i.entity({
       // Composite uniqueness enforced via relationKey (parent::child::attribute)

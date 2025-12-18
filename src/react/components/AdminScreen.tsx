@@ -1,7 +1,7 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { KeyboardEvent, ChangeEvent, MouseEvent } from "react";
-import { id as createId } from "@instantdb/react";
+import { id as createId, lookup } from "@instantdb/react";
 import { db } from "../../lib/reactDb";
 import { isDevEnv } from "../../lib/env";
 import { useAuthSession } from "../hooks/useAuthSession";
@@ -55,6 +55,31 @@ interface RootStatDataRow {
 type StatRelationGroup = {
   attribute: string;
   relations: Array<StatRelation & { child: StatItem | null }>;
+};
+
+const buildStatDataSummaryKey = (
+  statId: string,
+  name: string,
+  parentArea: string | null | undefined,
+  boundaryType: string | null | undefined,
+) => `${statId}::${name}::${parentArea ?? ""}::${boundaryType ?? ""}`;
+
+const computeSummaryFromData = (data: Record<string, number>) => {
+  let count = 0;
+  let sum = 0;
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (const value of Object.values(data ?? {})) {
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    count += 1;
+    sum += value;
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  if (count === 0) {
+    return { count: 0, sum: 0, avg: 0, min: 0, max: 0 };
+  }
+  return { count, sum, avg: sum / count, min, max };
 };
 
 const toFiniteNumber = (value: unknown): number | null => {
@@ -1746,14 +1771,21 @@ const NewStatModal = ({
           }),
         ];
 
-        for (const row of derivedRows) {
+        const sortedDerivedRows = [...derivedRows].sort((a, b) => String(a.date ?? "").localeCompare(String(b.date ?? "")));
+        for (const row of sortedDerivedRows) {
+          const parentArea = row.parentArea ?? undefined;
+          const boundaryType = row.boundaryType ?? undefined;
+          const date = row.date ?? undefined;
+          const summaryKey =
+            parentArea && boundaryType ? buildStatDataSummaryKey(newStatId, "root", parentArea, boundaryType) : null;
+          const summary = computeSummaryFromData(row.data);
           txs.push(
             db.tx.statData[createId()].update({
               statId: newStatId,
               name: "root",
-              parentArea: row.parentArea ?? undefined,
-              boundaryType: row.boundaryType ?? undefined,
-              date: row.date ?? undefined,
+              parentArea,
+              boundaryType,
+              date,
               type: "percent_change",
               data: row.data,
               source: derivedSource,
@@ -1762,6 +1794,24 @@ const NewStatModal = ({
               lastUpdated: now,
             }),
           );
+          if (summaryKey && date) {
+            txs.push(
+              db.tx.statDataSummaries[lookup("summaryKey", summaryKey)].update({
+                statId: newStatId,
+                name: "root",
+                parentArea,
+                boundaryType,
+                date,
+                type: "percent_change",
+                count: summary.count,
+                sum: summary.sum,
+                avg: summary.avg,
+                min: summary.min,
+                max: summary.max,
+                updatedAt: now,
+              }),
+            );
+          }
         }
 
         for (let i = 0; i < txs.length; i += MAX_DERIVED_TX_BATCH) {
@@ -1893,14 +1943,21 @@ const NewStatModal = ({
           }),
         ];
 
-        for (const row of derivedRows) {
+        const sortedDerivedRows = [...derivedRows].sort((a, b) => String(a.date ?? "").localeCompare(String(b.date ?? "")));
+        for (const row of sortedDerivedRows) {
+          const parentArea = row.parentArea ?? undefined;
+          const boundaryType = row.boundaryType ?? undefined;
+          const date = row.date ?? undefined;
+          const summaryKey =
+            parentArea && boundaryType ? buildStatDataSummaryKey(newStatId, "root", parentArea, boundaryType) : null;
+          const summary = computeSummaryFromData(row.data);
           txs.push(
             db.tx.statData[createId()].update({
               statId: newStatId,
               name: "root",
-              parentArea: row.parentArea ?? undefined,
-              boundaryType: row.boundaryType ?? undefined,
-              date: row.date ?? undefined,
+              parentArea,
+              boundaryType,
+              date,
               type: "percent",
               data: row.data,
               source: derivedSource,
@@ -1909,6 +1966,24 @@ const NewStatModal = ({
               lastUpdated: now,
             }),
           );
+          if (summaryKey && date) {
+            txs.push(
+              db.tx.statDataSummaries[lookup("summaryKey", summaryKey)].update({
+                statId: newStatId,
+                name: "root",
+                parentArea,
+                boundaryType,
+                date,
+                type: "percent",
+                count: summary.count,
+                sum: summary.sum,
+                avg: summary.avg,
+                min: summary.min,
+                max: summary.max,
+                updatedAt: now,
+              }),
+            );
+          }
         }
 
         for (let i = 0; i < txs.length; i += MAX_DERIVED_TX_BATCH) {

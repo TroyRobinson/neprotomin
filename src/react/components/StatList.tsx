@@ -15,6 +15,16 @@ type SupportedAreaKind = "ZIP" | "COUNTY";
 type SelectedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
 
 type StatDataById = Map<string, Partial<Record<SupportedAreaKind, StatBoundaryEntry>>>;
+type StatSummaryEntry = {
+  type: string;
+  date: string;
+  count: number;
+  sum: number;
+  avg: number;
+  min: number;
+  max: number;
+};
+type StatSummariesById = Map<string, Partial<Record<SupportedAreaKind, StatSummaryEntry>>>;
 
 type StatSelectMeta = { shiftKey?: boolean; clear?: boolean };
 
@@ -35,6 +45,7 @@ type StatRow = {
 
 interface StatListProps {
   statsById?: Map<string, Stat>;
+  statSummariesById?: StatSummariesById;
   statDataById?: StatDataById;
   statRelationsByParent?: StatRelationsByParent;
   statRelationsByChild?: StatRelationsByChild;
@@ -136,6 +147,7 @@ const ChildStatDropdown = ({
 
 export const StatList = ({
   statsById = new Map(),
+  statSummariesById = new Map(),
   statDataById = new Map(),
   statRelationsByParent = new Map(),
   statRelationsByChild = new Map(),
@@ -196,44 +208,43 @@ export const StatList = ({
 
     for (const s of stats) {
       const entryMap = statDataById.get(s.id);
-      const fallbackEntry = entryMap
-        ? (entryMap.COUNTY ?? entryMap.ZIP ?? Object.values(entryMap)[0])
-        : undefined;
-      if (!fallbackEntry) {
-        result.push({
-          id: s.id,
-          name: s.label || s.name,
-          value: 0,
-          score: 0,
-          type: "count",
-          contextAvg: 0,
-          hasData: false,
-          goodIfUp: s.goodIfUp,
-          aggregationMethod: "raw",
-          aggregationDescription: "",
-        });
-        continue;
-      }
+      const summaryMap = statSummariesById.get(s.id);
 
       const contextAvgByKind = new Map<SupportedAreaKind, number>();
       for (const kind of SUPPORTED_KINDS) {
-        const entry = entryMap[kind];
-        if (entry) contextAvgByKind.set(kind, computeContextAverage(entry));
+        const entry = entryMap?.[kind];
+        if (entry) {
+          contextAvgByKind.set(kind, computeContextAverage(entry));
+          continue;
+        }
+        const summary = summaryMap?.[kind];
+        if (summary && typeof summary.avg === "number" && Number.isFinite(summary.avg)) {
+          contextAvgByKind.set(kind, summary.avg);
+        }
       }
 
       // Use COUNTY data when at county level, otherwise prefer ZIP
-      const effectiveFallbackEntry = preferCounty
-        ? (entryMap.COUNTY ?? entryMap.ZIP ?? Object.values(entryMap)[0])
-        : (entryMap.ZIP ?? entryMap.COUNTY ?? Object.values(entryMap)[0]);
-      if (!effectiveFallbackEntry) continue;
+      const effectiveFallbackEntry = entryMap
+        ? (preferCounty
+            ? (entryMap.COUNTY ?? entryMap.ZIP ?? Object.values(entryMap)[0])
+            : (entryMap.ZIP ?? entryMap.COUNTY ?? Object.values(entryMap)[0]))
+        : undefined;
+
+      const fallbackSummary: StatSummaryEntry | undefined = preferCounty
+        ? (summaryMap?.COUNTY ?? summaryMap?.ZIP ?? (summaryMap ? Object.values(summaryMap)[0] : undefined))
+        : (summaryMap?.ZIP ?? summaryMap?.COUNTY ?? (summaryMap ? Object.values(summaryMap)[0] : undefined));
 
       const fallbackContextAvg = preferCounty
-        ? (contextAvgByKind.get("COUNTY") ?? contextAvgByKind.get("ZIP") ?? computeContextAverage(effectiveFallbackEntry))
-        : (contextAvgByKind.get("ZIP") ?? contextAvgByKind.get("COUNTY") ?? computeContextAverage(effectiveFallbackEntry));
+        ? (contextAvgByKind.get("COUNTY") ??
+            contextAvgByKind.get("ZIP") ??
+            (effectiveFallbackEntry ? computeContextAverage(effectiveFallbackEntry) : fallbackSummary?.avg ?? 0))
+        : (contextAvgByKind.get("ZIP") ??
+            contextAvgByKind.get("COUNTY") ??
+            (effectiveFallbackEntry ? computeContextAverage(effectiveFallbackEntry) : fallbackSummary?.avg ?? 0));
 
       const valuesForSelection = areaEntries
         .map((area) => {
-          const entry = entryMap[area.kind];
+          const entry = entryMap?.[area.kind];
           if (!entry) return null;
           const raw = entry.data?.[area.code];
           if (typeof raw !== "number" || !Number.isFinite(raw)) return null;
@@ -241,7 +252,8 @@ export const StatList = ({
         })
         .filter((v): v is { area: AreaEntry; entry: StatBoundaryEntry; value: number } => v !== null);
 
-      const isPercent = effectiveFallbackEntry.type === "percent";
+      const fallbackType = effectiveFallbackEntry?.type ?? fallbackSummary?.type ?? "count";
+      const isPercent = fallbackType === "percent";
       
       let displayValue = fallbackContextAvg;
       let aggregationMethod: "sum" | "average" | "raw" = "average";
@@ -261,7 +273,13 @@ export const StatList = ({
           const countyName = zipScopeDisplayName ? `${zipScopeDisplayName} County` : "County";
           aggregationDescription = `${method} of all ${countyName} ZIPs`;
         }
-        displayValue = isPercent ? computeContextAverage(fallbackEntry) : computeTotal(fallbackEntry);
+        if (effectiveFallbackEntry) {
+          displayValue = isPercent ? computeContextAverage(effectiveFallbackEntry) : computeTotal(effectiveFallbackEntry);
+        } else if (fallbackSummary) {
+          displayValue = isPercent ? fallbackSummary.avg : fallbackSummary.sum;
+        } else {
+          displayValue = 0;
+        }
       } else if (areaEntries.length === 1 && valuesForSelection.length === 1) {
         // Single selection: show the raw value
         aggregationMethod = "raw";
@@ -298,9 +316,11 @@ export const StatList = ({
         name: s.label || s.name,
         value: displayValue,
         score,
-        type: effectiveFallbackEntry.type,
+        type: fallbackType,
         contextAvg: fallbackContextAvg,
-        hasData: valuesForSelection.length > 0 || areaEntries.length === 0,
+        hasData:
+          valuesForSelection.length > 0 ||
+          (areaEntries.length === 0 && (Boolean(effectiveFallbackEntry) || Boolean(fallbackSummary))),
         goodIfUp: s.goodIfUp,
         aggregationMethod,
         aggregationDescription,
@@ -314,7 +334,18 @@ export const StatList = ({
     }
 
     return result;
-  }, [statsById, statDataById, areaEntries, categoryFilter, effectiveAreaKind, zipScopeDisplayName, countyScopeDisplayName, areaNameLookup, childIdSet]);
+  }, [
+    statsById,
+    statSummariesById,
+    statDataById,
+    areaEntries,
+    categoryFilter,
+    effectiveAreaKind,
+    zipScopeDisplayName,
+    countyScopeDisplayName,
+    areaNameLookup,
+    childIdSet,
+  ]);
 
   const filteredRows = useMemo(() => {
     if (!normalizedQuery) return rows;
