@@ -36,13 +36,6 @@ export type StatDataByParentArea = Map<ParentAreaKey, StatDataMapEntry>;
 
 type Listener = (byStatId: Map<string, StatDataByParentArea>) => void;
 
-const getParentArea = (row: any): string | undefined => {
-  if (row && typeof row.parentArea === "string" && row.parentArea.length > 0) {
-    return row.parentArea;
-  }
-  return undefined;
-};
-
 const normalizeBoundaryType = (value: unknown): BoundaryTypeKey | null => {
   if (value === "ZIP") return "ZIP";
   if (value === "COUNTY") return "COUNTY";

@@ -1130,7 +1130,7 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                       </>
                     ))}
               </div>
-              {bannerBatch.status === "running" && bannerCounts?.percent !== null && (
+              {bannerBatch.status === "running" && bannerCounts && bannerCounts.percent !== null && (
                 <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/70 dark:bg-white/10">
                   <div
                     className="h-full rounded-full bg-brand-500"
@@ -1139,7 +1139,7 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                 </div>
               )}
             </div>
-            {bannerBatch.status === "running" && bannerCounts?.percent !== null && (
+            {bannerBatch.status === "running" && bannerCounts && bannerCounts.percent !== null && (
               <div className="text-xs font-semibold text-brand-700 dark:text-brand-100">
                 {bannerCounts.percent}%
               </div>
@@ -1264,10 +1264,12 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
                         <span>Created {formatDateTime(batch.createdAt)}</span>
-                        {batch.filters?.state && <span>State: {batch.filters.state as string}</span>}
-                        {batch.filters?.city && <span>City: {batch.filters.city as string}</span>}
-                        {batch.filters?.includeKeywords && (
-                          <span>Includes: {(batch.filters.includeKeywords as string) || ""}</span>
+                        {typeof batch.filters?.state === "string" && (
+                          <span>State: {batch.filters.state}</span>
+                        )}
+                        {typeof batch.filters?.city === "string" && <span>City: {batch.filters.city}</span>}
+                        {typeof batch.filters?.includeKeywords === "string" && batch.filters.includeKeywords && (
+                          <span>Includes: {batch.filters.includeKeywords}</span>
                         )}
                       </div>
                       {batch.sampleOrgIds && batch.sampleOrgIds.length > 0 && (

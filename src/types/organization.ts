@@ -75,7 +75,7 @@ export interface OrgImportBatch {
   label: string;
   source?: string | null;
   filters?: Record<string, unknown> | null;
-  status: "running" | "success" | "error";
+  status: "starting" | "running" | "success" | "error";
   requestedCount?: number | null;
   importedCount?: number | null;
   sampleOrgIds?: string[] | null;

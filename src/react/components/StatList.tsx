@@ -160,7 +160,7 @@ export const StatList = ({
   secondaryStatId = null,
   selectedStatId = null,
   onStatSelect,
-  variant = "desktop",
+  variant: _variant = "desktop",
   zipScopeDisplayName = null,
   countyScopeDisplayName = null,
 }: StatListProps) => {

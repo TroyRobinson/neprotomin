@@ -772,12 +772,12 @@ const looksLikeGroupId = (value: string): boolean => {
   return /^[A-Z]{1,2}\d{3,5}[A-Z]?$/i.test(trimmed);
 };
 
-const DEFAULT_CENSUS_DATASET = "acs/acs5";
+const DEFAULT_CENSUS_DATASET: string = "acs/acs5";
 
 // Auto-pick the correct Census dataset for common group prefixes when the user keeps the default.
 const inferDatasetForGroup = (group: string, dataset: string): { dataset: string; changed: boolean } => {
   const trimmedGroup = group.trim().toUpperCase();
-  const normalizedDataset = dataset.trim() || DEFAULT_CENSUS_DATASET;
+  const normalizedDataset: string = dataset.trim() || DEFAULT_CENSUS_DATASET;
   if (!trimmedGroup) return { dataset: normalizedDataset, changed: false };
   // Respect explicit dataset overrides
   if (normalizedDataset !== DEFAULT_CENSUS_DATASET) return { dataset: normalizedDataset, changed: false };
@@ -1472,7 +1472,7 @@ const NewStatModal = ({
           importedStatName: importedStat?.name ?? null,
         });
         defaults[v.name] = entry;
-        if (shouldSelect && !isImported) {
+        if (shouldSelect && !isImported && typeof entry.yearEnd === "number") {
           autoSelected.push({ name: v.name, yearEnd: entry.yearEnd, yearStart: entry.yearStart });
         }
       }
@@ -5104,7 +5104,7 @@ export const AdminScreen = () => {
                               const childHasChildren = statRelationsByParent.has(child.id);
                               const isChildExpanded = expandedChildIds[child.id] === true;
                               const grandChildGroups = childHasChildren
-                                ? Array.from(statRelationsByParent.get(child.id)!.entries()).sort(([a, b]) =>
+                                ? Array.from(statRelationsByParent.get(child.id)!.entries()).sort(([a], [b]) =>
                                     a === UNDEFINED_STAT_ATTRIBUTE
                                       ? 1
                                       : b === UNDEFINED_STAT_ATTRIBUTE

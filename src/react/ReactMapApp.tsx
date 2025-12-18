@@ -1810,7 +1810,7 @@ export const ReactMapApp = () => {
 
   const [zoomOutNonce, setZoomOutNonce] = useState(0);
   // Nonce to explicitly clear map category chips when clearing stat from sidebar
-  const [clearMapCategoryNonce, setClearMapCategoryNonce] = useState(0);
+  const [clearMapCategoryNonce] = useState(0);
   // Nonce to force Sidebar switch to Statistics and hide orgs toggle
   const [forceHideOrgsNonce, setForceHideOrgsNonce] = useState(0);
 

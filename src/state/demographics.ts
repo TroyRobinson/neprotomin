@@ -13,7 +13,7 @@ const STAT_QUERY = {
   stats: { $: { order: { name: "asc" as const } } },
 };
 
-const DATA_QUERY = {
+const DATA_QUERY: any = {
   statData: {
     $: {
       fields: ["id", "statId", "name", "parentArea", "boundaryType", "date", "type", "data"],
@@ -75,7 +75,7 @@ class DemographicsStore {
           this.recompute();
         }
       });
-      this.unsubscribeData = db.subscribeQuery(DATA_QUERY, (resp) => {
+      this.unsubscribeData = (db as any).subscribeQuery(DATA_QUERY, (resp: any) => {
         if (!resp.data) return;
         this.recompute();
       });

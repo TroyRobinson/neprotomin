@@ -13,6 +13,7 @@ interface CustomSelectProps {
   className?: string;
   disabled?: boolean;
   compact?: boolean; // If true, shrinks to fit content width instead of filling container
+  placeholder?: string;
 }
 
 export const CustomSelect: React.FC<CustomSelectProps> = ({
@@ -23,6 +24,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   className = "",
   disabled = false,
   compact = false,
+  placeholder = "Select an option",
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -32,9 +34,9 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const selectedOption = options.find(option => option.value === value);
-  const longestLabel = options.reduce((longest, opt) => 
-    opt.label.length > longest.length ? opt.label : longest, 
-    ''
+  const longestLabel = [placeholder, ...options.map((opt) => opt.label)].reduce(
+    (longest, label) => (label.length > longest.length ? label : longest),
+    "",
   );
 
   // Calculate dropdown position to stay within viewport
@@ -159,7 +161,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         aria-labelledby={id ? `${id}-label` : undefined}
       >
         <span className={`block truncate text-left ${compact ? 'col-start-1 row-start-1' : ''}`}>
-          {selectedOption?.label || 'Select an option'}
+          {selectedOption?.label || placeholder || 'Select an option'}
         </span>
         {compact && (
           <span className="invisible col-start-1 row-start-1 block whitespace-nowrap" aria-hidden="true">

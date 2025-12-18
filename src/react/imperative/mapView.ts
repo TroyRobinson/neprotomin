@@ -503,7 +503,9 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         try {
           const raw = localStorage.getItem(RECENT_STATS_STORAGE_KEY);
           const parsed = raw ? (JSON.parse(raw) as unknown) : null;
-          return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string" && v.trim()) : [];
+          return Array.isArray(parsed)
+            ? parsed.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+            : [];
         } catch {
           return [];
         }
