@@ -15,7 +15,8 @@ import { isDevEnv } from "../../lib/env";
 
 type SupportedAreaKind = Extract<AreaKind, "ZIP" | "COUNTY">;
 
-const STAT_DATA_CACHE_TTL_MS = 20 * 60 * 1000;
+const STAT_DATA_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const NAME_FOR_SORT = (stat: Stat) => (stat.label || stat.name || "").toLowerCase();
 
 export interface SeriesEntry {
   date: string;
@@ -41,9 +42,21 @@ const isFiniteNumber = (value: unknown): value is number =>
 
 interface UseStatsOptions {
   statDataEnabled?: boolean;
+  priorityStatIds?: string[];
+  categoryFilter?: string | null;
+  initialBatchSize?: number;
+  batchSize?: number;
+  enableTrickle?: boolean;
 }
 
-export const useStats = ({ statDataEnabled = true }: UseStatsOptions = {}) => {
+export const useStats = ({
+  statDataEnabled = true,
+  priorityStatIds = [],
+  categoryFilter = null,
+  initialBatchSize = 12,
+  batchSize = 12,
+  enableTrickle = true,
+}: UseStatsOptions = {}) => {
   const { authReady } = useAuthSession();
   const queryEnabled = authReady;
 
@@ -55,13 +68,16 @@ export const useStats = ({ statDataEnabled = true }: UseStatsOptions = {}) => {
   // Cache each payload slice so disabling statData doesn't wipe the last good statData payload.
   const cachedStatsRef = useRef<any[] | undefined>(undefined);
   const cachedStatRelationsRef = useRef<any[] | undefined>(undefined);
-  const cachedStatDataRef = useRef<any[] | undefined>(undefined);
+  const cachedStatDataByIdRef = useRef<Map<string, any>>(new Map());
+  const [statDataCacheVersion, setStatDataCacheVersion] = useState(0);
+  const [loadedStatIds, setLoadedStatIds] = useState<Set<string>>(new Set());
+  const [batchGeneration, setBatchGeneration] = useState(0);
 
-  const shouldIncludeStatData =
-    statDataEnabled &&
-    (statDataRefreshRequested || !cachedStatDataRef.current || lastStatDataAt === null);
-
-  const { data, isLoading, error } = db.useQuery(
+  const {
+    data: statsResp,
+    isLoading: statsLoading,
+    error: statsError,
+  } = db.useQuery(
     queryEnabled
       ? {
           stats: {
@@ -84,44 +100,16 @@ export const useStats = ({ statDataEnabled = true }: UseStatsOptions = {}) => {
               order: { sortOrder: "asc" as const },
             },
           },
-          ...(shouldIncludeStatData
-            ? {
-                statData: {
-                  $: {
-                    where: { name: "root" },
-                    fields: [
-                      "statId",
-                      "name",
-                      "parentArea",
-                      "boundaryType",
-                      "date",
-                      "type",
-                      "data",
-                    ],
-                    order: { date: "asc" as const },
-                  },
-                },
-              }
-            : {}),
         }
       : null,
   );
 
-  if (Array.isArray(data?.stats)) {
-    cachedStatsRef.current = data.stats;
+  if (Array.isArray(statsResp?.stats)) {
+    cachedStatsRef.current = statsResp.stats;
   }
-  if (Array.isArray(data?.statRelations)) {
-    cachedStatRelationsRef.current = data.statRelations;
+  if (Array.isArray(statsResp?.statRelations)) {
+    cachedStatRelationsRef.current = statsResp.statRelations;
   }
-
-  useEffect(() => {
-    if (!Array.isArray(data?.statData) || data.statData.length === 0) return;
-    cachedStatDataRef.current = data.statData;
-    setLastStatDataAt(Date.now());
-    if (statDataRefreshRequested) {
-      setStatDataRefreshRequested(false);
-    }
-  }, [data?.statData, statDataRefreshRequested]);
 
   useEffect(() => {
     if (!statDataEnabled) return;
@@ -129,7 +117,11 @@ export const useStats = ({ statDataEnabled = true }: UseStatsOptions = {}) => {
     if (typeof window === "undefined") return;
     const age = Date.now() - lastStatDataAt;
     if (age >= STAT_DATA_CACHE_TTL_MS) {
-      if (!statDataRefreshRequested) setStatDataRefreshRequested(true);
+      if (!statDataRefreshRequested) {
+        setStatDataRefreshRequested(true);
+        setLoadedStatIds(new Set());
+        setBatchGeneration((prev) => prev + 1);
+      }
       return;
     }
     const timeout = window.setTimeout(
@@ -139,24 +131,17 @@ export const useStats = ({ statDataEnabled = true }: UseStatsOptions = {}) => {
     return () => window.clearTimeout(timeout);
   }, [lastStatDataAt, statDataEnabled, statDataRefreshRequested]);
 
-  const effectiveData = {
-    stats: Array.isArray(data?.stats)
-      ? data?.stats
-      : cachedStatsRef.current,
-    statRelations: Array.isArray(data?.statRelations)
-      ? data?.statRelations
-      : cachedStatRelationsRef.current,
-    statData: Array.isArray(data?.statData)
-      ? data?.statData
-      : cachedStatDataRef.current,
-  };
+  const statsRows: any[] | undefined = Array.isArray(statsResp?.stats)
+    ? statsResp.stats
+    : cachedStatsRef.current;
+  const statRelationsRows: any[] | undefined = Array.isArray(statsResp?.statRelations)
+    ? statsResp.statRelations
+    : cachedStatRelationsRef.current;
 
-  // Normalize stats once to reuse everywhere
   const statsById = useMemo(() => {
     const map = new Map<string, Stat>();
-    if (!effectiveData?.stats) return map;
-
-    for (const row of effectiveData.stats) {
+    if (!Array.isArray(statsRows)) return map;
+    for (const row of statsRows) {
       if (row?.id && typeof row.name === "string" && typeof row.category === "string") {
         map.set(row.id, {
           id: row.id,
@@ -171,7 +156,186 @@ export const useStats = ({ statDataEnabled = true }: UseStatsOptions = {}) => {
       }
     }
     return map;
-  }, [effectiveData?.stats]);
+  }, [statsRows]);
+
+  const childrenByParent = useMemo(() => {
+    const map = new Map<string, string[]>();
+    if (!Array.isArray(statRelationsRows)) return map;
+    for (const row of statRelationsRows) {
+      const parentId = typeof row?.parentStatId === "string" ? row.parentStatId : null;
+      const childId = typeof row?.childStatId === "string" ? row.childStatId : null;
+      if (!parentId || !childId) continue;
+      const list = map.get(parentId) ?? [];
+      list.push(childId);
+      map.set(parentId, list);
+    }
+    return map;
+  }, [statRelationsRows]);
+
+  // Seed loaded set from any cached statData (initial render after cache restore)
+  useEffect(() => {
+    if (loadedStatIds.size > 0) return;
+    const cached = Array.from(cachedStatDataByIdRef.current.values());
+    if (cached.length === 0) return;
+    const next = new Set<string>();
+    for (const row of cached) {
+      if (row && typeof (row as any).statId === "string") next.add((row as any).statId);
+    }
+    if (next.size > 0) setLoadedStatIds(next);
+  }, [loadedStatIds.size]);
+
+  const priorityIds = useMemo(
+    () => Array.from(new Set(priorityStatIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0))),
+    [priorityStatIds],
+  );
+
+  const orderedStatIds = useMemo(() => {
+    const stats = Array.from(statsById.values());
+    stats.sort((a, b) => NAME_FOR_SORT(a).localeCompare(NAME_FOR_SORT(b)));
+    if (!categoryFilter) return stats.map((s) => s.id);
+    const preferred = stats.filter((s) => s.category === categoryFilter);
+    const rest = stats.filter((s) => s.category !== categoryFilter);
+    return [...preferred, ...rest].map((s) => s.id);
+  }, [statsById, categoryFilter]);
+
+  const batchIds = useMemo(() => {
+    if (!statDataEnabled) return [];
+    const batch: string[] = [];
+    const seen = new Set<string>();
+    const loaded = loadedStatIds;
+    const desired = (loaded.size === 0 ? initialBatchSize : batchSize) + priorityIds.length;
+    const add = (id?: string | null) => {
+      if (!id || typeof id !== "string") return;
+      if (loaded.has(id) || seen.has(id)) return;
+      seen.add(id);
+      batch.push(id);
+    };
+    const addWithChildren = (id: string, depth: number) => {
+      add(id);
+      if (depth <= 0) return;
+      const children = childrenByParent.get(id) ?? [];
+      for (const childId of children) {
+        add(childId);
+        if (depth > 1) {
+          const grandChildren = childrenByParent.get(childId) ?? [];
+          for (const gcId of grandChildren) add(gcId);
+        }
+      }
+    };
+
+    for (const id of priorityIds) addWithChildren(id, 2);
+    for (const id of orderedStatIds) {
+      if (!enableTrickle && batch.length >= Math.max(priorityIds.length, initialBatchSize)) break;
+      if (batch.length >= Math.max(priorityIds.length, desired)) break;
+      addWithChildren(id, 1);
+    }
+    return batch;
+  }, [
+    statDataEnabled,
+    loadedStatIds,
+    priorityIds,
+    orderedStatIds,
+    initialBatchSize,
+    batchSize,
+    enableTrickle,
+    batchGeneration,
+    childrenByParent,
+  ]);
+
+  const shouldIncludeStatData =
+    statDataEnabled &&
+    (batchIds.length > 0 || statDataRefreshRequested || lastStatDataAt === null);
+
+  const {
+    data: statDataResp,
+    isLoading: statDataLoading,
+    error: statDataError,
+  } = db.useQuery(
+    queryEnabled && shouldIncludeStatData && batchIds.length > 0
+      ? {
+          statData: {
+            $: {
+              where: { name: "root", statId: { $in: batchIds } },
+              fields: ["id", "statId", "name", "parentArea", "boundaryType", "date", "type", "data"],
+              order: { date: "asc" as const },
+            },
+          },
+        }
+      : null,
+  );
+
+  const lastRequestedBatchKeyRef = useRef<string>("");
+  const lastRequestedBatchIdsRef = useRef<string[]>([]);
+  useEffect(() => {
+    if (!queryEnabled || !shouldIncludeStatData || batchIds.length === 0) return;
+    lastRequestedBatchKeyRef.current = `${batchGeneration}::${batchIds.join("|")}`;
+    lastRequestedBatchIdsRef.current = batchIds;
+  }, [batchGeneration, batchIds, queryEnabled, shouldIncludeStatData]);
+
+  const processedBatchKeyRef = useRef<string>("");
+  useEffect(() => {
+    if (statDataLoading) return;
+    if (!queryEnabled || !shouldIncludeStatData) return;
+    const batchKey = lastRequestedBatchKeyRef.current;
+    if (!batchKey) return;
+    if (processedBatchKeyRef.current === batchKey) return;
+    processedBatchKeyRef.current = batchKey;
+
+    const rows = Array.isArray(statDataResp?.statData) ? (statDataResp.statData as any[]) : [];
+    let didMerge = false;
+    for (const row of rows) {
+      const rowId = typeof row?.id === "string" ? row.id : null;
+      if (!rowId) continue;
+      cachedStatDataByIdRef.current.set(rowId, row);
+      didMerge = true;
+    }
+    if (didMerge) {
+      setStatDataCacheVersion((v) => v + 1);
+      setLastStatDataAt(Date.now());
+    }
+
+    const requested = lastRequestedBatchIdsRef.current;
+    setLoadedStatIds((prev) => {
+      const next = new Set(prev);
+      for (const id of requested) next.add(id);
+      for (const row of rows) {
+        if (row && typeof row.statId === "string") next.add(row.statId);
+      }
+      return next;
+    });
+
+    if (statDataRefreshRequested) {
+      setStatDataRefreshRequested(false);
+    }
+  }, [queryEnabled, shouldIncludeStatData, statDataLoading, statDataResp, statDataRefreshRequested]);
+
+  const cachedStatDataRows = useMemo(
+    () => Array.from(cachedStatDataByIdRef.current.values()),
+    [statDataCacheVersion],
+  );
+
+  const statDataRows = useMemo(() => {
+    const merged = new Map<string, any>();
+    for (const row of cachedStatDataRows) {
+      const rowId = typeof row?.id === "string" ? row.id : null;
+      if (rowId) merged.set(rowId, row);
+    }
+    const incoming = Array.isArray(statDataResp?.statData) ? (statDataResp.statData as any[]) : [];
+    for (const row of incoming) {
+      const rowId = typeof row?.id === "string" ? row.id : null;
+      if (rowId) merged.set(rowId, row);
+    }
+    return Array.from(merged.values());
+  }, [cachedStatDataRows, statDataResp?.statData]);
+
+  const effectiveData = {
+    stats: statsRows,
+    statRelations: statRelationsRows,
+    statData: statDataRows,
+  };
+
+  const isLoading = statsLoading || statDataLoading;
+  const error = statsError || statDataError;
 
   // Build time series per stat and area kind (ZIP vs COUNTY for now)
   const seriesByStatIdByKind = useMemo(() => {

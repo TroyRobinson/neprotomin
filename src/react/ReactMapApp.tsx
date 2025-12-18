@@ -1092,6 +1092,10 @@ export const ReactMapApp = () => {
     zipScope,
   });
 
+  const priorityStatIds = useMemo(
+    () => [selectedStatId, secondaryStatId].filter((id): id is string => typeof id === "string"),
+    [selectedStatId, secondaryStatId],
+  );
   const {
     statsById,
     seriesByStatIdByKind,
@@ -1100,7 +1104,14 @@ export const ReactMapApp = () => {
     statRelationsByParent,
     statRelationsByChild,
     isLoading: areStatsLoading,
-  } = useStats({ statDataEnabled: activeScreen !== "admin" });
+  } = useStats({
+    statDataEnabled: activeScreen !== "admin",
+    priorityStatIds,
+    categoryFilter,
+    initialBatchSize: 12,
+    batchSize: 12,
+    enableTrickle: true,
+  });
   const { organizations } = useOrganizations();
   const { recentOrganizations } = useRecentOrganizations();
   const organizationSearchIndex = useMemo(
