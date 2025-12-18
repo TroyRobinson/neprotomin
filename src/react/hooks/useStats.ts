@@ -78,12 +78,16 @@ export const useStats = ({
   const persistedSummaryRowsRef = useRef<any[]>([]);
   const [persistedSummaryRowsVersion, setPersistedSummaryRowsVersion] = useState(0);
   const [cacheClearNonce, setCacheClearNonce] = useState(0);
+  const [cacheUpdateNonce, setCacheUpdateNonce] = useState(0);
   useEffect(() => {
     return subscribeToCacheEvents((event) => {
       if (event.type === "cleared") {
         persistedSummaryRowsRef.current = [];
         setPersistedSummaryRowsVersion((v) => v + 1);
         setCacheClearNonce((v) => v + 1);
+      }
+      if (event.type === "updated" && event.store === "summaries") {
+        setCacheUpdateNonce((v) => v + 1);
       }
     });
   }, []);
@@ -445,6 +449,7 @@ export const useStats = ({
     primaryScopedParentArea,
     summaryKindsKey,
     cacheClearNonce,
+    cacheUpdateNonce,
   ]);
 
   // Fetch statewide summaries first (fast and always available), then optionally

@@ -10,7 +10,7 @@ import { OKLAHOMA_CENTER, OKLAHOMA_DEFAULT_ZOOM } from "../../types/organization
 import { themeController } from "./theme";
 // palettes/hover are used inside boundary layer helpers now
 import { createCategoryChips } from "./categoryChips";
-import { setStatDataPriorityStatIds, setStatDataScopeParentAreas, statDataStore } from "../../state/statData";
+import { setStatDataPrefetchStatIds, setStatDataPriorityStatIds, setStatDataScopeParentAreas, statDataStore } from "../../state/statData";
 import type { StatDataByParentArea } from "../../state/statData";
 import { createZipFloatingTitle, type ZipFloatingTitleController } from "./components/zipFloatingTitle";
 import { createZipLabels, type ZipLabelsController } from "./components/zipLabels";
@@ -187,6 +187,10 @@ type StatDataStoreMap = Map<string, StatDataByParentArea>;
 
 const FALLBACK_ZIP_PARENT_AREA =
   normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma") ?? "Oklahoma";
+
+const RECENT_STATS_STORAGE_KEY = "uiState.recentStats";
+const PREFETCH_RECENT_STATS_KEY = "settings.prefetchRecentStats";
+const RECENT_STATS_MAX = 10;
 
 const VIEWPORT_DOMINANCE_RATIO = 0.45;
 
@@ -475,6 +479,55 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     );
     setStatDataPriorityStatIds(statIds);
     setStatDataScopeParentAreas(getScopeAreaNames());
+
+    // Phase 3: idle prefetch for recently viewed stats so switching back feels instant.
+    try {
+      if (typeof window === "undefined") return;
+      if (statIds.length === 0) {
+        setStatDataPrefetchStatIds([]);
+        return;
+      }
+      const prefetchEnabled = (() => {
+        try {
+          return localStorage.getItem(PREFETCH_RECENT_STATS_KEY) === "true";
+        } catch {
+          return false;
+        }
+      })();
+      if (!prefetchEnabled) {
+        setStatDataPrefetchStatIds([]);
+        return;
+      }
+
+      const readRecent = (): string[] => {
+        try {
+          const raw = localStorage.getItem(RECENT_STATS_STORAGE_KEY);
+          const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+          return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string" && v.trim()) : [];
+        } catch {
+          return [];
+        }
+      };
+
+      const writeRecent = (ids: string[]) => {
+        try {
+          localStorage.setItem(RECENT_STATS_STORAGE_KEY, JSON.stringify(ids));
+        } catch {}
+      };
+
+      const existing = readRecent();
+      const next = [...statIds, ...existing.filter((id) => !statIds.includes(id))].slice(0, RECENT_STATS_MAX);
+      writeRecent(next);
+
+      const candidates = next.filter((id) => !statIds.includes(id)).slice(0, 6);
+      const scheduleIdle = (fn: () => void) => {
+        const ric = (window as any).requestIdleCallback as undefined | ((cb: () => void, opts?: any) => number);
+        if (ric) ric(fn, { timeout: 1500 });
+        else setTimeout(fn, 1200);
+      };
+
+      scheduleIdle(() => setStatDataPrefetchStatIds(candidates));
+    } catch {}
   };
 
   const mergeStatEntries = (existing: StatDataEntry | undefined, incoming: StatDataEntry): StatDataEntry => {

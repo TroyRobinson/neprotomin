@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { clearPersistentStatsCache } from "../../lib/persistentStatsCache";
 
+const PREFETCH_RECENT_STATS_KEY = "settings.prefetchRecentStats";
+
 interface MapSettingsModalProps {
   open: boolean;
   onClose: () => void;
@@ -16,6 +18,7 @@ export const MapSettingsModal: React.FC<MapSettingsModalProps> = ({
 }) => {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const [isClearingCache, setIsClearingCache] = useState(false);
+  const [prefetchEnabled, setPrefetchEnabled] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -26,6 +29,15 @@ export const MapSettingsModal: React.FC<MapSettingsModalProps> = ({
     }
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    try {
+      setPrefetchEnabled(localStorage.getItem(PREFETCH_RECENT_STATS_KEY) === "true");
+    } catch {
+      setPrefetchEnabled(false);
+    }
+  }, [open]);
 
   if (!open) return null;
 
@@ -115,6 +127,26 @@ export const MapSettingsModal: React.FC<MapSettingsModalProps> = ({
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Clears cached stat summaries/maps stored on this device.
             </p>
+            <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-md border border-transparent p-2 hover:border-slate-200 dark:hover:border-slate-700">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4"
+                checked={prefetchEnabled}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setPrefetchEnabled(next);
+                  try {
+                    localStorage.setItem(PREFETCH_RECENT_STATS_KEY, next ? "true" : "false");
+                  } catch {}
+                }}
+              />
+              <div>
+                <div className="font-medium text-slate-800 dark:text-slate-100">Preload recent stats when idle</div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Prefetch recently viewed choropleths in the background to make switching instant.
+                </p>
+              </div>
+            </label>
             <div className="mt-3">
               <button
                 type="button"

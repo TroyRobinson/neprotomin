@@ -348,3 +348,46 @@ export const writeStatMapCache = async ({
 
 export const statMapCacheKeyFor = STAT_MAP_KEY;
 export const statSummaryCacheKeyFor = SUMMARY_KEY;
+
+type CacheLock = { acquired: boolean; token: string; release: () => void };
+
+const LOCK_PREFIX = "neprotomin-lock:";
+
+export const acquireCacheLock = (name: string, ttlMs: number): CacheLock => {
+  const token = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const key = `${LOCK_PREFIX}${name}`;
+  const now = Date.now();
+  const expiresAt = now + Math.max(500, ttlMs);
+
+  const release = () => {
+    try {
+      if (typeof localStorage === "undefined") return;
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { token?: string } | null;
+      if (parsed?.token !== token) return;
+      localStorage.removeItem(key);
+    } catch {
+      // Best-effort.
+    }
+  };
+
+  try {
+    if (typeof localStorage === "undefined") return { acquired: true, token, release };
+    const raw = localStorage.getItem(key);
+    const existing = raw ? (JSON.parse(raw) as { token?: string; expiresAt?: number } | null) : null;
+    const existingExpires = typeof existing?.expiresAt === "number" ? existing.expiresAt : 0;
+    if (existing && existingExpires > now) {
+      return { acquired: false, token, release };
+    }
+
+    localStorage.setItem(key, JSON.stringify({ token, expiresAt }));
+    const confirmRaw = localStorage.getItem(key);
+    const confirm = confirmRaw ? (JSON.parse(confirmRaw) as { token?: string } | null) : null;
+    const acquired = confirm?.token === token;
+    return { acquired, token, release };
+  } catch {
+    // If localStorage is blocked (e.g. privacy mode), fail open so the app still works.
+    return { acquired: true, token, release };
+  }
+};

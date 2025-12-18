@@ -3,6 +3,7 @@ import { formatCountyScopeLabel, normalizeScopeLabel } from "../lib/scopeLabels"
 import type { StatData } from "../types/statData";
 import type { AreaKind } from "../types/areas";
 import {
+  acquireCacheLock,
   DEFAULT_STAT_MAP_LRU_LIMIT,
   PERSISTED_STAT_CACHE_TTL_MS,
   readStatMapCache,
@@ -87,16 +88,20 @@ class StatDataStore {
   private byStatId: Map<string, StatDataByParentArea> = new Map();
   private enabled = true;
   private priorityStatIds: string[] = [];
+  private prefetchStatIds: string[] = [];
   private scopeParentAreas: string[] = [];
   private refreshTimeout: ReturnType<typeof setTimeout> | null = null;
   private scheduledTtlTimeout: ReturnType<typeof setTimeout> | null = null;
   private inflightRefresh: Promise<void> | null = null;
+  private queuedRefreshForce = false;
+  private refreshQueued = false;
   private hydratedKeys = new Set<string>();
   private metaByKey = new Map<
     string,
     { date: string; summaryUpdatedAt: number | null; savedAt: number }
   >();
   private unsubscribeCacheEvents: (() => void) | null = null;
+  private focusHydratePromise: Promise<void> | null = null;
 
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
@@ -112,12 +117,34 @@ class StatDataStore {
     if (!this.enabled) return;
     if (!this.unsubscribeCacheEvents) {
       this.unsubscribeCacheEvents = subscribeToCacheEvents((event) => {
-        if (event.type !== "cleared") return;
-        this.byStatId = new Map();
-        this.hydratedKeys.clear();
-        this.metaByKey.clear();
-        this.emit();
-        this.scheduleRefresh({ force: true });
+        if (event.type === "cleared") {
+          this.byStatId = new Map();
+          this.hydratedKeys.clear();
+          this.metaByKey.clear();
+          this.emit();
+          this.scheduleRefresh({ force: true });
+          return;
+        }
+        if (event.type === "updated" && event.store === "statMaps") {
+          const parts = String(event.key).split(":");
+          // key format: v{n}:statMap:{statId}:{parentArea}:{boundaryType}
+          if (parts.length >= 5 && parts[1] === "statMap") {
+            const statId = parts[2];
+            const parentArea = parts[3];
+            const boundaryType = normalizeBoundaryType(parts[4]);
+            if (statId && parentArea && boundaryType) {
+              const metaKey = statMapKey(statId, parentArea, boundaryType);
+              this.hydratedKeys.delete(metaKey);
+              // If this tab is currently focused on this stat/scope, rehydrate immediately.
+              const isFocused =
+                (this.priorityStatIds.includes(statId) || this.prefetchStatIds.includes(statId)) &&
+                this.getExpandedParentAreas().includes(parentArea);
+              if (isFocused) {
+                this.hydrateFromCache([{ statId, parentArea, boundaryType }]).catch(() => {});
+              }
+            }
+          }
+        }
       });
     }
     this.scheduleRefresh({ force: false });
@@ -167,6 +194,23 @@ class StatDataStore {
       next.some((id, idx) => id !== this.priorityStatIds[idx]);
     if (!changed) return;
     this.priorityStatIds = next;
+    this.hydrateFocusFromCache().catch(() => {});
+    this.scheduleRefresh({ force: false });
+  }
+
+  setPrefetchStatIds(statIds: string[]) {
+    const next = Array.from(
+      new Set(
+        (Array.isArray(statIds) ? statIds : [])
+          .filter((id): id is string => typeof id === "string" && id.trim().length > 0),
+      ),
+    ).slice(0, 8);
+    const changed =
+      next.length !== this.prefetchStatIds.length ||
+      next.some((id, idx) => id !== this.prefetchStatIds[idx]);
+    if (!changed) return;
+    this.prefetchStatIds = next;
+    this.hydrateFocusFromCache().catch(() => {});
     this.scheduleRefresh({ force: false });
   }
 
@@ -183,6 +227,7 @@ class StatDataStore {
       next.some((value, idx) => value !== this.scopeParentAreas[idx]);
     if (!changed) return;
     this.scopeParentAreas = next;
+    this.hydrateFocusFromCache().catch(() => {});
     this.scheduleRefresh({ force: false });
   }
 
@@ -190,11 +235,53 @@ class StatDataStore {
     if (!this.enabled) return;
     if (this.listeners.size === 0) return;
 
+    if (this.inflightRefresh) {
+      this.refreshQueued = true;
+      this.queuedRefreshForce = this.queuedRefreshForce || force;
+      return;
+    }
+
     if (this.refreshTimeout) clearTimeout(this.refreshTimeout);
     this.refreshTimeout = setTimeout(() => {
       this.refreshTimeout = null;
       this.refresh({ force }).catch(() => {});
     }, 120);
+  }
+
+  private getExpandedParentAreas(): string[] {
+    const requested = Array.from(
+      new Set(
+        [
+          ...this.scopeParentAreas,
+          normalizeScopeLabel("Oklahoma") ?? "Oklahoma",
+        ].filter((value): value is string => typeof value === "string" && value.length > 0),
+      ),
+    );
+    return expandScopeParentAreasForQuery(requested);
+  }
+
+  private async hydrateFocusFromCache(): Promise<void> {
+    if (!this.enabled) return;
+    if (this.listeners.size === 0) return;
+    if (typeof window === "undefined") return;
+    if (this.focusHydratePromise) return this.focusHydratePromise;
+
+    const statIds = Array.from(new Set([...this.priorityStatIds, ...this.prefetchStatIds]));
+    if (statIds.length === 0) return;
+    const parentAreas = this.getExpandedParentAreas();
+    const boundaryTypes: BoundaryTypeKey[] = ["ZIP", "COUNTY"];
+
+    this.focusHydratePromise = this.hydrateFromCache(
+      statIds.flatMap((statId) =>
+        parentAreas.flatMap((parentArea) =>
+          boundaryTypes.map((boundaryType) => ({ statId, parentArea, boundaryType })),
+        ),
+      ),
+    ).finally(() => {
+      this.focusHydratePromise = null;
+    });
+
+    return this.focusHydratePromise;
   }
 
   private scheduleTtlRefresh() {
@@ -273,7 +360,7 @@ class StatDataStore {
     if (this.priorityStatIds.length === 0) return;
 
     this.inflightRefresh = (async () => {
-      const statIds = this.priorityStatIds;
+      const statIds = Array.from(new Set([...this.priorityStatIds, ...this.prefetchStatIds]));
       const requestedParentAreas = Array.from(
         new Set(
           [
@@ -285,138 +372,142 @@ class StatDataStore {
       const parentAreasForQuery = expandScopeParentAreasForQuery(requestedParentAreas);
       const boundaryTypes: BoundaryTypeKey[] = ["ZIP", "COUNTY"];
 
-      await this.hydrateFromCache(
-        statIds.flatMap((statId) =>
-          requestedParentAreas.flatMap((parentArea) =>
-            boundaryTypes.map((boundaryType) => ({ statId, parentArea, boundaryType })),
-          ),
-        ),
-      );
+      await this.hydrateFocusFromCache();
 
-      // First hit summaries (small) so we only fetch the latest full maps (heavy).
-      let summaries: any[] = [];
-      try {
-        const resp = await db.queryOnce({
-          statDataSummaries: {
-            $: {
-              where: {
-                name: "root",
-                statId: { $in: statIds },
-                parentArea: { $in: parentAreasForQuery },
-                boundaryType: { $in: boundaryTypes },
-              },
-              limit: 10000,
-              fields: ["statId", "name", "parentArea", "boundaryType", "date", "type", "updatedAt"],
-            },
-          },
-        });
-        summaries = Array.isArray((resp as any)?.data?.statDataSummaries)
-          ? ((resp as any).data.statDataSummaries as any[])
-          : [];
-      } catch (error) {
-        console.warn("[statDataStore] Failed to query summaries", error);
-        summaries = [];
+      // Cross-tab dedupe: only one tab should do the live Instant fetch at a time.
+      const lock = acquireCacheLock("statData-refresh", 15_000);
+      if (!lock.acquired) {
+        // Another tab is refreshing; we'll likely get a cache update event soon.
+        setTimeout(() => this.scheduleRefresh({ force: false }), 500);
+        return;
       }
 
-      type DesiredEntry = {
-        statId: string;
-        parentAreaKey: string;
-        rawParentArea: string;
-        boundaryType: BoundaryTypeKey;
-        date: string;
-        type: string;
-        updatedAt: number;
-      };
+      try {
+        // First hit summaries (small) so we only fetch the latest full maps (heavy).
+        let summaries: any[] = [];
+        try {
+          const resp = await db.queryOnce({
+            statDataSummaries: {
+              $: {
+                where: {
+                  name: "root",
+                  statId: { $in: statIds },
+                  parentArea: { $in: parentAreasForQuery },
+                  boundaryType: { $in: boundaryTypes },
+                },
+                limit: 10000,
+                fields: ["statId", "name", "parentArea", "boundaryType", "date", "type", "updatedAt"],
+              },
+            },
+          });
+          summaries = Array.isArray((resp as any)?.data?.statDataSummaries)
+            ? ((resp as any).data.statDataSummaries as any[])
+            : [];
+        } catch (error) {
+          console.warn("[statDataStore] Failed to query summaries", error);
+          summaries = [];
+        }
 
-      const desired = new Map<string, DesiredEntry>();
-      if (summaries.length > 0) {
-        for (const row of summaries) {
-          const statId = typeof row?.statId === "string" ? row.statId : null;
-          if (!statId) continue;
-          if (row?.name !== "root") continue;
-          const boundaryType = normalizeBoundaryType(row?.boundaryType);
-          if (!boundaryType) continue;
-          const rawParentArea = typeof row?.parentArea === "string" ? row.parentArea : null;
-          if (!rawParentArea) continue;
-          const parentAreaKeys = normalizeParentAreaKeys(rawParentArea);
-          if (parentAreaKeys.length === 0) continue;
-          const date =
-            typeof row?.date === "string" ? row.date : typeof row?.date === "number" ? String(row.date) : null;
-          const type = typeof row?.type === "string" ? row.type : null;
-          const updatedAt = typeof row?.updatedAt === "number" && Number.isFinite(row.updatedAt) ? row.updatedAt : null;
-          if (!date || !type || updatedAt === null) continue;
-          for (const parentAreaKey of parentAreaKeys) {
-            const key = statMapKey(statId, parentAreaKey, boundaryType);
-            desired.set(key, { statId, parentAreaKey, rawParentArea, boundaryType, date, type, updatedAt });
+        type DesiredEntry = {
+          statId: string;
+          parentAreaKey: string;
+          rawParentArea: string;
+          boundaryType: BoundaryTypeKey;
+          date: string;
+          type: string;
+          updatedAt: number;
+        };
+
+        const desired = new Map<string, DesiredEntry>();
+        if (summaries.length > 0) {
+          for (const row of summaries) {
+            const statId = typeof row?.statId === "string" ? row.statId : null;
+            if (!statId) continue;
+            if (row?.name !== "root") continue;
+            const boundaryType = normalizeBoundaryType(row?.boundaryType);
+            if (!boundaryType) continue;
+            const rawParentArea = typeof row?.parentArea === "string" ? row.parentArea : null;
+            if (!rawParentArea) continue;
+            const parentAreaKeys = normalizeParentAreaKeys(rawParentArea);
+            if (parentAreaKeys.length === 0) continue;
+            const date =
+              typeof row?.date === "string" ? row.date : typeof row?.date === "number" ? String(row.date) : null;
+            const type = typeof row?.type === "string" ? row.type : null;
+            const updatedAt =
+              typeof row?.updatedAt === "number" && Number.isFinite(row.updatedAt) ? row.updatedAt : null;
+            if (!date || !type || updatedAt === null) continue;
+            for (const parentAreaKey of parentAreaKeys) {
+              const key = statMapKey(statId, parentAreaKey, boundaryType);
+              desired.set(key, { statId, parentAreaKey, rawParentArea, boundaryType, date, type, updatedAt });
+            }
           }
         }
-      }
 
-      const toFetch: DesiredEntry[] = [];
-      for (const entry of desired.values()) {
-        const key = statMapKey(entry.statId, entry.parentAreaKey, entry.boundaryType);
-        const meta = this.metaByKey.get(key);
-        const cachedUpdatedAt = meta?.summaryUpdatedAt ?? null;
-        const cachedDate = meta?.date ?? null;
-        if (!force && cachedUpdatedAt !== null && cachedUpdatedAt === entry.updatedAt && cachedDate === entry.date) {
-          continue;
+        const toFetch: DesiredEntry[] = [];
+        for (const entry of desired.values()) {
+          const key = statMapKey(entry.statId, entry.parentAreaKey, entry.boundaryType);
+          const meta = this.metaByKey.get(key);
+          const cachedUpdatedAt = meta?.summaryUpdatedAt ?? null;
+          const cachedDate = meta?.date ?? null;
+          if (!force && cachedUpdatedAt !== null && cachedUpdatedAt === entry.updatedAt && cachedDate === entry.date) {
+            continue;
+          }
+          toFetch.push(entry);
         }
-        toFetch.push(entry);
-      }
 
-      const shouldFallbackToDirectStatData =
-        summaries.length === 0 || toFetch.length === 0;
+        const shouldFallbackToDirectStatData =
+          summaries.length === 0 || toFetch.length === 0;
 
-      const fetchFromStatData = async ({
-        restrictToDates,
-      }: {
-        restrictToDates: boolean;
-      }): Promise<any[]> => {
-        const statIdsToFetch = statIds;
-        const boundariesToFetch = boundaryTypes;
-        const datesToFetch = restrictToDates ? Array.from(new Set(toFetch.map((e) => e.date))) : [];
+        const fetchFromStatData = async ({
+          restrictToDates,
+        }: {
+          restrictToDates: boolean;
+        }): Promise<any[]> => {
+          const statIdsToFetch = statIds;
+          const boundariesToFetch = boundaryTypes;
+          const datesToFetch = restrictToDates ? Array.from(new Set(toFetch.map((e) => e.date))) : [];
 
-        const where: any = {
-          name: "root",
-          statId: { $in: statIdsToFetch },
-          parentArea: { $in: parentAreasForQuery },
-          boundaryType: { $in: boundariesToFetch },
-        };
-        if (restrictToDates && datesToFetch.length > 0) where.date = { $in: datesToFetch };
+          const where: any = {
+            name: "root",
+            statId: { $in: statIdsToFetch },
+            parentArea: { $in: parentAreasForQuery },
+            boundaryType: { $in: boundariesToFetch },
+          };
+          if (restrictToDates && datesToFetch.length > 0) where.date = { $in: datesToFetch };
 
-        const resp = await db.queryOnce({
-          statData: {
-            $: {
-              where,
-              limit: 10000,
-              fields: ["id", "statId", "name", "parentArea", "boundaryType", "date", "type", "data"],
-              order: { date: "asc" as const },
+          const resp = await db.queryOnce({
+            statData: {
+              $: {
+                where,
+                limit: 10000,
+                fields: ["id", "statId", "name", "parentArea", "boundaryType", "date", "type", "data"],
+                order: { date: "asc" as const },
+              },
             },
-          },
-        });
-        return Array.isArray((resp as any)?.data?.statData) ? ((resp as any).data.statData as any[]) : [];
-      };
+          });
+          return Array.isArray((resp as any)?.data?.statData) ? ((resp as any).data.statData as any[]) : [];
+        };
 
-      let statRows: any[] = [];
-      if (!shouldFallbackToDirectStatData) {
-        try {
-          statRows = await fetchFromStatData({ restrictToDates: true });
-        } catch (error) {
-          console.warn("[statDataStore] Failed to query statData maps (targeted)", error);
-          statRows = [];
+        let statRows: any[] = [];
+        if (!shouldFallbackToDirectStatData) {
+          try {
+            statRows = await fetchFromStatData({ restrictToDates: true });
+          } catch (error) {
+            console.warn("[statDataStore] Failed to query statData maps (targeted)", error);
+            statRows = [];
+          }
         }
-      }
 
-      // If summaries are missing (or targeted date fetch missed), fall back to pulling
-      // all available dates for the focused stat(s) + scope and select latest client-side.
-      if (shouldFallbackToDirectStatData || statRows.length === 0) {
-        try {
-          statRows = await fetchFromStatData({ restrictToDates: false });
-        } catch (error) {
-          console.warn("[statDataStore] Failed to query statData maps (fallback)", error);
-          statRows = [];
+        // If summaries are missing (or targeted date fetch missed), fall back to pulling
+        // all available dates for the focused stat(s) + scope and select latest client-side.
+        if (shouldFallbackToDirectStatData || statRows.length === 0) {
+          try {
+            statRows = await fetchFromStatData({ restrictToDates: false });
+          } catch (error) {
+            console.warn("[statDataStore] Failed to query statData maps (fallback)", error);
+            statRows = [];
+          }
         }
-      }
 
       const rowsByParentKey = new Map<
         string,
@@ -544,14 +635,24 @@ class StatDataStore {
         didUpdate = true;
       }
 
-      if (didUpdate) {
-        this.byStatId = nextByStatId;
-        this.emit();
-      }
+        if (didUpdate) {
+          this.byStatId = nextByStatId;
+          this.emit();
+        }
 
-      this.scheduleTtlRefresh();
+        this.scheduleTtlRefresh();
+      } finally {
+        lock.release();
+      }
     })().finally(() => {
       this.inflightRefresh = null;
+      if (this.refreshQueued) {
+        const force = this.queuedRefreshForce;
+        this.refreshQueued = false;
+        this.queuedRefreshForce = false;
+        // Run immediately (no debounce) so stat switching stays snappy.
+        setTimeout(() => this.refresh({ force }).catch(() => {}), 0);
+      }
     });
 
     return this.inflightRefresh;
@@ -567,3 +668,6 @@ export const setStatDataPriorityStatIds = (statIds: string[]) =>
 
 export const setStatDataScopeParentAreas = (parentAreas: string[]) =>
   statDataStore.setScopeParentAreas(parentAreas);
+
+export const setStatDataPrefetchStatIds = (statIds: string[]) =>
+  statDataStore.setPrefetchStatIds(statIds);
