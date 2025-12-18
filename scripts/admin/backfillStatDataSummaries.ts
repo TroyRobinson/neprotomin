@@ -66,6 +66,8 @@ async function main(): Promise<void> {
       parentArea: string;
       boundaryType: string;
       date: string;
+      minDate: string;
+      maxDate: string;
       type: string;
       summary: { count: number; sum: number; avg: number; min: number; max: number };
     }
@@ -98,7 +100,11 @@ async function main(): Promise<void> {
 
       const summaryKey = buildSummaryKey({ statId, name, parentArea, boundaryType });
       const existing = latestByKey.get(summaryKey);
-      if (existing && date.localeCompare(existing.date) < 0) continue;
+      if (existing) {
+        if (date.localeCompare(existing.minDate) < 0) existing.minDate = date;
+        if (date.localeCompare(existing.maxDate) > 0) existing.maxDate = date;
+        if (date.localeCompare(existing.date) < 0) continue;
+      }
 
       latestByKey.set(summaryKey, {
         summaryKey,
@@ -107,6 +113,8 @@ async function main(): Promise<void> {
         parentArea,
         boundaryType,
         date,
+        minDate: existing?.minDate ?? date,
+        maxDate: existing?.maxDate ?? date,
         type,
         summary: computeNumericSummary(row?.data),
       });
@@ -135,6 +143,8 @@ async function main(): Promise<void> {
         parentArea: entry.parentArea,
         boundaryType: entry.boundaryType,
         date: entry.date,
+        minDate: entry.minDate,
+        maxDate: entry.maxDate,
         type: entry.type,
         count: entry.summary.count,
         sum: entry.summary.sum,

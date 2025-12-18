@@ -174,6 +174,10 @@ const _schema = i.schema({
       parentArea: i.string().indexed(),
       boundaryType: i.string().indexed(), // "ZIP" | "COUNTY"
       date: i.string().indexed(), // latest date for this key
+      // Optional min/max dates for this (statId,parentArea,boundaryType) context.
+      // When present, Admin can show "2001–2023" without scanning statData.
+      minDate: i.string().optional(),
+      maxDate: i.string().optional(),
       type: i.string().indexed(),
       count: i.number(), // number of numeric entries in the data map
       sum: i.number(), // sum of numeric entries (useful for "count"/"currency"/etc.)

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { KeyboardEvent, ChangeEvent, MouseEvent } from "react";
 import { id as createId, lookup } from "@instantdb/react";
 import { db } from "../../lib/reactDb";
-import { isDevEnv } from "../../lib/env";
+import { getEnvString, isDevEnv } from "../../lib/env";
 import { useAuthSession } from "../hooks/useAuthSession";
 import { useCategories } from "../hooks/useCategories";
 import { useCensusImportQueue } from "../hooks/useCensusImportQueue";
@@ -41,6 +41,7 @@ interface StatDataSummary {
   boundaryTypes: string[];
   boundaryLabel: string;
   latestDate: string | null;
+  yearsLabel: string;
   updatedAt: number | null;
   contextsCount: number;
   sample:
@@ -48,6 +49,8 @@ interface StatDataSummary {
         parentArea: string;
         boundaryType: string;
         date: string;
+        minDate?: string;
+        maxDate?: string;
         type: string;
         count: number;
         sum: number;
@@ -126,6 +129,15 @@ const buildRowKey = (row: RootStatDataRow) =>
 
 const formatMetricValue = (value: number): string =>
   value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+const formatYearRangeLabel = (minDate: string | null, maxDate: string | null): string => {
+  if (!minDate && !maxDate) return "";
+  const min = minDate ?? maxDate ?? "";
+  const max = maxDate ?? minDate ?? "";
+  if (!min || !max) return min || max;
+  if (min === max) return min;
+  return `${min}–${max}`;
+};
 
 const shouldPreferAvgMetric = (type: string): boolean => {
   const normalized = type.toLowerCase();
@@ -276,6 +288,9 @@ interface StatListItemProps {
   stat: StatItem;
   isEditing: boolean;
   summary?: StatDataSummary;
+  summaryLoading?: boolean;
+  summaryRequested?: boolean;
+  onShowSummaryHelp?: () => void;
   isDeleting?: boolean;
   onStartEdit: () => void;
   onSave: (form: EditFormState) => void;
@@ -297,6 +312,9 @@ const StatListItem = ({
   stat,
   isEditing,
   summary,
+  summaryLoading,
+  summaryRequested,
+  onShowSummaryHelp,
   isDeleting,
   onStartEdit,
   onSave,
@@ -319,9 +337,11 @@ const StatListItem = ({
       ? (() => {
           const preferAvg = shouldPreferAvgMetric(summary.sample.type);
           const value = preferAvg ? summary.sample.avg : summary.sample.sum;
-          return { label: preferAvg ? "avg" : "sum", value };
+          return { label: preferAvg ? "Average" : "Total", value };
         })()
       : null;
+  const summaryYearsDisplay =
+    summary?.yearsLabel && summary.yearsLabel.trim() ? summary.yearsLabel : summary?.latestDate ?? null;
 
   // Reset form when entering edit mode or when stat changes
   useEffect(() => {
@@ -475,20 +495,36 @@ const StatListItem = ({
               )}
             </span>
           )}
-          {summary && summary.latestDate && (
+          {summary && summaryYearsDisplay && (
             <span className="flex items-center gap-1">
               <span className="font-medium">Data:</span>
-              <span>{summary.latestDate}</span>
+              <span>{summaryYearsDisplay}</span>
               {summary.boundaryLabel && (
                 <span className="text-slate-400 dark:text-slate-500">· {summary.boundaryLabel}</span>
               )}
-              {summary.sample && sampleMetric && (
-                <span className="text-slate-400 dark:text-slate-500">
-                  · n={summary.sample.count.toLocaleString()} {sampleMetric.label}={formatMetricValue(sampleMetric.value)}
-                </span>
-              )}
-              {typeof summary.updatedAt === "number" && Number.isFinite(summary.updatedAt) && (
-                <span className="text-slate-400 dark:text-slate-500">· updated {formatDate(summary.updatedAt)}</span>
+            </span>
+          )}
+          {!summary?.latestDate && summaryRequested && summaryLoading && (
+            <span className="flex items-center gap-1 text-sm text-slate-400 dark:text-slate-500">
+              <span className="font-medium">Data:</span>
+              <span>loading…</span>
+            </span>
+          )}
+          {!summary?.latestDate && summaryRequested && !summaryLoading && (
+            <span className="flex items-center gap-1 text-sm text-slate-400 dark:text-slate-500">
+              <span className="font-medium">Data:</span>
+              <span>none</span>
+              {onShowSummaryHelp && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onShowSummaryHelp();
+                  }}
+                  className="ml-1 text-brand-500 underline hover:text-brand-600 dark:text-brand-400 dark:hover:text-brand-300"
+                >
+                  backfill summaries
+                </button>
               )}
             </span>
           )}
@@ -642,6 +678,11 @@ const StatListItem = ({
               <span className="font-medium">Latest:</span> {summary.latestDate}
             </span>
           )}
+          {summary && summary.yearsLabel && (
+            <span>
+              <span className="font-medium">Years:</span> {summary.yearsLabel}
+            </span>
+          )}
           {summary && summary.boundaryLabel && (
             <span>
               <span className="font-medium">Areas:</span> {summary.boundaryLabel}
@@ -650,7 +691,7 @@ const StatListItem = ({
           {summary && summary.sample && sampleMetric && (
             <span>
               <span className="font-medium">Sample:</span>{" "}
-              {summary.sample.boundaryType} · n={summary.sample.count.toLocaleString()} {sampleMetric.label}={formatMetricValue(sampleMetric.value)}
+              {summary.sample.boundaryType} · {summary.sample.count.toLocaleString()} areas with data · {sampleMetric.label} {formatMetricValue(sampleMetric.value)}
             </span>
           )}
           {typeof summary?.updatedAt === "number" && Number.isFinite(summary.updatedAt) && (
@@ -1851,6 +1892,8 @@ const NewStatModal = ({
                 parentArea,
                 boundaryType,
                 date,
+                minDate: date,
+                maxDate: date,
                 type: "percent_change",
                 count: summary.count,
                 sum: summary.sum,
@@ -2023,6 +2066,8 @@ const NewStatModal = ({
                 parentArea,
                 boundaryType,
                 date,
+                minDate: date,
+                maxDate: date,
                 type: "percent",
                 count: summary.count,
                 sum: summary.sum,
@@ -2827,6 +2872,7 @@ export const AdminScreen = () => {
   const [activeTab, setActiveTab] = useState<"stats" | "orgs" | "batches">("stats");
   const [isTabDropdownOpen, setIsTabDropdownOpen] = useState(false);
   const tabDropdownRef = useRef<HTMLDivElement>(null);
+  const appId = getEnvString("VITE_INSTANT_APP_ID") ?? "";
 
   // Fetch categories from InstantDB
   const { statCategories } = useCategories();
@@ -2874,39 +2920,6 @@ export const AdminScreen = () => {
   // State to control statDataSummaries query (for retry logic)
   const [statSummariesQueryEnabled, setStatSummariesQueryEnabled] = useState(true);
 
-  // Secondary query: statDataSummaries (small, avoids scanning statData)
-  const {
-    data: statSummariesResponse,
-    isLoading: statSummariesLoading,
-    error: statSummariesError,
-  } = db.useQuery(
-    statsQueryEnabled && statSummariesQueryEnabled
-      ? {
-          statDataSummaries: {
-            $: {
-              where: { name: "root" },
-              fields: [
-                "id",
-                "statId",
-                "parentArea",
-                "boundaryType",
-                "date",
-                "type",
-                "count",
-                "sum",
-                "avg",
-                "min",
-                "max",
-                "updatedAt",
-              ],
-              limit: 10000,
-              order: { statId: "asc" as const },
-            },
-          },
-        }
-      : null,
-  );
-
   // Retry callback: briefly disable then re-enable the query
   const retryStatSummaries = useCallback(() => {
     setStatSummariesQueryEnabled(false);
@@ -2916,20 +2929,9 @@ export const AdminScreen = () => {
   const showBackfillSummariesHelp = useCallback(() => {
     const cmd = "npm run admin:backfill:stat-summaries";
     window.alert(
-      `Stat summaries are missing/unavailable.\n\nTo rebuild them, run:\n\n${cmd}\n\nRequires INSTANT_APP_ADMIN_TOKEN in your environment.`,
+      `Stat summaries are missing/unavailable.\n\nApp ID: ${appId || "(missing)"}\n\nTo rebuild them, run:\n\n${cmd}\n\nRequires INSTANT_APP_ADMIN_TOKEN in your environment.`,
     );
-  }, []);
-
-  // Log statDataSummaries errors but don't block the screen
-  useEffect(() => {
-    if (!statSummariesError) return;
-    if (!IS_DEV) return;
-    const anyError = statSummariesError as any;
-    console.warn("[AdminScreen] statDataSummaries query failed", {
-      message: anyError.message,
-      hint: anyError.hint,
-    });
-  }, [statSummariesError]);
+  }, [appId]);
 
   useEffect(() => {
     if (!statsError) return;
@@ -4223,16 +4225,103 @@ export const AdminScreen = () => {
 
   // (definition moved above)
 
-  const [cachedSummaryRows, setCachedSummaryRows] = useState<any[]>([]);
+  const SUMMARY_STAT_BATCH_SIZE = 60;
+
+  const summaryTargetStatIds = useMemo(() => {
+    // Keep Admin summary reads bounded: only fetch details for the top of the list + expanded children.
+    // This avoids any accidental "load everything" behavior while still giving context for visible cards.
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    const add = (id: string) => {
+      if (!id) return;
+      if (seen.has(id)) return;
+      seen.add(id);
+      ids.push(id);
+    };
+
+    for (const stat of sortedStats.slice(0, SUMMARY_STAT_BATCH_SIZE)) {
+      add(stat.id);
+    }
+
+    if (expandedParentId) {
+      const groups = statRelationsByParent.get(expandedParentId);
+      if (groups) {
+        for (const relations of groups.values()) {
+          for (const rel of relations) {
+            add(rel.childStatId);
+            if (expandedChildIds[rel.childStatId] === true) {
+              const grandGroups = statRelationsByParent.get(rel.childStatId);
+              if (!grandGroups) continue;
+              for (const grandRels of grandGroups.values()) {
+                for (const grandRel of grandRels) {
+                  add(grandRel.childStatId);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return ids;
+  }, [sortedStats, expandedParentId, expandedChildIds, statRelationsByParent]);
+
+  const summaryTargetIdSet = useMemo(() => new Set(summaryTargetStatIds), [summaryTargetStatIds]);
+
+  // Secondary query: statDataSummaries (small, avoids scanning statData)
+  const {
+    data: statSummariesResponse,
+    isLoading: statSummariesLoading,
+    error: statSummariesError,
+  } = db.useQuery(
+    statsQueryEnabled && statSummariesQueryEnabled && summaryTargetStatIds.length > 0
+      ? {
+          statDataSummaries: {
+            $: {
+              where: { name: "root", statId: { $in: summaryTargetStatIds } },
+              fields: [
+                "id",
+                "statId",
+                "parentArea",
+                "boundaryType",
+                "date",
+                "minDate",
+                "maxDate",
+                "type",
+                "count",
+                "sum",
+                "avg",
+                "min",
+                "max",
+                "updatedAt",
+              ],
+              order: { statId: "asc" as const },
+            },
+          },
+        }
+      : null,
+  );
+
+  // Log statDataSummaries errors but don't block the screen
+  useEffect(() => {
+    if (!statSummariesError) return;
+    if (!IS_DEV) return;
+    const anyError = statSummariesError as any;
+    console.warn("[AdminScreen] statDataSummaries query failed", {
+      message: anyError.message,
+      hint: anyError.hint,
+    });
+  }, [statSummariesError]);
+
+  const [statDataSummaryByStatId, setStatDataSummaryByStatId] = useState<Map<string, StatDataSummary>>(new Map());
+  const [lastStatSummariesRowCount, setLastStatSummariesRowCount] = useState<number | null>(null);
   useEffect(() => {
     const rows = (statSummariesResponse as any)?.statDataSummaries;
     if (!Array.isArray(rows)) return;
-    setCachedSummaryRows(rows);
-  }, [statSummariesResponse]);
+    setLastStatSummariesRowCount(rows.length);
+    if (rows.length === 0) return;
 
-  const statDataSummaryByStatId = useMemo(() => {
     const map = new Map<string, StatDataSummary>();
-    const rows = cachedSummaryRows;
 
     const formatBoundaryLabel = (types: string[]): string => {
       if (types.length === 0) return "";
@@ -4257,16 +4346,14 @@ export const AdminScreen = () => {
     for (const row of rows) {
       const statId = typeof row?.statId === "string" ? (row.statId as string) : null;
       if (!statId) continue;
-      if (row?.name && row.name !== "root") continue;
       const boundaryType = typeof row?.boundaryType === "string" ? (row.boundaryType as string) : null;
       const rawDate = row?.date;
       const date =
-        typeof rawDate === "string"
-          ? rawDate
-          : typeof rawDate === "number"
-            ? String(rawDate)
-            : null;
-      const updatedAt = typeof row?.updatedAt === "number" && Number.isFinite(row.updatedAt) ? (row.updatedAt as number) : null;
+        typeof rawDate === "string" ? rawDate : typeof rawDate === "number" ? String(rawDate) : null;
+      const minDate = typeof row?.minDate === "string" && row.minDate.trim() ? row.minDate.trim() : null;
+      const maxDate = typeof row?.maxDate === "string" && row.maxDate.trim() ? row.maxDate.trim() : null;
+      const updatedAt =
+        typeof row?.updatedAt === "number" && Number.isFinite(row.updatedAt) ? (row.updatedAt as number) : null;
       if (!date) continue;
 
       let entry = map.get(statId);
@@ -4275,6 +4362,7 @@ export const AdminScreen = () => {
           boundaryTypes: [],
           boundaryLabel: "",
           latestDate: null,
+          yearsLabel: "",
           updatedAt: null,
           contextsCount: 0,
           sample: null,
@@ -4305,6 +4393,8 @@ export const AdminScreen = () => {
         parentArea,
         boundaryType: boundaryType ?? "",
         date,
+        minDate: minDate ?? undefined,
+        maxDate: maxDate ?? undefined,
         type,
         count,
         sum,
@@ -4329,8 +4419,28 @@ export const AdminScreen = () => {
       entry.boundaryLabel = formatBoundaryLabel(entry.boundaryTypes);
     }
 
-    return map;
-  }, [cachedSummaryRows]);
+    // Compute year range per stat from per-context min/max (no statData scan required).
+    for (const [statId, entry] of map.entries()) {
+      let minSeen: string | null = null;
+      let maxSeen: string | null = null;
+      for (const row of rows) {
+        if (row?.statId !== statId) continue;
+        const minDate = typeof row?.minDate === "string" && row.minDate.trim() ? row.minDate.trim() : null;
+        const maxDate = typeof row?.maxDate === "string" && row.maxDate.trim() ? row.maxDate.trim() : null;
+        if (minDate && (!minSeen || minDate.localeCompare(minSeen) < 0)) minSeen = minDate;
+        if (maxDate && (!maxSeen || maxDate.localeCompare(maxSeen) > 0)) maxSeen = maxDate;
+      }
+      entry.yearsLabel = formatYearRangeLabel(minSeen ?? entry.latestDate, maxSeen ?? entry.latestDate);
+    }
+
+    setStatDataSummaryByStatId((prev) => {
+      const next = new Map(prev);
+      for (const [statId, summary] of map.entries()) {
+        next.set(statId, summary);
+      }
+      return next;
+    });
+  }, [statSummariesResponse]);
 
   // Available years per stat id for derived modal (from summaries + single-stat fallback)
   const derivedAvailableYearsByStat = useMemo(() => {
@@ -4856,6 +4966,37 @@ export const AdminScreen = () => {
         </div>
       )}
 
+      {!statSummariesLoading &&
+        !statSummariesError &&
+        stats.length > 0 &&
+        summaryTargetStatIds.length > 0 &&
+        lastStatSummariesRowCount === 0 && (
+          <div className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 shadow-sm dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200 sm:mx-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                No `statDataSummaries` found for the currently visible stats. Run a backfill to populate them.
+                {appId && <span className="ml-2 text-xs text-amber-700/80 dark:text-amber-200/80">App: {appId}</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={retryStatSummaries}
+                  className="rounded-md bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-800"
+                >
+                  Retry
+                </button>
+                <button
+                  type="button"
+                  onClick={showBackfillSummariesHelp}
+                  className="rounded-md bg-white px-2 py-1 text-xs font-medium text-brand-700 shadow-sm ring-1 ring-brand-200 hover:bg-brand-50 dark:bg-slate-900 dark:text-brand-200 dark:ring-brand-800 dark:hover:bg-brand-900/20"
+                >
+                  Backfill summaries
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       {/* Stats list */}
       <div className="flex-1 overflow-y-auto px-4 py-3 sm:px-6 sm:py-4">
         {stats.length === 0 ? (
@@ -4902,6 +5043,9 @@ export const AdminScreen = () => {
                     stat={stat}
                     isEditing={editingId === stat.id}
                     summary={statDataSummaryByStatId.get(stat.id)}
+                    summaryLoading={statSummariesLoading}
+                    summaryRequested={summaryTargetIdSet.has(stat.id)}
+                    onShowSummaryHelp={showBackfillSummariesHelp}
                     isDeleting={deletingId === stat.id}
                     onStartEdit={() => handleStartEdit(stat.id)}
                     onSave={(form) => handleSave(stat.id, form)}
@@ -4977,6 +5121,9 @@ export const AdminScreen = () => {
                                     stat={child}
                                     isEditing={editingId === child.id}
                                     summary={statDataSummaryByStatId.get(child.id)}
+                                    summaryLoading={statSummariesLoading}
+                                    summaryRequested={summaryTargetIdSet.has(child.id)}
+                                    onShowSummaryHelp={showBackfillSummariesHelp}
                                     isDeleting={deletingId === child.id}
                                     onStartEdit={() => handleStartEdit(child.id)}
                                     onSave={(form) => handleSave(child.id, form)}
@@ -5045,6 +5192,9 @@ export const AdminScreen = () => {
                                                   stat={grandChild}
                                                   isEditing={editingId === grandChild.id}
                                                   summary={statDataSummaryByStatId.get(grandChild.id)}
+                                                  summaryLoading={statSummariesLoading}
+                                                  summaryRequested={summaryTargetIdSet.has(grandChild.id)}
+                                                  onShowSummaryHelp={showBackfillSummariesHelp}
                                                   isDeleting={deletingId === grandChild.id}
                                                   onStartEdit={() => handleStartEdit(grandChild.id)}
                                                   onSave={(form) => handleSave(grandChild.id, form)}
