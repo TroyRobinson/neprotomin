@@ -40,6 +40,92 @@ describe("mapUrl selection persistence", () => {
     expect(state.selectedCounties).toEqual(["40037", "40039"]);
   });
 
+  it("parses primary + secondary stats from URL", () => {
+    const w: WindowLike = {
+      location: { href: "http://example.test/", search: "", hostname: "example.test" },
+      history: {
+        replaceState: vi.fn((_data, _unused, url) => {
+          setWindowUrl(url);
+        }),
+      },
+    };
+    (globalThis as any).window = w;
+
+    setWindowUrl("http://example.test/?stat=primary&stat2=secondary");
+
+    const state = getMapStateFromUrl();
+    expect(state.statId).toBe("primary");
+    expect(state.secondaryStatId).toBe("secondary");
+  });
+
+  it("writes secondary stat to URL and removes it when empty", () => {
+    const w: WindowLike = {
+      location: { href: "http://example.test/", search: "", hostname: "example.test" },
+      history: {
+        replaceState: vi.fn((_data, _unused, url) => {
+          setWindowUrl(url);
+        }),
+      },
+    };
+    (globalThis as any).window = w;
+
+    setWindowUrl("http://example.test/");
+
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      "primary",
+      "secondary",
+      null,
+      [],
+      false,
+      false,
+      "auto",
+      [],
+      [],
+      "orgs",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+    );
+
+    const search = (globalThis as any).window.location.search;
+    expect(search).toContain("stat=primary");
+    expect(search).toContain("stat2=secondary");
+
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      "primary",
+      null,
+      null,
+      [],
+      false,
+      false,
+      "auto",
+      [],
+      [],
+      "orgs",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+    );
+
+    const search2 = (globalThis as any).window.location.search;
+    expect(search2).toContain("stat=primary");
+    expect(search2).not.toContain("stat2=");
+  });
+
   it("writes zips + counties to URL and removes them when empty", () => {
     const w: WindowLike = {
       location: { href: "http://example.test/", search: "", hostname: "example.test" },
@@ -57,6 +143,7 @@ describe("mapUrl selection persistence", () => {
       36.0,
       -95.9,
       10,
+      null,
       null,
       null,
       [],
@@ -82,6 +169,7 @@ describe("mapUrl selection persistence", () => {
       36.0,
       -95.9,
       10,
+      null,
       null,
       null,
       [],
@@ -148,6 +236,7 @@ describe("mapUrl selection persistence", () => {
       10,
       null,
       null,
+      null,
       [],
       false,
       false,
@@ -172,6 +261,7 @@ describe("mapUrl selection persistence", () => {
       10,
       null,
       null,
+      null,
       [],
       false,
       false,
@@ -194,6 +284,7 @@ describe("mapUrl selection persistence", () => {
       36.0,
       -95.9,
       10,
+      null,
       null,
       null,
       [],
@@ -233,6 +324,7 @@ describe("mapUrl selection persistence", () => {
       10,
       null,
       null,
+      null,
       [],
       false,
       false,
@@ -255,6 +347,7 @@ describe("mapUrl selection persistence", () => {
       36.0,
       -95.9,
       10,
+      null,
       null,
       null,
       [],
@@ -314,6 +407,7 @@ describe("mapUrl selection persistence", () => {
       10,
       null,
       null,
+      null,
       [],
       false,
       true,
@@ -340,6 +434,7 @@ describe("mapUrl selection persistence", () => {
       36.0,
       -95.9,
       10,
+      null,
       null,
       null,
       [],

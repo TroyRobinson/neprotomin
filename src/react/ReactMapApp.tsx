@@ -185,7 +185,7 @@ export const ReactMapApp = () => {
   // Track whether the direct org selection originated from the map (vs sidebar click)
   const [selectedOrgIdsFromMap, setSelectedOrgIdsFromMap] = useState<boolean>(false);
   const [selectedStatId, setSelectedStatId] = useState<string | null>(() => initialMapState.statId);
-  const [secondaryStatId, setSecondaryStatId] = useState<string | null>(null);
+  const [secondaryStatId, setSecondaryStatId] = useState<string | null>(() => initialMapState.secondaryStatId);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(() => initialMapState.category);
   const [sidebarTab, setSidebarTab] = useState<"orgs" | "stats">(() => initialMapState.sidebarTab);
   const [hasAppliedDefaultStat, setHasAppliedDefaultStat] = useState(false);
@@ -1313,6 +1313,7 @@ export const ReactMapApp = () => {
         lng,
         cameraState.zoom,
         selectedStatId,
+        secondaryStatId,
         categoryFilter,
         selectedOrgIds,
         showAdvanced,
@@ -1333,6 +1334,7 @@ export const ReactMapApp = () => {
   }, [
     cameraState,
     selectedStatId,
+    secondaryStatId,
     categoryFilter,
     selectedOrgIds,
     showAdvanced,
