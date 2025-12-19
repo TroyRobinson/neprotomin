@@ -82,6 +82,26 @@ const normalizeText = (value) => {
     .join(" ");
 };
 
+const inferUniverseFromConcept = (concept) => {
+  if (!concept) return null;
+  const normalized = String(concept).trim();
+  if (!normalized) return null;
+  const lower = normalized.toLowerCase();
+  const markers = [" for the ", " for ", " among the ", " among "];
+  let bestIndex = -1;
+  let bestMarker = "";
+  for (const marker of markers) {
+    const idx = lower.lastIndexOf(marker);
+    if (idx > bestIndex) {
+      bestIndex = idx;
+      bestMarker = marker;
+    }
+  }
+  if (bestIndex === -1) return null;
+  const candidate = normalized.slice(bestIndex + bestMarker.length).trim();
+  return candidate || null;
+};
+
 export const fetchGroupMetadata = async (options) => {
   const json = await fetchCensusJson(
     options.year,
@@ -101,11 +121,15 @@ export const fetchGroupMetadata = async (options) => {
       predicateType: value && value.predicateType,
     });
   }
+  const universe =
+    (json && (json.universe || json.Universe || json.UNIVERSE)) ||
+    inferUniverseFromConcept(json && (json.concept || json.label)) ||
+    null;
   return {
     group: options.group,
     label: (json && json.label) || (json && json.concept) || options.group,
     concept: (json && json.concept) || (json && json.label) || options.group,
-    universe: json && json.universe,
+    universe,
     variables,
   };
 };

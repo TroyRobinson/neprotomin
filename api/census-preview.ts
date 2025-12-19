@@ -129,6 +129,8 @@ export default async function handler(req: CensusPreviewRequest, res: CensusPrev
         dataset,
         group,
         year,
+        universe: groupMeta.universe ?? null,
+        concept: groupMeta.concept ?? groupMeta.label ?? null,
         totalVariables: 0,
         variables: [],
       });
@@ -174,6 +176,8 @@ export default async function handler(req: CensusPreviewRequest, res: CensusPrev
       dataset,
       group,
       year,
+      universe: groupMeta.universe ?? null,
+      concept: groupMeta.concept ?? groupMeta.label ?? null,
       totalVariables: estimates.length,
       variables,
     });

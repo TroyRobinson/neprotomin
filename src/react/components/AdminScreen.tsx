@@ -799,6 +799,46 @@ type CensusVariablePreview = {
   countyCount: number;
 };
 
+type CensusPreviewMeta = {
+  dataset: string;
+  group: string;
+  year: number;
+  universe: string | null;
+  concept: string | null;
+};
+
+const formatPredicateTypeLabel = (predicateType?: string | null): string | null => {
+  if (!predicateType) return null;
+  const normalized = predicateType.trim().toLowerCase();
+  if (!normalized) return null;
+  if (["int", "integer", "long", "short"].includes(normalized)) return "Whole number";
+  if (["float", "double", "decimal"].includes(normalized)) return "Decimal number";
+  if (["string", "str"].includes(normalized)) return "Text";
+  if (["boolean", "bool"].includes(normalized)) return "Yes/No";
+  if (normalized === "number") return "Number";
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+
+const inferUniverseFromConcept = (concept?: string | null): string | null => {
+  if (!concept) return null;
+  const normalized = concept.trim();
+  if (!normalized) return null;
+  const lower = normalized.toLowerCase();
+  const markers = [" for the ", " for ", " among the ", " among "];
+  let bestIndex = -1;
+  let bestMarker = "";
+  for (const marker of markers) {
+    const idx = lower.lastIndexOf(marker);
+    if (idx > bestIndex) {
+      bestIndex = idx;
+      bestMarker = marker;
+    }
+  }
+  if (bestIndex === -1) return null;
+  const candidate = normalized.slice(bestIndex + bestMarker.length).trim();
+  return candidate || null;
+};
+
 // Category options are now fetched from InstantDB via useCategories hook
 
 // Heuristic: group IDs are typically like B22003, S1701, DP02, etc.
@@ -1166,6 +1206,7 @@ const NewStatModal = ({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewTotal, setPreviewTotal] = useState(0);
   const [variables, setVariables] = useState<CensusVariablePreview[]>([]);
+  const [previewMeta, setPreviewMeta] = useState<CensusPreviewMeta | null>(null);
 
   const filteredVariables = useMemo(() => {
     if (!resultsFilter.trim()) return variables;
@@ -1209,6 +1250,44 @@ const NewStatModal = ({
   const [isDenominatorSearchOpen, setIsDenominatorSearchOpen] = useState(false);
   const [denominatorSearch, setDenominatorSearch] = useState("");
 
+  const predicateTypeSummary = useMemo(() => {
+    const labels = new Map<string, string>();
+    variables.forEach((v) => {
+      const label = formatPredicateTypeLabel(v.predicateType);
+      if (!label) return;
+      const key = label.toLowerCase();
+      if (!labels.has(key)) labels.set(key, label);
+    });
+    if (labels.size === 0) return null;
+    const types = Array.from(labels.values());
+    if (types.length === 1) return types[0];
+    return `Mixed (${types.join(", ")})`;
+  }, [variables]);
+
+  const conceptDisplay = useMemo(() => {
+    const entries = variables
+      .map((v) => (typeof v.concept === "string" ? v.concept.trim() : ""))
+      .filter(Boolean);
+    if (entries.length === 0) {
+      const fallback = previewMeta?.concept?.trim();
+      return { shared: fallback || null, showPerVariable: false };
+    }
+    const unique = new Map<string, string>();
+    variables.forEach((v) => {
+      const concept = typeof v.concept === "string" ? v.concept.trim() : "";
+      if (!concept) return;
+      const key = concept.toLowerCase();
+      if (!unique.has(key)) unique.set(key, concept);
+    });
+    const allHaveConcept = variables.every(
+      (v) => typeof v.concept === "string" && v.concept.trim().length > 0,
+    );
+    if (unique.size === 1 && allHaveConcept) {
+      return { shared: Array.from(unique.values())[0], showPerVariable: false };
+    }
+    return { shared: null, showPerVariable: true };
+  }, [previewMeta?.concept, variables]);
+
   useEffect(() => {
     queueItemsRef.current = queueItems;
   }, [queueItems]);
@@ -1227,6 +1306,7 @@ const NewStatModal = ({
       setPreviewError(null);
       setPreviewTotal(0);
       setVariables([]);
+      setPreviewMeta(null);
       setSelection({});
       setLastSubmittedGroup("");
       setRunGroupSearch(null);
@@ -1394,6 +1474,11 @@ const NewStatModal = ({
     return trimmedLast || trimmedGroup || "";
   }, [group, lastSubmittedGroup]);
 
+  const previewDataset = previewMeta?.dataset ?? dataset;
+  const previewYear = previewMeta?.year ?? year;
+  const previewUniverse =
+    previewMeta?.universe?.trim() || inferUniverseFromConcept(conceptDisplay.shared) || "";
+
   const changeOptionDisabled = useMemo(() => {
     if (pendingSelections.length === 0) return true;
     return pendingSelections.some((item) => item.years <= 1);
@@ -1528,6 +1613,13 @@ const NewStatModal = ({
       setVariables(parsed);
       setPreviewTotal(total);
       setLastSubmittedGroup(trimmedGroup); // Track what was previewed
+      setPreviewMeta({
+        dataset: typeof payload.dataset === "string" ? payload.dataset : resolvedDataset,
+        group: typeof payload.group === "string" ? payload.group : trimmedGroup,
+        year: typeof payload.year === "number" ? payload.year : year,
+        universe: typeof payload.universe === "string" ? payload.universe : null,
+        concept: typeof payload.concept === "string" ? payload.concept : null,
+      });
 
       const defaults: Record<string, VariableSelection> = {};
       const suggestedSet = new Set((suggestedStatIds ?? []).filter(Boolean));
@@ -2764,9 +2856,22 @@ const NewStatModal = ({
             <div className="order-2 md:order-1 md:col-span-2">
               {/* Meta info above preview */}
               {previewTotal > 0 && lastSubmittedGroup && (
-                <p className="mb-1.5 px-1 text-[10px] text-slate-400 dark:text-slate-500">
-                  {filteredVariables.length} of {previewTotal} in {lastSubmittedGroup} (+ MOE)
-                </p>
+                <div className="mb-2 space-y-1 px-1 text-[10px] text-slate-400 dark:text-slate-500">
+                  <p>
+                    {filteredVariables.length} of {previewTotal} in {lastSubmittedGroup} (+ MOE)
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {previewUniverse && <span>Universe: {previewUniverse}</span>}
+                    <span>Dataset: {previewDataset}</span>
+                    <span>Vintage: {previewYear}</span>
+                    {predicateTypeSummary && <span>Type: {predicateTypeSummary}</span>}
+                  </div>
+                  {conceptDisplay.shared && (
+                    <div className="text-[10px] text-slate-300 dark:text-slate-500">
+                      Concept: {conceptDisplay.shared}
+                    </div>
+                  )}
+                </div>
               )}
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
                 <div className="flex items-center gap-2">
@@ -2957,6 +3062,11 @@ const NewStatModal = ({
                         <span className="text-[10px] text-slate-500 dark:text-slate-400">
                           {v.inferredType} · <HighlightMatch text={v.statName} filter={resultsFilter} />
                         </span>
+                        {conceptDisplay.showPerVariable && v.concept?.trim() && (
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                            {v.concept}
+                          </span>
+                        )}
                         {sel.lockedImported && (
                           <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
                             Imported as "{sel.importedStatLabel ?? sel.importedStatName ?? v.statName}"
