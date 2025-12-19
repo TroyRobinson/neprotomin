@@ -149,6 +149,43 @@ const shouldPreferAvgMetric = (type: string): boolean => {
   );
 };
 
+const normalizeStatTypeLabel = (rawType: string | null | undefined): string | null => {
+  if (!rawType) return null;
+  const normalized = rawType.toLowerCase();
+  if (normalized.includes("percent")) return "percent";
+  if (normalized.includes("rate")) return "rate";
+  if (normalized.includes("ratio")) return "ratio";
+  if (normalized.includes("currency")) return "currency";
+  if (normalized.includes("years")) return "years";
+  if (normalized.includes("count") || normalized.includes("number")) return "count";
+  return normalized.trim() || null;
+};
+
+const inferStatTypeLabelFromText = (text: string): string | null => {
+  const normalized = text.toLowerCase();
+  if (normalized.includes("percent") || normalized.includes("%")) return "percent";
+  if (normalized.includes("rate")) return "rate";
+  if (normalized.includes("ratio")) return "ratio";
+  if (normalized.includes("currency") || normalized.includes("dollar")) return "currency";
+  if (normalized.includes("years") || normalized.includes("year")) return "years";
+  return null;
+};
+
+const buildOriginalStatName = (stat: StatItem, summary?: StatDataSummary): string => {
+  const baseName = stat.name || "";
+  const neId = typeof stat.neId === "string" ? stat.neId.trim() : "";
+  if (!neId.startsWith("census:")) return baseName;
+  const variable = neId.slice("census:".length).trim();
+  const typeLabel =
+    normalizeStatTypeLabel(summary?.sample?.type) ??
+    inferStatTypeLabelFromText(`${stat.name} ${stat.label ?? ""}`);
+  const prefixParts = [variable, typeLabel].filter(Boolean);
+  const prefix = prefixParts.join(" ");
+  if (!prefix) return baseName;
+  if (!baseName) return prefix;
+  return `${prefix} · ${baseName}`;
+};
+
 // Compute derived values based on formula type
 const computeDerivedValues = (
   aData: Record<string, number>,
@@ -585,7 +622,7 @@ const StatListItem = ({
           autoFocus
         />
         <div className="flex gap-4 text-[10px] text-slate-400 dark:text-slate-500">
-          {form.name && <span>Original: {form.name}</span>}
+          {form.name && <span>Original: {buildOriginalStatName(stat, summary)}</span>}
           {form.source && <span>Source: {form.source}</span>}
         </div>
       </div>
@@ -1895,7 +1932,7 @@ const NewStatModal = ({
         const baseName = String(parentMeta.name);
         const baseLabel = typeof parentMeta.label === "string" && parentMeta.label.trim() ? parentMeta.label : baseName;
         const derivedName = `${baseName} (change)`;
-        const derivedLabel = `${baseLabel} (change)`;
+        const derivedLabel = `${baseLabel} [Change]`;
         const derivedCategory = typeof parentMeta.category === "string" ? parentMeta.category : "";
         const derivedSource = "Derived, Census";
 
@@ -2077,7 +2114,7 @@ const NewStatModal = ({
         const baseLabel =
           typeof parentMeta.label === "string" && parentMeta.label.trim() ? parentMeta.label : baseName;
         const derivedName = `${baseName} (percent)`;
-        const derivedLabel = `${baseLabel} (percent)`;
+        const derivedLabel = `${baseLabel} [Percent]`;
         const derivedCategory = typeof parentMeta.category === "string" ? parentMeta.category : "";
         const derivedSource = "Derived, Census";
 
@@ -2682,7 +2719,7 @@ const NewStatModal = ({
                     )}
                   </div>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                    This denominator is used to create “(percent)” child stats for each imported stat.
+                    This denominator is used to create “...[Percent]” child stats for each imported stat.
                   </p>
                 </div>
               )}

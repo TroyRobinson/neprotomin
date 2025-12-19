@@ -119,6 +119,27 @@ const cleanVariableLabel = (label) => {
     .trim();
 };
 
+const guessStatLabelFromText = (text) => {
+  if (!text) return "";
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const delimiters = ["→", "–", "—", "·", ":"];
+  let bestIndex = -1;
+  let bestDelim = "";
+  for (const delim of delimiters) {
+    const idx = trimmed.lastIndexOf(delim);
+    if (idx === -1) continue;
+    const next = trimmed.slice(idx + delim.length).trim();
+    if (!next) continue;
+    if (idx > bestIndex) {
+      bestIndex = idx;
+      bestDelim = delim;
+    }
+  }
+  if (bestIndex === -1) return trimmed;
+  return trimmed.slice(bestIndex + bestDelim.length).trim();
+};
+
 export const deriveStatName = (variableName, variable, group) => {
   const custom = CUSTOM_LABELS[variableName];
   if (custom) return custom;
@@ -130,6 +151,14 @@ export const deriveStatName = (variableName, variable, group) => {
   if (!concept) return cleaned;
   if (cleaned.toLowerCase().includes(concept.toLowerCase())) return cleaned;
   return `${concept} – ${cleaned}`;
+};
+
+const deriveStatLabel = (statName, variable, group) => {
+  const custom = CUSTOM_LABELS[variable.name];
+  const cleaned = cleanVariableLabel(variable.label);
+  const fallback = statName || normalizeText(group.concept || variable.name);
+  const base = custom || cleaned || fallback;
+  return guessStatLabelFromText(base);
 };
 
 export const inferStatType = (variable) => {
@@ -433,6 +462,8 @@ export const ensureStatRecord = async (
   const externalId = `census:${variableMeta.name}`;
   const statType = inferStatType(variableMeta);
   const targetCategory = categoryOverride ?? DEFAULT_CATEGORY;
+  const derivedLabel = deriveStatLabel(statName, variableMeta, groupMeta);
+  const statLabel = derivedLabel && derivedLabel.trim() ? derivedLabel.trim() : null;
 
   const byExternal = { stats: { $: { where: { neId: externalId }, limit: 1 } } };
   const ex = await db.query(byExternal);
@@ -442,6 +473,7 @@ export const ensureStatRecord = async (
     if (existing.category !== targetCategory) updates.category = targetCategory;
     if (existing.source !== "Census") updates.source = "Census";
     if (existing.name !== statName) updates.name = statName;
+    if ((!existing.label || !String(existing.label).trim()) && statLabel) updates.label = statLabel;
     if (existing.active == null) updates.active = true;
     if (Object.keys(updates).length > 1) await db.transact(tx.stats[existing.id].update(updates));
     return { statId: existing.id, statType };
@@ -455,24 +487,25 @@ export const ensureStatRecord = async (
     if (!sameName.neId) updates.neId = externalId;
     if (sameName.category !== targetCategory) updates.category = targetCategory;
     if (sameName.source !== "Census") updates.source = "Census";
+    if ((!sameName.label || !String(sameName.label).trim()) && statLabel) updates.label = statLabel;
     if (sameName.active == null) updates.active = true;
     await db.transact(tx.stats[sameName.id].update(updates));
     return { statId: sameName.id, statType };
   }
 
   const statId = id();
-  await db.transact(
-    tx.stats[statId].update({
-      name: statName,
-      category: targetCategory,
-      neId: externalId,
-      source: "Census",
-      goodIfUp: null,
-      active: true,
-      createdOn: now,
-      lastUpdated: now,
-    }),
-  );
+  const record = {
+    name: statName,
+    category: targetCategory,
+    neId: externalId,
+    source: "Census",
+    goodIfUp: null,
+    active: true,
+    createdOn: now,
+    lastUpdated: now,
+  };
+  if (statLabel) record.label = statLabel;
+  await db.transact(tx.stats[statId].update(record));
   return { statId, statType };
 };
 
