@@ -658,6 +658,27 @@ export const TopBar = ({
                     </div>
                   )}
                 </div>
+                {onAdvancedToggle && (
+                  <button
+                    type="button"
+                    onClick={() => onAdvancedToggle(!showAdvanced)}
+                    className="relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 dark:text-slate-300"
+                    title={showAdvanced ? "Hide advanced features" : "Show advanced features"}
+                  >
+                    <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                      showAdvanced
+                        ? "bg-brand-400 dark:bg-brand-500"
+                        : "bg-slate-300 dark:bg-slate-600"
+                    }`}>
+                      <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition ${
+                        showAdvanced
+                          ? "translate-x-3" 
+                          : "translate-x-1.5"
+                      }`} />
+                    </span>
+                    <span className="whitespace-nowrap text-slate-400 dark:text-slate-500">Advanced</span>
+                  </button>
+                )}
                 <a
                   href={`https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=${neHomeRedirectDisabled ? "1" : "0"}`}
                   onClick={(e) => {
@@ -683,27 +704,6 @@ export const TopBar = ({
                   </span>
                   <span className="whitespace-nowrap text-slate-400 dark:text-slate-500">{neHomeRedirectDisabled ? "Normal Home" : "New Home"}</span>
                 </a>
-                {onAdvancedToggle && (
-                  <button
-                    type="button"
-                    onClick={() => onAdvancedToggle(!showAdvanced)}
-                    className="relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 dark:text-slate-300"
-                    title={showAdvanced ? "Hide advanced features" : "Show advanced features"}
-                  >
-                    <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
-                      showAdvanced
-                        ? "bg-brand-400 dark:bg-brand-500"
-                        : "bg-slate-300 dark:bg-slate-600"
-                    }`}>
-                      <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition ${
-                        showAdvanced
-                          ? "translate-x-3" 
-                          : "translate-x-1.5"
-                      }`} />
-                    </span>
-                    <span className="whitespace-nowrap text-slate-400 dark:text-slate-500">Advanced</span>
-                  </button>
-                )}
               </nav>
               {/* Gradient fade overlay for truncating links */}
               <div 
