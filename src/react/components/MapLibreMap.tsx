@@ -406,17 +406,21 @@ export const MapLibreMap = ({
   const lastSentCountiesRef = useRef<string>("");
 
   useEffect(() => {
-    if (!mapControllerRef.current || isInternalUpdateRef.current) return;
-
     // Create a stable string representation to check if zips actually changed
     const pinnedKey = [...pinnedZips].sort().join(",");
     const selectedKey = [...selectedZips].sort().join(",");
     const currentKey = `${selectedKey}|${pinnedKey}`;
 
-    // Only update if the zips actually changed from what we last sent
-    if (currentKey !== lastSentZipsRef.current) {
-      lastSentZipsRef.current = currentKey;
+    // Always track what React state looks like, even if we skip the map update.
+    // This ensures subsequent clears detect a change when comparing keys.
+    const keyChanged = currentKey !== lastSentZipsRef.current;
+    lastSentZipsRef.current = currentKey;
 
+    // Skip sending to map if controller not ready or this is an echo from map's own update
+    if (!mapControllerRef.current || isInternalUpdateRef.current) return;
+
+    // Only update map if the zips actually changed
+    if (keyChanged) {
       // Calculate transient zips (selected but not pinned)
       const transientZips = selectedZips.filter((z) => !pinnedZips.includes(z));
 
@@ -429,14 +433,18 @@ export const MapLibreMap = ({
   }, [selectedZips, pinnedZips]);
 
   useEffect(() => {
-    if (!mapControllerRef.current || isInternalUpdateRef.current) return;
-
     const pinnedKey = [...pinnedCounties].sort().join(",");
     const selectedKey = [...selectedCounties].sort().join(",");
     const currentKey = `${selectedKey}|${pinnedKey}`;
 
-    if (currentKey !== lastSentCountiesRef.current) {
-      lastSentCountiesRef.current = currentKey;
+    // Always track what React state looks like, even if we skip the map update
+    const keyChanged = currentKey !== lastSentCountiesRef.current;
+    lastSentCountiesRef.current = currentKey;
+
+    // Skip sending to map if controller not ready or this is an echo from map's own update
+    if (!mapControllerRef.current || isInternalUpdateRef.current) return;
+
+    if (keyChanged) {
       const transient = selectedCounties.filter((id) => !pinnedCounties.includes(id));
       mapControllerRef.current.clearCountyTransientSelection();
       if (transient.length > 0) {
