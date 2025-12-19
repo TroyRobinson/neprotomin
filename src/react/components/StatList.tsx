@@ -42,7 +42,7 @@ type StatRow = {
   contextAvg: number;
   hasData: boolean;
   goodIfUp?: boolean;
-  aggregationMethod: "sum" | "average" | "raw";
+  aggregationMethod: "sum" | "average" | "median" | "raw";
   aggregationDescription: string;
   category?: string;
 };
@@ -78,19 +78,37 @@ interface StatListProps {
 
 const SUPPORTED_KINDS: SupportedAreaKind[] = ["ZIP", "COUNTY"];
 
+const getFiniteValues = (data: Record<string, number> | undefined): number[] => {
+  const values = Object.values(data || {});
+  return values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+};
+
 const computeContextAverage = (entry: StatBoundaryEntry | undefined): number => {
   if (!entry) return 0;
-  const values = Object.values(entry.data || {});
-  const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  const nums = getFiniteValues(entry.data);
   if (nums.length === 0) return 0;
   return nums.reduce((sum, v) => sum + v, 0) / nums.length;
 };
 
 const computeTotal = (entry: StatBoundaryEntry | undefined): number => {
   if (!entry) return 0;
-  const values = Object.values(entry.data || {});
-  const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  const nums = getFiniteValues(entry.data);
   return nums.reduce((sum, v) => sum + v, 0);
+};
+
+const computeMedian = (entry: StatBoundaryEntry | undefined): number => {
+  if (!entry) return 0;
+  return computeMedianFromValues(getFiniteValues(entry.data));
+};
+
+const computeMedianFromValues = (values: number[]): number => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  return sorted[mid];
 };
 
 const buildAreaEntries = (selectedAreas?: SelectedAreasMap): AreaEntry[] => {
@@ -279,16 +297,22 @@ export const StatList = ({
       const fallbackType = effectiveFallbackEntry?.type ?? fallbackSummary?.type ?? "count";
       const isPercent = fallbackType === "percent";
       
+      const statName = (s.label || s.name || "").toLowerCase();
+      const isMedianStat = statName.includes("median");
       let displayValue = fallbackContextAvg;
-      let aggregationMethod: "sum" | "average" | "raw" = "average";
+      let aggregationMethod: "sum" | "average" | "median" | "raw" = "average";
       let aggregationDescription = "";
       
       if (areaEntries.length === 0) {
-        // No selection: sum all values (or average for percentages)
+        // No selection: sum all values (or average for percentages / median for median stats)
         // County level: sum/average all Oklahoma counties
         // ZIP level: sum/average all ZIPs in the viewport county
-        aggregationMethod = isPercent ? "average" : "sum";
-        const method = isPercent ? "Average" : "Sum";
+        if (isMedianStat) {
+          aggregationMethod = "median";
+        } else {
+          aggregationMethod = isPercent ? "average" : "sum";
+        }
+        const method = aggregationMethod === "median" ? "Median" : aggregationMethod === "average" ? "Average" : "Sum";
         if (preferCounty) {
           // County level: "Sum of All OK Counties" or "Average of all OK Counties"
           aggregationDescription = `${method} of ${countyScopeDisplayName ? `All ${countyScopeDisplayName} Counties` : "All OK Counties"}`;
@@ -298,9 +322,17 @@ export const StatList = ({
           aggregationDescription = `${method} of all ${countyName} ZIPs`;
         }
         if (effectiveFallbackEntry) {
-          displayValue = isPercent ? computeContextAverage(effectiveFallbackEntry) : computeTotal(effectiveFallbackEntry);
+          if (aggregationMethod === "median") {
+            displayValue = computeMedian(effectiveFallbackEntry);
+          } else {
+            displayValue = isPercent ? computeContextAverage(effectiveFallbackEntry) : computeTotal(effectiveFallbackEntry);
+          }
         } else if (fallbackSummary) {
-          displayValue = isPercent ? fallbackSummary.avg : fallbackSummary.sum;
+          if (aggregationMethod === "median") {
+            displayValue = fallbackSummary.avg;
+          } else {
+            displayValue = isPercent ? fallbackSummary.avg : fallbackSummary.sum;
+          }
         } else {
           displayValue = 0;
         }
@@ -313,12 +345,18 @@ export const StatList = ({
         aggregationDescription = areaName;
         displayValue = valuesForSelection[0].value;
       } else if (areaEntries.length > 1 && valuesForSelection.length > 0) {
-        // Multiple selections: sum the values (or average for percentages)
-        aggregationMethod = isPercent ? "average" : "sum";
-        const method = isPercent ? "Average" : "Sum";
+        // Multiple selections: sum the values (or average for percentages / median for median stats)
+        if (isMedianStat) {
+          aggregationMethod = "median";
+        } else {
+          aggregationMethod = isPercent ? "average" : "sum";
+        }
+        const method = aggregationMethod === "median" ? "Median" : aggregationMethod === "average" ? "Average" : "Sum";
         const areaType = preferCounty ? "Counties" : "ZIPs";
         aggregationDescription = `${method} of Selected ${areaType}`;
-        if (isPercent) {
+        if (aggregationMethod === "median") {
+          displayValue = computeMedianFromValues(valuesForSelection.map((item) => item.value));
+        } else if (isPercent) {
           displayValue = valuesForSelection.reduce((sum, item) => sum + item.value, 0) / valuesForSelection.length;
         } else {
           displayValue = valuesForSelection.reduce((sum, item) => sum + item.value, 0);
