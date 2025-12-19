@@ -74,6 +74,8 @@ interface StatVizProps {
   stateAvg?: number | null;
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
+  /** When true, renders without container/header - for embedding in StatList selected stat section */
+  embedded?: boolean;
 }
 
 interface LineChartProps {
@@ -535,6 +537,7 @@ export const StatViz = ({
   stateAvg = null,
   collapsed: collapsedProp,
   onCollapsedChange,
+  embedded = false,
 }: StatVizProps) => {
   const isControlled = typeof collapsedProp === "boolean";
   const [uncontrolledCollapsed, setUncontrolledCollapsed] = useState(false);
@@ -912,6 +915,39 @@ export const StatViz = ({
     if (area) onHoverArea?.(area);
   };
 
+  // Embedded mode: render chart directly without container/header
+  if (embedded) {
+    if (!stat || !chartData) {
+      return null;
+    }
+
+    return (
+      <div className="mt-3 mb-2">
+        <div className="relative w-full" style={{ overflow: "visible" }}>
+          {chartData.mode === "bar" ? (
+            <BarChart
+              entries={chartData.entries}
+              statType={chartData.statType}
+              hoveredAreaKey={hoveredAreaKey}
+              onHoverArea={handleHoverAreaKey}
+            />
+          ) : (
+            <LineChart
+              series={chartData.series}
+              statType={chartData.statType}
+              onHoverLine={(label, areaKey) => {
+                setHoveredLineLabel(label);
+                if (areaKey) handleHoverAreaKey(areaKey);
+                else onHoverArea?.(null);
+              }}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Standard mode: render with container and collapsible header
   return (
     <div
       className={`border-b border-slate-200 px-4 py-3 dark:border-slate-800 ${

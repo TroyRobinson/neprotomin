@@ -3,10 +3,12 @@ import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import type { Stat, StatRelation, StatRelationsByParent, StatRelationsByChild } from "../../types/stat";
 import { UNDEFINED_STAT_ATTRIBUTE } from "../../types/stat";
 import { formatStatValue } from "../../lib/format";
-import type { StatBoundaryEntry } from "../hooks/useStats";
+import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
 import { computeSimilarityFromNormalized, normalizeForSearch } from "../lib/fuzzyMatch";
 import { CustomSelect } from "./CustomSelect";
 import { useCategories } from "../hooks/useCategories";
+import { StatViz } from "./StatViz";
+import type { AreaId } from "../../types/areas";
 
 // Feature flag: Hide stat values when at county level with no selection
 const HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION = true;
@@ -45,6 +47,9 @@ type StatRow = {
   category?: string;
 };
 
+type PinnedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
+type SeriesByKindMap = Map<string, SeriesByKind>;
+
 interface StatListProps {
   statsById?: Map<string, Stat>;
   statSummariesById?: StatSummariesById;
@@ -61,6 +66,14 @@ interface StatListProps {
   variant?: "desktop" | "mobile";
   zipScopeDisplayName?: string | null;
   countyScopeDisplayName?: string | null;
+  // StatViz props for embedded chart (only shown when showAdvanced is true)
+  showAdvanced?: boolean;
+  seriesByStatIdByKind?: SeriesByKindMap;
+  pinnedAreas?: PinnedAreasMap;
+  hoveredArea?: AreaId | null;
+  onHoverArea?: (area: AreaId | null) => void;
+  getZipParentCounty?: (zipCode: string) => { code: string; name: string } | null;
+  stateAvg?: number | null;
 }
 
 const SUPPORTED_KINDS: SupportedAreaKind[] = ["ZIP", "COUNTY"];
@@ -163,6 +176,14 @@ export const StatList = ({
   variant: _variant = "desktop",
   zipScopeDisplayName = null,
   countyScopeDisplayName = null,
+  // StatViz props
+  showAdvanced = false,
+  seriesByStatIdByKind = new Map(),
+  pinnedAreas = {},
+  hoveredArea = null,
+  onHoverArea,
+  getZipParentCounty,
+  stateAvg = null,
 }: StatListProps) => {
   const { getCategoryLabel } = useCategories();
   const areaEntries = useMemo(() => buildAreaEntries(selectedAreas), [selectedAreas]);
@@ -780,6 +801,26 @@ export const StatList = ({
                 />
               ))}
             </div>
+          )}
+
+          {/* Embedded StatViz chart - only shown in advanced mode */}
+          {showAdvanced && (
+            <StatViz
+              statsById={statsById}
+              seriesByStatIdByKind={seriesByStatIdByKind}
+              statDataById={statDataById}
+              selectedAreas={selectedAreas}
+              pinnedAreas={pinnedAreas}
+              selectedStatId={selectedStatId}
+              hoveredArea={hoveredArea}
+              onHoverArea={onHoverArea}
+              areaNameLookup={areaNameLookup}
+              activeAreaKind={activeAreaKind}
+              getZipParentCounty={getZipParentCounty}
+              zipScopeCountyName={zipScopeDisplayName}
+              stateAvg={stateAvg}
+              embedded={true}
+            />
           )}
         </div>
       )}

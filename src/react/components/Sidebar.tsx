@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { track } from "@vercel/analytics";
 import { DemographicsBar } from "./DemographicsBar";
-import { StatViz } from "./StatViz";
 import { StatList } from "./StatList";
 import { IssueReportModal } from "./IssueReportModal";
 import type { Organization, OrganizationHours } from "../../types/organization";
@@ -19,7 +18,6 @@ import { db } from "../../lib/reactDb";
 // Enable Features
 // ============================================================================
 const ENABLE_DEMOGRAPHICS_SECTION = true;
-const ENABLE_STATISTICS_VISUALIZATION_SECTION = true;
 
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type SelectedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
@@ -244,11 +242,8 @@ export const Sidebar = ({
 
   const demographicsVisible = insightsState?.demographicsVisible ?? true;
   const demographicsExpanded = insightsState?.demographicsExpanded ?? false;
-  const statVizVisible = insightsState?.statVizVisible ?? true;
-  const statVizCollapsed = insightsState?.statVizCollapsed ?? false;
 
   const shouldShowDemographicsBar = ENABLE_DEMOGRAPHICS_SECTION && canShowInsights && demographicsVisible;
-  const shouldShowStatVisualization = ENABLE_STATISTICS_VISUALIZATION_SECTION && canShowInsights && statVizVisible;
 
   // When a category is cleared from the sidebar, also clear any active stat selection
   // so the choropleth overlay matches the category chips behavior on the map.
@@ -640,38 +635,13 @@ export const Sidebar = ({
           {issueFeedback}
         </div>
       ) : null}
-      {canShowInsights && (
-        <>
-          {/* Demographics Bar */}
-          {shouldShowDemographicsBar && (
-            <DemographicsBar
-              snapshot={demographicsSnapshot ?? null}
-              expanded={demographicsExpanded}
-              onExpandedChange={(next) => onInsightsStateChange?.({ demographicsExpanded: next })}
-            />
-          )}
-
-          {/* Stat Visualization */}
-          {shouldShowStatVisualization && (
-            <StatViz
-              statsById={statsById}
-              seriesByStatIdByKind={seriesByStatIdByKind}
-              statDataById={statDataById}
-              selectedAreas={selectedAreas}
-              pinnedAreas={pinnedAreas}
-              selectedStatId={selectedStatId}
-              hoveredArea={hoveredArea}
-              onHoverArea={onHoverArea}
-              areaNameLookup={areaNameLookup}
-              activeAreaKind={activeAreaKind}
-              getZipParentCounty={getZipParentCounty}
-              zipScopeCountyName={zipScopeDisplayName}
-              stateAvg={stateAvg}
-              collapsed={statVizCollapsed}
-              onCollapsedChange={(next) => onInsightsStateChange?.({ statVizCollapsed: next })}
-            />
-          )}
-        </>
+      {/* Demographics Bar - shown when advanced mode is on */}
+      {shouldShowDemographicsBar && (
+        <DemographicsBar
+          snapshot={demographicsSnapshot ?? null}
+          expanded={demographicsExpanded}
+          onExpandedChange={(next) => onInsightsStateChange?.({ demographicsExpanded: next })}
+        />
       )}
 
       {/* Tabs Header */}
@@ -818,6 +788,14 @@ export const Sidebar = ({
             secondaryStatId={secondaryStatId}
             selectedStatId={selectedStatId}
             onStatSelect={onStatSelect}
+            // StatViz props for embedded chart (only shown when showAdvanced is true)
+            showAdvanced={showAdvanced}
+            seriesByStatIdByKind={seriesByStatIdByKind}
+            pinnedAreas={pinnedAreas}
+            hoveredArea={hoveredArea}
+            onHoverArea={onHoverArea}
+            getZipParentCounty={getZipParentCounty}
+            stateAvg={stateAvg}
           />
         )}
 
