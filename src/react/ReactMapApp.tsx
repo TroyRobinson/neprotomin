@@ -1077,15 +1077,6 @@ export const ReactMapApp = () => {
     };
   }, [cameraState, countyRecords, zipRecords]);
 
-  const { combinedSnapshot, demographicsByKind } = useDemographics({
-    selectedByKind: {
-      ZIP: selectedZips,
-      COUNTY: selectedCounties,
-    },
-    defaultContext: defaultAreaContext,
-    zipScope,
-  });
-
   const normalizedZipScope = normalizeScopeLabel(zipScope) ?? FALLBACK_ZIP_SCOPE;
   const defaultCountyScope = useMemo(
     () => normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.COUNTY ?? "Oklahoma") ?? "Oklahoma",
@@ -1247,6 +1238,16 @@ export const ReactMapApp = () => {
     },
     [getAreaRecord],
   );
+
+  const { combinedSnapshot, demographicsByKind } = useDemographics({
+    selectedByKind: {
+      ZIP: selectedZips,
+      COUNTY: selectedCounties,
+    },
+    defaultContext: defaultAreaContext,
+    zipScope,
+    getZipParentCounty,
+  });
 
   const selectedAreasMap = useMemo(
     () => ({ ZIP: selectedZips, COUNTY: selectedCounties }),

@@ -123,6 +123,7 @@ const renderBreakdowns = (groups: Map<string, BreakdownGroup>) => {
 export const DemographicsBar = ({ snapshot, expanded, onExpandedChange }: DemographicsBarProps) => {
   const isControlled = typeof expanded === "boolean";
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
   const isExpanded = isControlled ? (expanded as boolean) : uncontrolledExpanded;
 
   const setIsExpanded = useCallback(
@@ -167,6 +168,8 @@ export const DemographicsBar = ({ snapshot, expanded, onExpandedChange }: Demogr
   const toggleExpanded = () => setIsExpanded(!isExpanded);
   const showSelectedPill = selectedCount > 1;
   const headerLabel = stats?.label ?? snapshot.label;
+  const fullLabel = stats?.fullLabel ?? headerLabel;
+  const showFullLabelTooltip = fullLabel !== headerLabel && !showSelectedPill;
 
   return (
     <div className="border-b border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
@@ -177,14 +180,24 @@ export const DemographicsBar = ({ snapshot, expanded, onExpandedChange }: Demogr
         aria-expanded={isExpanded}
       >
         <div className="flex flex-col">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          <div className="relative flex items-center gap-2">
+            <span
+              className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+              onMouseEnter={() => showFullLabelTooltip && setShowTooltip(true)}
+              onMouseLeave={() => setShowTooltip(false)}
+              title={showFullLabelTooltip ? fullLabel : undefined}
+            >
               {headerLabel}
             </span>
             {showSelectedPill && (
               <span className="rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-600 dark:text-slate-200">
                 {selectedCount} selected
               </span>
+            )}
+            {showTooltip && showFullLabelTooltip && (
+              <div className="pointer-events-none absolute left-0 top-6 z-10 whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-[10px] font-medium text-white shadow dark:bg-slate-200 dark:text-slate-900">
+                {fullLabel}
+              </div>
             )}
           </div>
           <div className="mt-1 flex flex-wrap gap-4 text-slate-600 dark:text-slate-300">

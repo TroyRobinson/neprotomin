@@ -64,11 +64,30 @@ const parseDate = (value: unknown): string | null => {
   return null;
 };
 
-const buildDefaultLabel = (kind: SupportedAreaKind): string =>
-  (DEFAULT_SCOPE_LABEL_BY_KIND[kind] || kind).toUpperCase();
+const buildDefaultLabel = (kind: SupportedAreaKind, zipScopeLabel?: string | null): string => {
+  if (kind === "COUNTY") {
+    return "Oklahoma";
+  }
+  if (kind === "ZIP" && zipScopeLabel) {
+    // Extract just the county name without "County" suffix for brevity
+    const countyName = zipScopeLabel.replace(/\s+County$/i, "").trim();
+    return countyName;
+  }
+  return (DEFAULT_SCOPE_LABEL_BY_KIND[kind] || kind).toUpperCase();
+};
+
+const buildFullLabel = (kind: SupportedAreaKind, zipScopeLabel?: string | null): string => {
+  if (kind === "COUNTY") {
+    return "Oklahoma Counties";
+  }
+  if (kind === "ZIP" && zipScopeLabel) {
+    return `${zipScopeLabel} ZIPs`;
+  }
+  return (DEFAULT_SCOPE_LABEL_BY_KIND[kind] || kind).toUpperCase();
+};
 
 const pluralLabelForKind = (kind: SupportedAreaKind): string =>
-  kind === "ZIP" ? "ZIPs" : kind === "COUNTY" ? "counties" : "areas";
+  kind === "ZIP" ? "OK ZIPs" : kind === "COUNTY" ? "OK Counties" : "areas";
 
 const isBreakdownGroupKey = (value: unknown): value is BreakdownGroupKey =>
   typeof value === "string" && (BREAKDOWN_KEYS as string[]).includes(value);
@@ -96,6 +115,7 @@ type SelectedAreasByKind = Partial<Record<SupportedAreaKind, string[]>>;
 interface AggregatedStats {
   selectedCount: number;
   label?: string;
+  fullLabel?: string;
   population?: number;
   avgAge?: number;
   marriedPercent?: number;
@@ -112,6 +132,7 @@ interface UseDemographicsOptions {
   selectedByKind: SelectedAreasByKind;
   defaultContext?: DefaultContextOption | null;
   zipScope?: string | null;
+  getZipParentCounty?: (zipCode: string) => { code: string; name: string } | null;
 }
 
 export interface DemographicKindSnapshot {
@@ -281,26 +302,42 @@ const buildAreaLabel = (
   fallbackIds: string[],
   getAreaName: (kind: SupportedAreaKind, code: string) => string | null,
   zipScopeLabel?: string | null,
+  getZipParentCounty?: (zipCode: string) => { code: string; name: string } | null,
 ): string => {
   if (resolvedSelection.length === 1) {
     return getAreaName(kind, resolvedSelection[0]) ?? resolvedSelection[0];
   }
   if (resolvedSelection.length > 1) {
+    // For ZIPs: check if all selected ZIPs are from the same county
+    if (kind === "ZIP" && getZipParentCounty) {
+      const countySet = new Set<string>();
+      let countyName: string | null = null;
+      for (const zipCode of resolvedSelection) {
+        const parent = getZipParentCounty(zipCode);
+        if (parent) {
+          countySet.add(parent.code.toLowerCase());
+          countyName = parent.name;
+        }
+      }
+      // If all ZIPs are from the same county, use county-specific label
+      if (countySet.size === 1 && countyName) {
+        const shortCountyName = countyName.charAt(0).toUpperCase() + countyName.slice(1).toLowerCase();
+        return `${shortCountyName} ZIPs`;
+      }
+    }
     return pluralLabelForKind(kind);
   }
   if (fallbackIds.length === 1) {
     return getAreaName(kind, fallbackIds[0]) ?? fallbackIds[0];
   }
-  if (kind === "ZIP" && zipScopeLabel) {
-    return `${zipScopeLabel} ZIPs`.toUpperCase();
-  }
-  return buildDefaultLabel(kind);
+  return buildDefaultLabel(kind, zipScopeLabel);
 };
 
 export const useDemographics = ({
   selectedByKind,
   defaultContext = null,
   zipScope = null,
+  getZipParentCounty,
 }: UseDemographicsOptions): DemographicsResult => {
   const { authReady } = useAuthSession();
   const { areasByKindAndCode } = useAreas();
@@ -487,10 +524,12 @@ export const useDemographics = ({
 
       let stats: AggregatedStats | null = null;
       if (populationEntry && (totalPopulation > 0 || populationCount > 0)) {
-      const label = buildAreaLabel(kind, resolvedSelection, targetIds, getAreaName, primaryZipScopeLabel);
+        const label = buildAreaLabel(kind, resolvedSelection, targetIds, getAreaName, primaryZipScopeLabel, getZipParentCounty);
+        const fullLabel = buildFullLabel(kind, primaryZipScopeLabel);
         stats = {
           selectedCount: rawSelection.length,
           label,
+          fullLabel,
           population: totalPopulation > 0 ? totalPopulation : undefined,
         };
         if (weightedAgeDenominator > 0) {
