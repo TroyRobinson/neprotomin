@@ -1065,6 +1065,32 @@ const GroupSearchInput = ({
   );
 };
 
+const HighlightMatch = ({ text, filter }: { text: string; filter: string }) => {
+  if (!filter.trim()) return <>{text}</>;
+  const terms = filter.trim().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return <>{text}</>;
+
+  // Escape special regex characters and join terms
+  const escapedTerms = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const regex = new RegExp(`(${escapedTerms.join("|")})`, "gi");
+  const testRegex = new RegExp(`^(${escapedTerms.join("|")})$`, "i");
+  const parts = text.split(regex);
+
+  return (
+    <>
+      {parts.map((part, i) =>
+        testRegex.test(part) ? (
+          <strong key={i} className="font-bold text-slate-900 dark:text-white">
+            {part}
+          </strong>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+};
+
 interface NewStatModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -1094,13 +1120,24 @@ const NewStatModal = ({
     const now = new Date();
     return now.getUTCFullYear() - 2;
   });
-  const [limit, setLimit] = useState(20);
+  const [limit, setLimit] = useState(50);
   const [category, setCategory] = useState<Category | null>(null);
   const [step, setStep] = useState<1 | 2>(1);
+  const [resultsFilter, setResultsFilter] = useState("");
+
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewTotal, setPreviewTotal] = useState(0);
   const [variables, setVariables] = useState<CensusVariablePreview[]>([]);
+
+  const filteredVariables = useMemo(() => {
+    if (!resultsFilter.trim()) return variables;
+    const terms = resultsFilter.toLowerCase().split(/\s+/).filter(Boolean);
+    return variables.filter((v) => {
+      const name = v.statName.toLowerCase();
+      return terms.every((term) => name.includes(term));
+    });
+  }, [variables, resultsFilter]);
   type VariableSelection = {
     selected: boolean;
     yearEnd: number | null;
@@ -1145,7 +1182,7 @@ const NewStatModal = ({
       setDataset("acs/acs5");
       setGroup("");
       setYear(defaultYear);
-      setLimit(20);
+      setLimit(50);
       setCategory(null);
       setStep(1);
       setIsPreviewLoading(false);
@@ -1158,6 +1195,7 @@ const NewStatModal = ({
       setIsParentSearchOpen(false);
       setParentSearch("");
       setManualParent(null);
+      setResultsFilter("");
       setAddPercent(false);
       setAddChange(false);
       setPercentDenominatorId("");
@@ -1568,7 +1606,67 @@ const NewStatModal = ({
         },
       };
     });
-  }, [dataset, getDefaultSelection, getYearRange, group, manualParent, mergeQueueItems, variableMetaByName, year]);
+  }, [dataset, getDefaultSelection, getYearRange, group, manualParent, mergeQueueItems, variableMetaByName, year, setQueueItems]);
+
+  const handleSelectAllFiltered = useCallback(() => {
+    const trimmedGroup = group.trim();
+    if (!trimmedGroup) return;
+
+    const toSelect = filteredVariables.filter((v) => {
+      const sel = selection[v.name] ?? getDefaultSelection();
+      return !sel.lockedImported && !sel.selected;
+    });
+
+    if (toSelect.length === 0) return;
+
+    const newQueueItems: ImportQueueItem[] = [];
+    const updates: Record<string, VariableSelection> = {};
+
+    toSelect.forEach((v) => {
+      const current = selection[v.name] ?? getDefaultSelection();
+      const effectiveRelationship: ImportRelationship =
+        manualParent && current.relationship === "none" ? "child" : current.relationship;
+
+      const { year: qYear, years: qYears } = getYearRange(current, year);
+      const key = `${dataset}::${trimmedGroup}::${v.name}`;
+      const variableMeta = variableMetaByName.get(v.name);
+
+      newQueueItems.push({
+        id: key,
+        dataset,
+        group: trimmedGroup,
+        variable: v.name,
+        statLabel: variableMeta?.statName || variableMeta?.label || v.name,
+        year: qYear,
+        years: qYears,
+        includeMoe: true,
+        relationship: effectiveRelationship ?? "none",
+        statAttribute: current.statAttribute ?? "",
+        status: "pending",
+      });
+
+      updates[v.name] = {
+        ...current,
+        selected: true,
+        relationship: effectiveRelationship,
+      };
+    });
+
+    setSelection((prev) => ({ ...prev, ...updates }));
+    setQueueItems((prevQueue) => mergeQueueItems(prevQueue, newQueueItems));
+  }, [
+    dataset,
+    filteredVariables,
+    getDefaultSelection,
+    getYearRange,
+    group,
+    manualParent,
+    mergeQueueItems,
+    selection,
+    variableMetaByName,
+    year,
+    setQueueItems,
+  ]);
 
   const updateSelectionField = useCallback(
     (name: string, field: "yearEnd" | "yearStart", value: number | null) => {
@@ -2590,7 +2688,7 @@ const NewStatModal = ({
               {/* Meta info above preview */}
               {previewTotal > 0 && lastSubmittedGroup && (
                 <p className="mb-1.5 px-1 text-[10px] text-slate-400 dark:text-slate-500">
-                  {variables.length} of {previewTotal} in {lastSubmittedGroup} (+ MOE)
+                  {filteredVariables.length} of {previewTotal} in {lastSubmittedGroup} (+ MOE)
                 </p>
               )}
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
@@ -2619,6 +2717,64 @@ const NewStatModal = ({
                 >
                   + Parent
                 </button>
+              </div>
+
+              {/* Results Filter */}
+              <div className="mb-3 px-1">
+                <div className="relative">
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5">
+                    <svg
+                      className="h-3.5 w-3.5 text-slate-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    value={resultsFilter}
+                    onChange={(e) => setResultsFilter(e.target.value)}
+                    placeholder="Filter results by stat name..."
+                    className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-24 text-[11px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-1.5">
+                    {filteredVariables.some((v) => {
+                      const sel = selection[v.name] ?? getDefaultSelection();
+                      return !sel.lockedImported && !sel.selected;
+                    }) && (
+                      <button
+                        type="button"
+                        onClick={handleSelectAllFiltered}
+                        className="rounded px-2 py-1 text-[10px] font-semibold text-brand-600 transition hover:bg-brand-50 hover:text-brand-700 dark:text-brand-400 dark:hover:bg-brand-900/30 dark:hover:text-brand-300"
+                      >
+                        Select All
+                      </button>
+                    )}
+                    {resultsFilter && (
+                      <button
+                        type="button"
+                        onClick={() => setResultsFilter("")}
+                        className="ml-0.5 flex h-6 w-6 items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                      >
+                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
               {isParentSearchOpen && (
                 <div className="mb-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-700 dark:bg-slate-900/40">
@@ -2692,7 +2848,7 @@ const NewStatModal = ({
                   <span className="text-center">Relationship</span>
                 </div>
             <div className="space-y-1">
-              {variables.map((v) => {
+              {filteredVariables.map((v) => {
                 const sel = selection[v.name] ?? getDefaultSelection({ yearEnd: year, yearStart: year - 2 });
                 const rel = sel.relationship ?? "none";
                 const relationshipLabel = rel === "none" ? "None" : rel === "child" ? "Child" : "Parent";
@@ -2722,7 +2878,7 @@ const NewStatModal = ({
                           {v.name}
                         </span>
                         <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                          {v.inferredType} · {v.statName}
+                          {v.inferredType} · <HighlightMatch text={v.statName} filter={resultsFilter} />
                         </span>
                         {sel.lockedImported && (
                           <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
