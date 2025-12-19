@@ -31,6 +31,7 @@ import { findCitySearchTarget, DEFAULT_CITY_ZOOM } from "./lib/citySearchTargets
 import { parseFullAddress, geocodeAddress, looksLikeAddress } from "./lib/geocoding";
 import { normalizeForSearch, computeSimilarityFromNormalized } from "./lib/fuzzyMatch";
 import { getMapStateFromUrl, updateUrlWithMapState, type AreasMode } from "./lib/mapUrl";
+import { isFoodMapDomain } from "./lib/domains";
 import { useAuthSession } from "./hooks/useAuthSession";
 import { setStatDataSubscriptionEnabled } from "../state/statData";
 import { MapSettingsModal } from "./components/MapSettingsModal";
@@ -58,13 +59,7 @@ const ALWAYS_SHOW_WELCOME_MODAL = false;
 
 const FALLBACK_ZIP_SCOPE = normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma") ?? "Oklahoma";
 const DEFAULT_PRIMARY_STAT_ID = "8383685c-2741-40a2-96ff-759c42ddd586";
-
-// Check if we're on the food map domain - only apply food defaults there
-const isFoodMapDomain = (): boolean => {
-  if (typeof window === "undefined") return false;
-  const hostname = window.location.hostname.toLowerCase();
-  return hostname === "okfoodmap.com" || hostname.endsWith(".okfoodmap.com");
-};
+const DEFAULT_POPULATION_STAT_ID = "29d2b2e4-52e1-4f36-b212-abd06de3f92a";
 
 const DEFAULT_TOP_BAR_HEIGHT = 64;
 const MOBILE_MAX_WIDTH_QUERY = "(max-width: 767px)";
@@ -1745,6 +1740,16 @@ export const ReactMapApp = () => {
     // Helper: first stat marked as homeFeatured + featured + active
     const pickHomeFeatured = () =>
       allStats.find((s) => s.homeFeatured === true && s.featured === true && s.active !== false) ?? null;
+    const pickPopulationStat = () => {
+      const byId = statsById.get(DEFAULT_POPULATION_STAT_ID);
+      if (byId && byId.active !== false) return byId.id;
+      const byName = allStats.find(
+        (s) =>
+          (s.name === "Population" || s.label === "Population") &&
+          s.active !== false,
+      );
+      return byName?.id ?? null;
+    };
 
     if (isFoodMapDomain()) {
       // okfoodmap.com always defaults to the legacy SNAP stat if available
@@ -1771,7 +1776,14 @@ export const ReactMapApp = () => {
       return;
     }
 
-    // Non-okfood domains: respect homeFeatured if present
+    // Non-okfood domains: prefer Population, then homeFeatured if present
+    const populationDefault = pickPopulationStat();
+    if (populationDefault) {
+      setSelectedStatId(populationDefault);
+      setHasAppliedDefaultStat(true);
+      return;
+    }
+
     const homeDefault = pickHomeFeatured();
     if (homeDefault) {
       setSelectedStatId(homeDefault.id);

@@ -3,14 +3,16 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { getMapStateFromUrl, updateUrlWithMapState } from "./mapUrl";
 
 type WindowLike = {
-  location: { href: string; search: string };
+  location: { href: string; search: string; hostname: string };
   history: { replaceState: (data: any, unused: string, url: string) => void };
 };
 
 function setWindowUrl(url: string) {
   const u = new URL(url);
-  (globalThis as any).window.location.href = u.toString();
-  (globalThis as any).window.location.search = u.search;
+  const loc = (globalThis as any).window.location;
+  loc.href = u.toString();
+  loc.search = u.search;
+  loc.hostname = u.hostname;
 }
 
 describe("mapUrl selection persistence", () => {
@@ -22,7 +24,7 @@ describe("mapUrl selection persistence", () => {
 
   it("parses zips + counties from URL and trims whitespace", () => {
     const w: WindowLike = {
-      location: { href: "http://example.test/", search: "" },
+      location: { href: "http://example.test/", search: "", hostname: "example.test" },
       history: {
         replaceState: vi.fn((_data, _unused, url) => {
           setWindowUrl(url);
@@ -40,7 +42,7 @@ describe("mapUrl selection persistence", () => {
 
   it("writes zips + counties to URL and removes them when empty", () => {
     const w: WindowLike = {
-      location: { href: "http://example.test/", search: "" },
+      location: { href: "http://example.test/", search: "", hostname: "example.test" },
       history: {
         replaceState: vi.fn((_data, _unused, url) => {
           setWindowUrl(url);
@@ -103,9 +105,9 @@ describe("mapUrl selection persistence", () => {
     expect(search).not.toContain("counties=");
   });
 
-  it("parses sidebar tab from URL and defaults to orgs", () => {
+  it("parses sidebar tab from URL and respects domain defaults", () => {
     const w: WindowLike = {
-      location: { href: "http://example.test/", search: "" },
+      location: { href: "http://example.test/", search: "", hostname: "example.test" },
       history: {
         replaceState: vi.fn((_data, _unused, url) => {
           setWindowUrl(url);
@@ -120,12 +122,16 @@ describe("mapUrl selection persistence", () => {
 
     setWindowUrl("http://example.test/");
     const state2 = getMapStateFromUrl();
-    expect(state2.sidebarTab).toBe("orgs");
+    expect(state2.sidebarTab).toBe("stats");
+
+    setWindowUrl("http://okfoodmap.com/");
+    const state3 = getMapStateFromUrl();
+    expect(state3.sidebarTab).toBe("orgs");
   });
 
   it("writes sidebar tab to URL and removes it when default", () => {
     const w: WindowLike = {
-      location: { href: "http://example.test/", search: "" },
+      location: { href: "http://example.test/", search: "", hostname: "example.test" },
       history: {
         replaceState: vi.fn((_data, _unused, url) => {
           setWindowUrl(url);
@@ -158,7 +164,7 @@ describe("mapUrl selection persistence", () => {
       false,
     );
 
-    expect((globalThis as any).window.location.search).toContain("tab=stats");
+    expect((globalThis as any).window.location.search).not.toContain("tab=");
 
     updateUrlWithMapState(
       36.0,
@@ -182,13 +188,97 @@ describe("mapUrl selection persistence", () => {
       false,
     );
 
-    const search = (globalThis as any).window.location.search;
-    expect(search).not.toContain("tab=");
+    expect((globalThis as any).window.location.search).toContain("tab=orgs");
+
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      [],
+      false,
+      false,
+      "auto",
+      [],
+      [],
+      "stats",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+    );
+
+    expect((globalThis as any).window.location.search).not.toContain("tab=");
+  });
+
+  it("uses orgs as the default tab on okfoodmap domains", () => {
+    const w: WindowLike = {
+      location: { href: "http://okfoodmap.com/", search: "", hostname: "okfoodmap.com" },
+      history: {
+        replaceState: vi.fn((_data, _unused, url) => {
+          setWindowUrl(url);
+        }),
+      },
+    };
+    (globalThis as any).window = w;
+
+    setWindowUrl("http://okfoodmap.com/");
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      [],
+      false,
+      false,
+      "auto",
+      [],
+      [],
+      "orgs",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+    );
+
+    expect((globalThis as any).window.location.search).not.toContain("tab=");
+
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      [],
+      false,
+      false,
+      "auto",
+      [],
+      [],
+      "stats",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+    );
+
+    expect((globalThis as any).window.location.search).toContain("tab=stats");
   });
 
   it("parses sidebar insights visibility + expansion state from URL", () => {
     const w: WindowLike = {
-      location: { href: "http://example.test/", search: "" },
+      location: { href: "http://example.test/", search: "", hostname: "example.test" },
       history: {
         replaceState: vi.fn((_data, _unused, url) => {
           setWindowUrl(url);
@@ -208,7 +298,7 @@ describe("mapUrl selection persistence", () => {
 
   it("writes sidebar insights state to URL when persistence is enabled, and clears when disabled", () => {
     const w: WindowLike = {
-      location: { href: "http://example.test/", search: "" },
+      location: { href: "http://example.test/", search: "", hostname: "example.test" },
       history: {
         replaceState: vi.fn((_data, _unused, url) => {
           setWindowUrl(url);
