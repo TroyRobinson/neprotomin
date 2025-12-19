@@ -109,6 +109,34 @@ const MOBILE_SEARCH_AUTO_EXPAND_THRESHOLD = 380;
 
 const NE_HOME_REDIRECT_STORAGE_KEY = "ne.homeRedirectDisabled";
 
+const guessQueueTitle = (text: string): string => {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const delimiters = ["→", "–", "—", "·", ":"];
+  let bestIndex = -1;
+  let bestDelim = "";
+  for (const delim of delimiters) {
+    const idx = trimmed.lastIndexOf(delim);
+    if (idx === -1) continue;
+    const next = trimmed.slice(idx + delim.length).trim();
+    if (!next) continue;
+    if (idx > bestIndex) {
+      bestIndex = idx;
+      bestDelim = delim;
+    }
+  }
+  if (bestIndex === -1) return trimmed;
+  return trimmed.slice(bestIndex + bestDelim.length).trim();
+};
+
+const getQueueItemTitle = (item: { statLabel?: string; variable: string }): string => {
+  if (item.statLabel && item.statLabel.trim()) {
+    const guessed = guessQueueTitle(item.statLabel);
+    return guessed || item.statLabel.trim();
+  }
+  return item.variable;
+};
+
 const getNeHomeRedirectState = (): boolean => {
   if (typeof window === "undefined") return true; // Default: redirect disabled (=1), toggle "on"
   const stored = localStorage.getItem(NE_HOME_REDIRECT_STORAGE_KEY);
@@ -452,7 +480,11 @@ export const TopBar = ({
     importQueueTotal === 0 ? 0 : Math.round((importQueueCompletedCount / importQueueTotal) * 100);
   const showImportQueueBadge = importQueueActiveCount > 0;
   const importQueueBadgeLabel = importQueueActiveCount > 99 ? "99+" : importQueueActiveCount.toString();
-  const showImportQueue = showQueueLink && showImportQueueBadge;
+  const showImportQueue = showQueueLink && (showImportQueueBadge || isImportRunning);
+  const showGroupingNote =
+    isImportRunning &&
+    Boolean(importDerivedStatusLabel) &&
+    importDerivedStatusLabel.toLowerCase().startsWith("grouping");
 
   return (
     <>
@@ -786,6 +818,11 @@ export const TopBar = ({
                         />
                       </div>
                     )}
+                    {showGroupingNote && (
+                      <div className="mt-2 text-[10px] text-slate-400 dark:text-slate-500">
+                        {importDerivedStatusLabel}…
+                      </div>
+                    )}
                     <div className="mt-3 max-h-72 space-y-1 overflow-y-auto">
                       {importQueueItems.length === 0 ? (
                         <p className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -797,6 +834,7 @@ export const TopBar = ({
                           const yearRangeLabel =
                             item.years > 1 ? `${item.year - item.years + 1} to ${item.year}` : item.year;
                           const subtitle = `${item.variable} · ${item.group} · ${yearRangeLabel}`;
+                          const title = getQueueItemTitle(item);
                           return (
                             <div
                               key={item.id}
@@ -805,7 +843,7 @@ export const TopBar = ({
                               <div className="flex items-center justify-between gap-2">
                                 <div className="min-w-0">
                                   <div className="truncate font-medium text-slate-800 dark:text-slate-100">
-                                    {item.statLabel || item.variable}
+                                    {title}
                                   </div>
                                   <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">
                                     {subtitle}

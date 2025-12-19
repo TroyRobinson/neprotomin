@@ -795,6 +795,7 @@ type CensusVariablePreview = {
   predicateType?: string;
   inferredType: string;
   statName: string;
+  statLabel?: string;
   zipCount: number;
   countyCount: number;
 };
@@ -1607,6 +1608,8 @@ const NewStatModal = ({
           typeof entry.inferredType === "string" ? entry.inferredType : "",
         statName:
           typeof entry.statName === "string" ? entry.statName : String(entry.name),
+        statLabel:
+          typeof entry.statLabel === "string" ? entry.statLabel : undefined,
         zipCount: typeof entry.zipCount === "number" ? entry.zipCount : 0,
         countyCount: typeof entry.countyCount === "number" ? entry.countyCount : 0,
       }));
@@ -1659,7 +1662,7 @@ const NewStatModal = ({
             dataset: resolvedDataset,
             group: trimmedGroup,
             variable: sel.name,
-            statLabel: variableMeta?.statName || variableMeta?.label || sel.name,
+            statLabel: variableMeta?.statLabel || variableMeta?.statName || variableMeta?.label || sel.name,
             year: qYear,
             years: qYears,
             includeMoe: true,
@@ -1708,7 +1711,7 @@ const NewStatModal = ({
           dataset,
           group: trimmedGroup,
           variable: name,
-          statLabel: variableMeta?.statName || variableMeta?.label || name,
+          statLabel: variableMeta?.statLabel || variableMeta?.statName || variableMeta?.label || name,
           year: qYear,
           years: qYears,
           includeMoe: true,
@@ -1765,7 +1768,7 @@ const NewStatModal = ({
         dataset,
         group: trimmedGroup,
         variable: v.name,
-        statLabel: variableMeta?.statName || variableMeta?.label || v.name,
+        statLabel: variableMeta?.statLabel || variableMeta?.statName || variableMeta?.label || v.name,
         year: qYear,
         years: qYears,
         includeMoe: true,
@@ -1921,7 +1924,7 @@ const NewStatModal = ({
                     dataset,
                     group: trimmedGroup,
                     variable: name,
-                    statLabel: variableMeta?.statName || variableMeta?.label || name,
+                    statLabel: variableMeta?.statLabel || variableMeta?.statName || variableMeta?.label || name,
                     year: qYear,
                     years: qYears,
                     includeMoe: true,
@@ -2448,7 +2451,32 @@ const NewStatModal = ({
           }
         }
 
-        // If we never marked this item as error, treat it as success.
+        if (!itemErrored && itemStatId) {
+          if (addPercent && percentDenominatorId) {
+            const percentYearLabel =
+              nextItem.years > 1
+                ? `${nextItem.year - nextItem.years + 1}-${nextItem.year}`
+                : String(nextItem.year);
+            setDerivedStatusLabel(`Percentage ${percentYearLabel}`);
+            const derivedId = await createPercentDerivedChild(itemStatId, percentDenominatorId);
+            setDerivedStatusLabel(null);
+            if (derivedId && !importedStatIds.includes(derivedId)) {
+              importedStatIds.push(derivedId);
+            }
+          }
+          if (addChange && nextItem.years > 1) {
+            setDerivedStatusLabel("Change");
+            const endYear = String(nextItem.year);
+            const startYear = String(nextItem.year - nextItem.years + 1);
+            const derivedId = await createChangeDerivedChild(itemStatId, startYear, endYear);
+            setDerivedStatusLabel(null);
+            if (derivedId && !importedStatIds.includes(derivedId)) {
+              importedStatIds.push(derivedId);
+            }
+          }
+        }
+
+        // If we never marked this item as error, treat it as success (after derived work).
         setQueueItems((prev) =>
           prev.map((q) =>
             q.id === nextItem.id && !itemErrored
@@ -2461,27 +2489,6 @@ const NewStatModal = ({
               : q,
           ),
         );
-
-        if (!itemErrored && itemStatId) {
-          if (addPercent && percentDenominatorId) {
-            setDerivedStatusLabel("Percent stat");
-            const derivedId = await createPercentDerivedChild(itemStatId, percentDenominatorId);
-            setDerivedStatusLabel(null);
-            if (derivedId && !importedStatIds.includes(derivedId)) {
-              importedStatIds.push(derivedId);
-            }
-          }
-          if (addChange && nextItem.years > 1) {
-            setDerivedStatusLabel("Change stat");
-            const endYear = String(nextItem.year);
-            const startYear = String(nextItem.year - nextItem.years + 1);
-            const derivedId = await createChangeDerivedChild(itemStatId, startYear, endYear);
-            setDerivedStatusLabel(null);
-            if (derivedId && !importedStatIds.includes(derivedId)) {
-              importedStatIds.push(derivedId);
-            }
-          }
-        }
       }
 
       const itemsSnapshot = queueItemsRef.current.slice();
@@ -2501,61 +2508,66 @@ const NewStatModal = ({
           ? importedByItemId.get(parentItem.id)
           : importedParentSelection?.importedStatId ?? null;
       if (childItems.length > 0 && parentStatId) {
-        const parentId = parentStatId;
-        const now = Date.now();
-        const candidates = childItems
-          .map((child) => {
-            const childStatId = importedByItemId.get(child.id)!;
-            if (!childStatId || childStatId === parentId) return null;
-            const rawAttr = typeof child.statAttribute === "string" ? child.statAttribute.trim() : "";
-            const statAttribute = rawAttr ? rawAttr : UNDEFINED_STAT_ATTRIBUTE;
-            const relationKey = `${parentId}::${childStatId}::${statAttribute}`;
-            return { relationKey, parentStatId: parentId, childStatId, statAttribute };
-          })
-          .filter(
-            (v): v is { relationKey: string; parentStatId: string; childStatId: string; statAttribute: string } =>
-              v !== null,
-          );
-
-        const uniqueByKey = new Map<string, (typeof candidates)[number]>();
-        for (const c of candidates) uniqueByKey.set(c.relationKey, c);
-        const unique = Array.from(uniqueByKey.values());
-
-        if (unique.length > 0) {
-          try {
-            const { data } = await db.queryOnce({
-              statRelations: {
-                $: {
-                  where: { relationKey: { $in: unique.map((u) => u.relationKey) } },
-                  fields: ["relationKey"],
-                },
-              },
-            });
-            const existing = new Set(
-              Array.isArray((data as any)?.statRelations)
-                ? (data as any).statRelations
-                    .map((r: any) => (typeof r?.relationKey === "string" ? r.relationKey : null))
-                    .filter(Boolean)
-                : [],
+        setDerivedStatusLabel("Grouping relationships");
+        try {
+          const parentId = parentStatId;
+          const now = Date.now();
+          const candidates = childItems
+            .map((child) => {
+              const childStatId = importedByItemId.get(child.id)!;
+              if (!childStatId || childStatId === parentId) return null;
+              const rawAttr = typeof child.statAttribute === "string" ? child.statAttribute.trim() : "";
+              const statAttribute = rawAttr ? rawAttr : UNDEFINED_STAT_ATTRIBUTE;
+              const relationKey = `${parentId}::${childStatId}::${statAttribute}`;
+              return { relationKey, parentStatId: parentId, childStatId, statAttribute };
+            })
+            .filter(
+              (v): v is { relationKey: string; parentStatId: string; childStatId: string; statAttribute: string } =>
+                v !== null,
             );
-            const txs = unique
-              .filter((u) => !existing.has(u.relationKey))
-              .map((u) =>
-                db.tx.statRelations[createId()].update({
-                  relationKey: u.relationKey,
-                  parentStatId: u.parentStatId,
-                  childStatId: u.childStatId,
-                  statAttribute: u.statAttribute,
-                  createdAt: now,
-                  updatedAt: now,
-                }),
+
+          const uniqueByKey = new Map<string, (typeof candidates)[number]>();
+          for (const c of candidates) uniqueByKey.set(c.relationKey, c);
+          const unique = Array.from(uniqueByKey.values());
+
+          if (unique.length > 0) {
+            try {
+              const { data } = await db.queryOnce({
+                statRelations: {
+                  $: {
+                    where: { relationKey: { $in: unique.map((u) => u.relationKey) } },
+                    fields: ["relationKey"],
+                  },
+                },
+              });
+              const existing = new Set(
+                Array.isArray((data as any)?.statRelations)
+                  ? (data as any).statRelations
+                      .map((r: any) => (typeof r?.relationKey === "string" ? r.relationKey : null))
+                      .filter(Boolean)
+                  : [],
               );
-            if (txs.length > 0) {
-              await db.transact(txs);
+              const txs = unique
+                .filter((u) => !existing.has(u.relationKey))
+                .map((u) =>
+                  db.tx.statRelations[createId()].update({
+                    relationKey: u.relationKey,
+                    parentStatId: u.parentStatId,
+                    childStatId: u.childStatId,
+                    statAttribute: u.statAttribute,
+                    createdAt: now,
+                    updatedAt: now,
+                  }),
+                );
+              if (txs.length > 0) {
+                await db.transact(txs);
+              }
+            } catch (err) {
+              console.error("Failed to create stat relationships after import", err);
             }
-          } catch (err) {
-            console.error("Failed to create stat relationships after import", err);
           }
+        } finally {
+          setDerivedStatusLabel(null);
         }
       }
     } finally {

@@ -63,6 +63,27 @@ const cleanVariableLabel = (label) => {
     .trim();
 };
 
+const guessStatLabelFromText = (text) => {
+  if (!text) return "";
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const delimiters = ["→", "–", "—", "·", ":"];
+  let bestIndex = -1;
+  let bestDelim = "";
+  for (const delim of delimiters) {
+    const idx = trimmed.lastIndexOf(delim);
+    if (idx === -1) continue;
+    const next = trimmed.slice(idx + delim.length).trim();
+    if (!next) continue;
+    if (idx > bestIndex) {
+      bestIndex = idx;
+      bestDelim = delim;
+    }
+  }
+  if (bestIndex === -1) return trimmed;
+  return trimmed.slice(bestIndex + bestDelim.length).trim();
+};
+
 const inferUniverseFromConcept = (concept) => {
   if (!concept) return null;
   const normalized = String(concept).trim();
@@ -145,6 +166,14 @@ export const deriveStatName = (variableName, variable, group) => {
   if (!concept) return cleaned;
   if (cleaned.toLowerCase().includes(concept.toLowerCase())) return cleaned;
   return `${concept} – ${cleaned}`;
+};
+
+export const deriveStatLabel = (statName, variable, group) => {
+  const custom = CUSTOM_LABELS[variable.name];
+  const cleaned = cleanVariableLabel(variable.label);
+  const fallback = statName || normalizeText(group.concept || variable.name);
+  const base = custom || cleaned || fallback;
+  return guessStatLabelFromText(base);
 };
 
 export const inferStatType = (variable) => {

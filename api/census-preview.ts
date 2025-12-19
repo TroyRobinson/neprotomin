@@ -4,6 +4,7 @@ import {
   fetchGroupMetadata,
   resolveVariables,
   deriveStatName,
+  deriveStatLabel,
   inferStatType,
   fetchVariableSummaries,
 } from "./_shared/censusPreview.js";
@@ -157,6 +158,7 @@ export default async function handler(req: CensusPreviewRequest, res: CensusPrev
       if (!variableMeta) continue;
 
       const statName = deriveStatName(variable, variableMeta, groupMeta);
+      const statLabel = deriveStatLabel(statName, variableMeta, groupMeta);
       const statType = inferStatType(variableMeta);
       const summary = summaries[variable] || { zipCount: 0, countyCount: 0 };
 
@@ -167,6 +169,7 @@ export default async function handler(req: CensusPreviewRequest, res: CensusPrev
         predicateType: variableMeta.predicateType,
         inferredType: statType,
         statName,
+        statLabel,
         zipCount: summary.zipCount,
         countyCount: summary.countyCount,
       });
