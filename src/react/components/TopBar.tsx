@@ -423,7 +423,6 @@ export const TopBar = ({
   const showAdminLink =
     !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
   const showRoadmapLink = !isLoading && user != null && !user.isGuest;
-  const showImportQueue = showQueueLink;
 
   const queueQuery = useMemo(
     () =>
@@ -453,6 +452,7 @@ export const TopBar = ({
     importQueueTotal === 0 ? 0 : Math.round((importQueueCompletedCount / importQueueTotal) * 100);
   const showImportQueueBadge = importQueueActiveCount > 0;
   const importQueueBadgeLabel = importQueueActiveCount > 99 ? "99+" : importQueueActiveCount.toString();
+  const showImportQueue = showQueueLink && showImportQueueBadge;
 
   return (
     <>
