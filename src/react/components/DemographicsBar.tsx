@@ -6,6 +6,7 @@ interface DemographicsBarProps {
   snapshot: CombinedDemographicsSnapshot | null;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
+  onClearAreas?: () => void;
 }
 
 interface BreakdownSegmentDisplay {
@@ -120,7 +121,7 @@ const renderBreakdowns = (groups: Map<string, BreakdownGroup>) => {
   });
 };
 
-export const DemographicsBar = ({ snapshot, expanded, onExpandedChange }: DemographicsBarProps) => {
+export const DemographicsBar = ({ snapshot, expanded, onExpandedChange, onClearAreas }: DemographicsBarProps) => {
   const isControlled = typeof expanded === "boolean";
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
@@ -190,8 +191,29 @@ export const DemographicsBar = ({ snapshot, expanded, onExpandedChange }: Demogr
               {headerLabel}
             </span>
             {showSelectedPill && (
-              <span className="rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-600 dark:text-slate-200">
-                {selectedCount} selected
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 pl-2 pr-1 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-600 dark:text-slate-200">
+                <span>{selectedCount} selected</span>
+                {onClearAreas && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onClearAreas();
+                    }}
+                    className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                    aria-label="Clear all selections"
+                    title="Clear all selections"
+                  >
+                    <svg
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                      className="h-3 w-3"
+                      aria-hidden="true"
+                    >
+                      <path d="M4.28 3.22a.75.75 0 00-1.06 1.06L6.94 8l-3.72 3.72a.75.75 0 101.06 1.06L8 9.06l3.72 3.72a.75.75 0 101.06-1.06L9.06 8l3.72-3.72a.75.75 0 00-1.06-1.06L8 6.94 4.28 3.22z" />
+                    </svg>
+                  </button>
+                )}
               </span>
             )}
             {showTooltip && showFullLabelTooltip && (

@@ -2124,6 +2124,11 @@ export const ReactMapApp = () => {
     });
   };
 
+  const handleClearAreas = useCallback(() => {
+    handleUpdateAreaSelection("ZIP", { selected: [], pinned: [] });
+    handleUpdateAreaSelection("COUNTY", { selected: [], pinned: [] });
+  }, [handleUpdateAreaSelection]);
+
   const handleAreaSelectionChange = (change: { kind: AreaKind; selected: string[]; pinned: string[]; transient: string[] }) => {
     setSidebarFollowMode("map");
     const current = areaSelections[change.kind];
@@ -3334,6 +3339,7 @@ export const ReactMapApp = () => {
               onStatSelect={handleStatSelect}
               onOrgPinsVisibleChange={setOrgPinsVisible}
               initialOrgPinsVisible={initialMapState.orgPinsVisible}
+              onClearAreas={handleClearAreas}
               forceHideOrgsNonce={forceHideOrgsNonce}
               timeSelection={timeSelection}
               onClearTimeFilter={handleClearTimeFilter}
@@ -3467,6 +3473,7 @@ export const ReactMapApp = () => {
                     onStatSelect={handleStatSelect}
                     onOrgPinsVisibleChange={setOrgPinsVisible}
                     initialOrgPinsVisible={initialMapState.orgPinsVisible}
+                    onClearAreas={handleClearAreas}
                     forceHideOrgsNonce={forceHideOrgsNonce}
                     timeSelection={timeSelection}
                     onClearTimeFilter={handleClearTimeFilter}

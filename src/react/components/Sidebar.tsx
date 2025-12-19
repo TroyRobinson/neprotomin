@@ -86,6 +86,7 @@ interface SidebarProps {
   onStatSelect?: (statId: string | null, meta?: { shiftKey?: boolean; clear?: boolean }) => void;
   onOrgPinsVisibleChange?: (visible: boolean) => void;
   initialOrgPinsVisible?: boolean;
+  onClearAreas?: () => void;
   variant?: "desktop" | "mobile";
   showInsights?: boolean;
   showAdvanced?: boolean;
@@ -167,6 +168,7 @@ export const Sidebar = ({
   onStatSelect,
   onOrgPinsVisibleChange,
   initialOrgPinsVisible = true,
+  onClearAreas,
   variant = "desktop",
   showInsights = true,
   showAdvanced = false,
@@ -641,6 +643,7 @@ export const Sidebar = ({
           snapshot={demographicsSnapshot ?? null}
           expanded={demographicsExpanded}
           onExpandedChange={(next) => onInsightsStateChange?.({ demographicsExpanded: next })}
+          onClearAreas={onClearAreas}
         />
       )}
 
