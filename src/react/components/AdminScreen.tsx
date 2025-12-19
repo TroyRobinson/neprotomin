@@ -1237,6 +1237,7 @@ const NewStatModal = ({
     setCurrentItemId,
     setCurrentYearProcessing,
     setDerivedStatusLabel,
+    openDropdown,
   } = useCensusImportQueue();
   const queueItemsRef = useRef<ImportQueueItem[]>(queueItems);
   const isProcessingRef = useRef(false);
@@ -2365,6 +2366,8 @@ const NewStatModal = ({
     setCurrentItemId(null);
     setCurrentYearProcessing(null);
     isProcessingRef.current = true;
+    onClose();
+    openDropdown();
 
     const importedStatIds: string[] = [];
     const importedByItemId = new Map<string, string>();
@@ -2879,16 +2882,16 @@ const NewStatModal = ({
                     {predicateTypeSummary && <span>Type: {predicateTypeSummary}</span>}
                   </div>
                   {conceptDisplay.shared && (
-                    <div className="text-[10px] text-slate-300 dark:text-slate-500">
-                      Concept: {conceptDisplay.shared}
-                    </div>
-                  )}
-                </div>
+                  <div className="text-[10px] text-slate-400/90 dark:text-slate-500">
+                    Concept: {conceptDisplay.shared}
+                  </div>
+                )}
+              </div>
               )}
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Relationships
+                    Statistics (Variables)
                   </span>
                   {manualParent && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">

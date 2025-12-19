@@ -190,6 +190,7 @@ export const TopBar = ({
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const {
     queueItems: importQueueItems,
+    setQueueItems: setImportQueueItems,
     isRunning: isImportRunning,
     currentItemId: currentImportItemId,
     currentYearProcessing: currentImportYearProcessing,
@@ -484,6 +485,7 @@ export const TopBar = ({
   const showGroupingNote =
     isImportRunning &&
     (importDerivedStatusLabel?.toLowerCase().startsWith("grouping") ?? false);
+  const hasCompletedImports = importQueueCompletedCount > 0;
 
   return (
     <>
@@ -792,7 +794,7 @@ export const TopBar = ({
                 >
                   <QueueListIcon className="h-5 w-5" />
                   {showImportQueueBadge && (
-                    <span className="absolute -top-1 -right-1 min-w-[1.1rem] rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">
+                    <span className="absolute -top-1 -right-1 min-w-[1.1rem] rounded-full bg-brand-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">
                       {importQueueBadgeLabel}
                     </span>
                   )}
@@ -803,11 +805,26 @@ export const TopBar = ({
                       <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         Import queue
                       </span>
-                      {importQueueTotal > 0 && (
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                          {importQueueCompletedCount}/{importQueueTotal}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500">
+                        {importQueueTotal > 0 && (
+                          <span>
+                            {importQueueCompletedCount}/{importQueueTotal}
+                          </span>
+                        )}
+                        {hasCompletedImports && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setImportQueueItems((prev) =>
+                                prev.filter((item) => item.status !== "success"),
+                              )
+                            }
+                            className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {isImportRunning && (
                       <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
