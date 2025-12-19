@@ -1,6 +1,6 @@
 // URL utilities for shareable map positions and state
 // Uses query parameters: ?lat=36.1540&lng=-95.9928&z=12&stat=uuid&category=Food&orgs=id1,id2
-import { isFoodMapDomain } from "./domains";
+import { getDomainDefaults } from "./domains";
 
 export interface MapPosition {
   lat: number;
@@ -246,7 +246,7 @@ export function getSelectedCountiesFromUrl(): string[] {
 
 // Get sidebar tab from URL (defaults based on domain)
 export function getSidebarTabFromUrl(): "orgs" | "stats" {
-  const defaultTab = isFoodMapDomain() ? "orgs" : "stats";
+  const defaultTab = getDomainDefaults().defaultSidebarTab;
   if (typeof window === "undefined") return defaultTab;
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
@@ -351,7 +351,7 @@ export function updateUrlWithMapState(
     url.searchParams.delete("counties");
   }
 
-  const defaultSidebarTab = isFoodMapDomain() ? "orgs" : "stats";
+  const defaultSidebarTab = getDomainDefaults().defaultSidebarTab;
   // Update sidebar tab (only write if not the domain default)
   if (sidebarTab !== defaultSidebarTab) {
     url.searchParams.set("tab", sidebarTab);
