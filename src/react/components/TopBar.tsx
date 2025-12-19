@@ -417,7 +417,7 @@ export const TopBar = ({
 
   const showDataLink =
     !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
-  const showReportLink = !isLoading && user && !user.isGuest && showAdvanced;
+  const showReportLink = showAdvanced;
   const showQueueLink =
     !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
   const showAdminLink =
@@ -489,30 +489,6 @@ export const TopBar = ({
                 >
                   Map
                 </a>
-                {showAdminLink && (
-                  <a
-                    href="#admin"
-                    onMouseEnter={() => {
-                      import("../components/AdminScreen");
-                    }}
-                    onFocus={() => {
-                      import("../components/AdminScreen");
-                    }}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      trackNavItem("Admin", "internal");
-                      onNavigate?.("admin");
-                    }}
-                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-                      active === "admin"
-                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                        : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                    }`}
-                    aria-current={active === "admin" ? "page" : undefined}
-                  >
-                    Admin
-                  </a>
-                )}
                 {ENABLE_REPORT_MENU && showReportLink && (
                   <a
                     href="#report"
@@ -535,6 +511,30 @@ export const TopBar = ({
                     aria-current={active === "report" ? "page" : undefined}
                   >
                     Report
+                  </a>
+                )}
+                {showAdminLink && (
+                  <a
+                    href="#admin"
+                    onMouseEnter={() => {
+                      import("../components/AdminScreen");
+                    }}
+                    onFocus={() => {
+                      import("../components/AdminScreen");
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      trackNavItem("Admin", "internal");
+                      onNavigate?.("admin");
+                    }}
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                      active === "admin"
+                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                        : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    }`}
+                    aria-current={active === "admin" ? "page" : undefined}
+                  >
+                    Admin
                   </a>
                 )}
                 <a
@@ -737,7 +737,14 @@ export const TopBar = ({
                 className="group inline-flex items-center gap-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
                 title="Sign out"
               >
-                <span className="max-w-[16ch] truncate">{user.email}</span>
+                <span className="max-w-[24ch] truncate">
+                  <span className="group-hover:hidden">
+                    {user.email?.split("@")[0]}
+                  </span>
+                  <span className="hidden group-hover:inline">
+                    {user.email}
+                  </span>
+                </span>
                 <span className="text-slate-500 w-0 overflow-hidden transition-all duration-200 group-hover:w-4 group-hover:ml-2 group-hover:text-current group-active:w-4 group-active:ml-2 group-active:text-current">
                   <LogoutIcon />
                 </span>
@@ -1034,16 +1041,6 @@ export const TopBar = ({
               >
                 Map
               </button>
-              {showAdminLink && (
-                <button
-                  type="button"
-                  onClick={() => handleNavigate("admin")}
-                  className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 ${active === "admin" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
-                  aria-current={active === "admin" ? "page" : undefined}
-                >
-                  Admin
-                </button>
-              )}
               {ENABLE_REPORT_MENU && showReportLink && (
                 <button
                   type="button"
@@ -1052,6 +1049,16 @@ export const TopBar = ({
                   aria-current={active === "report" ? "page" : undefined}
                 >
                   Report
+                </button>
+              )}
+              {showAdminLink && (
+                <button
+                  type="button"
+                  onClick={() => handleNavigate("admin")}
+                  className={`w-full rounded-2xl border border-slate-200 px-5 py-4 text-left text-lg font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800 ${active === "admin" ? "bg-brand-50 dark:bg-slate-800" : ""}`}
+                  aria-current={active === "admin" ? "page" : undefined}
+                >
+                  Admin
                 </button>
               )}
               {showDataLink && (

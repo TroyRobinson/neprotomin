@@ -3027,7 +3027,7 @@ export const ReactMapApp = () => {
         setActiveScreen("map");
         return;
       }
-      if (screen === "report" && (!authReady || !user || user.isGuest || !showAdvanced)) {
+      if (screen === "report" && !showAdvanced) {
         setActiveScreen("map");
         return;
       }
