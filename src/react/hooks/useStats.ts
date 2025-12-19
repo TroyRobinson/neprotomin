@@ -184,11 +184,40 @@ export const useStats = ({
           featured: typeof row.featured === "boolean" ? row.featured : undefined,
           homeFeatured: typeof row.homeFeatured === "boolean" ? row.homeFeatured : undefined,
           active: typeof row.active === "boolean" ? row.active : undefined,
+          type: typeof row.type === "string" ? row.type : undefined,
         });
       }
     }
     return map;
   }, [statsRows]);
+
+/**
+ * Determines the effective type for a stat, using explicit type or name heuristics.
+ */
+const getEffectiveStatType = (statId: string, declaredType: string, statsById: Map<string, Stat>): string => {
+  const stat = statsById.get(statId);
+  const explicitType = stat?.type;
+  
+  // If stat has an explicit type override, use it
+  if (explicitType && explicitType !== "count") {
+    return explicitType;
+  }
+
+  // If the data row already has a specific type (percent, rate, etc.), keep it
+  if (declaredType && declaredType !== "count") {
+    return declaredType;
+  }
+
+  // Otherwise, use name-based heuristics
+  if (stat) {
+    const name = (stat.label || stat.name || "").toLowerCase();
+    if (name.includes("(dollars)") || name.includes("(usd)")) {
+      return "currency";
+    }
+  }
+
+  return declaredType || "count";
+};
 
   const childrenByParent = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -632,7 +661,7 @@ export const useStats = ({
       const parentArea = normalizeScopeLabel(typeof row?.parentArea === "string" ? row.parentArea : null);
       if (!parentArea) continue;
       const entry = {
-        type: typeof row?.type === "string" ? row.type : "count",
+        type: getEffectiveStatType(statId, typeof row?.type === "string" ? row.type : "count", statsById),
         date: typeof row?.date === "string" ? row.date : "",
         count: typeof row?.count === "number" && Number.isFinite(row.count) ? row.count : 0,
         sum: typeof row?.sum === "number" && Number.isFinite(row.sum) ? row.sum : 0,
@@ -677,7 +706,7 @@ export const useStats = ({
 
       const entry: SeriesEntry = {
         date: typeof row.date === "string" ? row.date : String(row.date),
-        type: row.type,
+        type: getEffectiveStatType(row.statId, row.type, statsById),
         data: (row.data ?? {}) as Record<string, number>,
         parentArea: typeof row.parentArea === "string" ? (row.parentArea as string) : null,
       };
@@ -741,7 +770,7 @@ export const useStats = ({
 
       const entry: SeriesEntry = {
         date: typeof row.date === "string" ? row.date : String(row.date),
-        type: row.type,
+        type: getEffectiveStatType(row.statId, row.type, statsById),
         data: (row.data ?? {}) as Record<string, number>,
         parentArea: row.parentArea as string | null,
       };
@@ -806,7 +835,7 @@ export const useStats = ({
       const min = dataValues.length ? Math.min(...dataValues) : 0;
       const max = dataValues.length ? Math.max(...dataValues) : 0;
       entry[boundaryType] = {
-        type: typeof row.type === "string" ? row.type : "count",
+        type: getEffectiveStatType(statId, typeof row.type === "string" ? row.type : "count", statsById),
         data: (row.data ?? {}) as Record<string, number>,
         min,
         max,

@@ -143,6 +143,7 @@ const _schema = i.schema({
       featured: i.boolean().indexed().optional(),
       homeFeatured: i.boolean().indexed().optional(),
       active: i.boolean().indexed().optional(),
+      type: i.string().indexed().optional(), // count | percent | rate | years | currency
       createdOn: i.number().indexed().optional(),
       lastUpdated: i.number().indexed().optional(),
     }),

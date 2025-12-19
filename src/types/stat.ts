@@ -9,6 +9,7 @@ export interface Stat {
   featured?: boolean;
   homeFeatured?: boolean;
   active?: boolean;
+  type?: string; // Optional type override (e.g., "currency", "percent")
 }
 
 export interface StatRelation {
