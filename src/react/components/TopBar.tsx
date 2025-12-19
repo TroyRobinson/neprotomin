@@ -483,8 +483,7 @@ export const TopBar = ({
   const showImportQueue = showQueueLink && (showImportQueueBadge || isImportRunning);
   const showGroupingNote =
     isImportRunning &&
-    Boolean(importDerivedStatusLabel) &&
-    importDerivedStatusLabel.toLowerCase().startsWith("grouping");
+    (importDerivedStatusLabel?.toLowerCase().startsWith("grouping") ?? false);
 
   return (
     <>

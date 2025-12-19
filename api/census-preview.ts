@@ -149,6 +149,7 @@ export default async function handler(req: CensusPreviewRequest, res: CensusPrev
       predicateType?: string;
       inferredType: string;
       statName: string;
+      statLabel?: string;
       zipCount: number;
       countyCount: number;
     }>;
