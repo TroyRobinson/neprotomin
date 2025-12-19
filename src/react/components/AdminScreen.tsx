@@ -1166,7 +1166,8 @@ const NewStatModal = ({
   const [parentSearch, setParentSearch] = useState("");
   const [manualParent, setManualParent] = useState<{ id: string; name: string; label: string | null; category?: string } | null>(null);
   const [addPercent, setAddPercent] = useState(false);
-  const [addChange, setAddChange] = useState(false);
+  const [addChange, setAddChange] = useState(true);
+  const [hasManuallyToggledChange, setHasManuallyToggledChange] = useState(false);
   const [percentDenominatorId, setPercentDenominatorId] = useState<string>("");
   const [isDenominatorSearchOpen, setIsDenominatorSearchOpen] = useState(false);
   const [denominatorSearch, setDenominatorSearch] = useState("");
@@ -1197,7 +1198,8 @@ const NewStatModal = ({
       setManualParent(null);
       setResultsFilter("");
       setAddPercent(false);
-      setAddChange(false);
+      setAddChange(true);
+      setHasManuallyToggledChange(false);
       setPercentDenominatorId("");
       setIsDenominatorSearchOpen(false);
       setDenominatorSearch("");
@@ -1362,10 +1364,8 @@ const NewStatModal = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    if (changeOptionDisabled && addChange) {
-      setAddChange(false);
-    }
-  }, [addChange, changeOptionDisabled, isOpen]);
+    // We keep addChange as requested by user, it will be disabled by UI
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1667,6 +1667,31 @@ const NewStatModal = ({
     year,
     setQueueItems,
   ]);
+
+  const handleClearSelection = useCallback(() => {
+    const trimmedGroup = group.trim();
+    if (!trimmedGroup) return;
+
+    setSelection((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((name) => {
+        const item = next[name];
+        if (item && !item.lockedImported && item.selected) {
+          next[name] = {
+            ...item,
+            selected: false,
+            relationship: "none",
+            statAttribute: "",
+          };
+        }
+      });
+      return next;
+    });
+
+    setQueueItems((prevQueue) =>
+      prevQueue.filter((item) => item.group !== trimmedGroup),
+    );
+  }, [group, setQueueItems]);
 
   const updateSelectionField = useCallback(
     (name: string, field: "yearEnd" | "yearStart", value: number | null) => {
@@ -2543,43 +2568,124 @@ const NewStatModal = ({
               Pending Import
             </h3>
 
-            <div className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+            <div className="mt-2 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
               {pendingSelectionCount === 0 ? (
                 <p>No variables pending import yet. Select variables from the preview below.</p>
               ) : (
-                <p>
-                  {pendingSelectionCount} variable{pendingSelectionCount === 1 ? "" : "s"}
-                  {pendingGroupLabel ? ` from ${pendingGroupLabel}` : ""} pending import.
-                </p>
+                <>
+                  <p>
+                    {pendingSelectionCount} variable{pendingSelectionCount === 1 ? "" : "s"}
+                    {pendingGroupLabel ? ` from ${pendingGroupLabel}` : ""} pending import.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleClearSelection}
+                    className="ml-2 font-medium text-slate-400 transition hover:text-rose-600 dark:hover:text-rose-400"
+                  >
+                    Clear all
+                  </button>
+                </>
               )}
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Add:</span>
-                <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={addPercent}
-                    onChange={(e) => setAddPercent(e.target.checked)}
-                    className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-900"
-                  />
-                  Percentage
-                </label>
-                <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={addChange}
-                    onChange={(e) => setAddChange(e.target.checked)}
-                    disabled={changeOptionDisabled}
-                    className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900"
-                  />
-                  Change
-                </label>
-                {pendingSelectionCount > 0 && changeOptionDisabled && (
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500">(all need 2+ years)</span>
-                )}
+            <div className="mt-3 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Add:</span>
+                  <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={addPercent}
+                      onChange={(e) => setAddPercent(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-900"
+                    />
+                    Percentage
+                  </label>
+                  {addPercent && (
+                    <button
+                      type="button"
+                      onClick={() => setIsDenominatorSearchOpen((open) => !open)}
+                      className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium shadow-sm transition ${
+                        percentDenominatorId
+                          ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                          : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-900/20 dark:text-rose-300 dark:hover:bg-rose-900/30"
+                      }`}
+                    >
+                      {percentDenominatorId
+                        ? `Denom: ${selectedDenominator?.label || selectedDenominator?.name || "Selected"}`
+                        : "Denominator needed"}
+                    </button>
+                  )}
+                  <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={addChange}
+                      onChange={(e) => {
+                        setAddChange(e.target.checked);
+                        setHasManuallyToggledChange(true);
+                      }}
+                      disabled={changeOptionDisabled}
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900"
+                    />
+                    Change
+                  </label>
+                  {pendingSelectionCount > 0 && changeOptionDisabled && (
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">(all need 2+ years)</span>
+                  )}
+                </div>
               </div>
+
+              {addPercent && isDenominatorSearchOpen && (
+                <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-700 dark:bg-slate-900/40">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      value={denominatorSearch}
+                      onChange={(e) => setDenominatorSearch(e.target.value)}
+                      placeholder="Search imported stats for denominator..."
+                      className="w-full flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setDenominatorSearch("")}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+                    {denominatorSearchResults.length === 0 ? (
+                      <p className="px-3 py-2 text-[10px] text-slate-500 dark:text-slate-400">
+                        No matching imported stats found.
+                      </p>
+                    ) : (
+                      denominatorSearchResults.map((stat) => (
+                        <button
+                          key={stat.id}
+                          type="button"
+                          onClick={() => handleSelectDenominator(stat)}
+                          className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-800 dark:hover:bg-slate-800/70"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-[11px] font-medium text-slate-800 dark:text-slate-100">
+                              {stat.label || stat.name}
+                            </div>
+                            <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">
+                              {stat.label ? stat.name : ""}
+                            </div>
+                          </div>
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                            {stat.category}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    This denominator is used to create “(percent)” child stats for each imported stat.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Apply Category + Start Import row */}
@@ -2597,21 +2703,6 @@ const NewStatModal = ({
                   ]}
                   className="min-w-36"
                 />
-                {addPercent && (
-                  <button
-                    type="button"
-                    onClick={() => setIsDenominatorSearchOpen((open) => !open)}
-                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium shadow-sm transition ${
-                      percentDenominatorId
-                        ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                        : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-900/20 dark:text-rose-300 dark:hover:bg-rose-900/30"
-                    }`}
-                  >
-                    {percentDenominatorId
-                      ? `Denominator: ${selectedDenominator?.label || selectedDenominator?.name || "Selected"}`
-                      : "Denominator needed"}
-                  </button>
-                )}
               </div>
               <button
                 type="button"
@@ -2626,57 +2717,6 @@ const NewStatModal = ({
                 Start import
               </button>
             </div>
-            {addPercent && isDenominatorSearchOpen && (
-              <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-700 dark:bg-slate-900/40">
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="text"
-                    value={denominatorSearch}
-                    onChange={(e) => setDenominatorSearch(e.target.value)}
-                    placeholder="Search imported stats for denominator..."
-                    className="w-full flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setDenominatorSearch("")}
-                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                  >
-                    Clear
-                  </button>
-                </div>
-                <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-                  {denominatorSearchResults.length === 0 ? (
-                    <p className="px-3 py-2 text-[10px] text-slate-500 dark:text-slate-400">
-                      No matching imported stats found.
-                    </p>
-                  ) : (
-                    denominatorSearchResults.map((stat) => (
-                      <button
-                        key={stat.id}
-                        type="button"
-                        onClick={() => handleSelectDenominator(stat)}
-                        className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-800 dark:hover:bg-slate-800/70"
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate text-[11px] font-medium text-slate-800 dark:text-slate-100">
-                            {stat.label || stat.name}
-                          </div>
-                          <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">
-                            {stat.label ? stat.name : ""}
-                          </div>
-                        </div>
-                        <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                          {stat.category}
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                  This denominator is used to create “(percent)” child stats for each imported stat.
-                </p>
-              </div>
-            )}
             {relationshipConfigError && (
               <p className="mt-2 text-[11px] text-rose-600 dark:text-rose-400">{relationshipConfigError}</p>
             )}
