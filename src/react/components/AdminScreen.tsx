@@ -4116,14 +4116,21 @@ export const AdminScreen = () => {
             }),
           ];
 
-          for (const row of derivedRows) {
+          const sortedDerivedRows = [...derivedRows].sort((a, b) => String(a.date ?? "").localeCompare(String(b.date ?? "")));
+          for (const row of sortedDerivedRows) {
+            const parentArea = row.parentArea ?? undefined;
+            const boundaryType = row.boundaryType ?? undefined;
+            const date = row.date ?? undefined;
+            const summaryKey =
+              parentArea && boundaryType ? buildStatDataSummaryKey(newStatId, "root", parentArea, boundaryType) : null;
+            const summary = computeSummaryFromData(row.data);
             txs.push(
               db.tx.statData[createId()].update({
                 statId: newStatId,
                 name: "root",
-                parentArea: row.parentArea ?? undefined,
-                boundaryType: row.boundaryType ?? undefined,
-                date: row.date ?? undefined,
+                parentArea,
+                boundaryType,
+                date,
                 type: "percent_change",
                 data: row.data,
                 source: derivedSource,
@@ -4132,6 +4139,26 @@ export const AdminScreen = () => {
                 lastUpdated: now,
               }),
             );
+            if (summaryKey && date) {
+              txs.push(
+                db.tx.statDataSummaries[lookup("summaryKey", summaryKey)].update({
+                  statId: newStatId,
+                  name: "root",
+                  parentArea,
+                  boundaryType,
+                  date,
+                  minDate: date,
+                  maxDate: date,
+                  type: "percent_change",
+                  count: summary.count,
+                  sum: summary.sum,
+                  avg: summary.avg,
+                  min: summary.min,
+                  max: summary.max,
+                  updatedAt: now,
+                }),
+              );
+            }
           }
 
           const batches: any[][] = [];
@@ -4307,14 +4334,21 @@ export const AdminScreen = () => {
             }),
           ];
 
-          for (const row of derivedRows) {
+          const sortedDerivedRows = [...derivedRows].sort((a, b) => String(a.date ?? "").localeCompare(String(b.date ?? "")));
+          for (const row of sortedDerivedRows) {
+            const parentArea = row.parentArea ?? undefined;
+            const boundaryType = row.boundaryType ?? undefined;
+            const date = row.date ?? undefined;
+            const summaryKey =
+              parentArea && boundaryType ? buildStatDataSummaryKey(newStatId, "root", parentArea, boundaryType) : null;
+            const summary = computeSummaryFromData(row.data);
             txs.push(
               db.tx.statData[createId()].update({
                 statId: newStatId,
                 name: "root",
-                parentArea: row.parentArea ?? undefined,
-                boundaryType: row.boundaryType ?? undefined,
-                date: row.date ?? undefined,
+                parentArea,
+                boundaryType,
+                date,
                 type: "number",
                 data: row.data,
                 source: derivedSource,
@@ -4323,6 +4357,26 @@ export const AdminScreen = () => {
                 lastUpdated: now,
               }),
             );
+            if (summaryKey && date) {
+              txs.push(
+                db.tx.statDataSummaries[lookup("summaryKey", summaryKey)].update({
+                  statId: newStatId,
+                  name: "root",
+                  parentArea,
+                  boundaryType,
+                  date,
+                  minDate: date,
+                  maxDate: date,
+                  type: "number",
+                  count: summary.count,
+                  sum: summary.sum,
+                  avg: summary.avg,
+                  min: summary.min,
+                  max: summary.max,
+                  updatedAt: now,
+                }),
+              );
+            }
           }
 
           const batches: any[][] = [];
@@ -4496,14 +4550,21 @@ export const AdminScreen = () => {
           }),
         ];
 
-        for (const row of derivedRows) {
+        const sortedDerivedRows = [...derivedRows].sort((a, b) => String(a.date ?? "").localeCompare(String(b.date ?? "")));
+        for (const row of sortedDerivedRows) {
+          const parentArea = row.parentArea ?? undefined;
+          const boundaryType = row.boundaryType ?? undefined;
+          const date = row.date ?? undefined;
+          const summaryKey =
+            parentArea && boundaryType ? buildStatDataSummaryKey(newStatId, "root", parentArea, boundaryType) : null;
+          const summary = computeSummaryFromData(row.data);
           txs.push(
             db.tx.statData[createId()].update({
               statId: newStatId,
               name: "root",
-              parentArea: row.parentArea ?? undefined,
-              boundaryType: row.boundaryType ?? undefined,
-              date: row.date ?? undefined,
+              parentArea,
+              boundaryType,
+              date,
               type: formulaToStatType[payload.formula],
               data: row.data,
               source: derivedSource,
@@ -4512,6 +4573,26 @@ export const AdminScreen = () => {
               lastUpdated: now,
             }),
           );
+          if (summaryKey && date) {
+            txs.push(
+              db.tx.statDataSummaries[lookup("summaryKey", summaryKey)].update({
+                statId: newStatId,
+                name: "root",
+                parentArea,
+                boundaryType,
+                date,
+                minDate: date,
+                maxDate: date,
+                type: formulaToStatType[payload.formula],
+                count: summary.count,
+                sum: summary.sum,
+                avg: summary.avg,
+                min: summary.min,
+                max: summary.max,
+                updatedAt: now,
+              }),
+            );
+          }
         }
 
         const batches: any[][] = [];
