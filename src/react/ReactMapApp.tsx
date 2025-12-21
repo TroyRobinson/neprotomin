@@ -36,6 +36,7 @@ import { useAuthSession } from "./hooks/useAuthSession";
 import { setStatDataSubscriptionEnabled } from "../state/statData";
 import { MapSettingsModal } from "./components/MapSettingsModal";
 import { useCensusImportQueue } from "./hooks/useCensusImportQueue";
+import { isLowMemoryDevice } from "../lib/device";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type ScreenName = "map" | "report" | "roadmap" | "data" | "queue" | "addOrg" | "admin";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
@@ -236,6 +237,7 @@ export const ReactMapApp = () => {
   const [zipScope, setZipScope] = useState<string>(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
   const [zipNeighborScopes, setZipNeighborScopes] = useState<string[]>([]);
   const isMobile = useMediaQuery(MOBILE_MAX_WIDTH_QUERY);
+  const lowMemoryMode = useMemo(() => isLowMemoryDevice(), []);
   const [topBarHeight, setTopBarHeight] = useState(DEFAULT_TOP_BAR_HEIGHT);
   const [sheetState, setSheetState] = useState<"peek" | "partial" | "expanded">("peek");
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
@@ -1119,7 +1121,8 @@ export const ReactMapApp = () => {
     [selectedStatId, secondaryStatId],
   );
   const shouldPrefetchFullStatData =
-    selectedZips.length > 0 || selectedCounties.length > 0;
+    !lowMemoryMode && (selectedZips.length > 0 || selectedCounties.length > 0);
+  const statDataCacheLimit = lowMemoryMode ? 10 : 24;
 
   const summaryKinds = useMemo(() => {
     if (boundaryMode === "counties") return ["COUNTY"] as const;
@@ -1145,6 +1148,7 @@ export const ReactMapApp = () => {
     initialBatchSize: shouldPrefetchFullStatData ? 12 : 0,
     batchSize: shouldPrefetchFullStatData ? 12 : 0,
     enableTrickle: shouldPrefetchFullStatData,
+    maxCachedStatIds: statDataCacheLimit,
   });
   const { organizations } = useOrganizations();
   const { recentOrganizations } = useRecentOrganizations();

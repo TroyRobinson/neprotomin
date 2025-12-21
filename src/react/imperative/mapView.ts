@@ -51,6 +51,7 @@ import {
   type ZctaChunkSummary,
 } from "../../lib/zctaLoader";
 import { normalizeScopeLabel, formatCountyScopeLabel } from "../../lib/scopeLabels";
+import { isLowMemoryDevice } from "../../lib/device";
 
 interface AreaSelectionChange {
   kind: AreaKind;
@@ -484,6 +485,10 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     try {
       if (typeof window === "undefined") return;
       if (statIds.length === 0) {
+        setStatDataPrefetchStatIds([]);
+        return;
+      }
+      if (isLowMemoryDevice()) {
         setStatDataPrefetchStatIds([]);
         return;
       }

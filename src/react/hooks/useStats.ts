@@ -58,6 +58,7 @@ interface UseStatsOptions {
   initialBatchSize?: number;
   batchSize?: number;
   enableTrickle?: boolean;
+  maxCachedStatIds?: number;
 }
 
 export const useStats = ({
@@ -70,6 +71,7 @@ export const useStats = ({
   initialBatchSize = 12,
   batchSize = 12,
   enableTrickle = true,
+  maxCachedStatIds = 24,
 }: UseStatsOptions = {}) => {
   const { authReady } = useAuthSession();
   const queryEnabled = authReady;
@@ -101,6 +103,8 @@ export const useStats = ({
   const cachedStatsRef = useRef<any[] | undefined>(undefined);
   const cachedStatRelationsRef = useRef<any[] | undefined>(undefined);
   const cachedStatDataByKeyRef = useRef<Map<string, any>>(new Map());
+  const cachedStatKeysByStatIdRef = useRef<Map<string, Set<string>>>(new Map());
+  const cachedStatLastAccessRef = useRef<Map<string, number>>(new Map());
   const [statDataCacheVersion, setStatDataCacheVersion] = useState(0);
   const [loadedStatIds, setLoadedStatIds] = useState<Set<string>>(new Set());
   const [batchGeneration, setBatchGeneration] = useState(0);
@@ -260,6 +264,51 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     [priorityStatIds],
   );
 
+  useEffect(() => {
+    if (priorityIds.length === 0) return;
+    const now = Date.now();
+    for (const statId of priorityIds) {
+      cachedStatLastAccessRef.current.set(statId, now);
+    }
+  }, [priorityIds]);
+
+  const enforceStatCacheLimit = ({
+    maxStatIds,
+    protectedStatIds,
+  }: {
+    maxStatIds: number;
+    protectedStatIds: Set<string>;
+  }): string[] => {
+    if (maxStatIds <= 0) return [];
+    const keysByStat = cachedStatKeysByStatIdRef.current;
+    const effectiveMax = Math.max(maxStatIds, protectedStatIds.size);
+    if (keysByStat.size <= effectiveMax) return [];
+
+    const lastAccess = cachedStatLastAccessRef.current;
+    const candidates: Array<{ statId: string; lastAccess: number }> = [];
+    for (const statId of keysByStat.keys()) {
+      if (protectedStatIds.has(statId)) continue;
+      candidates.push({ statId, lastAccess: lastAccess.get(statId) ?? 0 });
+    }
+    candidates.sort((a, b) => a.lastAccess - b.lastAccess);
+
+    const evicted: string[] = [];
+    let currentSize = keysByStat.size;
+    for (const candidate of candidates) {
+      if (currentSize <= effectiveMax) break;
+      const keys = keysByStat.get(candidate.statId);
+      if (!keys) continue;
+      for (const key of keys) {
+        cachedStatDataByKeyRef.current.delete(key);
+      }
+      keysByStat.delete(candidate.statId);
+      lastAccess.delete(candidate.statId);
+      evicted.push(candidate.statId);
+      currentSize -= 1;
+    }
+    return evicted;
+  };
+
   const orderedStatIds = useMemo(() => {
     const stats = Array.from(statsById.values());
     stats.sort((a, b) => NAME_FOR_SORT(a).localeCompare(NAME_FOR_SORT(b)));
@@ -356,16 +405,27 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
 
     const rows = Array.isArray(statDataResp?.statData) ? (statDataResp.statData as any[]) : [];
     if (rows.length === 0) return;
-    let didMerge = false;
+    let cacheChanged = false;
+    const now = Date.now();
     for (const row of rows) {
       const key = statDataRowKey(row);
       if (!key) continue;
       cachedStatDataByKeyRef.current.set(key, row);
-      didMerge = true;
+      const statId = typeof row?.statId === "string" ? row.statId : null;
+      if (statId) {
+        let keys = cachedStatKeysByStatIdRef.current.get(statId);
+        if (!keys) {
+          keys = new Set();
+          cachedStatKeysByStatIdRef.current.set(statId, keys);
+        }
+        keys.add(key);
+        cachedStatLastAccessRef.current.set(statId, now);
+      }
+      cacheChanged = true;
     }
-    if (didMerge) {
+    if (cacheChanged) {
       setStatDataCacheVersion((v) => v + 1);
-      setLastStatDataAt(Date.now());
+      setLastStatDataAt(now);
     }
 
     const requested = lastRequestedBatchIdsRef.current;
@@ -379,10 +439,33 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
       return next;
     });
 
+    const evicted = enforceStatCacheLimit({
+      maxStatIds: maxCachedStatIds,
+      protectedStatIds: new Set(priorityIds),
+    });
+    if (evicted.length > 0) {
+      setLoadedStatIds((prev) => {
+        const next = new Set(prev);
+        for (const statId of evicted) next.delete(statId);
+        return next;
+      });
+      if (!cacheChanged) {
+        setStatDataCacheVersion((v) => v + 1);
+      }
+    }
+
     if (statDataRefreshRequested) {
       setStatDataRefreshRequested(false);
     }
-  }, [queryEnabled, shouldIncludeStatData, statDataLoading, statDataResp, statDataRefreshRequested]);
+  }, [
+    queryEnabled,
+    shouldIncludeStatData,
+    statDataLoading,
+    statDataResp,
+    statDataRefreshRequested,
+    maxCachedStatIds,
+    priorityIds,
+  ]);
 
   const cachedStatDataRows = useMemo(
     () => Array.from(cachedStatDataByKeyRef.current.values()),
