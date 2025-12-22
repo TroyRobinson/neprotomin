@@ -19,6 +19,32 @@ export const useOrganizations = () => {
       ? {
           organizations: {
             $: {
+              fields: [
+                "id",
+                "name",
+                "ownerEmail",
+                "latitude",
+                "longitude",
+                "category",
+                "website",
+                "address",
+                "city",
+                "state",
+                "postalCode",
+                "phone",
+                "hours",
+                "placeId",
+                "source",
+                "googleCategory",
+                "keywordFound",
+                "status",
+                "lastSyncedAt",
+                "moderationStatus",
+                "moderationChangedAt",
+                "submittedAt",
+                "queueSortKey",
+                "issueCount",
+              ],
               order: { name: "asc" as const },
             },
           },
@@ -69,11 +95,6 @@ export const useOrganizations = () => {
         if (moderationStatus === "pending" || moderationStatus === "declined" || moderationStatus === "removed") {
           continue;
         }
-
-        const rawValue =
-          typeof (row as any).raw === "object" && (row as any).raw !== null
-            ? ((row as any).raw as Record<string, unknown>)
-            : null;
 
         list.push({
           id: row.id,
@@ -126,7 +147,6 @@ export const useOrganizations = () => {
             typeof (row as any).issueCount === "number"
               ? ((row as any).issueCount as number)
               : null,
-          raw: rawValue,
         });
       }
     }

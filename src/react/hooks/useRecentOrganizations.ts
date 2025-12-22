@@ -33,6 +33,32 @@ export const useRecentOrganizations = () => {
                   { moderationStatus: { $isNull: true } },
                 ],
               },
+              fields: [
+                "id",
+                "name",
+                "ownerEmail",
+                "latitude",
+                "longitude",
+                "category",
+                "website",
+                "address",
+                "city",
+                "state",
+                "postalCode",
+                "phone",
+                "hours",
+                "placeId",
+                "source",
+                "googleCategory",
+                "keywordFound",
+                "status",
+                "lastSyncedAt",
+                "moderationStatus",
+                "moderationChangedAt",
+                "submittedAt",
+                "queueSortKey",
+                "issueCount",
+              ],
               order: { moderationChangedAt: "desc" as const },
               limit: 100, // Fetch more than needed to account for filtering
             },
@@ -105,11 +131,6 @@ export const useRecentOrganizations = () => {
           continue;
         }
 
-        const rawValue =
-          typeof (row as any).raw === "object" && (row as any).raw !== null
-            ? ((row as any).raw as Record<string, unknown>)
-            : null;
-
         list.push({
           id: row.id,
           name: row.name,
@@ -157,7 +178,6 @@ export const useRecentOrganizations = () => {
             typeof (row as any).issueCount === "number"
               ? ((row as any).issueCount as number)
               : null,
-          raw: rawValue,
         });
       }
     }
@@ -174,4 +194,3 @@ export const useRecentOrganizations = () => {
 
   return { recentOrganizations, isLoading, error };
 };
-
