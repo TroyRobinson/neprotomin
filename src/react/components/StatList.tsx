@@ -234,8 +234,8 @@ export const StatList = ({
     [statRelationsByChild]
   );
 
-  const rows = useMemo<StatRow[]>(() => {
-    const stats: Stat[] = Array.from(statsById.values()).filter((s) => {
+  const listStats = useMemo<Stat[]>(() => {
+    return Array.from(statsById.values()).filter((s) => {
       // Show stats unless explicitly marked inactive; newly created stats default to active/undefined.
       if (s.active === false) return false;
       // Hide child stats from the main list - they appear via parent's dropdown
@@ -244,6 +244,18 @@ export const StatList = ({
       if (categoryFilter) return s.category === categoryFilter;
       return true;
     });
+  }, [statsById, categoryFilter, childIdSet]);
+
+  const hasAllStatData = useMemo(() => {
+    if (areaEntries.length === 0) return false;
+    if (listStats.length === 0) return false;
+    return listStats.every((stat) => statDataById.has(stat.id));
+  }, [areaEntries.length, listStats, statDataById]);
+
+  const shouldRankByScore = areaEntries.length > 0 && hasAllStatData;
+
+  const rows = useMemo<StatRow[]>(() => {
+    const stats = listStats;
 
     const result: StatRow[] = [];
 
@@ -392,7 +404,7 @@ export const StatList = ({
       });
     }
 
-    if (areaEntries.length === 0) {
+    if (!shouldRankByScore) {
       result.sort((a, b) => a.name.localeCompare(b.name));
     } else {
       result.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
@@ -400,16 +412,15 @@ export const StatList = ({
 
     return result;
   }, [
-    statsById,
+    listStats,
     statSummariesById,
     statDataById,
     areaEntries,
-    categoryFilter,
     effectiveAreaKind,
     zipScopeDisplayName,
     countyScopeDisplayName,
     areaNameLookup,
-    childIdSet,
+    shouldRankByScore,
   ]);
 
   const filteredRows = useMemo(() => {
@@ -426,6 +437,7 @@ export const StatList = ({
   }, [rows, normalizedQuery]);
 
   const subtitle = useMemo(() => {
+    if (!shouldRankByScore) return null;
     if (areaEntries.length === 1) {
       const area = areaEntries[0];
       const label = areaNameLookup ? areaNameLookup(area.kind, area.code) : `${area.kind} ${area.code}`;
@@ -435,7 +447,7 @@ export const StatList = ({
       return `Most significant stats for Selected Areas (${areaEntries.length})`;
     }
     return null;
-  }, [areaEntries, areaNameLookup]);
+  }, [areaEntries, areaNameLookup, shouldRankByScore]);
 
   // Find the root parent and intermediate child by traversing up the hierarchy
   // This handles parent → child → grandchild relationships
