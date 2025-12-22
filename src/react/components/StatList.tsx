@@ -493,6 +493,38 @@ export const StatList = ({
     return rows.find((row) => row.id === displayStatId) ?? null;
   }, [rows, displayStatId]);
 
+  const headerHasChartData = useMemo(() => {
+    if (!selectedStatRow) return false;
+    const targetStatId = selectedStatId ?? displayStatId;
+    if (!targetStatId) return selectedStatRow.hasData;
+
+    const entry = statDataById.get(targetStatId);
+    if (entry) {
+      for (const kind of SUPPORTED_KINDS) {
+        const data = entry[kind]?.data;
+        if (data && Object.keys(data).length > 0) return true;
+      }
+    }
+
+    if (showAdvanced) {
+      const seriesByKind = seriesByStatIdByKind.get(targetStatId);
+      if (seriesByKind) {
+        for (const entries of seriesByKind.values()) {
+          if (entries && entries.length > 0) return true;
+        }
+      }
+    }
+
+    return selectedStatRow.hasData;
+  }, [
+    selectedStatRow,
+    selectedStatId,
+    displayStatId,
+    statDataById,
+    seriesByStatIdByKind,
+    showAdvanced,
+  ]);
+
   // Get children of the displayed stat grouped by attribute, split into toggles vs dropdowns
   // Single-child attributes become toggles, multi-child attributes become dropdowns
   const { singleChildAttrs, multiChildAttrs, allChildrenByAttr } = useMemo(() => {
@@ -830,6 +862,7 @@ export const StatList = ({
               averageLabel={null}
               onStatSelect={onStatSelect}
               onRetryStatData={showAdvanced ? onRetryStatData : undefined}
+              hasDataOverride={headerHasChartData}
               hideValue={true}
               categoryLabel={!categoryFilter && selectedStatRow.category ? getCategoryLabel(selectedStatRow.category) : null}
               grandchildToggles={allToggleAttributes.map((attr) => ({
@@ -950,6 +983,7 @@ interface StatListItemProps {
   averageLabel: string | null;
   onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
   onRetryStatData?: (statId: string) => void;
+  hasDataOverride?: boolean;
   hideValue?: boolean;
   grandchildToggles?: GrandchildAttrToggle[];
   isHeader?: boolean;
@@ -963,6 +997,7 @@ const StatListItem = ({
   averageLabel,
   onStatSelect,
   onRetryStatData,
+  hasDataOverride,
   hideValue = false,
   grandchildToggles = [],
   isHeader = false,
@@ -1037,7 +1072,8 @@ const StatListItem = ({
     ? `${common} border-2 border-teal-500 bg-teal-50 dark:border-teal-400 dark:bg-teal-400/15`
     : `${common} border-slate-200/70 bg-white/70 hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:hover:border-slate-600 dark:hover:bg-slate-800/70`;
 
-  const valueLabel = row.hasData ? formatStatValue(row.value, row.type) : "—";
+  const hasData = typeof hasDataOverride === "boolean" ? hasDataOverride : row.hasData;
+  const valueLabel = hasData ? formatStatValue(row.value, row.type) : "—";
 
   return (
     <li className={className} onClick={handleClick} onMouseLeave={() => {
@@ -1115,7 +1151,7 @@ const StatListItem = ({
         )}
 
         <div className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
-          {row.hasData ? (
+          {hasData ? (
             <>
               {averageLabel && (
                 <span
@@ -1140,7 +1176,7 @@ const StatListItem = ({
                     e.stopPropagation();
                     onRetryStatData(row.id);
                   }}
-                  className="text-[11px] font-medium text-indigo-600 underline underline-offset-2 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                  className="text-[11px] font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
                 >
                   retry
                 </button>
@@ -1188,7 +1224,7 @@ const StatListItem = ({
         </div>
       )}
 
-      {showValueTooltip && row.hasData && (
+      {showValueTooltip && hasData && (
         <div
           className="pointer-events-none absolute z-10 rounded border border-black/10 bg-slate-800 px-1.5 py-1 text-[10px] text-white shadow-sm dark:border-white/20 dark:bg-slate-200 dark:text-slate-900"
           style={{

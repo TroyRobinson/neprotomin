@@ -15,6 +15,7 @@ interface HighlightItem {
 
 interface ReportHighlightsProps {
   items: HighlightItem[];
+  isLoading?: boolean;
   selectedKind: SupportedAreaKind | null;
   selectedCodes: string[];
   supplementalAreas?: AreaId[];
@@ -83,6 +84,7 @@ const buildAreaEntries = (
 
 export const ReportHighlights = ({
   items,
+  isLoading = false,
   selectedKind,
   selectedCodes,
   supplementalAreas,
@@ -112,7 +114,13 @@ export const ReportHighlights = ({
       .map((item, index) => {
         const entryByKind = statDataById.get(item.statId);
         const primaryEntry = entryByKind?.[selectedKind];
-        if (!primaryEntry) return null;
+        if (!primaryEntry) {
+          return {
+            item,
+            isLine: item.statId === expandedFirstId,
+            isLoading: true,
+          };
+        }
 
         const seriesByKind = seriesByStatIdByKind.get(item.statId) ?? new Map<SupportedAreaKind, SeriesEntry[]>();
         const maxAreas = shouldExpandBarsForLayout(index) ? 6 : 3;
@@ -178,45 +186,61 @@ export const ReportHighlights = ({
           baseline: averagePrimary,
           isLine: item.statId === expandedFirstId,
           bars,
+          isLoading: false,
         };
       })
-      .filter(Boolean) as Array<{
-        item: HighlightItem;
-        seriesByKind: Map<SupportedAreaKind, SeriesEntry[]>;
-        areaMetrics: AreaMetric[];
-        baseline: number;
-        isLine: boolean;
-        bars: { label: string; value: number; selected?: boolean; kind?: SupportedAreaKind; code?: string }[];
-      }>;
+      .filter(Boolean) as Array<
+      | {
+          item: HighlightItem;
+          isLine: boolean;
+          isLoading: true;
+        }
+      | {
+          item: HighlightItem;
+          seriesByKind: Map<SupportedAreaKind, SeriesEntry[]>;
+          areaMetrics: AreaMetric[];
+          baseline: number;
+          isLine: boolean;
+          bars: { label: string; value: number; selected?: boolean; kind?: SupportedAreaKind; code?: string }[];
+          isLoading: false;
+        }
+    >;
   }, [baselineLabel, expandedFirstId, extras, items, primary, selectedKind, seriesByStatIdByKind, statDataById]);
 
   return (
     <div className="mt-6">
       <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Highlights</h3>
       <p className="mb-3 text-xs text-slate-400 dark:text-slate-500">
-        Sorted by highest value for selected {selectedKind === "COUNTY" ? "counties" : "ZIPs"} compared to {baselineLabel}. Additional pinned areas appear in grey when space allows.
+        Featured stats for selected {selectedKind === "COUNTY" ? "counties" : "ZIPs"} compared to {baselineLabel}. Additional pinned areas appear in grey when space allows.
       </p>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {cards.length === 0 ? (
-          <p className="px-1 py-2 text-sm text-slate-500 dark:text-slate-400">No highlights available.</p>
+          <p className="px-1 py-2 text-sm text-slate-500 dark:text-slate-400">
+            {isLoading ? "Loading highlights..." : "No highlights available."}
+          </p>
         ) : (
-          cards.map(({ item, isLine, bars, areaMetrics, seriesByKind }) => (
-            <div key={item.statId} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          cards.map((card) => (
+            <div
+              key={card.item.statId}
+              className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+            >
               <div className="mb-2 flex items-baseline justify-between">
-                <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{item.name}</h4>
-                <span className="text-[11px] text-slate-400">{item.type}</span>
+                <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{card.item.name}</h4>
+                {card.item.type ? <span className="text-[11px] text-slate-400">{card.item.type}</span> : null}
               </div>
               <div className="mt-2">
-                {isLine ? (
+                {card.isLoading ? (
+                  <HighlightLoading />
+                ) : card.isLine ? (
                   <LineMiniChart
                     primaryKind={selectedKind}
-                    areaMetrics={areaMetrics}
-                    seriesByKind={seriesByKind}
+                    areaMetrics={card.areaMetrics}
+                    seriesByKind={card.seriesByKind}
                     baselineLabel={baselineLabel}
-                    valueType={item.type}
+                    valueType={card.item.type}
                   />
                 ) : (
-                  <BarsMiniChart bars={bars} type={item.type} baselineLabel={baselineLabel} />
+                  <BarsMiniChart bars={card.bars} type={card.item.type} baselineLabel={baselineLabel} />
                 )}
               </div>
             </div>
@@ -226,6 +250,14 @@ export const ReportHighlights = ({
     </div>
   );
 };
+
+const HighlightLoading = () => (
+  <div className="space-y-2">
+    <div className="h-2 w-11/12 animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
+    <div className="h-2 w-8/12 animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
+    <div className="h-2 w-9/12 animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
+  </div>
+);
 
 const BarsMiniChart = ({
   bars,

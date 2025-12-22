@@ -62,6 +62,22 @@ const ALWAYS_SHOW_WELCOME_MODAL = false;
 
 const FALLBACK_ZIP_SCOPE = normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma") ?? "Oklahoma";
 
+const expandScopeAliases = (scopes: string[]): string[] => {
+  const set = new Set<string>();
+  for (const scope of scopes) {
+    const normalized = normalizeScopeLabel(scope);
+    if (!normalized) continue;
+    if (normalized === "Oklahoma") {
+      set.add("Oklahoma");
+      continue;
+    }
+    for (const alias of buildScopeLabelAliases(normalized)) {
+      set.add(alias);
+    }
+  }
+  return Array.from(set);
+};
+
 const DEFAULT_TOP_BAR_HEIGHT = 64;
 const MOBILE_MAX_WIDTH_QUERY = "(max-width: 767px)";
 const MOBILE_SHEET_PEEK_HEIGHT = 136;
@@ -1135,6 +1151,9 @@ export const ReactMapApp = () => {
     return Array.from(set);
   }, [defaultCountyScope, normalizedNeighborScopes, normalizedZipScope]);
 
+  const expandedZipScopes = useMemo(() => expandScopeAliases(relevantScopes), [relevantScopes]);
+  const expandedCountyScopes = useMemo(() => expandScopeAliases(countyScopes), [countyScopes]);
+
   const [reportPriorityStatIds, setReportPriorityStatIds] = useState<string[]>([]);
   const priorityStatIds = useMemo(
     () =>
@@ -1218,10 +1237,18 @@ export const ReactMapApp = () => {
     const populationId = idsByName.get("Population") ?? null;
     const ageId = idsByName.get("Median Age") ?? idsByName.get("Average Age") ?? null;
     const marriedId = idsByName.get("Married Percent") ?? null;
-    const next: string[] = [];
-    if (populationId) next.push(populationId);
-    if (ageId) next.push(ageId);
-    if (marriedId) next.push(marriedId);
+    const featuredIds = Array.from(statsById.values())
+      .filter((stat) => stat.featured === true && stat.active !== false)
+      .slice(0, 4)
+      .map((stat) => stat.id);
+
+    const nextSet = new Set<string>();
+    if (populationId) nextSet.add(populationId);
+    if (ageId) nextSet.add(ageId);
+    if (marriedId) nextSet.add(marriedId);
+    for (const id of featuredIds) nextSet.add(id);
+
+    const next = Array.from(nextSet);
 
     setReportPriorityStatIds((prev) => {
       if (prev.length === next.length && prev.every((value, index) => value === next[index])) {
@@ -1458,7 +1485,7 @@ export const ReactMapApp = () => {
       // exist (e.g., newly imported Census stats that only write a root ZIP
       // payload with parentArea="Oklahoma").
       let hasScopedZip = false;
-      for (const scope of relevantScopes) {
+      for (const scope of expandedZipScopes) {
         const entry = byParent.get(scope);
         const incoming = entry?.ZIP;
         if (incoming) {
@@ -1491,8 +1518,9 @@ export const ReactMapApp = () => {
           }
         } else {
           // dynamic/scoped: base on scoped counties (and neighbors)
-          const scopesForLegend =
-            legendZipScopes.length > 0 ? legendZipScopes : [normalizedZipScope ?? FALLBACK_ZIP_SCOPE];
+          const scopesForLegend = expandScopeAliases(
+            legendZipScopes.length > 0 ? legendZipScopes : [normalizedZipScope ?? FALLBACK_ZIP_SCOPE],
+          );
           for (const scope of scopesForLegend) {
             const entry = byParent.get(scope)?.ZIP;
             if (!entry) continue;
@@ -1513,7 +1541,7 @@ export const ReactMapApp = () => {
       // COUNTY-level data already includes the default statewide bucket via
       // countyScopes (which contains the normalized DEFAULT_PARENT_AREA_BY_KIND.COUNTY)
       // plus any nearby county scopes.
-      for (const scope of countyScopes) {
+      for (const scope of expandedCountyScopes) {
         const entry = byParent.get(scope);
         const incoming = entry?.COUNTY;
         if (incoming) {
@@ -1526,7 +1554,7 @@ export const ReactMapApp = () => {
       }
     }
     return map;
-  }, [statDataByParent, relevantScopes, countyScopes, normalizedZipScope, legendZipScopes, legendRangeMode]);
+  }, [statDataByParent, expandedZipScopes, expandedCountyScopes, normalizedZipScope, legendZipScopes, legendRangeMode]);
 
   type StatSummaryEntry = {
     type: string;
@@ -1779,7 +1807,7 @@ export const ReactMapApp = () => {
     for (const [statId, byParent] of seriesByStatIdByParent.entries()) {
       const buckets = new Map<SupportedAreaKind, Map<string, SeriesEntry>>();
 
-      for (const scope of relevantScopes) {
+      for (const scope of expandedZipScopes) {
         const scopeEntry = byParent.get(scope);
         if (!scopeEntry) continue;
         const zipBucket = buckets.get("ZIP") ?? new Map<string, SeriesEntry>();
@@ -1789,7 +1817,7 @@ export const ReactMapApp = () => {
         }
       }
 
-      for (const scope of countyScopes) {
+      for (const scope of expandedCountyScopes) {
         const scopeEntry = byParent.get(scope);
         if (!scopeEntry) continue;
         const countyBucket = buckets.get("COUNTY") ?? new Map<string, SeriesEntry>();
@@ -1814,7 +1842,7 @@ export const ReactMapApp = () => {
       }
     }
     return map;
-  }, [seriesByStatIdByParent, relevantScopes, countyScopes]);
+  }, [seriesByStatIdByParent, expandedZipScopes, expandedCountyScopes]);
 
   useEffect(() => {
     if (hasAppliedDefaultStat) return;

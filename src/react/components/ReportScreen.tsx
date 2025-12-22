@@ -263,10 +263,22 @@ export const ReportScreen = ({
     return { left: top.slice(0, 3), right: top.slice(3) };
   }, [primaryCodes, primaryKind, statDataById, statsById]);
 
-  const highlights = useMemo(
-    () => ranking.left.concat(ranking.right).slice(0, 4).map((row) => ({ statId: row.statId, name: row.name, type: row.type })),
-    [ranking],
-  );
+  const highlightItems = useMemo(() => {
+    const featured = Array.from(statsById.values()).filter(
+      (stat) => stat.featured === true && stat.active !== false,
+    );
+    return featured.slice(0, 4).map((stat) => {
+      const entryByKind = primaryKind ? statDataById.get(stat.id)?.[primaryKind] : undefined;
+      const entryType = entryByKind?.type;
+      return {
+        statId: stat.id,
+        name: stat.label || stat.name,
+        type: entryType || stat.type || "",
+      };
+    });
+  }, [primaryKind, statDataById, statsById]);
+
+  const highlightsLoading = statsById.size === 0;
 
   const orgsInSelection = useMemo(() => {
     if (!primaryKind || primaryCodes.length === 0) return [] as Organization[];
@@ -347,7 +359,8 @@ export const ReportScreen = ({
             </div>
 
             <ReportHighlights
-              items={highlights}
+              items={highlightItems}
+              isLoading={highlightsLoading}
               selectedKind={primaryKind}
               selectedCodes={primaryCodes}
               supplementalAreas={supplementalAreas}
