@@ -342,43 +342,40 @@ export const useDemographics = ({
   const { authReady } = useAuthSession();
   const { areasByKindAndCode } = useAreas();
 
-  const { data } = db.useQuery(
+  const { data: statsResp } = db.useQuery(
     authReady
       ? {
           stats: {
             $: {
+              fields: ["id", "name"],
               order: { name: "asc" as const },
-            },
-          },
-          statData: {
-            $: {
-              order: { date: "asc" as const },
             },
           },
         }
       : null,
   );
+  const statsRows: any[] = Array.isArray(statsResp?.stats) ? statsResp.stats : [];
 
   const populationStatId = useMemo(() => {
     const provided = "29d2b2e4-52e1-4f36-b212-abd06de3f92a";
-    if (data?.stats?.some((s) => s?.id === provided)) return provided;
-    const byName = data?.stats?.find((s) => s?.name === "Population");
+    if (statsRows.some((s) => s?.id === provided)) return provided;
+    const byName = statsRows.find((s) => s?.name === "Population");
     return byName?.id || null;
-  }, [data?.stats]);
+  }, [statsRows]);
 
   const avgAgeStatId = useMemo(() => {
-    if (!data?.stats) return null;
+    if (statsRows.length === 0) return null;
     const candidates = ["Median Age", "Average Age"];
     for (const label of candidates) {
-      const match = data.stats.find((s) => s?.name === label);
+      const match = statsRows.find((s) => s?.name === label);
       if (match?.id) return match.id;
     }
     return null;
-  }, [data?.stats]);
+  }, [statsRows]);
 
   const marriedPercentStatId = useMemo(
-    () => data?.stats?.find((s) => s?.name === "Married Percent")?.id || null,
-    [data?.stats],
+    () => statsRows.find((s) => s?.name === "Married Percent")?.id || null,
+    [statsRows],
   );
 
   const fallbackZipScope =
@@ -417,6 +414,53 @@ export const useDemographics = ({
     [normalizedZipScope],
   );
 
+  const demographicStatIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (populationStatId) ids.add(populationStatId);
+    if (avgAgeStatId) ids.add(avgAgeStatId);
+    if (marriedPercentStatId) ids.add(marriedPercentStatId);
+    return Array.from(ids);
+  }, [avgAgeStatId, marriedPercentStatId, populationStatId]);
+
+  const parentAreasForQuery = useMemo(() => {
+    const set = new Set<string>();
+    const add = (value: string | null | undefined) => {
+      const normalized = normalizeScopeLabel(value ?? null);
+      if (normalized) set.add(normalized);
+    };
+    add(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
+    add(DEFAULT_PARENT_AREA_BY_KIND.COUNTY ?? "Oklahoma");
+    if (Array.isArray(normalizedZipScope)) {
+      for (const scope of normalizedZipScope) add(scope);
+    } else {
+      add(normalizedZipScope ?? null);
+    }
+    return Array.from(set);
+  }, [normalizedZipScope]);
+
+  const statDataQuery = useMemo(() => {
+    if (!authReady || demographicStatIds.length === 0) return null;
+    const where: Record<string, unknown> = {
+      statId: { $in: demographicStatIds },
+      boundaryType: { $in: SUPPORTED_AREA_KINDS },
+    };
+    if (parentAreasForQuery.length > 0) {
+      where.parentArea = { $in: parentAreasForQuery };
+    }
+    return {
+      statData: {
+        $: {
+          where,
+          fields: ["statId", "name", "parentArea", "boundaryType", "date", "type", "data"],
+          order: { date: "asc" as const },
+        },
+      },
+    };
+  }, [authReady, demographicStatIds, parentAreasForQuery]);
+
+  const { data: statDataResp } = db.useQuery(statDataQuery);
+  const statDataRows: any[] = Array.isArray(statDataResp?.statData) ? statDataResp.statData : [];
+
   const countyCodeForZipScope = useMemo(() => {
     if (!primaryZipScopeLabel) return null;
     const countyRecords = areasByKindAndCode.get("COUNTY");
@@ -432,18 +476,19 @@ export const useDemographics = ({
   }, [areasByKindAndCode, primaryZipScopeLabel]);
 
   const populationRoots = useMemo(
-    () => collectLatestRootRows(data?.statData, populationStatId, parentAreaOverride, selectedByKind),
-    [data?.statData, populationStatId, parentAreaOverride, selectedByKind],
+    () => collectLatestRootRows(statDataRows, populationStatId, parentAreaOverride, selectedByKind),
+    [statDataRows, populationStatId, parentAreaOverride, selectedByKind],
   );
 
   const avgAgeRoots = useMemo(
-    () => collectLatestRootRows(data?.statData, avgAgeStatId, parentAreaOverride, selectedByKind),
-    [data?.statData, avgAgeStatId, parentAreaOverride, selectedByKind],
+    () => collectLatestRootRows(statDataRows, avgAgeStatId, parentAreaOverride, selectedByKind),
+    [statDataRows, avgAgeStatId, parentAreaOverride, selectedByKind],
   );
 
   const marriedRoots = useMemo(
-    () => collectLatestRootRows(data?.statData, marriedPercentStatId, parentAreaOverride, selectedByKind),
-    [data?.statData, marriedPercentStatId, parentAreaOverride, selectedByKind],
+    () =>
+      collectLatestRootRows(statDataRows, marriedPercentStatId, parentAreaOverride, selectedByKind),
+    [statDataRows, marriedPercentStatId, parentAreaOverride, selectedByKind],
   );
 
   const latestPopulationDates = useMemo(() => {
@@ -459,13 +504,13 @@ export const useDemographics = ({
       return new Map<SupportedAreaKind, Map<BreakdownGroupKey, BreakdownSourceSegment[]>>();
     }
     return collectBreakdownSources(
-      data?.statData,
+      statDataRows,
       populationStatId,
       latestPopulationDates,
       parentAreaOverride,
       selectedByKind,
     );
-  }, [data?.statData, populationStatId, latestPopulationDates, parentAreaOverride, selectedByKind]);
+  }, [statDataRows, populationStatId, latestPopulationDates, parentAreaOverride, selectedByKind]);
 
   const getAreaName = (kind: SupportedAreaKind, code: string): string | null => {
     const byCode = areasByKindAndCode.get(kind);

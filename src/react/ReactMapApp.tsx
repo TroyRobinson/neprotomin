@@ -1155,6 +1155,18 @@ export const ReactMapApp = () => {
     return ["ZIP"] as const;
   }, [boundaryMode]);
 
+  const limitStatDataToScopes = lowMemoryMode || reducedDataLoading;
+  const limitedStatBoundaryTypes = useMemo(() => {
+    if (!limitStatDataToScopes) return undefined;
+    const set = new Set<SupportedAreaKind>();
+    if (selectedZips.length > 0) set.add("ZIP");
+    if (selectedCounties.length > 0) set.add("COUNTY");
+    if (set.size === 0) {
+      for (const kind of summaryKinds) set.add(kind as SupportedAreaKind);
+    }
+    return Array.from(set);
+  }, [limitStatDataToScopes, selectedZips.length, selectedCounties.length, summaryKinds]);
+
   const {
     statsById,
     seriesByStatIdByKind,
@@ -1175,6 +1187,8 @@ export const ReactMapApp = () => {
     batchSize: statDataBatchSize,
     enableTrickle: shouldPrefetchFullStatData,
     maxCachedStatIds: statDataCacheLimit,
+    limitStatDataToScopes,
+    statDataBoundaryTypes: limitedStatBoundaryTypes,
   });
   const { organizations } = useOrganizations();
   const { recentOrganizations } = useRecentOrganizations();

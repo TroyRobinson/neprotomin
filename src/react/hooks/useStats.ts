@@ -60,6 +60,8 @@ interface UseStatsOptions {
   batchSize?: number;
   enableTrickle?: boolean;
   maxCachedStatIds?: number;
+  limitStatDataToScopes?: boolean;
+  statDataBoundaryTypes?: SupportedAreaKind[];
 }
 
 export const useStats = ({
@@ -73,6 +75,8 @@ export const useStats = ({
   batchSize = 12,
   enableTrickle = true,
   maxCachedStatIds = 24,
+  limitStatDataToScopes = false,
+  statDataBoundaryTypes,
 }: UseStatsOptions = {}) => {
   const { authReady } = useAuthSession();
   const queryEnabled = authReady;
@@ -396,7 +400,16 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
       ? {
           statData: {
             $: {
-              where: { name: "root", statId: { $in: batchIds } },
+              where: {
+                name: "root",
+                statId: { $in: batchIds },
+                ...(statDataScopeParents && statDataScopeParents.length > 0
+                  ? { parentArea: { $in: statDataScopeParents } }
+                  : {}),
+                ...(statDataBoundaryTypes && statDataBoundaryTypes.length > 0
+                  ? { boundaryType: { $in: statDataBoundaryTypes } }
+                  : {}),
+              },
               fields: ["statId", "name", "parentArea", "boundaryType", "date", "type", "data"],
               order: { date: "asc" as const },
             },
@@ -522,6 +535,20 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     if (primaryCountyScope) set.add(primaryCountyScope);
     return Array.from(set);
   }, [countyScopes, zipScopes]);
+
+  const statDataScopeParents = useMemo(() => {
+    if (!limitStatDataToScopes) return null;
+    const set = new Set<string>();
+    const add = (value: string | null | undefined) => {
+      const normalized = normalizeScopeLabel(value ?? null);
+      if (normalized) set.add(normalized);
+    };
+    add(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
+    add(DEFAULT_PARENT_AREA_BY_KIND.COUNTY ?? "Oklahoma");
+    add(zipScopes[0]);
+    add(countyScopes[0]);
+    return Array.from(set);
+  }, [limitStatDataToScopes, zipScopes, countyScopes]);
 
   const fallbackParentArea = normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP) ?? "Oklahoma";
   const primaryScopedParentArea = summaryParentAreas.find(
