@@ -110,43 +110,93 @@ export const ReportScreen = ({
     };
   }, [areaNameLookup, hasMixedSelection, primaryCodes, primaryKind, supplementalByKind.ZIP.length]);
 
-  const callouts = useMemo(() => {
-    if (!primaryKind || primaryCodes.length === 0) return { population: "—", avgAge: "—", married: "—" };
-    const getEntryByName = (name: string): StatBoundaryEntry | null => {
-      for (const [statId, entry] of statDataById.entries()) {
-        const stat = statsById.get(statId);
-        if (stat?.name === name) {
-          return entry?.[primaryKind] ?? null;
-        }
-      }
-      return null;
-    };
+  const reportStatIds = useMemo(() => {
+    let populationId: string | null = null;
+    let medianAgeId: string | null = null;
+    let averageAgeId: string | null = null;
+    let marriedId: string | null = null;
 
-    const populationEntry = getEntryByName("Population");
-    const ageEntry = getEntryByName("Median Age") ?? getEntryByName("Average Age");
-    const marriedEntry = getEntryByName("Married Percent");
-    if (!populationEntry) return { population: "—", avgAge: "—", married: "—" };
+    for (const stat of statsById.values()) {
+      if (stat.name === "Population") populationId = stat.id;
+      if (stat.name === "Median Age") medianAgeId = stat.id;
+      if (stat.name === "Average Age") averageAgeId = stat.id;
+      if (stat.name === "Married Percent") marriedId = stat.id;
+    }
+
+    return {
+      populationId,
+      ageId: medianAgeId ?? averageAgeId,
+      marriedId,
+    };
+  }, [statsById]);
+
+  const callouts = useMemo(() => {
+    const empty = {
+      values: { population: "—", avgAge: "—", married: "—" },
+      loading: { population: false, avgAge: false, married: false },
+    };
+    if (!primaryKind || primaryCodes.length === 0) return empty;
+
+    const populationEntry = reportStatIds.populationId
+      ? statDataById.get(reportStatIds.populationId)?.[primaryKind] ?? null
+      : null;
+    const ageEntry = reportStatIds.ageId ? statDataById.get(reportStatIds.ageId)?.[primaryKind] ?? null : null;
+    const marriedEntry = reportStatIds.marriedId
+      ? statDataById.get(reportStatIds.marriedId)?.[primaryKind] ?? null
+      : null;
+    const populationReady = !!populationEntry;
+    const ageReady = populationReady && !!ageEntry;
+    const marriedReady = populationReady && !!marriedEntry;
+
+    if (!populationEntry) {
+      return {
+        values: { population: "—", avgAge: "—", married: "—" },
+        loading: {
+          population: !!reportStatIds.populationId,
+          avgAge: !!reportStatIds.ageId,
+          married: !!reportStatIds.marriedId,
+        },
+      };
+    }
 
     let totalPopulation = 0;
     let weightedAge = 0;
     let weightedMarried = 0;
+    let ageSamples = 0;
+    let marriedSamples = 0;
     for (const code of primaryCodes) {
       const population = Math.max(0, Math.round((populationEntry.data || ({} as Record<string, number>))[code] || 0));
       totalPopulation += population;
       const age = (ageEntry?.data || ({} as Record<string, number>))[code];
-      if (typeof age === "number") weightedAge += age * population;
+      if (typeof age === "number") {
+        weightedAge += age * population;
+        ageSamples += 1;
+      }
       const married = (marriedEntry?.data || ({} as Record<string, number>))[code];
-      if (typeof married === "number") weightedMarried += married * population;
+      if (typeof married === "number") {
+        weightedMarried += married * population;
+        marriedSamples += 1;
+      }
     }
-    if (totalPopulation === 0) return { population: "—", avgAge: "—", married: "—" };
-    const averageAge = weightedAge > 0 ? weightedAge / totalPopulation : NaN;
-    const averageMarried = weightedMarried > 0 ? weightedMarried / totalPopulation : NaN;
+    if (totalPopulation === 0) {
+      return {
+        values: { population: "—", avgAge: "—", married: "—" },
+        loading: { population: false, avgAge: !ageReady, married: !marriedReady },
+      };
+    }
+    const averageAge = ageSamples > 0 ? weightedAge / totalPopulation : NaN;
+    const averageMarried = marriedSamples > 0 ? weightedMarried / totalPopulation : NaN;
     return {
-      population: formatNumber(totalPopulation),
-      avgAge: formatYears(averageAge),
-      married: formatPercent(averageMarried),
+      values: {
+        population: formatNumber(totalPopulation),
+        avgAge: formatYears(averageAge),
+        married: formatPercent(averageMarried),
+      },
+      loading: { population: false, avgAge: !ageReady, married: !marriedReady },
     };
-  }, [primaryCodes, primaryKind, statDataById, statsById]);
+  }, [primaryCodes, primaryKind, reportStatIds, statDataById]);
+
+  const { values: calloutValues, loading: calloutLoading } = callouts;
 
   const comparisonLabel = primaryKind ? comparisonLabelByKind[primaryKind] : "all OK ZIPs";
 
@@ -266,15 +316,33 @@ export const ReportScreen = ({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/40">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Population</p>
-                <p className="mt-1 text-lg font-semibold text-slate-800 dark:text-white">{callouts.population}</p>
+                <p className="mt-1 text-lg font-semibold text-slate-800 dark:text-white">
+                  {calloutLoading.population ? (
+                    <span className="inline-block h-2 w-12 animate-pulse rounded-full bg-slate-300/80 align-middle dark:bg-slate-600/70" />
+                  ) : (
+                    calloutValues.population
+                  )}
+                </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/40">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Average age</p>
-                <p className="mt-1 text-lg font-semibold text-slate-800 dark:text-white">{callouts.avgAge}</p>
+                <p className="mt-1 text-lg font-semibold text-slate-800 dark:text-white">
+                  {calloutLoading.avgAge ? (
+                    <span className="inline-block h-2 w-12 animate-pulse rounded-full bg-slate-300/80 align-middle dark:bg-slate-600/70" />
+                  ) : (
+                    calloutValues.avgAge
+                  )}
+                </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/40">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Married %</p>
-                <p className="mt-1 text-lg font-semibold text-slate-800 dark:text-white">{callouts.married}</p>
+                <p className="mt-1 text-lg font-semibold text-slate-800 dark:text-white">
+                  {calloutLoading.married ? (
+                    <span className="inline-block h-2 w-12 animate-pulse rounded-full bg-slate-300/80 align-middle dark:bg-slate-600/70" />
+                  ) : (
+                    calloutValues.married
+                  )}
+                </p>
               </div>
             </div>
 

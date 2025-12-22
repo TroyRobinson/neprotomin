@@ -1135,9 +1135,13 @@ export const ReactMapApp = () => {
     return Array.from(set);
   }, [defaultCountyScope, normalizedNeighborScopes, normalizedZipScope]);
 
+  const [reportPriorityStatIds, setReportPriorityStatIds] = useState<string[]>([]);
   const priorityStatIds = useMemo(
-    () => [selectedStatId, secondaryStatId].filter((id): id is string => typeof id === "string"),
-    [selectedStatId, secondaryStatId],
+    () =>
+      [selectedStatId, secondaryStatId, ...reportPriorityStatIds].filter(
+        (id): id is string => typeof id === "string",
+      ),
+    [selectedStatId, secondaryStatId, reportPriorityStatIds],
   );
   const allowBackgroundStatLoading = !lowMemoryMode && !reducedDataLoading;
   const statDataProfile = useMemo(() => {
@@ -1197,6 +1201,36 @@ export const ReactMapApp = () => {
     limitStatDataToScopes,
     statDataBoundaryTypes: limitedStatBoundaryTypes,
   });
+
+  useEffect(() => {
+    if (activeScreen !== "report") {
+      setReportPriorityStatIds((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+
+    if (statsById.size === 0) return;
+
+    const idsByName = new Map<string, string>();
+    for (const stat of statsById.values()) {
+      if (typeof stat.name === "string") idsByName.set(stat.name, stat.id);
+    }
+
+    const populationId = idsByName.get("Population") ?? null;
+    const ageId = idsByName.get("Median Age") ?? idsByName.get("Average Age") ?? null;
+    const marriedId = idsByName.get("Married Percent") ?? null;
+    const next: string[] = [];
+    if (populationId) next.push(populationId);
+    if (ageId) next.push(ageId);
+    if (marriedId) next.push(marriedId);
+
+    setReportPriorityStatIds((prev) => {
+      if (prev.length === next.length && prev.every((value, index) => value === next[index])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [activeScreen, statsById]);
+
   const { organizations } = useOrganizations();
   const { recentOrganizations } = useRecentOrganizations();
   const organizationSearchIndex = useMemo(
