@@ -52,6 +52,7 @@ import {
 } from "../../lib/zctaLoader";
 import { normalizeScopeLabel, formatCountyScopeLabel } from "../../lib/scopeLabels";
 import { isLowMemoryDevice } from "../../lib/device";
+import { PREFETCH_RECENT_STATS_KEY, REDUCED_DATA_LOADING_KEY, readBoolSetting } from "../../lib/settings";
 
 interface AreaSelectionChange {
   kind: AreaKind;
@@ -190,7 +191,6 @@ const FALLBACK_ZIP_PARENT_AREA =
   normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma") ?? "Oklahoma";
 
 const RECENT_STATS_STORAGE_KEY = "uiState.recentStats";
-const PREFETCH_RECENT_STATS_KEY = "settings.prefetchRecentStats";
 const RECENT_STATS_MAX = 10;
 
 const VIEWPORT_DOMINANCE_RATIO = 0.45;
@@ -492,13 +492,12 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
         setStatDataPrefetchStatIds([]);
         return;
       }
-      const prefetchEnabled = (() => {
-        try {
-          return localStorage.getItem(PREFETCH_RECENT_STATS_KEY) === "true";
-        } catch {
-          return false;
-        }
-      })();
+      const reducedDataLoading = readBoolSetting(REDUCED_DATA_LOADING_KEY, false);
+      if (reducedDataLoading) {
+        setStatDataPrefetchStatIds([]);
+        return;
+      }
+      const prefetchEnabled = readBoolSetting(PREFETCH_RECENT_STATS_KEY, false);
       if (!prefetchEnabled) {
         setStatDataPrefetchStatIds([]);
         return;

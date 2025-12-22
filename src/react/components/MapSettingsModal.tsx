@@ -1,13 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
 import { clearPersistentStatsCache } from "../../lib/persistentStatsCache";
-
-const PREFETCH_RECENT_STATS_KEY = "settings.prefetchRecentStats";
+import {
+  PREFETCH_RECENT_STATS_KEY,
+  readBoolSetting,
+  writeBoolSetting,
+} from "../../lib/settings";
 
 interface MapSettingsModalProps {
   open: boolean;
   onClose: () => void;
   rangeMode: "dynamic" | "scoped" | "global";
   onChangeRangeMode: (mode: "dynamic" | "scoped" | "global") => void;
+  reducedDataLoading: boolean;
+  onChangeReducedDataLoading: (value: boolean) => void;
 }
 
 export const MapSettingsModal: React.FC<MapSettingsModalProps> = ({
@@ -15,6 +20,8 @@ export const MapSettingsModal: React.FC<MapSettingsModalProps> = ({
   onClose,
   rangeMode,
   onChangeRangeMode,
+  reducedDataLoading,
+  onChangeReducedDataLoading,
 }) => {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const [isClearingCache, setIsClearingCache] = useState(false);
@@ -32,11 +39,7 @@ export const MapSettingsModal: React.FC<MapSettingsModalProps> = ({
 
   useEffect(() => {
     if (!open) return;
-    try {
-      setPrefetchEnabled(localStorage.getItem(PREFETCH_RECENT_STATS_KEY) === "true");
-    } catch {
-      setPrefetchEnabled(false);
-    }
+    setPrefetchEnabled(readBoolSetting(PREFETCH_RECENT_STATS_KEY, false));
   }, [open]);
 
   if (!open) return null;
@@ -131,13 +134,25 @@ export const MapSettingsModal: React.FC<MapSettingsModalProps> = ({
               <input
                 type="checkbox"
                 className="mt-1 h-4 w-4"
+                checked={reducedDataLoading}
+                onChange={(e) => onChangeReducedDataLoading(e.target.checked)}
+              />
+              <div>
+                <div className="font-medium text-slate-800 dark:text-slate-100">Reduce background data loading</div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Limits background stat loading to keep the app snappy on slower devices.
+                </p>
+              </div>
+            </label>
+            <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-md border border-transparent p-2 hover:border-slate-200 dark:hover:border-slate-700">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4"
                 checked={prefetchEnabled}
                 onChange={(e) => {
                   const next = e.target.checked;
                   setPrefetchEnabled(next);
-                  try {
-                    localStorage.setItem(PREFETCH_RECENT_STATS_KEY, next ? "true" : "false");
-                  } catch {}
+                  writeBoolSetting(PREFETCH_RECENT_STATS_KEY, next);
                 }}
               />
               <div>

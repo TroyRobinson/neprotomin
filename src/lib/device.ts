@@ -3,6 +3,8 @@ type NavigatorWithMemory = Navigator & {
   userAgentData?: { mobile?: boolean };
 };
 
+export type PerformanceTier = "low" | "medium" | "high";
+
 export const isLowMemoryDevice = (): boolean => {
   if (typeof window === "undefined" || typeof navigator === "undefined") return false;
 
@@ -19,4 +21,16 @@ export const isLowMemoryDevice = (): boolean => {
   if (uaMobile) return true;
 
   return false;
+};
+
+export const getPerformanceTier = (): PerformanceTier => {
+  if (isLowMemoryDevice()) return "low";
+  if (typeof navigator === "undefined") return "high";
+  const nav = navigator as NavigatorWithMemory;
+  const memory = typeof nav.deviceMemory === "number" ? nav.deviceMemory : null;
+  const cores =
+    typeof nav.hardwareConcurrency === "number" ? nav.hardwareConcurrency : null;
+
+  if ((memory !== null && memory <= 6) || (cores !== null && cores <= 6)) return "medium";
+  return "high";
 };

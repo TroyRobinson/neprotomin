@@ -36,7 +36,8 @@ import { useAuthSession } from "./hooks/useAuthSession";
 import { setStatDataSubscriptionEnabled } from "../state/statData";
 import { MapSettingsModal } from "./components/MapSettingsModal";
 import { useCensusImportQueue } from "./hooks/useCensusImportQueue";
-import { isLowMemoryDevice } from "../lib/device";
+import { getPerformanceTier } from "../lib/device";
+import { REDUCED_DATA_LOADING_KEY, readBoolSetting, writeBoolSetting } from "../lib/settings";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type ScreenName = "map" | "report" | "roadmap" | "data" | "queue" | "addOrg" | "admin";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
@@ -237,9 +238,26 @@ export const ReactMapApp = () => {
   const [zipScope, setZipScope] = useState<string>(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
   const [zipNeighborScopes, setZipNeighborScopes] = useState<string[]>([]);
   const isMobile = useMediaQuery(MOBILE_MAX_WIDTH_QUERY);
-  const lowMemoryMode = useMemo(() => isLowMemoryDevice(), []);
+  const performanceTier = useMemo(() => getPerformanceTier(), []);
+  const lowMemoryMode = performanceTier === "low";
+  const [reducedDataLoading, setReducedDataLoading] = useState(() =>
+    readBoolSetting(REDUCED_DATA_LOADING_KEY, false),
+  );
   const [topBarHeight, setTopBarHeight] = useState(DEFAULT_TOP_BAR_HEIGHT);
   const [sheetState, setSheetState] = useState<"peek" | "partial" | "expanded">("peek");
+
+  useEffect(() => {
+    writeBoolSetting(REDUCED_DATA_LOADING_KEY, reducedDataLoading);
+  }, [reducedDataLoading]);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== REDUCED_DATA_LOADING_KEY) return;
+      setReducedDataLoading(event.newValue === "true");
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
   const [isDraggingSheet, setIsDraggingSheet] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(() => initialMapState.showAdvanced);
@@ -1120,9 +1138,17 @@ export const ReactMapApp = () => {
     () => [selectedStatId, secondaryStatId].filter((id): id is string => typeof id === "string"),
     [selectedStatId, secondaryStatId],
   );
+  const allowBackgroundStatLoading = !lowMemoryMode && !reducedDataLoading;
+  const statDataProfile = useMemo(() => {
+    if (performanceTier === "medium") return { initial: 10, batch: 10, cache: 20 };
+    if (performanceTier === "low") return { initial: 6, batch: 6, cache: 14 };
+    return { initial: 12, batch: 12, cache: 24 };
+  }, [performanceTier]);
   const shouldPrefetchFullStatData =
-    !lowMemoryMode && (selectedZips.length > 0 || selectedCounties.length > 0);
-  const statDataCacheLimit = lowMemoryMode ? 10 : 24;
+    allowBackgroundStatLoading && (selectedZips.length > 0 || selectedCounties.length > 0);
+  const statDataCacheLimit = allowBackgroundStatLoading ? statDataProfile.cache : 10;
+  const statDataInitialBatchSize = shouldPrefetchFullStatData ? statDataProfile.initial : 0;
+  const statDataBatchSize = shouldPrefetchFullStatData ? statDataProfile.batch : 0;
 
   const summaryKinds = useMemo(() => {
     if (boundaryMode === "counties") return ["COUNTY"] as const;
@@ -1145,8 +1171,8 @@ export const ReactMapApp = () => {
     zipScopes: relevantScopes,
     countyScopes,
     summaryKinds: summaryKinds as any,
-    initialBatchSize: shouldPrefetchFullStatData ? 12 : 0,
-    batchSize: shouldPrefetchFullStatData ? 12 : 0,
+    initialBatchSize: statDataInitialBatchSize,
+    batchSize: statDataBatchSize,
     enableTrickle: shouldPrefetchFullStatData,
     maxCachedStatIds: statDataCacheLimit,
   });
@@ -3654,6 +3680,8 @@ export const ReactMapApp = () => {
         open={mapSettingsOpen}
         onClose={() => setMapSettingsOpen(false)}
         rangeMode={legendRangeMode}
+        reducedDataLoading={reducedDataLoading}
+        onChangeReducedDataLoading={setReducedDataLoading}
         onChangeRangeMode={(mode) => {
           setLegendRangeMode(mode);
           if (mapControllerRef.current) {

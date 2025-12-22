@@ -24,6 +24,7 @@ import { isDevEnv } from "../../lib/env";
 type SupportedAreaKind = Extract<AreaKind, "ZIP" | "COUNTY">;
 
 const STAT_DATA_CACHE_TTL_MS = PERSISTED_STAT_CACHE_TTL_MS;
+const STAT_DATA_DERIVE_DEBOUNCE_MS = 120;
 const NAME_FOR_SORT = (stat: Stat) => (stat.label || stat.name || "").toLowerCase();
 
 export interface SeriesEntry {
@@ -106,6 +107,7 @@ export const useStats = ({
   const cachedStatKeysByStatIdRef = useRef<Map<string, Set<string>>>(new Map());
   const cachedStatLastAccessRef = useRef<Map<string, number>>(new Map());
   const [statDataCacheVersion, setStatDataCacheVersion] = useState(0);
+  const [statDataSnapshotVersion, setStatDataSnapshotVersion] = useState(0);
   const [loadedStatIds, setLoadedStatIds] = useState<Set<string>>(new Set());
   const [batchGeneration, setBatchGeneration] = useState(0);
 
@@ -166,6 +168,23 @@ export const useStats = ({
     );
     return () => window.clearTimeout(timeout);
   }, [lastStatDataAt, statDataEnabled, statDataRefreshRequested]);
+
+  const statDataSnapshotTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!statDataEnabled) return;
+    if (statDataSnapshotTimeoutRef.current) {
+      clearTimeout(statDataSnapshotTimeoutRef.current);
+    }
+    const targetVersion = statDataCacheVersion;
+    statDataSnapshotTimeoutRef.current = setTimeout(() => {
+      setStatDataSnapshotVersion(targetVersion);
+    }, STAT_DATA_DERIVE_DEBOUNCE_MS);
+    return () => {
+      if (statDataSnapshotTimeoutRef.current) {
+        clearTimeout(statDataSnapshotTimeoutRef.current);
+      }
+    };
+  }, [statDataCacheVersion, statDataEnabled]);
 
   const statsRows: any[] | undefined = Array.isArray(statsResp?.stats)
     ? statsResp.stats
@@ -469,21 +488,12 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
 
   const cachedStatDataRows = useMemo(
     () => Array.from(cachedStatDataByKeyRef.current.values()),
-    [statDataCacheVersion],
+    [statDataSnapshotVersion],
   );
 
   const statDataRows = useMemo(() => {
-    const merged = new Map<string, any>();
-    for (const row of cachedStatDataRows) {
-      const key = statDataRowKey(row);
-      if (key) merged.set(key, row);
-    }
-    const incoming = Array.isArray(statDataResp?.statData) ? (statDataResp.statData as any[]) : [];
-    for (const row of incoming) {
-      const key = statDataRowKey(row);
-      if (key) merged.set(key, row);
-    }
-    return Array.from(merged.values());
+    if (cachedStatDataRows.length > 0) return cachedStatDataRows;
+    return Array.isArray(statDataResp?.statData) ? (statDataResp.statData as any[]) : [];
   }, [cachedStatDataRows, statDataResp?.statData]);
 
   const effectiveData = {
