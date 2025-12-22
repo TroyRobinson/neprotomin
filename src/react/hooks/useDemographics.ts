@@ -440,13 +440,11 @@ export const useDemographics = ({
 
   const statDataQuery = useMemo(() => {
     if (!authReady || demographicStatIds.length === 0) return null;
-    const where: Record<string, unknown> = {
+    const where = {
       statId: { $in: demographicStatIds },
       boundaryType: { $in: SUPPORTED_AREA_KINDS },
+      ...(parentAreasForQuery.length > 0 ? { parentArea: { $in: parentAreasForQuery } } : {}),
     };
-    if (parentAreasForQuery.length > 0) {
-      where.parentArea = { $in: parentAreasForQuery };
-    }
     return {
       statData: {
         $: {
@@ -455,7 +453,7 @@ export const useDemographics = ({
           order: { date: "asc" as const },
         },
       },
-    };
+    } satisfies Parameters<typeof db.useQuery>[0];
   }, [authReady, demographicStatIds, parentAreasForQuery]);
 
   const { data: statDataResp } = db.useQuery(statDataQuery);

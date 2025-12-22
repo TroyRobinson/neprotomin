@@ -1155,8 +1155,10 @@ export const ReactMapApp = () => {
     return ["ZIP"] as const;
   }, [boundaryMode]);
 
-  const limitStatDataToScopes = lowMemoryMode || reducedDataLoading;
   const statMapsEnabled = !lowMemoryMode;
+  const enableTimeSeries =
+    showAdvanced && (sidebarTab === "stats" || activeScreen === "report");
+  const limitStatDataToScopes = lowMemoryMode || reducedDataLoading || !enableTimeSeries;
   const limitedStatBoundaryTypes = useMemo(() => {
     if (!limitStatDataToScopes) return undefined;
     const set = new Set<SupportedAreaKind>();
@@ -1180,6 +1182,7 @@ export const ReactMapApp = () => {
   } = useStats({
     statDataEnabled: activeScreen !== "admin",
     statMapsEnabled,
+    enableTimeSeries,
     priorityStatIds,
     categoryFilter,
     zipScopes: relevantScopes,

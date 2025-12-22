@@ -52,6 +52,7 @@ const isFiniteNumber = (value: unknown): value is number =>
 interface UseStatsOptions {
   statDataEnabled?: boolean;
   statMapsEnabled?: boolean;
+  enableTimeSeries?: boolean;
   priorityStatIds?: string[];
   categoryFilter?: string | null;
   zipScopes?: string[];
@@ -68,6 +69,7 @@ interface UseStatsOptions {
 export const useStats = ({
   statDataEnabled = true,
   statMapsEnabled = true,
+  enableTimeSeries = true,
   priorityStatIds = [],
   categoryFilter = null,
   zipScopes = [],
@@ -83,6 +85,7 @@ export const useStats = ({
   const { authReady } = useAuthSession();
   const queryEnabled = authReady;
   const statMapsActive = statDataEnabled && statMapsEnabled;
+  const timeSeriesEnabled = statMapsActive && enableTimeSeries;
 
   // Persisted summaries: hydrate immediately from IndexedDB so sidebar values render on refresh/new tab.
   const persistedSummaryRowsRef = useRef<any[]>([]);
@@ -115,6 +118,7 @@ export const useStats = ({
   const cachedStatLastAccessRef = useRef<Map<string, number>>(new Map());
   const [statDataCacheVersion, setStatDataCacheVersion] = useState(0);
   const [statDataSnapshotVersion, setStatDataSnapshotVersion] = useState(0);
+  const [statDataDateFilter, setStatDataDateFilter] = useState<string[] | null>(null);
   const [loadedStatIds, setLoadedStatIds] = useState<Set<string>>(new Set());
   const [batchGeneration, setBatchGeneration] = useState(0);
 
@@ -407,13 +411,21 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
   const shouldIncludeStatData =
     statMapsActive &&
     (batchIds.length > 0 || statDataRefreshRequested || lastStatDataAt === null);
+  const statDataDateKey = timeSeriesEnabled
+    ? "series"
+    : statDataDateFilter && statDataDateFilter.length > 0
+      ? statDataDateFilter.join("|")
+      : "";
+  const canQueryStatData =
+    shouldIncludeStatData &&
+    (timeSeriesEnabled || (statDataDateFilter && statDataDateFilter.length > 0));
 
   const {
     data: statDataResp,
     isLoading: statDataLoading,
     error: statDataError,
   } = db.useQuery(
-    queryEnabled && shouldIncludeStatData && batchIds.length > 0
+    queryEnabled && canQueryStatData && batchIds.length > 0
       ? {
           statData: {
             $: {
@@ -425,6 +437,9 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
                   : {}),
                 ...(statDataBoundaryTypes && statDataBoundaryTypes.length > 0
                   ? { boundaryType: { $in: statDataBoundaryTypes } }
+                  : {}),
+                ...(!timeSeriesEnabled && statDataDateFilter && statDataDateFilter.length > 0
+                  ? { date: { $in: statDataDateFilter } }
                   : {}),
               },
               fields: ["statId", "name", "parentArea", "boundaryType", "date", "type", "data"],
@@ -438,15 +453,15 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
   const lastRequestedBatchKeyRef = useRef<string>("");
   const lastRequestedBatchIdsRef = useRef<string[]>([]);
   useEffect(() => {
-    if (!queryEnabled || !shouldIncludeStatData || batchIds.length === 0) return;
-    lastRequestedBatchKeyRef.current = `${batchGeneration}::${batchIds.join("|")}`;
+    if (!queryEnabled || !canQueryStatData || batchIds.length === 0) return;
+    lastRequestedBatchKeyRef.current = `${batchGeneration}::${statDataDateKey}::${batchIds.join("|")}`;
     lastRequestedBatchIdsRef.current = batchIds;
-  }, [batchGeneration, batchIds, queryEnabled, shouldIncludeStatData]);
+  }, [batchGeneration, batchIds, canQueryStatData, queryEnabled, statDataDateKey]);
 
   const processedBatchKeyRef = useRef<string>("");
   useEffect(() => {
     if (statDataLoading) return;
-    if (!queryEnabled || !shouldIncludeStatData) return;
+    if (!queryEnabled || !canQueryStatData) return;
     const batchKey = lastRequestedBatchKeyRef.current;
     if (!batchKey) return;
     if (processedBatchKeyRef.current === batchKey) return;
@@ -507,8 +522,8 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
       setStatDataRefreshRequested(false);
     }
   }, [
+    canQueryStatData,
     queryEnabled,
-    shouldIncludeStatData,
     statDataLoading,
     statDataResp,
     statDataRefreshRequested,
@@ -773,6 +788,54 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
   }
   const summaryRowsVersion = `${summaryRows.length}:${summaryRowsMaxUpdatedAt}`;
 
+  useEffect(() => {
+    if (timeSeriesEnabled) {
+      if (statDataDateFilter !== null) {
+        setStatDataDateFilter(null);
+      }
+      return;
+    }
+    if (!statMapsActive) return;
+    if (batchIds.length === 0) {
+      if (statDataDateFilter !== null) setStatDataDateFilter([]);
+      return;
+    }
+    const desiredStatIds = new Set(batchIds);
+    const allowedParents = statDataScopeParents ? new Set(statDataScopeParents) : null;
+    const allowedBoundaries =
+      statDataBoundaryTypes && statDataBoundaryTypes.length > 0
+        ? new Set(statDataBoundaryTypes)
+        : null;
+    const nextDates = new Set<string>();
+    for (const row of summaryRows) {
+      const statId = typeof row?.statId === "string" ? row.statId : null;
+      if (!statId || !desiredStatIds.has(statId)) continue;
+      const boundaryType = typeof row?.boundaryType === "string" ? (row.boundaryType as SupportedAreaKind) : null;
+      if (!boundaryType || (allowedBoundaries && !allowedBoundaries.has(boundaryType))) continue;
+      const parentArea = normalizeScopeLabel(typeof row?.parentArea === "string" ? row.parentArea : null);
+      if (!parentArea || (allowedParents && !allowedParents.has(parentArea))) continue;
+      const date = typeof row?.date === "string" ? row.date : typeof row?.date === "number" ? String(row.date) : null;
+      if (!date) continue;
+      nextDates.add(date);
+    }
+    const next = Array.from(nextDates).sort();
+    setStatDataDateFilter((prev) => {
+      if (!prev || prev.length !== next.length) return next;
+      for (let i = 0; i < prev.length; i += 1) {
+        if (prev[i] !== next[i]) return next;
+      }
+      return prev;
+    });
+  }, [
+    batchIds,
+    statDataBoundaryTypes,
+    statDataDateFilter,
+    statDataScopeParents,
+    statMapsActive,
+    summaryRowsVersion,
+    timeSeriesEnabled,
+  ]);
+
   const statDataSummaryByParent = useMemo(() => {
     const map = new Map<string, Map<string, Partial<Record<SupportedAreaKind, any>>>>();
 
@@ -805,7 +868,7 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
   // Build time series per stat and area kind (ZIP vs COUNTY for now)
   const seriesByStatIdByKind = useMemo(() => {
     const map = new Map<string, SeriesByKind>();
-    if (!effectiveData?.statData) return map;
+    if (!timeSeriesEnabled || !effectiveData?.statData) return map;
 
     for (const row of effectiveData.statData) {
       if (
@@ -850,7 +913,7 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     }
 
     return map;
-  }, [effectiveData?.statData]);
+  }, [effectiveData?.statData, timeSeriesEnabled]);
 
   // Snapshot the latest statData per boundary type for quick lookup (min/max precomputed)
   const statDataByBoundary = useMemo(() => {
@@ -875,7 +938,7 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
 
   const seriesByStatIdByParent = useMemo(() => {
     const map = new Map<string, Map<string, SeriesByKind>>();
-    if (!effectiveData?.statData) return map;
+    if (!timeSeriesEnabled || !effectiveData?.statData) return map;
 
     for (const row of effectiveData.statData) {
       if (
@@ -918,7 +981,7 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     }
 
     return map;
-  }, [effectiveData?.statData]);
+  }, [effectiveData?.statData, timeSeriesEnabled]);
 
   const statDataByParent = useMemo(() => {
     const latestByKey = new Map<string, { row: any; date: string }>();
