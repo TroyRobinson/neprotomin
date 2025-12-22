@@ -31,6 +31,16 @@ const BRAND_SHADE_TOKENS = ["brand-200", "brand-300", "brand-400", "brand-500", 
 
 const BREAKDOWN_KEYS: BreakdownGroupKey[] = ["ethnicity", "income", "education"];
 
+const STAT_DATA_FIELDS = [
+  "statId",
+  "name",
+  "parentArea",
+  "boundaryType",
+  "date",
+  "type",
+  "data",
+] as const;
+
 // Hide demographic breakdowns until we ingest real data, so synthetic legacy rows
 // don't appear in the UI and confuse users.
 const ENABLE_DEMOGRAPHIC_BREAKDOWNS = true;
@@ -449,11 +459,11 @@ export const useDemographics = ({
       statData: {
         $: {
           where,
-          fields: ["statId", "name", "parentArea", "boundaryType", "date", "type", "data"],
+          fields: [...STAT_DATA_FIELDS],
           order: { date: "asc" as const },
         },
       },
-    } satisfies Parameters<typeof db.useQuery>[0];
+    };
   }, [authReady, demographicStatIds, parentAreasForQuery]);
 
   const { data: statDataResp } = db.useQuery(statDataQuery);
