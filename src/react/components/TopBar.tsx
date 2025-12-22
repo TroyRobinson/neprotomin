@@ -446,7 +446,11 @@ export const TopBar = ({
 
   const showDataLink =
     !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
-  const showReportLink = showAdvanced;
+  const showReportLink =
+    !isLoading &&
+    user &&
+    !user.isGuest &&
+    user.email?.toLowerCase() === "ttroyr@gmail.com";
   const showQueueLink =
     !isLoading && user && !user.isGuest && isAdminEmail(user.email ?? null);
   const showAdminLink =
