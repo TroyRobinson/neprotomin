@@ -38,6 +38,7 @@ import { MapSettingsModal } from "./components/MapSettingsModal";
 import { useCensusImportQueue } from "./hooks/useCensusImportQueue";
 import { getPerformanceTier } from "../lib/device";
 import { REDUCED_DATA_LOADING_KEY, readBoolSetting, writeBoolSetting } from "../lib/settings";
+import { getStatDisplayName } from "../types/stat";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type ScreenName = "map" | "report" | "roadmap" | "data" | "queue" | "addOrg" | "admin";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
@@ -3069,6 +3070,19 @@ export const ReactMapApp = () => {
       : 0;
   // Always show viewport count in mobile peek mode, regardless of area selection
   const mobileOrganizationsCount = visibleCount;
+  const mobileOrgLabel = isFoodDomain ? "Food Providers" : "Organizations (Food, etc.)";
+  const selectedStat = selectedStatId ? statsById.get(selectedStatId) ?? null : null;
+  const mobilePeekLabel =
+    sidebarTab === "stats"
+      ? selectedStat
+        ? `Stat: ${getStatDisplayName(selectedStat)}`
+        : "Stat"
+      : `${mobileOrganizationsCount} ${mobileOrgLabel}`;
+  const mobilePeekDotClassName = [
+    "h-2.5 w-2.5 rounded-full ring-1 ring-black/5 dark:ring-white/10",
+    sidebarTab === "stats" ? "bg-brand-500" : "",
+  ].join(" ");
+  const mobilePeekDotStyle = sidebarTab === "stats" ? undefined : { backgroundColor: "#fdba74" };
 
   const handleTopBarNavigate = useCallback(
     (screen: "map" | "report" | "roadmap" | "data" | "queue" | "admin") => {
@@ -3467,11 +3481,8 @@ export const ReactMapApp = () => {
                   </div>
                   {sheetState === "peek" ? (
                     <span className="flex items-center gap-2">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full ring-1 ring-black/5 dark:ring-white/10"
-                        style={{ backgroundColor: "#fdba74" }}
-                      />
-                      <span>{mobileOrganizationsCount} Food Providers</span>
+                      <span className={mobilePeekDotClassName} style={mobilePeekDotStyle} />
+                      <span>{mobilePeekLabel}</span>
                     </span>
                   ) : null}
                 </div>
