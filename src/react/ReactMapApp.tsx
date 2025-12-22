@@ -2034,6 +2034,9 @@ export const ReactMapApp = () => {
       }
       const shouldFollowMap = treatAsMapSelection || source === "map";
       setSidebarFollowMode(shouldFollowMap ? "map" : "sidebar");
+      if (isMobile && source === "map" && sidebarTab !== "orgs") {
+        setSidebarTab("orgs");
+      }
 
       // Check if clicking the same organization that's already selected (second click)
       const isAlreadySelected = selectedOrgIds.length === 1 && selectedOrgIds[0] === id;
@@ -2112,6 +2115,8 @@ export const ReactMapApp = () => {
       previewSheet,
       selectedOrgIds,
       setSidebarFollowMode,
+      sidebarTab,
+      setSidebarTab,
       sheetState,
       setSearchSelectionMeta,
     ],
@@ -2191,6 +2196,9 @@ export const ReactMapApp = () => {
         device: isMobile ? "mobile" : "desktop",
       });
       setActiveScreen("map");
+      if (isMobile && uniqueIds.length <= 3 && sidebarTab !== "orgs") {
+        setSidebarTab("orgs");
+      }
       if (uniqueIds.length === 1) {
         setActiveOrganizationId(uniqueIds[0]);
         setHighlightedOrganizationIds(null);
@@ -2218,7 +2226,7 @@ export const ReactMapApp = () => {
         }
       }
     },
-    [expandSheet, isMobile, previewSheet, setSidebarFollowMode],
+    [expandSheet, isMobile, previewSheet, setSidebarFollowMode, setSidebarTab, sidebarTab],
   );
 
   const handleUpdateAreaSelection = (kind: AreaKind, selection: { selected: string[]; pinned: string[] }) => {

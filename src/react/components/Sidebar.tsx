@@ -203,6 +203,13 @@ export const Sidebar = ({
     selectionKey: null,
   });
   const lastNonMapSelectionKeyRef = useRef<string | null>(null);
+  const setActiveTabWithSync = useCallback(
+    (tab: TabType) => {
+      setActiveTab(tab);
+      onTabChange?.(tab);
+    },
+    [onTabChange],
+  );
   const scrollOrgIntoView = useCallback((orgId: string, options?: { alignTop?: boolean; padding?: number }) => {
     const container = orgsScrollRef.current;
     if (!container) return;
@@ -580,21 +587,27 @@ export const Sidebar = ({
     }
     if (lastForceHideNonceRef.current !== undefined) {
       setKeepOrgsOnMap(false);
-      setActiveTab("stats");
+      setActiveTabWithSync("stats");
     }
     lastForceHideNonceRef.current = forceHideOrgsNonce;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forceHideOrgsNonce]);
+
+  useEffect(() => {
+    if (!onTabChange) return;
+    if (activeTab === initialTab) return;
+    setActiveTabWithSync(initialTab);
+  }, [activeTab, initialTab, onTabChange, setActiveTabWithSync]);
 
   // Switch to Statistics tab when advanced mode is enabled and user is not already on stats tab
   const prevShowAdvancedRef = useRef<boolean | undefined>(undefined);
   useEffect(() => {
     // Only switch if advanced mode transitions from false to true
     if (showAdvanced && prevShowAdvancedRef.current === false && activeTab !== "stats") {
-      setActiveTab("stats");
+      setActiveTabWithSync("stats");
     }
     prevShowAdvancedRef.current = showAdvanced;
-  }, [showAdvanced, activeTab]);
+  }, [showAdvanced, activeTab, setActiveTabWithSync]);
 
   const handleToggleKeepOrgs = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
@@ -602,8 +615,7 @@ export const Sidebar = ({
   };
 
   const handleTabChange = (tab: TabType) => {
-    setActiveTab(tab);
-    onTabChange?.(tab);
+    setActiveTabWithSync(tab);
   };
 
   const tabClasses = (isActive: boolean) =>
