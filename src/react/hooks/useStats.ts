@@ -51,6 +51,7 @@ const isFiniteNumber = (value: unknown): value is number =>
 
 interface UseStatsOptions {
   statDataEnabled?: boolean;
+  statMapsEnabled?: boolean;
   priorityStatIds?: string[];
   categoryFilter?: string | null;
   zipScopes?: string[];
@@ -66,6 +67,7 @@ interface UseStatsOptions {
 
 export const useStats = ({
   statDataEnabled = true,
+  statMapsEnabled = true,
   priorityStatIds = [],
   categoryFilter = null,
   zipScopes = [],
@@ -80,6 +82,7 @@ export const useStats = ({
 }: UseStatsOptions = {}) => {
   const { authReady } = useAuthSession();
   const queryEnabled = authReady;
+  const statMapsActive = statDataEnabled && statMapsEnabled;
 
   // Persisted summaries: hydrate immediately from IndexedDB so sidebar values render on refresh/new tab.
   const persistedSummaryRowsRef = useRef<any[]>([]);
@@ -154,7 +157,7 @@ export const useStats = ({
   }
 
   useEffect(() => {
-    if (!statDataEnabled) return;
+    if (!statMapsActive) return;
     if (lastStatDataAt === null) return;
     if (typeof window === "undefined") return;
     const age = Date.now() - lastStatDataAt;
@@ -171,7 +174,7 @@ export const useStats = ({
       STAT_DATA_CACHE_TTL_MS - age,
     );
     return () => window.clearTimeout(timeout);
-  }, [lastStatDataAt, statDataEnabled, statDataRefreshRequested]);
+  }, [lastStatDataAt, statMapsActive, statDataRefreshRequested]);
 
   const statDataSnapshotTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -387,8 +390,22 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     childrenByParent,
   ]);
 
+  const statDataScopeParents = useMemo(() => {
+    if (!limitStatDataToScopes) return null;
+    const set = new Set<string>();
+    const add = (value: string | null | undefined) => {
+      const normalized = normalizeScopeLabel(value ?? null);
+      if (normalized) set.add(normalized);
+    };
+    add(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
+    add(DEFAULT_PARENT_AREA_BY_KIND.COUNTY ?? "Oklahoma");
+    add(zipScopes[0]);
+    add(countyScopes[0]);
+    return Array.from(set);
+  }, [limitStatDataToScopes, zipScopes, countyScopes]);
+
   const shouldIncludeStatData =
-    statDataEnabled &&
+    statMapsActive &&
     (batchIds.length > 0 || statDataRefreshRequested || lastStatDataAt === null);
 
   const {
@@ -505,9 +522,10 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
   );
 
   const statDataRows = useMemo(() => {
+    if (!statMapsActive) return [];
     if (cachedStatDataRows.length > 0) return cachedStatDataRows;
     return Array.isArray(statDataResp?.statData) ? (statDataResp.statData as any[]) : [];
-  }, [cachedStatDataRows, statDataResp?.statData]);
+  }, [cachedStatDataRows, statDataResp?.statData, statMapsActive]);
 
   const effectiveData = {
     stats: statsRows,
@@ -535,20 +553,6 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     if (primaryCountyScope) set.add(primaryCountyScope);
     return Array.from(set);
   }, [countyScopes, zipScopes]);
-
-  const statDataScopeParents = useMemo(() => {
-    if (!limitStatDataToScopes) return null;
-    const set = new Set<string>();
-    const add = (value: string | null | undefined) => {
-      const normalized = normalizeScopeLabel(value ?? null);
-      if (normalized) set.add(normalized);
-    };
-    add(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
-    add(DEFAULT_PARENT_AREA_BY_KIND.COUNTY ?? "Oklahoma");
-    add(zipScopes[0]);
-    add(countyScopes[0]);
-    return Array.from(set);
-  }, [limitStatDataToScopes, zipScopes, countyScopes]);
 
   const fallbackParentArea = normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP) ?? "Oklahoma";
   const primaryScopedParentArea = summaryParentAreas.find(

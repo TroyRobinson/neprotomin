@@ -1156,6 +1156,7 @@ export const ReactMapApp = () => {
   }, [boundaryMode]);
 
   const limitStatDataToScopes = lowMemoryMode || reducedDataLoading;
+  const statMapsEnabled = !lowMemoryMode;
   const limitedStatBoundaryTypes = useMemo(() => {
     if (!limitStatDataToScopes) return undefined;
     const set = new Set<SupportedAreaKind>();
@@ -1178,6 +1179,7 @@ export const ReactMapApp = () => {
     isLoading: areStatsLoading,
   } = useStats({
     statDataEnabled: activeScreen !== "admin",
+    statMapsEnabled,
     priorityStatIds,
     categoryFilter,
     zipScopes: relevantScopes,
