@@ -1,3 +1,5 @@
+import { formatStatValueCompact } from "../../../lib/format";
+
 export interface SecondaryChoroplethLegendController {
   element: HTMLElement;
   pill: HTMLElement;
@@ -7,33 +9,18 @@ export interface SecondaryChoroplethLegendController {
   destroy: () => void;
 }
 
-const wrap = (n: number, digits = 1): string => {
-  return (Math.round(n * Math.pow(10, digits)) / Math.pow(10, digits)).toString();
-};
-
 const formatValue = (value: number, type?: string, isMobile?: boolean): string => {
-  const t = (type || "").toLowerCase();
-  if (t === "currency") {
-    const k = Math.round(value / 1000);
-    return `$${k}k`;
+  const t = (type || "count").toLowerCase();
+  if (isMobile && t === "percent") {
+    const percentValue = value <= 1 ? value * 100 : value;
+    return `${Math.round(percentValue)}%`;
   }
-  if (t === "percent") {
+  if (isMobile && t === "percent_change") {
     const pct = value * 100;
-    if (isMobile) {
-      return `${Math.round(pct)}%`;
-    }
-    const hasFrac = Math.abs(pct % 1) > 1e-6;
-    return `${hasFrac ? wrap(pct, 1) : Math.round(pct)}%`;
+    const sign = value > 0 ? "+" : "";
+    return `${sign}${Math.round(pct)}%`;
   }
-  if (t === "years" || t === "rate") {
-    if (isMobile) {
-      return String(Math.round(value));
-    }
-    const hasFrac = Math.abs(value % 1) > 1e-6;
-    return hasFrac ? wrap(value, 1) : String(Math.round(value));
-  }
-  if (Math.abs(value) >= 1000) return `${Math.round(value / 1000)}k`;
-  return String(Math.round(value));
+  return formatStatValueCompact(value, t);
 };
 
 export const createSecondaryChoroplethLegend = (isMobile?: boolean): SecondaryChoroplethLegendController => {
