@@ -1180,6 +1180,7 @@ export const ReactMapApp = () => {
     statRelationsByParent,
     statRelationsByChild,
     isLoading: areStatsLoading,
+    retryStatData,
   } = useStats({
     statDataEnabled: activeScreen !== "admin",
     statMapsEnabled,
@@ -3402,6 +3403,7 @@ export const ReactMapApp = () => {
               onZoomToCounty={handleZoomToCounty}
               onRequestCollapseSheet={isMobile ? collapseSheet : undefined}
               onStatSelect={handleStatSelect}
+              onRetryStatData={retryStatData}
               onOrgPinsVisibleChange={setOrgPinsVisible}
               initialOrgPinsVisible={initialMapState.orgPinsVisible}
               onClearAreas={handleClearAreas}
@@ -3533,6 +3535,7 @@ export const ReactMapApp = () => {
                     onZoomToCounty={handleZoomToCounty}
                     onRequestCollapseSheet={collapseSheet}
                     onStatSelect={handleStatSelect}
+                    onRetryStatData={retryStatData}
                     onOrgPinsVisibleChange={setOrgPinsVisible}
                     initialOrgPinsVisible={initialMapState.orgPinsVisible}
                     onClearAreas={handleClearAreas}

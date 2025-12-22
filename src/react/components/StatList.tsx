@@ -63,6 +63,7 @@ interface StatListProps {
   secondaryStatId?: string | null;
   selectedStatId?: string | null;
   onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
+  onRetryStatData?: (statId: string) => void;
   variant?: "desktop" | "mobile";
   zipScopeDisplayName?: string | null;
   countyScopeDisplayName?: string | null;
@@ -191,6 +192,7 @@ export const StatList = ({
   secondaryStatId = null,
   selectedStatId = null,
   onStatSelect,
+  onRetryStatData,
   variant: _variant = "desktop",
   zipScopeDisplayName = null,
   countyScopeDisplayName = null,
@@ -815,6 +817,7 @@ export const StatList = ({
               isSecondary={false}
               averageLabel={null}
               onStatSelect={onStatSelect}
+              onRetryStatData={showAdvanced ? onRetryStatData : undefined}
               hideValue={true}
               categoryLabel={!categoryFilter && selectedStatRow.category ? getCategoryLabel(selectedStatRow.category) : null}
               grandchildToggles={allToggleAttributes.map((attr) => ({
@@ -934,6 +937,7 @@ interface StatListItemProps {
   isSecondary: boolean;
   averageLabel: string | null;
   onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
+  onRetryStatData?: (statId: string) => void;
   hideValue?: boolean;
   grandchildToggles?: GrandchildAttrToggle[];
   isHeader?: boolean;
@@ -946,6 +950,7 @@ const StatListItem = ({
   isSecondary,
   averageLabel,
   onStatSelect,
+  onRetryStatData,
   hideValue = false,
   grandchildToggles = [],
   isHeader = false,
@@ -1113,6 +1118,22 @@ const StatListItem = ({
                 </span>
               )}
             </>
+          ) : isHeader ? (
+            <div className="flex items-center gap-2">
+              <span className="italic text-slate-400 dark:text-slate-500">Loading data...</span>
+              {onRetryStatData && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRetryStatData(row.id);
+                  }}
+                  className="text-[11px] font-medium text-indigo-600 underline underline-offset-2 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                >
+                  retry
+                </button>
+              )}
+            </div>
           ) : (
             <span className="italic text-slate-400 dark:text-slate-500">Click to load data</span>
           )}

@@ -84,6 +84,7 @@ interface SidebarProps {
   onCategoryChange?: (categoryId: string | null) => void;
   onHoverArea?: (area: AreaId | null) => void;
   onStatSelect?: (statId: string | null, meta?: { shiftKey?: boolean; clear?: boolean }) => void;
+  onRetryStatData?: (statId: string) => void;
   onOrgPinsVisibleChange?: (visible: boolean) => void;
   initialOrgPinsVisible?: boolean;
   onClearAreas?: () => void;
@@ -166,6 +167,7 @@ export const Sidebar = ({
   onCategoryChange,
   onHoverArea,
   onStatSelect,
+  onRetryStatData,
   onOrgPinsVisibleChange,
   initialOrgPinsVisible = true,
   onClearAreas,
@@ -791,6 +793,7 @@ export const Sidebar = ({
             secondaryStatId={secondaryStatId}
             selectedStatId={selectedStatId}
             onStatSelect={onStatSelect}
+            onRetryStatData={onRetryStatData}
             // StatViz props for embedded chart (only shown when showAdvanced is true)
             showAdvanced={showAdvanced}
             seriesByStatIdByKind={seriesByStatIdByKind}

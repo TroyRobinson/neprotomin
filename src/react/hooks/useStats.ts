@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../../lib/reactDb";
 import { useAuthSession } from "./useAuthSession";
 import {
@@ -550,6 +550,32 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
 
   const isLoading = statsLoading || statDataLoading;
   const error = statsError || statDataError;
+
+  const retryStatData = useCallback(
+    (statId?: string | null) => {
+      if (!statDataEnabled) return;
+      if (!statId || typeof statId !== "string") return;
+
+      const keys = cachedStatKeysByStatIdRef.current.get(statId);
+      if (keys) {
+        for (const key of keys) {
+          cachedStatDataByKeyRef.current.delete(key);
+        }
+        cachedStatKeysByStatIdRef.current.delete(statId);
+      }
+      cachedStatLastAccessRef.current.delete(statId);
+      setLoadedStatIds((prev) => {
+        if (!prev.has(statId)) return prev;
+        const next = new Set(prev);
+        next.delete(statId);
+        return next;
+      });
+      setStatDataCacheVersion((v) => v + 1);
+      setStatDataRefreshRequested(true);
+      setBatchGeneration((prev) => prev + 1);
+    },
+    [statDataEnabled],
+  );
 
   const summaryParentAreas = useMemo(() => {
     const set = new Set<string>();
@@ -1184,5 +1210,6 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     statRelationsByChild,
     isLoading,
     error,
+    retryStatData,
   };
 };
