@@ -236,8 +236,9 @@ export const StatList = ({
 
   const listStats = useMemo<Stat[]>(() => {
     return Array.from(statsById.values()).filter((s) => {
-      // Show stats unless explicitly marked inactive; newly created stats default to active/undefined.
+      // Show stats unless explicitly marked inactive (legacy active=false or visibility="inactive").
       if (s.active === false) return false;
+      if (s.visibility === "inactive") return false;
       // Hide child stats from the main list - they appear via parent's dropdown
       if (childIdSet.has(s.id)) return false;
       // Apply category filter if provided

@@ -96,7 +96,8 @@ const rules = {
   },
   stats: {
     allow: {
-      view: "true",
+      view:
+        "isAdmin || data.visibility == 'public' || (data.visibility == null && data.active != false) || (auth.id != null && data.createdBy == auth.id)",
       create: "isAdmin",
       update: "isAdmin",
       delete: "isAdmin",

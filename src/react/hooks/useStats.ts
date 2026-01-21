@@ -15,6 +15,7 @@ import type {
   StatRelationsByChild,
   StatRelationsByParent,
 } from "../../types/stat";
+import { buildEffectiveStatMetaById, isStatVisibleOnMap, normalizeStatVisibility } from "../../types/stat";
 import type { Category } from "../../types/organization";
 import type { AreaKind } from "../../types/areas";
 import { DEFAULT_PARENT_AREA_BY_KIND } from "../../types/areas";
@@ -64,6 +65,8 @@ interface UseStatsOptions {
   maxCachedStatIds?: number;
   limitStatDataToScopes?: boolean;
   statDataBoundaryTypes?: SupportedAreaKind[];
+  viewerId?: string | null;
+  isAdmin?: boolean;
 }
 
 export const useStats = ({
@@ -81,6 +84,8 @@ export const useStats = ({
   maxCachedStatIds = 24,
   limitStatDataToScopes = false,
   statDataBoundaryTypes,
+  viewerId = null,
+  isAdmin = false,
 }: UseStatsOptions = {}) => {
   const { authReady } = useAuthSession();
   const queryEnabled = authReady;
@@ -204,7 +209,7 @@ export const useStats = ({
     ? statsResp.statRelations
     : cachedStatRelationsRef.current;
 
-  const statsById = useMemo(() => {
+  const allStatsById = useMemo(() => {
     const map = new Map<string, Stat>();
     if (!Array.isArray(statsRows)) return map;
     for (const row of statsRows) {
@@ -218,12 +223,44 @@ export const useStats = ({
           featured: typeof row.featured === "boolean" ? row.featured : undefined,
           homeFeatured: typeof row.homeFeatured === "boolean" ? row.homeFeatured : undefined,
           active: typeof row.active === "boolean" ? row.active : undefined,
+          visibility: normalizeStatVisibility(row.visibility) ?? undefined,
+          createdBy: typeof row.createdBy === "string" ? row.createdBy : undefined,
           type: typeof row.type === "string" ? row.type : undefined,
         });
       }
     }
     return map;
   }, [statsRows]);
+
+  const parentsByChild = useMemo(() => {
+    const map = new Map<string, string[]>();
+    if (!Array.isArray(statRelationsRows)) return map;
+    for (const row of statRelationsRows) {
+      const parentId = typeof row?.parentStatId === "string" ? row.parentStatId : null;
+      const childId = typeof row?.childStatId === "string" ? row.childStatId : null;
+      if (!parentId || !childId) continue;
+      const list = map.get(childId) ?? [];
+      list.push(parentId);
+      map.set(childId, list);
+    }
+    return map;
+  }, [statRelationsRows]);
+
+  const effectiveMetaById = useMemo(
+    () => buildEffectiveStatMetaById(allStatsById, parentsByChild),
+    [allStatsById, parentsByChild],
+  );
+
+  const statsById = useMemo(() => {
+    const map = new Map<string, Stat>();
+    for (const [id, stat] of allStatsById.entries()) {
+      const meta = effectiveMetaById.get(id);
+      if (!meta) continue;
+      if (!isStatVisibleOnMap(meta, { isAdmin, viewerId })) continue;
+      map.set(id, stat);
+    }
+    return map;
+  }, [allStatsById, effectiveMetaById, isAdmin, viewerId]);
 
 /**
  * Determines the effective type for a stat, using explicit type or name heuristics.
@@ -260,12 +297,14 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
       const parentId = typeof row?.parentStatId === "string" ? row.parentStatId : null;
       const childId = typeof row?.childStatId === "string" ? row.childStatId : null;
       if (!parentId || !childId) continue;
+      if (!statsById.has(parentId)) continue;
+      if (!statsById.has(childId)) continue;
       const list = map.get(parentId) ?? [];
       list.push(childId);
       map.set(parentId, list);
     }
     return map;
-  }, [statRelationsRows]);
+  }, [statRelationsRows, statsById]);
 
   const statDataRowKey = (row: any): string | null => {
     const statId = typeof row?.statId === "string" ? row.statId : null;
@@ -289,10 +328,17 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     if (next.size > 0) setLoadedStatIds(next);
   }, [loadedStatIds.size]);
 
-  const priorityIds = useMemo(
-    () => Array.from(new Set(priorityStatIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0))),
-    [priorityStatIds],
-  );
+  const priorityIds = useMemo(() => {
+    const unique = new Set<string>();
+    for (const id of priorityStatIds) {
+      if (typeof id !== "string") continue;
+      const trimmed = id.trim();
+      if (!trimmed) continue;
+      if (!statsById.has(trimmed)) continue;
+      unique.add(trimmed);
+    }
+    return Array.from(unique);
+  }, [priorityStatIds, statsById]);
 
   useEffect(() => {
     if (priorityIds.length === 0) return;

@@ -49,6 +49,8 @@ type CensusImportBody = {
   years?: unknown;
   includeMoe?: unknown;
   category?: unknown;
+  visibility?: unknown;
+  createdBy?: unknown;
 };
 
 const respond = (res: CensusImportResponse, statusCode: number, payload: unknown): void => {
@@ -149,6 +151,14 @@ const coerceCategory = (raw: unknown): string => {
   return allowedCategories.has(value) ? value : "demographics";
 };
 
+const allowedVisibilities = new Set<string>(["public", "private", "inactive"]);
+
+const coerceVisibility = (raw: unknown): string | null => {
+  const value = normalizeString(raw);
+  if (!value) return null;
+  return allowedVisibilities.has(value) ? value : null;
+};
+
 const buildYearRange = (start: number, count: number): number[] => {
   const years: number[] = [];
   for (let i = 0; i < count; i += 1) {
@@ -183,6 +193,8 @@ export default async function handler(req: CensusImportRequest, res: CensusImpor
     const years = parseYears(body.years);
     const includeMoe = parseBoolean(body.includeMoe, false);
     const category = coerceCategory(body.category);
+    const createdBy = normalizeString(body.createdBy);
+    const visibility = coerceVisibility(body.visibility) ?? (createdBy ? "private" : null);
 
     const survey = dataset.split("/").pop() || "acs5";
 
@@ -239,7 +251,10 @@ export default async function handler(req: CensusImportRequest, res: CensusImpor
       const derivedStatName = deriveStatName(variable, variableMeta, groupMeta);
 
       if (!statId || !statType || !statName) {
-        const ensured = await ensureStatRecord(db, derivedStatName, variableMeta, groupMeta, category);
+        const ensured = await ensureStatRecord(db, derivedStatName, variableMeta, groupMeta, category, {
+          visibility,
+          createdBy,
+        });
         statId = ensured.statId;
         statType = ensured.statType;
         statName = derivedStatName;

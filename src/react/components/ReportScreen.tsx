@@ -265,7 +265,7 @@ export const ReportScreen = ({
 
   const highlightItems = useMemo(() => {
     const featured = Array.from(statsById.values()).filter(
-      (stat) => stat.featured === true && stat.active !== false,
+      (stat) => stat.featured === true && stat.visibility !== "inactive",
     );
     return featured.slice(0, 4).map((stat) => {
       const entryByKind = primaryKind ? statDataById.get(stat.id)?.[primaryKind] : undefined;

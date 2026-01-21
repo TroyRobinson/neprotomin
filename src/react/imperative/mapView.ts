@@ -102,6 +102,7 @@ export interface MapViewController {
   setCategoryFilter: (categoryId: string | null) => void;
   setSelectedStat: (statId: string | null) => void;
   setSecondaryStat: (statId: string | null) => void;
+  setVisibleStatIds: (ids: string[] | null) => void;
   setBoundaryMode: (mode: BoundaryMode) => void;
   setPinnedZips: (zips: string[]) => void;
   setHoveredZip: (zip: string | null) => void;
@@ -389,6 +390,7 @@ export const createMapView = ({
   let dragCollapseTriggered = false;
   let zipGeometryHiddenDueToZoom = false;
   let visibleZipIds = new Set<string>();
+  let pendingVisibleZipRefresh = false;
 
 let statDataStoreMap: StatDataStoreMap = new Map();
 let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
@@ -923,6 +925,13 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       });
     }
     syncZctaSource();
+    if (legendRangeMode === "dynamic" && !pendingVisibleZipRefresh) {
+      pendingVisibleZipRefresh = true;
+      map.once("idle", () => {
+        pendingVisibleZipRefresh = false;
+        updateVisibleZipSet();
+      });
+    }
   };
   
   map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
@@ -3095,6 +3104,9 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       categoryChips.setSecondaryStat(statId);
       syncStatDataStoreFocus();
       refreshStatVisuals();
+    },
+    setVisibleStatIds: (ids: string[] | null) => {
+      categoryChips.setVisibleStatIds(ids);
     },
     setBoundaryMode,
     setPinnedZips: (zips: string[]) => {

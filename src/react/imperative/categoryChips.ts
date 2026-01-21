@@ -79,6 +79,7 @@ export interface CategoryChipsController {
   setSelected: (categoryId: string | null) => void;
   setSelectedStat: (statId: string | null) => void;
   setSecondaryStat: (statId: string | null) => void;
+  setVisibleStatIds: (ids: string[] | null) => void;
   setOrgsVisible: (visible: boolean) => void;
   setTimeSelection: (selection: TimeSelection | null) => void;
   setTimeFilterAvailable: (available: boolean) => void;
@@ -148,6 +149,15 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   let removeSearchOutsideHandler: (() => void) | null = null;
   let orgsChipVisible = false;
   let timeFilterAvailable = false;
+  let visibleStatIds: Set<string> | null = null;
+
+  const isStatVisible = (stat: Stat): boolean => {
+    if (visibleStatIds) return visibleStatIds.has(stat.id);
+    if (stat.visibility === "inactive") return false;
+    if (stat.visibility === "private") return false;
+    if (stat.active === false) return false;
+    return true;
+  };
 
   // Stats chips appear to the right of the selected category
   const statWrapper = document.createElement("div");
@@ -721,22 +731,22 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     // Determine which stats to show:
     // - Desktop: show the selected stat if one exists, otherwise show category stats if a category is selected
     // - Mobile: always show only the selected stat
-    // Only show stats that are active (active !== false)
+    // Only show stats that are visible for the current viewer/map surface
     let stats: Stat[] = [];
     if (isMobile) {
       if (selectedStatId) {
-        const selectedStat = allStats.find((s) => s.id === selectedStatId && s.active !== false);
+        const selectedStat = allStats.find((s) => s.id === selectedStatId && isStatVisible(s));
         stats = selectedStat ? [selectedStat] : [];
       }
     } else if (selectedStatId) {
-      const selectedStat = allStats.find((s) => s.id === selectedStatId && s.active !== false);
+      const selectedStat = allStats.find((s) => s.id === selectedStatId && isStatVisible(s));
       if (selectedStat) {
         // Always show just the selected stat by itself as a chip
         stats = [selectedStat];
       }
     } else if (selectedId) {
       stats = allStats.filter(
-        (s) => s.category === selectedId && s.active !== false && s.featured === true,
+        (s) => s.category === selectedId && isStatVisible(s) && s.featured === true,
       );
     }
 
@@ -841,7 +851,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       return;
     }
 
-    const stat = allStats.find((s) => s.id === secondaryStatId && s.active !== false);
+    const stat = allStats.find((s) => s.id === secondaryStatId && isStatVisible(s));
     if (!stat) {
       return;
     }
@@ -917,11 +927,18 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     window.addEventListener("resize", handleResize);
   }
 
+  const setVisibleStatIds = (ids: string[] | null) => {
+    visibleStatIds = ids ? new Set(ids) : null;
+    update();
+    renderSecondaryStatChip();
+  };
+
   return {
     element: wrapper,
     setSelected,
     setSelectedStat,
     setSecondaryStat,
+    setVisibleStatIds,
     setOrgsVisible: (visible: boolean) => {
       orgsChipVisible = visible;
       if (isMobile) {

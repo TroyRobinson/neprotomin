@@ -1,4 +1,5 @@
 import type { Stat } from "../types/stat";
+import { normalizeStatVisibility } from "../types/stat";
 import { db } from "../lib/db";
 
 const STATS_QUERY = {
@@ -50,6 +51,8 @@ class StatsStore {
             homeFeatured:
               typeof (row as any).homeFeatured === "boolean" ? (row as any).homeFeatured : undefined,
             active: typeof (row as any).active === "boolean" ? (row as any).active : undefined,
+            visibility: normalizeStatVisibility((row as any).visibility) ?? undefined,
+            createdBy: typeof (row as any).createdBy === "string" ? (row as any).createdBy : undefined,
           }));
         this.data = normalized;
         this.emit();

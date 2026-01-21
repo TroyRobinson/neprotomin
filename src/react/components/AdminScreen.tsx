@@ -8,8 +8,8 @@ import { useAuthSession } from "../hooks/useAuthSession";
 import { useCategories } from "../hooks/useCategories";
 import { useCensusImportQueue } from "../hooks/useCensusImportQueue";
 import type { Category } from "../../types/organization";
-import type { StatRelation } from "../../types/stat";
-import { UNDEFINED_STAT_ATTRIBUTE } from "../../types/stat";
+import type { Stat, StatRelation, StatVisibility } from "../../types/stat";
+import { UNDEFINED_STAT_ATTRIBUTE, buildEffectiveStatMetaById, normalizeStatVisibility } from "../../types/stat";
 import type { ImportQueueItem, ImportRelationship } from "../types/censusImport";
 import { CustomSelect } from "./CustomSelect";
 import {
@@ -32,6 +32,8 @@ interface StatItem {
   goodIfUp?: boolean | null;
   featured?: boolean | null;
   homeFeatured?: boolean | null;
+  visibility?: StatVisibility | null;
+  createdBy?: string | null;
   active?: boolean | null;
   createdOn?: number | null;
   lastUpdated?: number | null;
@@ -274,6 +276,8 @@ const parseStat = (row: unknown): StatItem | null => {
     goodIfUp: typeof r.goodIfUp === "boolean" ? r.goodIfUp : null,
     featured: typeof r.featured === "boolean" ? r.featured : null,
     homeFeatured: typeof r.homeFeatured === "boolean" ? r.homeFeatured : null,
+    visibility: normalizeStatVisibility(r.visibility) ?? null,
+    createdBy: typeof r.createdBy === "string" ? r.createdBy : null,
     active: typeof r.active === "boolean" ? r.active : null,
     createdOn: typeof r.createdOn === "number" ? r.createdOn : null,
     lastUpdated: typeof r.lastUpdated === "number" ? r.lastUpdated : null,
@@ -292,13 +296,15 @@ const formatDate = (timestamp: number | null | undefined): string => {
 };
 
 // Edit form state
+type VisibilityInput = StatVisibility | "inherit";
+
 interface EditFormState {
   label: string;
   name: string;
   category: string;
   source: string;
   goodIfUp: boolean | null;
-  active: boolean | null;
+  visibility: VisibilityInput;
   featured: boolean | null;
   homeFeatured: boolean | null;
 }
@@ -309,16 +315,21 @@ interface PendingDerivedJob {
   createdAt: number;
 }
 
-const createEditForm = (stat: StatItem): EditFormState => ({
-  label: stat.label ?? "",
-  name: stat.name,
-  category: stat.category,
-  source: stat.source ?? "",
-  goodIfUp: stat.goodIfUp ?? null,
-  active: stat.active ?? null,
-  featured: stat.featured ?? null,
-   homeFeatured: stat.homeFeatured ?? null,
-});
+const createEditForm = (stat: StatItem, hasParent: boolean): EditFormState => {
+  const declaredVisibility = normalizeStatVisibility(stat.visibility);
+  const legacyInactive = declaredVisibility ? null : stat.active === false ? "inactive" : null;
+  const visibility = declaredVisibility ?? legacyInactive ?? (hasParent ? "inherit" : "public");
+  return {
+    label: stat.label ?? "",
+    name: stat.name,
+    category: stat.category,
+    source: stat.source ?? "",
+    goodIfUp: stat.goodIfUp ?? null,
+    visibility,
+    featured: stat.featured ?? null,
+    homeFeatured: stat.homeFeatured ?? null,
+  };
+};
 
 // Stat list item props
 interface StatListItemProps {
@@ -337,6 +348,8 @@ interface StatListItemProps {
   onToggleSelect?: (event: MouseEvent<HTMLDivElement>) => void;
   selectionMode?: boolean;
   categoryOptions: Array<{ value: string; label: string }>;
+  hasParent?: boolean;
+  effectiveVisibility?: StatVisibility;
   hasChildren?: boolean;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
@@ -361,6 +374,8 @@ const StatListItem = ({
   onToggleSelect,
   selectionMode,
   categoryOptions,
+  hasParent = false,
+  effectiveVisibility,
   hasChildren = false,
   isExpanded = false,
   onToggleExpand,
@@ -368,7 +383,7 @@ const StatListItem = ({
   onUnlink,
 }: StatListItemProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [form, setForm] = useState<EditFormState>(() => createEditForm(stat));
+  const [form, setForm] = useState<EditFormState>(() => createEditForm(stat, hasParent));
   const sampleMetric =
     summary?.sample
       ? (() => {
@@ -379,13 +394,44 @@ const StatListItem = ({
       : null;
   const summaryYearsDisplay =
     summary?.yearsLabel && summary.yearsLabel.trim() ? summary.yearsLabel : summary?.latestDate ?? null;
+  const declaredVisibility = normalizeStatVisibility(stat.visibility);
+  const effectiveVisibilityValue =
+    effectiveVisibility ?? declaredVisibility ?? (stat.active === false ? "inactive" : "public");
+  const visibilityLabel = (() => {
+    const pretty =
+      effectiveVisibilityValue === "public"
+        ? "Public"
+        : effectiveVisibilityValue === "private"
+        ? "Private"
+        : "Inactive";
+    if (hasParent && !declaredVisibility) return `Inherited: ${pretty}`;
+    return pretty;
+  })();
+  const visibilityBadgeClass =
+    effectiveVisibilityValue === "public"
+      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+      : effectiveVisibilityValue === "private"
+      ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+      : "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400";
+  const visibilityOptions = hasParent
+    ? [
+        { value: "inherit", label: "Inherit (parent)" },
+        { value: "private", label: "Private" },
+        { value: "public", label: "Public" },
+        { value: "inactive", label: "Inactive" },
+      ]
+    : [
+        { value: "private", label: "Private" },
+        { value: "public", label: "Public" },
+        { value: "inactive", label: "Inactive" },
+      ];
 
   // Reset form when entering edit mode or when stat changes
   useEffect(() => {
     if (isEditing) {
-      setForm(createEditForm(stat));
+      setForm(createEditForm(stat, hasParent));
     }
-  }, [isEditing, stat]);
+  }, [isEditing, stat, hasParent]);
 
   // Handle click outside to cancel
   useEffect(() => {
@@ -569,17 +615,9 @@ const StatListItem = ({
 
         {/* Status badges and dates row */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          {stat.active !== null && (
-            <span
-              className={`rounded-full px-2 py-0.5 font-medium ${
-                stat.active
-                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                  : "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"
-              }`}
-            >
-              {stat.active ? "Active" : "Inactive"}
-            </span>
-          )}
+          <span className={`rounded-full px-2 py-0.5 font-medium ${visibilityBadgeClass}`}>
+            {visibilityLabel}
+          </span>
           {stat.featured !== null && stat.featured && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
               Featured
@@ -640,17 +678,17 @@ const StatListItem = ({
           />
         </div>
 
-        {/* Active, Featured, and Home default checkboxes */}
-        <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/50">
-          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-            <input
-              type="checkbox"
-              checked={form.active === true}
-              onChange={(e) => handleChange("active", e.target.checked ? true : false)}
-              className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
+        {/* Visibility, Featured, and Home default */}
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/50">
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Visibility</label>
+            <CustomSelect
+              value={form.visibility}
+              onChange={(val) => handleChange("visibility", val as VisibilityInput)}
+              options={visibilityOptions}
+              className="min-w-[140px]"
             />
-            Active
-          </label>
+          </div>
           <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
             <input
               type="checkbox"
@@ -2103,7 +2141,7 @@ const NewStatModal = ({
             goodIfUp: null,
             featured: false,
             homeFeatured: false,
-            active: true,
+            visibility: null,
             createdOn: now,
             lastUpdated: now,
           }),
@@ -2277,7 +2315,7 @@ const NewStatModal = ({
             goodIfUp: null,
             featured: false,
             homeFeatured: false,
-            active: true,
+            visibility: null,
             createdOn: now,
             lastUpdated: now,
           }),
@@ -2407,6 +2445,8 @@ const NewStatModal = ({
                 years: 1,
                 includeMoe: nextItem.includeMoe,
                 category: category,
+                visibility: "private",
+                createdBy: user?.id ?? null,
               }),
             });
             const payload = (await response.json().catch(() => null)) as any;
@@ -2562,8 +2602,11 @@ const NewStatModal = ({
                     updatedAt: now,
                   }),
                 );
+              const childVisibilityUpdates = Array.from(
+                new Set(unique.map((u) => u.childStatId)),
+              ).map((childStatId) => db.tx.stats[childStatId].update({ visibility: null }));
               if (txs.length > 0) {
-                await db.transact(txs);
+                await db.transact([...txs, ...childVisibilityUpdates]);
               }
             } catch (err) {
               console.error("Failed to create stat relationships after import", err);
@@ -2598,6 +2641,7 @@ const NewStatModal = ({
     relationshipConfigError,
     setDerivedStatusLabel,
     selection,
+    user?.id,
   ]);
 
   if (!isOpen) return null;
@@ -3225,7 +3269,7 @@ const fuzzyMatch = (text: string, query: string): boolean => {
 };
 
 export const AdminScreen = () => {
-  const { authReady } = useAuthSession();
+  const { authReady, user } = useAuthSession();
   const queryEnabled = authReady;
   const [activeTab, setActiveTab] = useState<"stats" | "orgs" | "batches">("stats");
   const [isTabDropdownOpen, setIsTabDropdownOpen] = useState(false);
@@ -3476,6 +3520,24 @@ export const AdminScreen = () => {
 
   const childIdSet = useMemo(() => new Set(Array.from(statRelationsByChild.keys())), [statRelationsByChild]);
 
+  const parentsByChild = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const [childId, relations] of statRelationsByChild.entries()) {
+      map.set(
+        childId,
+        relations
+          .map((rel) => rel.parentStatId)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      );
+    }
+    return map;
+  }, [statRelationsByChild]);
+
+  const effectiveMetaById = useMemo(
+    () => buildEffectiveStatMetaById(statsById as unknown as Map<string, Stat>, parentsByChild),
+    [statsById, parentsByChild],
+  );
+
   const hasDescendant = useCallback(
     (ancestorId: string, targetId: string, visited = new Set<string>()) => {
       if (visited.has(ancestorId)) return false;
@@ -3705,7 +3767,7 @@ export const AdminScreen = () => {
           value: stat.id,
           label: stat.label || stat.name,
         })),
-    [stats],
+    [stats, user?.id],
   );
 
   const handleOpenGroupModal = useCallback(() => {
@@ -4113,7 +4175,8 @@ export const AdminScreen = () => {
               goodIfUp: null,
               featured: false,
               homeFeatured: false,
-              active: true,
+              visibility: "private",
+              createdBy: user?.id ?? null,
               createdOn: now,
               lastUpdated: now,
             }),
@@ -4331,7 +4394,8 @@ export const AdminScreen = () => {
               source: derivedSource,
               goodIfUp: null,
               featured: false,
-              active: true,
+              visibility: "private",
+              createdBy: user?.id ?? null,
               createdOn: now,
               lastUpdated: now,
             }),
@@ -4543,14 +4607,15 @@ export const AdminScreen = () => {
             name: autoName,
             label: displayName,
             category: trimmedCategory,
-            source: derivedSource,
-            goodIfUp: null,
-            featured: false,
-            homeFeatured: false,
-            active: true,
-            createdOn: now,
-            lastUpdated: now,
-          }),
+              source: derivedSource,
+              goodIfUp: null,
+              featured: false,
+              homeFeatured: false,
+              visibility: "private",
+              createdBy: user?.id ?? null,
+              createdOn: now,
+              lastUpdated: now,
+            }),
         ];
 
         const sortedDerivedRows = [...derivedRows].sort((a, b) => String(a.date ?? "").localeCompare(String(b.date ?? "")));
@@ -4922,17 +4987,29 @@ export const AdminScreen = () => {
     async (statId: string, form: EditFormState) => {
       setIsSaving(true);
       try {
+        const current = statsById.get(statId) ?? null;
+        const resolvedVisibility = form.visibility === "inherit" ? null : form.visibility;
+        const updates: Record<string, unknown> = {
+          name: form.name,
+          label: form.label.trim() || null, // Store null if empty
+          category: form.category,
+          source: form.source.trim() || null,
+          goodIfUp: form.goodIfUp,
+          visibility: resolvedVisibility,
+          featured: form.featured,
+          homeFeatured: form.homeFeatured,
+          lastUpdated: Date.now(),
+        };
+        if (
+          (resolvedVisibility === "private" || resolvedVisibility === "inactive") &&
+          !current?.createdBy &&
+          user?.id
+        ) {
+          updates.createdBy = user.id;
+        }
         await db.transact(
           db.tx.stats[statId].update({
-            name: form.name,
-            label: form.label.trim() || null, // Store null if empty
-            category: form.category,
-            source: form.source.trim() || null,
-            goodIfUp: form.goodIfUp,
-            active: form.active,
-            featured: form.featured,
-            homeFeatured: form.homeFeatured,
-            lastUpdated: Date.now(),
+            ...updates,
           }),
         );
         setEditingId(null);
@@ -4943,7 +5020,7 @@ export const AdminScreen = () => {
         setIsSaving(false);
       }
     },
-    [],
+    [statsById, user?.id],
   );
 
   // Recursively collect orphaned descendants (children with no other parents outside the deletion set)
@@ -5463,6 +5540,8 @@ export const AdminScreen = () => {
             {sortedStats.map((stat) => {
               const hasChildren = statRelationsByParent.has(stat.id);
               const isExpanded = expandedParentId === stat.id;
+              const hasParent = (statRelationsByChild.get(stat.id)?.length ?? 0) > 0;
+              const effectiveVisibility = effectiveMetaById.get(stat.id)?.visibility ?? "public";
               const childGroups = hasChildren
                 ? Array.from(statRelationsByParent.get(stat.id)!.entries()).sort(([a], [b]) =>
                     a === UNDEFINED_STAT_ATTRIBUTE
@@ -5494,6 +5573,8 @@ export const AdminScreen = () => {
                     onToggleSelect={(event) => handleToggleSelect(stat.id, event)}
                     selectionMode={isSelectionMode}
                     categoryOptions={statCategoryOptions}
+                    hasParent={hasParent}
+                    effectiveVisibility={effectiveVisibility}
                     hasChildren={hasChildren}
                     isExpanded={isExpanded}
                     childrenCount={childCount}
@@ -5542,6 +5623,9 @@ export const AdminScreen = () => {
                               if (!child) return null;
                               const childHasChildren = statRelationsByParent.has(child.id);
                               const isChildExpanded = expandedChildIds[child.id] === true;
+                              const childHasParent = (statRelationsByChild.get(child.id)?.length ?? 0) > 0;
+                              const childEffectiveVisibility =
+                                effectiveMetaById.get(child.id)?.visibility ?? "public";
                               const grandChildGroups = childHasChildren
                                 ? Array.from(statRelationsByParent.get(child.id)!.entries()).sort(([a], [b]) =>
                                     a === UNDEFINED_STAT_ATTRIBUTE
@@ -5572,6 +5656,8 @@ export const AdminScreen = () => {
                                     onToggleSelect={(event) => handleToggleSelect(child.id, event)}
                                     selectionMode={isSelectionMode}
                                     categoryOptions={statCategoryOptions}
+                                    hasParent={childHasParent}
+                                    effectiveVisibility={childEffectiveVisibility}
                                     hasChildren={childHasChildren}
                                     isExpanded={isChildExpanded}
                                     childrenCount={grandChildCount}
@@ -5625,6 +5711,10 @@ export const AdminScreen = () => {
                                             {gRels.map((gRel) => {
                                               const grandChild = statsById.get(gRel.childStatId);
                                               if (!grandChild) return null;
+                                              const grandChildHasParent =
+                                                (statRelationsByChild.get(grandChild.id)?.length ?? 0) > 0;
+                                              const grandChildEffectiveVisibility =
+                                                effectiveMetaById.get(grandChild.id)?.visibility ?? "public";
                                               return (
                                                 <StatListItem
                                                   key={grandChild.id}
@@ -5643,6 +5733,8 @@ export const AdminScreen = () => {
                                                   onToggleSelect={(event) => handleToggleSelect(grandChild.id, event)}
                                                   selectionMode={isSelectionMode}
                                                   categoryOptions={statCategoryOptions}
+                                                  hasParent={grandChildHasParent}
+                                                  effectiveVisibility={grandChildEffectiveVisibility}
                                                   hasChildren={false}
                                                   onUnlink={() => handleUnlinkRelation(gRel.id)}
                                                 />

@@ -1219,7 +1219,21 @@ export const ReactMapApp = () => {
     maxCachedStatIds: statDataCacheLimit,
     limitStatDataToScopes,
     statDataBoundaryTypes: limitedStatBoundaryTypes,
+    viewerId: user?.id ?? null,
+    isAdmin,
   });
+
+  const visibleStatIds = useMemo(() => Array.from(statsById.keys()), [statsById]);
+
+  useEffect(() => {
+    if (!selectedStatId || statsById.has(selectedStatId)) return;
+    setSelectedStatId(null);
+  }, [selectedStatId, statsById]);
+
+  useEffect(() => {
+    if (!secondaryStatId || statsById.has(secondaryStatId)) return;
+    setSecondaryStatId(null);
+  }, [secondaryStatId, statsById]);
 
   useEffect(() => {
     if (activeScreen !== "report") {
@@ -1238,7 +1252,7 @@ export const ReactMapApp = () => {
     const ageId = idsByName.get("Median Age") ?? idsByName.get("Average Age") ?? null;
     const marriedId = idsByName.get("Married Percent") ?? null;
     const featuredIds = Array.from(statsById.values())
-      .filter((stat) => stat.featured === true && stat.active !== false)
+      .filter((stat) => stat.featured === true && stat.visibility !== "inactive")
       .slice(0, 4)
       .map((stat) => stat.id);
 
@@ -1855,18 +1869,18 @@ export const ReactMapApp = () => {
 
     // Helper: first stat marked as homeFeatured + featured + active
     const pickHomeFeatured = () =>
-      allStats.find((s) => s.homeFeatured === true && s.featured === true && s.active !== false) ?? null;
+      allStats.find((s) => s.homeFeatured === true && s.featured === true && s.visibility !== "inactive") ?? null;
     const pickConfiguredStat = () => {
       for (const id of domainDefaults.defaultStatIds) {
         if (!id) continue;
         const stat = statsById.get(id);
-        if (stat && stat.active !== false) return stat.id;
+        if (stat && stat.visibility !== "inactive") return stat.id;
       }
       for (const name of domainDefaults.defaultStatNames) {
         const match = allStats.find(
           (s) =>
             (s.name === name || s.label === name) &&
-            s.active !== false,
+            s.visibility !== "inactive",
         );
         if (match?.id) return match.id;
       }
@@ -3395,6 +3409,7 @@ export const ReactMapApp = () => {
               }}
               onLegendSettingsClick={() => setMapSettingsOpen(true)}
               legendRangeMode={legendRangeMode}
+              visibleStatIds={visibleStatIds}
             />
             {/* Desktop-only overlay still shows the location button inline */}
             {!isMobile && (

@@ -143,6 +143,10 @@ const _schema = i.schema({
       featured: i.boolean().indexed().optional(),
       homeFeatured: i.boolean().indexed().optional(),
       active: i.boolean().indexed().optional(),
+      // Visibility state: "inactive" | "private" | "public" (null => inherit from parent)
+      visibility: i.string().indexed().optional(),
+      // Owner of the stat (auth.id) for private/inactive visibility
+      createdBy: i.string().indexed().optional(),
       type: i.string().indexed().optional(), // count | percent | rate | years | currency
       createdOn: i.number().indexed().optional(),
       lastUpdated: i.number().indexed().optional(),

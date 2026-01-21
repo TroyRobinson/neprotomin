@@ -63,6 +63,7 @@ interface MapLibreMapProps {
   timeFilterAvailable?: boolean;
   onLegendSettingsClick?: () => void;
   legendRangeMode?: "dynamic" | "scoped" | "global";
+  visibleStatIds?: string[] | null;
 }
 
 /**
@@ -118,6 +119,7 @@ export const MapLibreMap = ({
   timeFilterAvailable = true,
   onLegendSettingsClick,
   legendRangeMode = "dynamic",
+  visibleStatIds = null,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
@@ -149,6 +151,7 @@ export const MapLibreMap = ({
   const setLegendInsetRef = useRef<(pixels: number) => void>(() => {});
   const onLegendSettingsClickRef = useRef(onLegendSettingsClick);
   const legendRangeModeRef = useRef<"dynamic" | "scoped" | "global">(legendRangeMode);
+  const visibleStatIdsRef = useRef<string[] | null>(visibleStatIds);
 
   useEffect(() => { onZipSelectionChangeRef.current = onZipSelectionChange; }, [onZipSelectionChange]);
   useEffect(() => { onHoverRef.current = onHover; }, [onHover]);
@@ -173,6 +176,7 @@ export const MapLibreMap = ({
   useEffect(() => { onLocationSearchRef.current = onLocationSearch; }, [onLocationSearch]);
   useEffect(() => { onLegendSettingsClickRef.current = onLegendSettingsClick; }, [onLegendSettingsClick]);
   useEffect(() => { legendRangeModeRef.current = legendRangeMode; }, [legendRangeMode]);
+  useEffect(() => { visibleStatIdsRef.current = visibleStatIds; }, [visibleStatIds]);
   useEffect(() => {
     const controller = mapControllerRef.current;
     if (controller) {
@@ -259,6 +263,7 @@ export const MapLibreMap = ({
 
     containerRef.current.appendChild(mapController.element);
     mapControllerRef.current = mapController;
+    mapController.setVisibleStatIds(visibleStatIdsRef.current);
     setLegendInsetRef.current = mapController.setLegendInset;
     if (typeof legendInset === "number") {
       mapController.setLegendInset(legendInset);
@@ -312,6 +317,12 @@ export const MapLibreMap = ({
       mapControllerRef.current.setTimeFilterAvailable(Boolean(timeFilterAvailable));
     }
   }, [timeFilterAvailable]);
+
+  useEffect(() => {
+    if (mapControllerRef.current) {
+      mapControllerRef.current.setVisibleStatIds(visibleStatIds);
+    }
+  }, [visibleStatIds]);
 
   // Handle zoom out all trigger
   useEffect(() => {

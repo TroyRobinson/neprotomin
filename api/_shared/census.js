@@ -481,6 +481,7 @@ export const ensureStatRecord = async (
   variableMeta,
   groupMeta,
   categoryOverride,
+  options = {},
 ) => {
   const now = Date.now();
   const externalId = `census:${variableMeta.name}`;
@@ -488,6 +489,8 @@ export const ensureStatRecord = async (
   const targetCategory = categoryOverride ?? DEFAULT_CATEGORY;
   const derivedLabel = deriveStatLabel(statName, variableMeta, groupMeta);
   const statLabel = derivedLabel && derivedLabel.trim() ? derivedLabel.trim() : null;
+  const visibility = typeof options.visibility === "string" ? options.visibility : null;
+  const createdBy = typeof options.createdBy === "string" ? options.createdBy : null;
 
   const byExternal = { stats: { $: { where: { neId: externalId }, limit: 1 } } };
   const ex = await db.query(byExternal);
@@ -528,6 +531,8 @@ export const ensureStatRecord = async (
     createdOn: now,
     lastUpdated: now,
   };
+  if (visibility) record.visibility = visibility;
+  if (createdBy) record.createdBy = createdBy;
   if (statLabel) record.label = statLabel;
   await db.transact(tx.stats[statId].update(record));
   return { statId, statType };
