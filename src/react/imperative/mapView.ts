@@ -2760,6 +2760,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   };
 
   function updateStatDataChoropleth() {
+    if (!map.isStyleLoaded()) return;
     extUpdatePrimaryChoropleth(map, {
       BOUNDARY_STATDATA_FILL_LAYER_ID,
       COUNTY_STATDATA_FILL_LAYER_ID,

@@ -1212,6 +1212,7 @@ interface NewStatModalProps {
   onClose: () => void;
   onImported: (statIds: string[]) => void;
   categoryOptions: Array<{ value: string; label: string }>;
+  user?: { id?: string | null } | null;
   existingCensusStats: Map<
     string,
     { id: string; name: string; label: string | null | undefined }
@@ -1224,6 +1225,7 @@ const NewStatModal = ({
   onClose,
   onImported,
   categoryOptions,
+  user,
   existingCensusStats,
   availableStats,
 }: NewStatModalProps) => {
@@ -5764,6 +5766,7 @@ export const AdminScreen = () => {
         onClose={() => setIsNewStatOpen(false)}
         onImported={handleImportedFromModal}
         categoryOptions={statCategoryOptions}
+        user={user}
         existingCensusStats={censusStatsByVariable}
         availableStats={stats}
       />
