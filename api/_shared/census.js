@@ -531,7 +531,10 @@ export const ensureStatRecord = async (
     createdOn: now,
     lastUpdated: now,
   };
-  if (visibility) record.visibility = visibility;
+  if (visibility) {
+    record.visibility = visibility;
+    record.visibilityEffective = visibility;
+  }
   if (createdBy) record.createdBy = createdBy;
   if (statLabel) record.label = statLabel;
   await db.transact(tx.stats[statId].update(record));

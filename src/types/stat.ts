@@ -10,6 +10,8 @@ export interface Stat {
   homeFeatured?: boolean;
   /** Visibility state; null/undefined means "inherit from parent" (or default public for root stats). */
   visibility?: StatVisibility | null;
+  /** Effective visibility after inheritance resolution. */
+  visibilityEffective?: StatVisibility | null;
   /** Owner auth.id for private/inactive stats. */
   createdBy?: string | null;
   /** Legacy active flag (deprecated; treated as inactive when false and visibility is unset). */

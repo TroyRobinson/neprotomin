@@ -33,6 +33,7 @@ interface StatItem {
   featured?: boolean | null;
   homeFeatured?: boolean | null;
   visibility?: StatVisibility | null;
+  visibilityEffective?: StatVisibility | null;
   createdBy?: string | null;
   active?: boolean | null;
   createdOn?: number | null;
@@ -277,6 +278,7 @@ const parseStat = (row: unknown): StatItem | null => {
     featured: typeof r.featured === "boolean" ? r.featured : null,
     homeFeatured: typeof r.homeFeatured === "boolean" ? r.homeFeatured : null,
     visibility: normalizeStatVisibility(r.visibility) ?? null,
+    visibilityEffective: normalizeStatVisibility(r.visibilityEffective) ?? null,
     createdBy: typeof r.createdBy === "string" ? r.createdBy : null,
     active: typeof r.active === "boolean" ? r.active : null,
     createdOn: typeof r.createdOn === "number" ? r.createdOn : null,
@@ -3539,6 +3541,55 @@ export const AdminScreen = () => {
     () => buildEffectiveStatMetaById(statsById as unknown as Map<string, Stat>, parentsByChild),
     [statsById, parentsByChild],
   );
+
+  const visibilitySyncInFlightRef = useRef(false);
+  const syncVisibilityEffective = useCallback(async () => {
+    if (visibilitySyncInFlightRef.current) return;
+    if (stats.length === 0) return;
+
+    const pending = new Map<string, Record<string, unknown>>();
+    const queueUpdate = (statId: string, updates: Record<string, unknown>) => {
+      const existing = pending.get(statId) ?? {};
+      pending.set(statId, { ...existing, ...updates });
+    };
+
+    for (const stat of stats) {
+      const meta = effectiveMetaById.get(stat.id);
+      if (!meta) continue;
+      if (stat.visibilityEffective !== meta.visibility) {
+        queueUpdate(stat.id, { visibilityEffective: meta.visibility });
+      }
+      const declaredVisibility = normalizeStatVisibility(stat.visibility);
+      if (
+        !stat.createdBy &&
+        !declaredVisibility &&
+        meta.visibility !== "public" &&
+        meta.ownerId
+      ) {
+        queueUpdate(stat.id, { createdBy: meta.ownerId });
+      }
+    }
+
+    if (pending.size === 0) return;
+    visibilitySyncInFlightRef.current = true;
+    try {
+      const txs = Array.from(pending.entries()).map(([statId, updates]) =>
+        db.tx.stats[statId].update(updates),
+      );
+      const batchSize = 25;
+      for (let i = 0; i < txs.length; i += batchSize) {
+        await db.transact(txs.slice(i, i + batchSize));
+      }
+    } catch (error) {
+      console.warn("[AdminScreen] Failed to sync visibilityEffective", error);
+    } finally {
+      visibilitySyncInFlightRef.current = false;
+    }
+  }, [effectiveMetaById, stats]);
+
+  useEffect(() => {
+    void syncVisibilityEffective();
+  }, [syncVisibilityEffective]);
 
   const hasDescendant = useCallback(
     (ancestorId: string, targetId: string, visited = new Set<string>()) => {

@@ -224,6 +224,7 @@ export const useStats = ({
           homeFeatured: typeof row.homeFeatured === "boolean" ? row.homeFeatured : undefined,
           active: typeof row.active === "boolean" ? row.active : undefined,
           visibility: normalizeStatVisibility(row.visibility) ?? undefined,
+          visibilityEffective: normalizeStatVisibility(row.visibilityEffective) ?? undefined,
           createdBy: typeof row.createdBy === "string" ? row.createdBy : undefined,
           type: typeof row.type === "string" ? row.type : undefined,
         });

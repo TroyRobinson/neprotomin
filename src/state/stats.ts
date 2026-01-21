@@ -52,6 +52,8 @@ class StatsStore {
               typeof (row as any).homeFeatured === "boolean" ? (row as any).homeFeatured : undefined,
             active: typeof (row as any).active === "boolean" ? (row as any).active : undefined,
             visibility: normalizeStatVisibility((row as any).visibility) ?? undefined,
+            visibilityEffective:
+              normalizeStatVisibility((row as any).visibilityEffective) ?? undefined,
             createdBy: typeof (row as any).createdBy === "string" ? (row as any).createdBy : undefined,
           }));
         this.data = normalized;
