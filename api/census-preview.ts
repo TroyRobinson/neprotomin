@@ -68,8 +68,7 @@ const parseYear = (raw: string | null): number => {
     const parsed = Number(raw);
     if (Number.isFinite(parsed)) return parsed;
   }
-  const now = new Date();
-  return now.getUTCFullYear() - 2;
+  return 2023;
 };
 
 const parseLimit = (raw: string | null): number => {

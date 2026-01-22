@@ -184,7 +184,7 @@ export const sumDataMaps = (a: DataMaps, b: DataMaps): DataMaps => ({
 export const parseCensusArgs = (): CensusCliOptions => {
   const args = parseArgs();
   const now = new Date();
-  const defaultYear = now.getUTCFullYear() - 2;
+  const defaultYear = 2023;
   const dataset = String(args.dataset || DEFAULT_DATASET);
   const group = String(args.group || 'B22003');
   const variables = typeof args.variables === 'string'

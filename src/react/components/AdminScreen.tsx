@@ -1236,10 +1236,7 @@ const NewStatModal = ({
   const [runGroupSearch, setRunGroupSearch] = useState<(() => void) | null>(null);
   const [dataset, setDataset] = useState("acs/acs5");
   const [group, setGroup] = useState("");
-  const [year, setYear] = useState(() => {
-    const now = new Date();
-    return now.getUTCFullYear() - 2;
-  });
+  const [year, setYear] = useState(2023);
   const [limit, setLimit] = useState(50);
   const [category, setCategory] = useState<Category | null>(null);
   const [step, setStep] = useState<1 | 2>(1);
@@ -1338,11 +1335,9 @@ const NewStatModal = ({
 
   const resetModalState = useCallback(
     (shouldFocus: boolean) => {
-      const now = new Date();
-      const defaultYear = now.getUTCFullYear() - 2;
       setDataset("acs/acs5");
       setGroup("");
-      setYear(defaultYear);
+      setYear(2023);
       setLimit(50);
       setCategory(null);
       setStep(1);
