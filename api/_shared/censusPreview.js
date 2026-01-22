@@ -177,10 +177,15 @@ export const deriveStatLabel = (statName, variable, group) => {
 };
 
 export const inferStatType = (variable) => {
+  // Check predicateType FIRST - it's the source of truth from Census API
+  const predicate = (variable.predicateType && variable.predicateType.toLowerCase()) || "";
+  if (predicate === "int" || predicate === "integer") return "count";
+  if (predicate === "float" || predicate === "double") return "rate";
+
+  // Fall back to label-based inference only when predicateType is unavailable
   const label = (variable.label && variable.label.toLowerCase()) || "";
   if (label.includes("percent") || label.includes("%")) return "percent";
-  const predicate = (variable.predicateType && variable.predicateType.toLowerCase()) || "";
-  if (predicate === "float" || predicate === "double") return "rate";
+
   return "count";
 };
 
