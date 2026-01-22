@@ -34,12 +34,13 @@ class StatsStore {
         if (!resp.data) return;
         const rows = resp?.data?.stats ?? ([] as any[]);
         const normalized: Stat[] = rows
-          .filter((row): row is Stat =>
-            Boolean(
-              row?.id &&
-              typeof (row as any)?.name === "string" &&
-              typeof (row as any)?.category === "string",
-            ),
+          .filter(
+            (row) =>
+              Boolean(
+                row?.id &&
+                typeof (row as any)?.name === "string" &&
+                typeof (row as any)?.category === "string",
+              ),
           )
           .map((row) => ({
             id: row.id,
