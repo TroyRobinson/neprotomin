@@ -2048,7 +2048,8 @@ export const ReactMapApp = () => {
       }
       const shouldFollowMap = treatAsMapSelection || source === "map";
       setSidebarFollowMode(shouldFollowMap ? "map" : "sidebar");
-      if (isMobile && source === "map" && sidebarTab !== "orgs") {
+      // Switch to orgs tab when clicking org from map (both mobile and desktop)
+      if (source === "map" && sidebarTab !== "orgs") {
         setSidebarTab("orgs");
       }
 
@@ -2210,7 +2211,8 @@ export const ReactMapApp = () => {
         device: isMobile ? "mobile" : "desktop",
       });
       setActiveScreen("map");
-      if (isMobile && uniqueIds.length <= 3 && sidebarTab !== "orgs") {
+      // Switch to orgs tab when clicking small cluster (both mobile and desktop)
+      if (uniqueIds.length <= 3 && sidebarTab !== "orgs") {
         setSidebarTab("orgs");
       }
       if (uniqueIds.length === 1) {
