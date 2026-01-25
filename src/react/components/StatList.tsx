@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import type { Stat, StatRelation, StatRelationsByParent, StatRelationsByChild } from "../../types/stat";
 import { UNDEFINED_STAT_ATTRIBUTE } from "../../types/stat";
-import { formatStatValue } from "../../lib/format";
 import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
 import { computeSimilarityFromNormalized, normalizeForSearch } from "../lib/fuzzyMatch";
 import { CustomSelect } from "./CustomSelect";
@@ -10,8 +9,6 @@ import { useCategories } from "../hooks/useCategories";
 import { StatViz } from "./StatViz";
 import type { AreaId } from "../../types/areas";
 
-// Feature flag: Hide stat values when at county level with no selection
-const HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION = true;
 const STAT_SEARCH_MATCH_THRESHOLD = 0.4;
 
 type SupportedAreaKind = "ZIP" | "COUNTY";
@@ -36,14 +33,9 @@ type AreaEntry = { kind: SupportedAreaKind; code: string };
 type StatRow = {
   id: string;
   name: string;
-  value: number;
   score: number;
   type: string;
-  contextAvg: number;
   hasData: boolean;
-  goodIfUp?: boolean;
-  aggregationMethod: "sum" | "average" | "median" | "raw";
-  aggregationDescription: string;
   category?: string;
 };
 
@@ -74,43 +66,9 @@ interface StatListProps {
   hoveredArea?: AreaId | null;
   onHoverArea?: (area: AreaId | null) => void;
   getZipParentCounty?: (zipCode: string) => { code: string; name: string } | null;
-  stateAvg?: number | null;
 }
 
 const SUPPORTED_KINDS: SupportedAreaKind[] = ["ZIP", "COUNTY"];
-
-const getFiniteValues = (data: Record<string, number> | undefined): number[] => {
-  const values = Object.values(data || {});
-  return values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
-};
-
-const computeContextAverage = (entry: StatBoundaryEntry | undefined): number => {
-  if (!entry) return 0;
-  const nums = getFiniteValues(entry.data);
-  if (nums.length === 0) return 0;
-  return nums.reduce((sum, v) => sum + v, 0) / nums.length;
-};
-
-const computeTotal = (entry: StatBoundaryEntry | undefined): number => {
-  if (!entry) return 0;
-  const nums = getFiniteValues(entry.data);
-  return nums.reduce((sum, v) => sum + v, 0);
-};
-
-const computeMedian = (entry: StatBoundaryEntry | undefined): number => {
-  if (!entry) return 0;
-  return computeMedianFromValues(getFiniteValues(entry.data));
-};
-
-const computeMedianFromValues = (values: number[]): number => {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 0) {
-    return (sorted[mid - 1] + sorted[mid]) / 2;
-  }
-  return sorted[mid];
-};
 
 const buildAreaEntries = (selectedAreas?: SelectedAreasMap): AreaEntry[] => {
   const entries: AreaEntry[] = [];
@@ -195,7 +153,7 @@ export const StatList = ({
   onRetryStatData,
   variant: _variant = "desktop",
   zipScopeDisplayName = null,
-  countyScopeDisplayName = null,
+  countyScopeDisplayName: _countyScopeDisplayName = null,
   // StatViz props
   showAdvanced = false,
   seriesByStatIdByKind = new Map(),
@@ -203,7 +161,6 @@ export const StatList = ({
   hoveredArea = null,
   onHoverArea,
   getZipParentCounty,
-  stateAvg = null,
 }: StatListProps) => {
   const { getCategoryLabel } = useCategories();
   const areaEntries = useMemo(() => buildAreaEntries(selectedAreas), [selectedAreas]);
@@ -219,14 +176,6 @@ export const StatList = ({
     if (hasZipSelection && !hasCountySelection) return "ZIP";
     return null;
   }, [activeAreaKind, areaEntries]);
-
-  const averageLabel = useMemo(() => {
-    // Only show context average label when areas are actually selected
-    if (areaEntries.length === 0) return null;
-    if (effectiveAreaKind === "COUNTY") return "State Avg";
-    if (effectiveAreaKind === "ZIP") return "County Avg";
-    return null;
-  }, [effectiveAreaKind, areaEntries.length]);
 
   // Set of stat IDs that are children of some parent (should be hidden from main list)
   const childIdSet = useMemo(
@@ -247,182 +196,43 @@ export const StatList = ({
     });
   }, [statsById, categoryFilter, childIdSet]);
 
-  const hasAllStatData = useMemo(() => {
-    if (areaEntries.length === 0) return false;
-    if (listStats.length === 0) return false;
-    return listStats.every((stat) => statDataById.has(stat.id));
-  }, [areaEntries.length, listStats, statDataById]);
-
-  const shouldRankByScore = areaEntries.length > 0 && hasAllStatData;
-
+  // Simplified rows: just stat info without value/score computations
   const rows = useMemo<StatRow[]>(() => {
-    const stats = listStats;
-
-    const result: StatRow[] = [];
-
-    // Use effectiveAreaKind to determine which dataset to prefer
     const preferCounty = effectiveAreaKind === "COUNTY";
 
-    for (const s of stats) {
+    const result: StatRow[] = listStats.map((s) => {
       const entryMap = statDataById.get(s.id);
       const summaryMap = statSummariesById.get(s.id);
 
-      const contextAvgByKind = new Map<SupportedAreaKind, number>();
-      for (const kind of SUPPORTED_KINDS) {
-        const entry = entryMap?.[kind];
-        if (entry) {
-          contextAvgByKind.set(kind, computeContextAverage(entry));
-          continue;
-        }
-        const summary = summaryMap?.[kind];
-        if (summary && typeof summary.avg === "number" && Number.isFinite(summary.avg)) {
-          contextAvgByKind.set(kind, summary.avg);
-        }
-      }
-
-      // Use COUNTY data when at county level, otherwise prefer ZIP
+      // Determine stat type from available data
       const effectiveFallbackEntry = entryMap
         ? (preferCounty
             ? (entryMap.COUNTY ?? entryMap.ZIP ?? Object.values(entryMap)[0])
             : (entryMap.ZIP ?? entryMap.COUNTY ?? Object.values(entryMap)[0]))
         : undefined;
-
-      const fallbackSummary: StatSummaryEntry | undefined = preferCounty
+      const fallbackSummary = preferCounty
         ? (summaryMap?.COUNTY ?? summaryMap?.ZIP ?? (summaryMap ? Object.values(summaryMap)[0] : undefined))
         : (summaryMap?.ZIP ?? summaryMap?.COUNTY ?? (summaryMap ? Object.values(summaryMap)[0] : undefined));
-
-      const fallbackContextAvg = preferCounty
-        ? (contextAvgByKind.get("COUNTY") ??
-            contextAvgByKind.get("ZIP") ??
-            (effectiveFallbackEntry ? computeContextAverage(effectiveFallbackEntry) : fallbackSummary?.avg ?? 0))
-        : (contextAvgByKind.get("ZIP") ??
-            contextAvgByKind.get("COUNTY") ??
-            (effectiveFallbackEntry ? computeContextAverage(effectiveFallbackEntry) : fallbackSummary?.avg ?? 0));
-
-      const valuesForSelection = areaEntries
-        .map((area) => {
-          const entry = entryMap?.[area.kind];
-          if (!entry) return null;
-          const raw = entry.data?.[area.code];
-          if (typeof raw !== "number" || !Number.isFinite(raw)) return null;
-          return { area, entry, value: raw };
-        })
-        .filter((v): v is { area: AreaEntry; entry: StatBoundaryEntry; value: number } => v !== null);
-
       const fallbackType = effectiveFallbackEntry?.type ?? fallbackSummary?.type ?? "count";
-      const isPercent = fallbackType === "percent";
-      
-      const statName = (s.label || s.name || "").toLowerCase();
-      const isMedianStat = statName.includes("median");
-      let displayValue = fallbackContextAvg;
-      let aggregationMethod: "sum" | "average" | "median" | "raw" = "average";
-      let aggregationDescription = "";
-      
-      if (areaEntries.length === 0) {
-        // No selection: sum all values (or average for percentages / median for median stats)
-        // County level: sum/average all Oklahoma counties
-        // ZIP level: sum/average all ZIPs in the viewport county
-        if (isMedianStat) {
-          aggregationMethod = "median";
-        } else {
-          aggregationMethod = isPercent ? "average" : "sum";
-        }
-        const method = aggregationMethod === "median" ? "Median" : aggregationMethod === "average" ? "Average" : "Sum";
-        if (preferCounty) {
-          // County level: "Sum of All OK Counties" or "Average of all OK Counties"
-          aggregationDescription = `${method} of ${countyScopeDisplayName ? `All ${countyScopeDisplayName} Counties` : "All OK Counties"}`;
-        } else {
-          // ZIP level: "Sum of all Tulsa County ZIPs" or "Average of all Tulsa County ZIPs"
-          const countyName = zipScopeDisplayName ? `${zipScopeDisplayName} County` : "County";
-          aggregationDescription = `${method} of all ${countyName} ZIPs`;
-        }
-        if (effectiveFallbackEntry) {
-          if (aggregationMethod === "median") {
-            displayValue = computeMedian(effectiveFallbackEntry);
-          } else {
-            displayValue = isPercent ? computeContextAverage(effectiveFallbackEntry) : computeTotal(effectiveFallbackEntry);
-          }
-        } else if (fallbackSummary) {
-          if (aggregationMethod === "median") {
-            displayValue = fallbackSummary.avg;
-          } else {
-            displayValue = isPercent ? fallbackSummary.avg : fallbackSummary.sum;
-          }
-        } else {
-          displayValue = 0;
-        }
-      } else if (areaEntries.length === 1 && valuesForSelection.length === 1) {
-        // Single selection: show the raw value
-        aggregationMethod = "raw";
-        const areaName = areaNameLookup
-          ? areaNameLookup(valuesForSelection[0].area.kind, valuesForSelection[0].area.code)
-          : `${valuesForSelection[0].area.kind} ${valuesForSelection[0].area.code}`;
-        aggregationDescription = areaName;
-        displayValue = valuesForSelection[0].value;
-      } else if (areaEntries.length > 1 && valuesForSelection.length > 0) {
-        // Multiple selections: sum the values (or average for percentages / median for median stats)
-        if (isMedianStat) {
-          aggregationMethod = "median";
-        } else {
-          aggregationMethod = isPercent ? "average" : "sum";
-        }
-        const method = aggregationMethod === "median" ? "Median" : aggregationMethod === "average" ? "Average" : "Sum";
-        const areaType = preferCounty ? "Counties" : "ZIPs";
-        aggregationDescription = `${method} of Selected ${areaType}`;
-        if (aggregationMethod === "median") {
-          displayValue = computeMedianFromValues(valuesForSelection.map((item) => item.value));
-        } else if (isPercent) {
-          displayValue = valuesForSelection.reduce((sum, item) => sum + item.value, 0) / valuesForSelection.length;
-        } else {
-          displayValue = valuesForSelection.reduce((sum, item) => sum + item.value, 0);
-        }
-      }
 
-      const normalizedDiffs = valuesForSelection.map(({ value, entry, area }) => {
-        const range = Math.max(entry.max - entry.min, 0);
-        const contextAvg = contextAvgByKind.get(area.kind) ?? fallbackContextAvg;
-        if (range <= 0) return 0;
-        return Math.abs(value - contextAvg) / range;
-      });
-      const score = normalizedDiffs.length
-        ? normalizedDiffs.reduce((sum, v) => sum + v, 0) / normalizedDiffs.length
-        : 0;
+      // Check if data is available
+      const hasData = Boolean(effectiveFallbackEntry) || Boolean(fallbackSummary);
 
-      result.push({
+      return {
         id: s.id,
         name: s.label || s.name,
-        value: displayValue,
-        score,
+        score: 0,
         type: fallbackType,
-        contextAvg: fallbackContextAvg,
-        hasData:
-          valuesForSelection.length > 0 ||
-          (areaEntries.length === 0 && (Boolean(effectiveFallbackEntry) || Boolean(fallbackSummary))),
-        goodIfUp: s.goodIfUp,
-        aggregationMethod,
-        aggregationDescription,
+        hasData,
         category: s.category,
-      });
-    }
+      };
+    });
 
-    if (!shouldRankByScore) {
-      result.sort((a, b) => a.name.localeCompare(b.name));
-    } else {
-      result.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
-    }
+    // Sort alphabetically
+    result.sort((a, b) => a.name.localeCompare(b.name));
 
     return result;
-  }, [
-    listStats,
-    statSummariesById,
-    statDataById,
-    areaEntries,
-    effectiveAreaKind,
-    zipScopeDisplayName,
-    countyScopeDisplayName,
-    areaNameLookup,
-    shouldRankByScore,
-  ]);
+  }, [listStats, statDataById, statSummariesById, effectiveAreaKind]);
 
   const filteredRows = useMemo(() => {
     if (!normalizedQuery) return rows;
@@ -436,19 +246,6 @@ export const StatList = ({
       return score >= STAT_SEARCH_MATCH_THRESHOLD;
     });
   }, [rows, normalizedQuery]);
-
-  const subtitle = useMemo(() => {
-    if (!shouldRankByScore) return null;
-    if (areaEntries.length === 1) {
-      const area = areaEntries[0];
-      const label = areaNameLookup ? areaNameLookup(area.kind, area.code) : `${area.kind} ${area.code}`;
-      return `Most significant stats for ${label}`;
-    }
-    if (areaEntries.length > 1) {
-      return `Most significant stats for Selected Areas (${areaEntries.length})`;
-    }
-    return null;
-  }, [areaEntries, areaNameLookup, shouldRankByScore]);
 
   // Find the root parent and intermediate child by traversing up the hierarchy
   // This handles parent → child → grandchild relationships
@@ -860,11 +657,9 @@ export const StatList = ({
               isSelected={true}
               isHeader={true}
               isSecondary={false}
-              averageLabel={null}
               onStatSelect={onStatSelect}
               onRetryStatData={showAdvanced ? onRetryStatData : undefined}
               hasDataOverride={headerHasChartData}
-              hideValue={true}
               categoryLabel={!categoryFilter && selectedStatRow.category ? getCategoryLabel(selectedStatRow.category) : null}
               grandchildToggles={allToggleAttributes.map((attr) => ({
                 attr,
@@ -905,7 +700,6 @@ export const StatList = ({
               activeAreaKind={activeAreaKind}
               getZipParentCounty={getZipParentCounty}
               zipScopeCountyName={zipScopeDisplayName}
-              stateAvg={stateAvg}
               embedded={true}
             />
           )}
@@ -938,11 +732,6 @@ export const StatList = ({
             )}
           </div>
         </div>
-        {subtitle && (
-          <p className="px-1 pt-2 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-            {subtitle}
-          </p>
-        )}
         {filteredRows.length === 0 ? (
           <p className="px-1 pt-2 text-xs text-slate-500 dark:text-slate-400">
             {normalizedQuery
@@ -957,10 +746,8 @@ export const StatList = ({
                 row={row}
                 isSelected={displayStatId === row.id}
                 isSecondary={secondaryStatId === row.id}
-                averageLabel={averageLabel}
                 onStatSelect={onStatSelect}
                 categoryLabel={!categoryFilter && row.category ? getCategoryLabel(row.category) : null}
-                hideValue={HIDE_COUNTY_STAT_VALUES_WITHOUT_SELECTION && effectiveAreaKind === "COUNTY" && areaEntries.length === 0}
               />
             ))}
           </ul>
@@ -981,11 +768,9 @@ interface StatListItemProps {
   row: StatRow;
   isSelected: boolean;
   isSecondary: boolean;
-  averageLabel: string | null;
   onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
   onRetryStatData?: (statId: string) => void;
   hasDataOverride?: boolean;
-  hideValue?: boolean;
   grandchildToggles?: GrandchildAttrToggle[];
   isHeader?: boolean;
   categoryLabel?: string | null;
@@ -995,35 +780,13 @@ const StatListItem = ({
   row,
   isSelected,
   isSecondary,
-  averageLabel,
   onStatSelect,
   onRetryStatData,
   hasDataOverride,
-  hideValue = false,
   grandchildToggles = [],
   isHeader = false,
   categoryLabel = null,
 }: StatListItemProps) => {
-  const [showTooltip, setShowTooltip] = useState(false);
-  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
-  const [showValueTooltip, setShowValueTooltip] = useState(false);
-  const [valueTooltipPos, setValueTooltipPos] = useState({ x: 0, y: 0 });
-
-  // Determine color based on goodIfUp and whether value is above/below average
-  // Only apply color when there's a selection (averageLabel is shown)
-  const valueColorClass = (() => {
-    if (!averageLabel || typeof row.goodIfUp !== 'boolean') {
-      return 'text-slate-500 dark:text-slate-400';
-    }
-
-    const isAboveAverage = row.value > row.contextAvg;
-    const isGood = row.goodIfUp ? isAboveAverage : !isAboveAverage;
-
-    return isGood
-      ? 'text-green-600 dark:text-green-400'
-      : 'text-red-600 dark:text-red-400';
-  })();
-
   const handleClick = (e: React.MouseEvent) => {
     if (e.shiftKey) {
       e.preventDefault();
@@ -1038,30 +801,6 @@ const StatListItem = ({
     }
   };
 
-  const handleAvgHover = (e: React.MouseEvent) => {
-    const li = e.currentTarget.closest("li");
-    if (!li) return;
-    const liRect = li.getBoundingClientRect();
-    const x = e.clientX - liRect.left;
-    const y = e.clientY - liRect.top;
-    setTooltipPos({ x, y });
-    setShowTooltip(true);
-  };
-
-  const handleValueHover = (e: React.MouseEvent) => {
-    const li = e.currentTarget.closest("li");
-    if (!li) return;
-    const liRect = li.getBoundingClientRect();
-    const x = e.clientX - liRect.left;
-    const y = e.clientY - liRect.top;
-    setValueTooltipPos({ x, y });
-    setShowValueTooltip(true);
-  };
-
-  const getAggregationLabel = (): string => {
-    return row.aggregationDescription || "";
-  };
-
   const common =
     "group relative flex items-center justify-between rounded-2xl border px-3 py-2 shadow-sm transition-colors cursor-pointer select-none";
 
@@ -1074,13 +813,9 @@ const StatListItem = ({
     : `${common} border-slate-200/70 bg-white/70 hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:hover:border-slate-600 dark:hover:bg-slate-800/70`;
 
   const hasData = typeof hasDataOverride === "boolean" ? hasDataOverride : row.hasData;
-  const valueLabel = hasData ? formatStatValue(row.value, row.type) : "—";
 
   return (
-    <li className={className} onClick={handleClick} onMouseLeave={() => {
-      setShowTooltip(false);
-      setShowValueTooltip(false);
-    }}>
+    <li className={className} onClick={handleClick}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`text-sm ${isHeader ? "font-medium" : "font-normal"} text-slate-600 dark:text-slate-300`}>{row.name}</span>
@@ -1122,7 +857,7 @@ const StatListItem = ({
             </div>
           )}
         </div>
-        
+
         {isHeader && grandchildToggles.length > 0 && (
           <div className="flex items-center gap-1 mt-1.5 mb-1">
             {grandchildToggles.map((toggle) => (
@@ -1151,55 +886,35 @@ const StatListItem = ({
           </div>
         )}
 
-        <div className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
-          {hasData ? (
-            <>
-              {averageLabel && (
-                <span
-                  className="mr-2 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide font-semibold"
-                  onMouseEnter={handleAvgHover}
-                  onMouseLeave={() => setShowTooltip(false)}
-                >
-                  {averageLabel}
-                  <span className="font-normal">
-                    {formatStatValue(row.contextAvg, row.type)}
-                  </span>
-                </span>
-              )}
-            </>
-          ) : isHeader ? (
-            <div className="flex items-center gap-2">
-              <span className="italic text-slate-400 dark:text-slate-500">Loading data...</span>
-              {onRetryStatData && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRetryStatData(row.id);
-                  }}
-                  className="text-[11px] font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
-                >
-                  retry
-                </button>
-              )}
-            </div>
-          ) : (
-            <span className="italic text-slate-400 dark:text-slate-500">Click to load data</span>
-          )}
-        </div>
+        {/* Loading state for header or click to load for items */}
+        {!hasData && (
+          <div className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
+            {isHeader ? (
+              <div className="flex items-center gap-2">
+                <span className="italic">Loading data...</span>
+                {onRetryStatData && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRetryStatData(row.id);
+                    }}
+                    className="text-[11px] font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                  >
+                    retry
+                  </button>
+                )}
+              </div>
+            ) : (
+              <span className="italic">Click to load data</span>
+            )}
+          </div>
+        )}
       </div>
 
-      <div className={`flex items-center gap-2 ${isHeader ? "self-start pt-0.5" : ""}`}>
-        {!hideValue && (
-          <span
-            className={`text-sm font-normal ${valueColorClass}`}
-            onMouseEnter={handleValueHover}
-            onMouseLeave={() => setShowValueTooltip(false)}
-          >
-            {valueLabel}
-          </span>
-        )}
-        {isSelected && (
+      {/* Close button for selected stat */}
+      {isSelected && (
+        <div className={`flex items-center ${isHeader ? "self-start pt-0.5" : ""}`}>
           <button
             type="button"
             onClick={(e) => {
@@ -1213,31 +928,6 @@ const StatListItem = ({
               <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
             </svg>
           </button>
-        )}
-      </div>
-
-      {showTooltip && averageLabel && (
-        <div
-          className="pointer-events-none absolute z-10 rounded border border-black/10 bg-slate-800 px-1.5 py-1 text-[10px] text-white shadow-sm dark:border-white/20 dark:bg-slate-200 dark:text-slate-900"
-          style={{ left: tooltipPos.x, top: tooltipPos.y - 32 }}
-        >
-          {averageLabel} across all areas
-        </div>
-      )}
-
-      {showValueTooltip && hasData && (
-        <div
-          className="pointer-events-none absolute z-10 rounded border border-black/10 bg-slate-800 px-1.5 py-1 text-[10px] text-white shadow-sm dark:border-white/20 dark:bg-slate-200 dark:text-slate-900"
-          style={{
-            left: valueTooltipPos.x,
-            top: valueTooltipPos.y - 32,
-            transform: "translateX(-100%)",
-            marginLeft: "-4px",
-            opacity: 0.9,
-            minWidth: "120px",
-          }}
-        >
-          {getAggregationLabel()}
         </div>
       )}
     </li>

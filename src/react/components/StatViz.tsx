@@ -70,8 +70,6 @@ interface StatVizProps {
   getZipParentCounty?: (zipCode: string) => { code: string; name: string } | null;
   /** County name for the current ZIP scope (used for fallback average when no ZIPs selected) */
   zipScopeCountyName?: string | null;
-  /** True statewide average for the selected stat (computed from all Oklahoma ZIPs) */
-  stateAvg?: number | null;
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
   /** When true, renders without container/header - for embedding in StatList selected stat section */
@@ -534,7 +532,6 @@ export const StatViz = ({
   onHoverArea,
   getZipParentCounty,
   zipScopeCountyName = null,
-  stateAvg = null,
   collapsed: collapsedProp,
   onCollapsedChange,
   embedded = false,
@@ -748,7 +745,7 @@ export const StatViz = ({
           }
         } else {
           // 3+ counties: show State Avg (use true statewide average)
-          const avgValue = stateAvg ?? cityAvgByKind.get("ZIP");
+          const avgValue = cityAvgByKind.get("ZIP");
           if (typeof avgValue === "number") {
             entries.push({ label: "State Avg", color: getAvgColor(), value: avgValue, areaKey: "AVG-STATE" });
           }
@@ -884,7 +881,7 @@ export const StatViz = ({
     }
 
     return { mode: "line" as const, series: lineSeries, statType: avgSeriesEntries[0]?.type ?? "count" };
-  }, [stat, statId, chartMode, areaEntries, seriesByKind, statDataByKind, cityAvgByKind, pinnedAreaKeys, activeAreaKind, getZipParentCounty, zipScopeCountyName, stateAvg]);
+  }, [stat, statId, chartMode, areaEntries, seriesByKind, statDataByKind, cityAvgByKind, pinnedAreaKeys, activeAreaKind, getZipParentCounty, zipScopeCountyName]);
 
   const subtitle = useMemo(() => {
     if (collapsed) {
