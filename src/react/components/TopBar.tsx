@@ -138,10 +138,10 @@ const getQueueItemTitle = (item: { statLabel?: string; variable: string }): stri
 };
 
 const getNeHomeRedirectState = (): boolean => {
-  if (typeof window === "undefined") return true; // Default: redirect disabled (=1), toggle "on"
+  if (typeof window === "undefined") return false; // Default: map is home (=0), toggle "on"
   const stored = localStorage.getItem(NE_HOME_REDIRECT_STORAGE_KEY);
-  if (stored === null) return true; // Never clicked: default "on" (=1)
-  // If clicked before, return stored value (false = "off" =0, true = "on" =1)
+  if (stored === null) return false; // Never clicked: default map home (=0)
+  // If clicked before, return stored value (false = map home, true = original home)
   return stored === "true";
 };
 
@@ -204,6 +204,8 @@ export const TopBar = ({
   const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
   const importQueueRef = useRef<HTMLDivElement | null>(null);
+  const nextNeHomeRedirectDisabled = !neHomeRedirectDisabled;
+  const nextNeHomeUrl = `https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=${nextNeHomeRedirectDisabled ? "1" : "0"}`;
 
   useEffect(() => {
     const unsubscribe = themeController.subscribe((current) => {
@@ -717,16 +719,16 @@ export const TopBar = ({
                   </button>
                 )}
                 <a
-                  href={`https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=${neHomeRedirectDisabled ? "1" : "0"}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    const newState = !neHomeRedirectDisabled;
-                    setNeHomeRedirectDisabled(newState);
-                    setNeHomeRedirectState(newState);
-                    window.location.href = `https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=${newState ? "1" : "0"}`;
+                  href={nextNeHomeUrl}
+                  target={nextNeHomeRedirectDisabled ? "_blank" : undefined}
+                  rel={nextNeHomeRedirectDisabled ? "noopener noreferrer" : undefined}
+                  onClick={() => {
+                    // Persist the selected homepage mode before browser navigation.
+                    setNeHomeRedirectDisabled(nextNeHomeRedirectDisabled);
+                    setNeHomeRedirectState(nextNeHomeRedirectDisabled);
                   }}
                   className="relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 dark:text-slate-300"
-                  title={neHomeRedirectDisabled ? "Make this map the default NE homepage" : "switch to original Neighborhood Explorer homepage"}
+                  title={neHomeRedirectDisabled ? "Make map the default homepage" : "Open original homepage in a new tab"}
                 >
                   <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
                     neHomeRedirectDisabled
@@ -739,7 +741,9 @@ export const TopBar = ({
                         : "translate-x-3"
                     }`} />
                   </span>
-                  <span className="whitespace-nowrap text-slate-400 dark:text-slate-500">{neHomeRedirectDisabled ? "Normal Home" : "New Home"}</span>
+                  <span className="whitespace-nowrap text-slate-400 dark:text-slate-500">
+                    {neHomeRedirectDisabled ? "Home: Original" : "Home: Map"}
+                  </span>
                 </a>
               </nav>
               {/* Gradient fade overlay for truncating links */}
