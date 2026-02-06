@@ -720,12 +720,21 @@ export const TopBar = ({
                 )}
                 <a
                   href={nextNeHomeUrl}
-                  target={nextNeHomeRedirectDisabled ? "_blank" : undefined}
-                  rel={nextNeHomeRedirectDisabled ? "noopener noreferrer" : undefined}
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.preventDefault();
                     // Persist the selected homepage mode before browser navigation.
                     setNeHomeRedirectDisabled(nextNeHomeRedirectDisabled);
                     setNeHomeRedirectState(nextNeHomeRedirectDisabled);
+                    if (nextNeHomeRedirectDisabled) {
+                      // Switching to original home: open classic homepage in a new tab.
+                      const opened = window.open(nextNeHomeUrl, "_blank", "noopener,noreferrer");
+                      if (!opened) {
+                        window.location.assign(nextNeHomeUrl);
+                      }
+                      return;
+                    }
+                    // Switching to map home: navigate in this tab (server redirects to map).
+                    window.location.assign(nextNeHomeUrl);
                   }}
                   className="relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 dark:text-slate-300"
                   title={neHomeRedirectDisabled ? "Make map the default homepage" : "Open original homepage in a new tab"}
