@@ -728,10 +728,10 @@ export const TopBar = ({
                     if (nextNeHomeRedirectDisabled) {
                       // Switching to original home: open classic homepage in a new tab,
                       // and keep this tab on the map host.
-                      const opened = window.open(nextNeHomeUrl, "_blank", "noopener,noreferrer");
-                      if (!opened) {
-                        window.location.assign(nextNeHomeUrl);
-                        return;
+                      const opened = window.open(nextNeHomeUrl, "_blank");
+                      if (opened) {
+                        // Detach opener to avoid tabnabbing while still allowing reliable popup detection.
+                        opened.opener = null;
                       }
                       window.location.assign("https://map.neighborhoodexplorer.org");
                       return;
