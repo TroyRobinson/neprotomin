@@ -726,11 +726,14 @@ export const TopBar = ({
                     setNeHomeRedirectDisabled(nextNeHomeRedirectDisabled);
                     setNeHomeRedirectState(nextNeHomeRedirectDisabled);
                     if (nextNeHomeRedirectDisabled) {
-                      // Switching to original home: open classic homepage in a new tab.
+                      // Switching to original home: open classic homepage in a new tab,
+                      // and keep this tab on the map host.
                       const opened = window.open(nextNeHomeUrl, "_blank", "noopener,noreferrer");
                       if (!opened) {
                         window.location.assign(nextNeHomeUrl);
+                        return;
                       }
+                      window.location.assign("https://map.neighborhoodexplorer.org");
                       return;
                     }
                     // Switching to map home: navigate in this tab (server redirects to map).
