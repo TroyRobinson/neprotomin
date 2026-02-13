@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import type { Stat, StatRelation, StatRelationsByParent, StatRelationsByChild } from "../../types/stat";
 import { UNDEFINED_STAT_ATTRIBUTE } from "../../types/stat";
+import { formatStatValue } from "../../lib/format";
 import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
 import { computeSimilarityFromNormalized, normalizeForSearch } from "../lib/fuzzyMatch";
 import { CustomSelect } from "./CustomSelect";
@@ -10,6 +11,15 @@ import { StatViz } from "./StatViz";
 import type { AreaId } from "../../types/areas";
 
 const STAT_SEARCH_MATCH_THRESHOLD = 0.4;
+
+// Compute average of all values in a boundary entry (used for context average display)
+const computeContextAverage = (entry: StatBoundaryEntry | undefined): number => {
+  if (!entry?.data) return 0;
+  const values = Object.values(entry.data);
+  const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  if (nums.length === 0) return 0;
+  return nums.reduce((sum, v) => sum + v, 0) / nums.length;
+};
 
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type SelectedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
@@ -322,6 +332,44 @@ export const StatList = ({
     seriesByStatIdByKind,
     showAdvanced,
   ]);
+
+  // Compute context average for selected stat header only (efficient: just one stat)
+  const selectedStatContextAvg = useMemo(() => {
+    const targetStatId = selectedStatId ?? displayStatId;
+    if (!targetStatId) return null;
+
+    const entryMap = statDataById.get(targetStatId);
+    const summaryMap = statSummariesById.get(targetStatId);
+    const preferCounty = effectiveAreaKind === "COUNTY";
+
+    // Get the appropriate boundary entry
+    const entry = entryMap
+      ? (preferCounty
+          ? (entryMap.COUNTY ?? entryMap.ZIP)
+          : (entryMap.ZIP ?? entryMap.COUNTY))
+      : undefined;
+
+    // Get fallback from summary if no entry
+    const summary = preferCounty
+      ? (summaryMap?.COUNTY ?? summaryMap?.ZIP)
+      : (summaryMap?.ZIP ?? summaryMap?.COUNTY);
+
+    // Compute average
+    let avgValue: number | null = null;
+    if (entry) {
+      avgValue = computeContextAverage(entry);
+    } else if (summary && typeof summary.avg === "number" && Number.isFinite(summary.avg)) {
+      avgValue = summary.avg;
+    }
+
+    if (avgValue === null || avgValue === 0) return null;
+
+    // Determine label and type
+    const label = preferCounty ? "State Avg" : "County Avg";
+    const type = entry?.type ?? summary?.type ?? "count";
+
+    return { value: avgValue, label, type };
+  }, [selectedStatId, displayStatId, statDataById, statSummariesById, effectiveAreaKind]);
 
   // Get children of the displayed stat grouped by attribute, split into toggles vs dropdowns
   // Single-child attributes become toggles, multi-child attributes become dropdowns
@@ -661,6 +709,7 @@ export const StatList = ({
               onRetryStatData={showAdvanced ? onRetryStatData : undefined}
               hasDataOverride={headerHasChartData}
               categoryLabel={!categoryFilter && selectedStatRow.category ? getCategoryLabel(selectedStatRow.category) : null}
+              contextAvg={selectedStatContextAvg}
               grandchildToggles={allToggleAttributes.map((attr) => ({
                 attr,
                 isActive: isToggleAttrActive(attr),
@@ -700,6 +749,7 @@ export const StatList = ({
               activeAreaKind={activeAreaKind}
               getZipParentCounty={getZipParentCounty}
               zipScopeCountyName={zipScopeDisplayName}
+              stateAvg={selectedStatContextAvg?.value ?? null}
               embedded={true}
             />
           )}
@@ -774,6 +824,8 @@ interface StatListItemProps {
   grandchildToggles?: GrandchildAttrToggle[];
   isHeader?: boolean;
   categoryLabel?: string | null;
+  /** Context average to display (only for header) */
+  contextAvg?: { value: number; label: string; type: string } | null;
 }
 
 const StatListItem = ({
@@ -786,6 +838,7 @@ const StatListItem = ({
   grandchildToggles = [],
   isHeader = false,
   categoryLabel = null,
+  contextAvg = null,
 }: StatListItemProps) => {
   const handleClick = (e: React.MouseEvent) => {
     if (e.shiftKey) {
@@ -819,6 +872,12 @@ const StatListItem = ({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`text-sm ${isHeader ? "font-medium" : "font-normal"} text-slate-600 dark:text-slate-300`}>{row.name}</span>
+          {/* Context average display - only shown in header when data available */}
+          {isHeader && contextAvg && (
+            <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal whitespace-nowrap">
+              {contextAvg.label}: {formatStatValue(contextAvg.value, contextAvg.type)}
+            </span>
+          )}
           {!isHeader && categoryLabel && (
             <span className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-light ml-1">
               {categoryLabel}
