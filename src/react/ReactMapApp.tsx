@@ -3312,7 +3312,70 @@ export const ReactMapApp = () => {
         onAdvancedToggle={setShowAdvanced}
       />
       <div className="relative flex flex-1 flex-col overflow-hidden">
-        <main className="relative flex flex-1 flex-col overflow-hidden md:flex-row">
+        <main className="relative flex flex-1 flex-col overflow-hidden md:flex-row md:overflow-visible">
+          {/* Desktop sidebar — left of map */}
+          {!isMobile && (
+            <Sidebar
+              organizations={sidebarOrganizations}
+              activeOrganizationId={activeOrganizationId}
+              highlightedOrganizationIds={highlightedOrganizationIds ?? undefined}
+              statsById={statsById}
+              statSummariesById={statSummariesByStatId}
+              seriesByStatIdByKind={seriesByStatIdScoped}
+              statDataById={statDataByStatId}
+              statRelationsByParent={statRelationsByParent}
+              statRelationsByChild={statRelationsByChild}
+              demographicsSnapshot={activeDemographicsSnapshot ?? combinedSnapshot}
+              selectedAreas={selectedAreasMap}
+              pinnedAreas={pinnedAreasMap}
+              activeAreaKind={activeAreaKind}
+              areaNameLookup={areaNameLookup}
+              directOrgSelectionActive={selectedOrgIdsFromMap && selectedOrgIds.length > 0}
+              selectedOrgIds={selectedOrgIds}
+              selectedOrgIdsFromMap={selectedOrgIdsFromMap}
+              zipScopeDisplayName={zipScopeDisplayName}
+              countyScopeDisplayName={countyScopeDisplayName}
+              getZipParentCounty={getZipParentCounty}
+              viewportCountyOrgCount={viewportCountyOrgCount}
+              viewportCountyVisibleCount={viewportCountyVisibleCount}
+              zipScopeCountyCode={zipScopeCountyCode}
+              hoveredArea={hoveredArea}
+              selectedStatId={selectedStatId}
+              secondaryStatId={secondaryStatId}
+              categoryFilter={categoryFilter}
+              onCategoryChange={setCategoryFilter}
+              onHover={handleHover}
+              onOrganizationClick={handleSidebarOrganizationClick}
+              onHoverArea={handleAreaHoverChange}
+              onZoomOutAll={handleZoomOutAll}
+              onZoomToCounty={handleZoomToCounty}
+              onRequestCollapseSheet={isMobile ? collapseSheet : undefined}
+              onStatSelect={handleStatSelect}
+              onRetryStatData={retryStatData}
+              onOrgPinsVisibleChange={setOrgPinsVisible}
+              initialOrgPinsVisible={initialMapState.orgPinsVisible}
+              onClearAreas={handleClearAreas}
+              forceHideOrgsNonce={forceHideOrgsNonce}
+              timeSelection={timeSelection}
+              onClearTimeFilter={handleClearTimeFilter}
+              onChangeTimeFilter={handleChangeTimeFilter}
+              cameraState={cameraState}
+              onZoomToOrg={handleZoomToOrg}
+              variant="desktop"
+              selectionLabelOverride={searchSelectionLabel}
+              selectionStyleVariant={selectionStyleVariant}
+              showAdvanced={showAdvanced}
+              insightsState={sidebarInsightsState}
+              onInsightsStateChange={(patch) =>
+                setSidebarInsightsState((prev) => ({
+                  ...prev,
+                  ...patch,
+                }))
+              }
+              initialTab={sidebarTab}
+              onTabChange={setSidebarTab}
+            />
+          )}
           <div className="relative flex flex-1 flex-col overflow-hidden">
             {!isMobile && showAdvanced && (
               <BoundaryToolbar
@@ -3439,68 +3502,6 @@ export const ReactMapApp = () => {
               </div>
             )}
           </div>
-          {!isMobile && (
-            <Sidebar
-              organizations={sidebarOrganizations}
-              activeOrganizationId={activeOrganizationId}
-              highlightedOrganizationIds={highlightedOrganizationIds ?? undefined}
-              statsById={statsById}
-              statSummariesById={statSummariesByStatId}
-              seriesByStatIdByKind={seriesByStatIdScoped}
-              statDataById={statDataByStatId}
-              statRelationsByParent={statRelationsByParent}
-              statRelationsByChild={statRelationsByChild}
-              demographicsSnapshot={activeDemographicsSnapshot ?? combinedSnapshot}
-              selectedAreas={selectedAreasMap}
-              pinnedAreas={pinnedAreasMap}
-              activeAreaKind={activeAreaKind}
-              areaNameLookup={areaNameLookup}
-              directOrgSelectionActive={selectedOrgIdsFromMap && selectedOrgIds.length > 0}
-              selectedOrgIds={selectedOrgIds}
-              selectedOrgIdsFromMap={selectedOrgIdsFromMap}
-              zipScopeDisplayName={zipScopeDisplayName}
-              countyScopeDisplayName={countyScopeDisplayName}
-              getZipParentCounty={getZipParentCounty}
-              viewportCountyOrgCount={viewportCountyOrgCount}
-              viewportCountyVisibleCount={viewportCountyVisibleCount}
-              zipScopeCountyCode={zipScopeCountyCode}
-              hoveredArea={hoveredArea}
-              selectedStatId={selectedStatId}
-              secondaryStatId={secondaryStatId}
-              categoryFilter={categoryFilter}
-              onCategoryChange={setCategoryFilter}
-              onHover={handleHover}
-              onOrganizationClick={handleSidebarOrganizationClick}
-              onHoverArea={handleAreaHoverChange}
-              onZoomOutAll={handleZoomOutAll}
-              onZoomToCounty={handleZoomToCounty}
-              onRequestCollapseSheet={isMobile ? collapseSheet : undefined}
-              onStatSelect={handleStatSelect}
-              onRetryStatData={retryStatData}
-              onOrgPinsVisibleChange={setOrgPinsVisible}
-              initialOrgPinsVisible={initialMapState.orgPinsVisible}
-              onClearAreas={handleClearAreas}
-              forceHideOrgsNonce={forceHideOrgsNonce}
-              timeSelection={timeSelection}
-              onClearTimeFilter={handleClearTimeFilter}
-              onChangeTimeFilter={handleChangeTimeFilter}
-              cameraState={cameraState}
-              onZoomToOrg={handleZoomToOrg}
-              variant="desktop"
-              selectionLabelOverride={searchSelectionLabel}
-              selectionStyleVariant={selectionStyleVariant}
-              showAdvanced={showAdvanced}
-              insightsState={sidebarInsightsState}
-              onInsightsStateChange={(patch) =>
-                setSidebarInsightsState((prev) => ({
-                  ...prev,
-                  ...patch,
-                }))
-              }
-              initialTab={sidebarTab}
-              onTabChange={setSidebarTab}
-            />
-          )}
         </main>
         {showMobileSheet && (
           <div
