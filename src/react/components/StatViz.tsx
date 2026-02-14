@@ -925,6 +925,21 @@ export const StatViz = ({
     return "";
   }, [collapsed, chartData, stat, latestSummaryValue]);
 
+  // Detect "loading" state: stat is selected but no data has arrived yet.
+  // Distinguishes from "no data" (data arrived but is empty) by checking
+  // whether the stat has ANY entries in either the series or snapshot maps.
+  const isStatDataLoading = useMemo(() => {
+    if (!statId || !stat) return false;
+    // Check time series data
+    if (seriesByKind.size > 0) return false;
+    // Check snapshot data
+    for (const kind of SUPPORTED_KINDS) {
+      const entry = statDataByKind[kind];
+      if (entry && Object.keys(entry.data).length > 0) return false;
+    }
+    return true;
+  }, [statId, stat, seriesByKind, statDataByKind]);
+
   const handleHoverAreaKey = useCallback((areaKey: string | null) => {
     if (!areaKey) {
       onHoverArea?.(null);
@@ -945,6 +960,14 @@ export const StatViz = ({
   if (embedded) {
     if (!stat || !chartData) {
       return null;
+    }
+
+    if (isStatDataLoading) {
+      return (
+        <div className="mt-3 mb-2 flex items-center justify-center py-6">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500 dark:border-slate-600 dark:border-t-brand-400" />
+        </div>
+      );
     }
 
     return (
@@ -990,6 +1013,10 @@ export const StatViz = ({
         <div className="relative w-full" style={{ overflow: "visible" }}>
           {!stat || !chartData ? (
             <div className="text-xs text-slate-400 dark:text-slate-500">No data</div>
+          ) : isStatDataLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500 dark:border-slate-600 dark:border-t-brand-400" />
+            </div>
           ) : chartData.mode === "bar" ? (
             <BarChart
               entries={chartData.entries}
