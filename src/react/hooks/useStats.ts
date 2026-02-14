@@ -64,6 +64,7 @@ interface UseStatsOptions {
   enableTrickle?: boolean;
   maxCachedStatIds?: number;
   limitStatDataToScopes?: boolean;
+  trickleDelayMs?: number;
   statDataBoundaryTypes?: SupportedAreaKind[];
   viewerId?: string | null;
   isAdmin?: boolean;
@@ -82,6 +83,7 @@ export const useStats = ({
   batchSize = 12,
   enableTrickle = true,
   maxCachedStatIds = 24,
+  trickleDelayMs = 0,
   limitStatDataToScopes = false,
   statDataBoundaryTypes,
   viewerId = null,
@@ -126,6 +128,16 @@ export const useStats = ({
   const [statDataDateFilter, setStatDataDateFilter] = useState<string[] | null>(null);
   const [loadedStatIds, setLoadedStatIds] = useState<Set<string>>(new Set());
   const [batchGeneration, setBatchGeneration] = useState(0);
+
+  // Trickle delay: after each batch completes, pause before fetching the next one
+  // to avoid overwhelming InstantDB with rapid sequential queries.
+  const [trickleReady, setTrickleReady] = useState(true);
+  const trickleDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (trickleDelayTimerRef.current) clearTimeout(trickleDelayTimerRef.current);
+    };
+  }, []);
 
   const {
     data: statsResp,
@@ -420,9 +432,12 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
       }
     };
 
-    // Priority: fetch only the stat itself (not its children) so selecting a stat
-    // reliably loads the choropleth data without creating a huge $in batch.
+    // Priority IDs always included — selected stat + its children render immediately.
     for (const id of priorityIds) addWithChildren(id, 0);
+
+    // Skip trickle when delay is active — only priority IDs fetched until timer expires.
+    if (!trickleReady) return batch;
+
     for (const id of orderedStatIds) {
       if (!enableTrickle && batch.length >= Math.max(priorityIds.length, initialBatchSize)) break;
       if (batch.length >= Math.max(priorityIds.length, desired)) break;
@@ -437,6 +452,7 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     initialBatchSize,
     batchSize,
     enableTrickle,
+    trickleReady,
     batchGeneration,
     childrenByParent,
   ]);
@@ -550,6 +566,13 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
       return next;
     });
 
+    // After a batch completes, pause before allowing the next trickle batch.
+    if (trickleDelayMs > 0 && enableTrickle) {
+      setTrickleReady(false);
+      if (trickleDelayTimerRef.current) clearTimeout(trickleDelayTimerRef.current);
+      trickleDelayTimerRef.current = setTimeout(() => setTrickleReady(true), trickleDelayMs);
+    }
+
     // Only evict when trickle loading is active (cache is actively growing).
     // When trickle is paused, only priority stats are fetched so the cache is
     // ~stable. Evicting here would thrash recently viewed stats (A evicts B,
@@ -584,6 +607,7 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     maxCachedStatIds,
     priorityIds,
     enableTrickle,
+    trickleDelayMs,
   ]);
 
   const cachedStatDataRows = useMemo(

@@ -1161,19 +1161,30 @@ export const ReactMapApp = () => {
   const expandedCountyScopes = useMemo(() => expandScopeAliases(countyScopes), [countyScopes]);
 
   const [reportPriorityStatIds, setReportPriorityStatIds] = useState<string[]>([]);
+  // Children of the selected stat — populated after statRelations load (one-render lag, self-stabilizing)
+  const [selectedStatChildren, setSelectedStatChildren] = useState<string[]>([]);
   const priorityStatIds = useMemo(
     () =>
-      [selectedStatId, secondaryStatId, ...reportPriorityStatIds].filter(
+      [selectedStatId, ...selectedStatChildren, secondaryStatId, ...reportPriorityStatIds].filter(
         (id): id is string => typeof id === "string",
       ),
-    [selectedStatId, secondaryStatId, reportPriorityStatIds],
+    [selectedStatId, selectedStatChildren, secondaryStatId, reportPriorityStatIds],
   );
   const allowBackgroundStatLoading = !lowMemoryMode && !reducedDataLoading;
+  const enableTimeSeries =
+    showAdvanced && (sidebarTab === "stats" || activeScreen === "report");
   const statDataProfile = useMemo(() => {
+    // Smaller batches when time series is enabled — each stat fetches ALL historical dates,
+    // so large batches cause massive queries that delay the selected stat's line chart.
+    if (enableTimeSeries) {
+      if (performanceTier === "low") return { initial: 1, batch: 1, cache: 14 };
+      if (performanceTier === "medium") return { initial: 2, batch: 2, cache: 20 };
+      return { initial: 3, batch: 2, cache: 24 };
+    }
     if (performanceTier === "medium") return { initial: 10, batch: 10, cache: 20 };
     if (performanceTier === "low") return { initial: 6, batch: 6, cache: 14 };
     return { initial: 12, batch: 12, cache: 24 };
-  }, [performanceTier]);
+  }, [performanceTier, enableTimeSeries]);
   // Pause trickle loading when the user is actively viewing a stat chart to avoid
   // continuous recompute/re-render avalanches from background data streaming.
   const isViewingStatChart = showAdvanced && sidebarTab === "stats" && !!selectedStatId;
@@ -1191,8 +1202,6 @@ export const ReactMapApp = () => {
   }, [boundaryMode]);
 
   const statMapsEnabled = !lowMemoryMode;
-  const enableTimeSeries =
-    showAdvanced && (sidebarTab === "stats" || activeScreen === "report");
   const limitStatDataToScopes = lowMemoryMode || reducedDataLoading || !enableTimeSeries;
   const limitedStatBoundaryTypes = useMemo(() => {
     if (!limitStatDataToScopes) return undefined;
@@ -1227,12 +1236,40 @@ export const ReactMapApp = () => {
     initialBatchSize: statDataInitialBatchSize,
     batchSize: statDataBatchSize,
     enableTrickle: shouldPrefetchFullStatData,
+    trickleDelayMs: enableTimeSeries ? 2000 : 0,
     maxCachedStatIds: statDataCacheLimit,
     limitStatDataToScopes,
     statDataBoundaryTypes: limitedStatBoundaryTypes,
     viewerId: user?.id ?? null,
     isAdmin,
   });
+
+  // Derive children of selected stat so they're included in priority batch for fast line charts
+  useEffect(() => {
+    if (!selectedStatId || !statRelationsByParent) {
+      setSelectedStatChildren((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+    const byAttribute = statRelationsByParent.get(selectedStatId);
+    if (!byAttribute) {
+      setSelectedStatChildren((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+    const children: string[] = [];
+    const seen = new Set<string>();
+    for (const relations of byAttribute.values()) {
+      for (const rel of relations) {
+        if (!seen.has(rel.childStatId)) {
+          seen.add(rel.childStatId);
+          children.push(rel.childStatId);
+        }
+      }
+    }
+    setSelectedStatChildren((prev) => {
+      if (prev.length === children.length && prev.every((id, i) => id === children[i])) return prev;
+      return children;
+    });
+  }, [selectedStatId, statRelationsByParent]);
 
   const visibleStatIds = useMemo(() => Array.from(statsById.keys()), [statsById]);
 
