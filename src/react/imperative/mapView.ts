@@ -963,7 +963,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   const statNameById = new Map<string, string>();
   const unsubscribeStats = statsStore.subscribe((stats) => {
     statNameById.clear();
-    for (const s of stats) statNameById.set(s.id, s.name);
+    for (const s of stats) statNameById.set(s.id, s.label || s.name);
   });
   destroyFns.push(() => {
     try { unsubscribeStats?.(); } catch {}

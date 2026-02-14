@@ -940,16 +940,21 @@ export const ReactMapApp = () => {
     };
   }, [isMobile, isDraggingSheet, finishSheetDrag, sheetPeekOffset, startSheetDrag]);
 
-  // Check if welcome modal should be shown (not dismissed)
+  // Check if welcome modal should be shown on food-map domains only.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    
+
+    if (!isFoodDomain) {
+      setShowWelcomeModal(false);
+      return;
+    }
+
     // Feature flag: always show for testing if enabled
     if (ALWAYS_SHOW_WELCOME_MODAL) {
       setShowWelcomeModal(true);
       return;
     }
-    
+
     // Normal behavior: check localStorage for dismissal
     try {
       const dismissed = localStorage.getItem("welcomeModal.dismissed");
@@ -957,7 +962,7 @@ export const ReactMapApp = () => {
         setShowWelcomeModal(true);
       }
     } catch {}
-  }, []);
+  }, [isFoodDomain]);
 
   // Track map interaction: detect when user pans/zooms away from initial position
   useEffect(() => {
