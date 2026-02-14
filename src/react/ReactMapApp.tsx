@@ -3156,7 +3156,7 @@ export const ReactMapApp = () => {
     "h-2.5 w-2.5 rounded-full ring-1 ring-black/5 dark:ring-white/10",
     sidebarTab === "stats" ? "bg-brand-500" : "",
   ].join(" ");
-  const mobilePeekDotStyle = sidebarTab === "stats" ? undefined : { backgroundColor: "#fdba74" };
+  const mobilePeekDotStyle = sidebarTab === "stats" ? undefined : { backgroundColor: "#f5c4ae" };
 
   const handleTopBarNavigate = useCallback(
     (screen: "map" | "report" | "roadmap" | "data" | "queue" | "admin") => {

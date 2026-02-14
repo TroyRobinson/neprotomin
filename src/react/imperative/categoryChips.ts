@@ -5,7 +5,7 @@ const CATEGORY_CHIP_NEUTRAL_CLASSES =
   "border-slate-200 bg-white/40 text-slate-600 hover:border-brand-200 hover:bg-white/80 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white";
 
 const TIME_OPEN_CHIP_CLASSES =
-  "border-orange-200/60 bg-orange-50/50 text-orange-800 hover:border-orange-300/80 hover:bg-orange-50/80 hover:text-orange-900 dark:border-orange-800/40 dark:bg-orange-950/30 dark:text-orange-300 dark:hover:border-orange-700/60 dark:hover:text-orange-200";
+  "border-[#f5c4ae]/60 bg-[#fdd6c3]/20 text-[#7a4030] hover:border-[#e8a990]/80 hover:bg-[#fdd6c3]/40 hover:text-[#6b3525] dark:border-[#7a4030]/40 dark:bg-[#7a4030]/15 dark:text-[#f5c4ae] dark:hover:border-[#e8a990]/60 dark:hover:text-[#fdd6c3]";
 
 const SEARCH_ICON = `
   <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px] text-brand-600 dark:text-brand-400">
@@ -170,8 +170,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   // When no category selected, it appears at the end of category chips
   const orgsChipBtn = document.createElement("button");
   orgsChipBtn.type = "button";
-  // Match org cluster color: #fed7aa (orange-200)
-  orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} border-transparent bg-orange-200 text-orange-900 shadow-floating hover:bg-orange-200 dark:bg-orange-400/30 dark:text-orange-100`;
+  // Match org cluster color: peach accent family
+  orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} border-transparent bg-[#fdd6c3] text-[#7a4030] shadow-floating hover:bg-[#f5c4ae] dark:bg-[#7a4030]/30 dark:text-[#fdd6c3]`;
   const orgsLabel = document.createElement("span");
   orgsLabel.textContent = "Organizations";
   orgsLabel.className = "whitespace-nowrap";

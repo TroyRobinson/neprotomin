@@ -133,7 +133,7 @@ type ThemeName = "light" | "dark";
 
 const MAP_STYLE_LIGHT = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 const MAP_STYLE_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
-const DEFAULT_GLOW_COLOR = "#fdba74";
+const DEFAULT_GLOW_COLOR = "#f5c4ae";
 const SELECTED_GLOW_COLOR = "#8a93ff"; // Tailwind brand-400 indigo
 
 const getMapStyle = (theme: ThemeName): string =>

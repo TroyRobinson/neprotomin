@@ -10,7 +10,7 @@ export const createOrgLegend = (): OrgLegendController => {
 
   const dot = document.createElement("span");
   dot.className = "h-2.5 w-2.5 flex-shrink-0 rounded-full ring-1 ring-black/5 dark:ring-white/10";
-  dot.style.backgroundColor = "#fb923c"; // orange-400
+  dot.style.backgroundColor = "#e8a990"; // peach accent
 
   const label = document.createElement("span");
   label.className = "tabular-nums";

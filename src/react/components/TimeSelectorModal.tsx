@@ -273,7 +273,7 @@ export const TimeSelectorModal = ({
         <div className="mb-6">
           <button
             onClick={handleNowClick}
-            className="w-full rounded-lg border border-orange-200/60 bg-orange-50/50 px-4 py-2 text-sm font-medium text-orange-800 hover:border-orange-300/80 hover:bg-orange-50/80 hover:text-orange-900 transition-colors dark:border-orange-800/40 dark:bg-orange-950/30 dark:text-orange-300 dark:hover:border-orange-700/60 dark:hover:text-orange-200"
+            className="w-full rounded-lg border border-[#f5c4ae]/60 bg-[#fdd6c3]/20 px-4 py-2 text-sm font-medium text-[#7a4030] hover:border-[#e8a990]/80 hover:bg-[#fdd6c3]/40 hover:text-[#6b3525] transition-colors dark:border-[#7a4030]/40 dark:bg-[#7a4030]/15 dark:text-[#f5c4ae] dark:hover:border-[#e8a990]/60 dark:hover:text-[#fdd6c3]"
           >
             Right Now ({new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })})
           </button>

@@ -150,7 +150,7 @@ export const ensureOrganizationLayers = (
       filter: ["has", "point_count"],
       paint: {
         "circle-radius": clusterRadius,
-        "circle-color": "#fed7aa",
+        "circle-color": "#fdd6c3",
         "circle-stroke-color": "#ffffff",
         "circle-stroke-width": 2,
         "circle-opacity": 0.9,
@@ -179,7 +179,7 @@ export const ensureOrganizationLayers = (
         "text-size": clusterTextSize,
       },
       paint: {
-        "text-color": "#9a3412",
+        "text-color": "#7a4030",
       },
     });
   } else {
@@ -199,7 +199,7 @@ export const ensureOrganizationLayers = (
       paint: {
         "circle-radius": 0,
         "circle-opacity": 0,
-        "circle-color": "#f97316",
+        "circle-color": "#e8a990",
         "circle-stroke-color": "#ffffff",
         "circle-stroke-width": 2,
         "circle-radius-transition": { duration: 200, delay: 0 },
@@ -234,7 +234,7 @@ export const ensureOrganizationLayers = (
       filter: ["all", ["!", ["has", "point_count"]], ["==", ["get", "id"], "__none__"]],
       paint: {
         "circle-radius": highlightRadius,
-        "circle-color": "#fdba74",
+        "circle-color": "#f5c4ae",
         "circle-stroke-color": "#ffffff",
         "circle-stroke-width": 2,
         "circle-opacity": 1,
@@ -261,9 +261,9 @@ export const ensureOrganizationLayers = (
       filter: ["all", ["has", "point_count"], ["==", ["get", "cluster_id"], -1]],
       paint: {
         "circle-radius": clusterHighlightRadius,
-        "circle-color": "#fdba74",
+        "circle-color": "#f5c4ae",
         "circle-opacity": 0.35,
-        "circle-stroke-color": "#fdba74",
+        "circle-stroke-color": "#f5c4ae",
         "circle-stroke-width": 2,
       },
     });
