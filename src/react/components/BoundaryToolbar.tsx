@@ -31,7 +31,7 @@ interface BoundaryToolbarProps {
   isMobile?: boolean;
 }
 
-const LINE_COLORS = ["#29215e", "#784578", "#1e98ac"];
+const LINE_COLORS = ["#3a519d", "#784578", "#1e98ac"];
 const areaEntryByKind = {
   ZIP: getAreaRegistryEntry("ZIP"),
   COUNTY: getAreaRegistryEntry("COUNTY"),
