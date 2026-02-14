@@ -171,13 +171,20 @@ export const DemographicsBar = ({ snapshot, expanded, onExpandedChange, onClearA
   const headerLabel = stats?.label ?? snapshot.label;
   const fullLabel = stats?.fullLabel ?? headerLabel;
   const showFullLabelTooltip = fullLabel !== headerLabel && !showSelectedPill;
+  const handleHeaderKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    toggleExpanded();
+  };
 
   return (
     <div className="border-b border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         className="flex w-full items-start justify-between gap-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         onClick={toggleExpanded}
+        onKeyDown={handleHeaderKeyDown}
         aria-expanded={isExpanded}
       >
         <div className="flex flex-col">
@@ -242,7 +249,7 @@ export const DemographicsBar = ({ snapshot, expanded, onExpandedChange, onClearA
         >
           ▾
         </span>
-      </button>
+      </div>
 
       {isExpanded && (
         <div className="mt-3">
