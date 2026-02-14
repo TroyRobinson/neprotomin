@@ -62,6 +62,7 @@ interface MapLibreMapProps {
   onLocationSearch?: (query: string) => void;
   timeFilterAvailable?: boolean;
   onLegendSettingsClick?: () => void;
+  onSidebarExpand?: () => void;
   legendRangeMode?: "dynamic" | "scoped" | "global";
   visibleStatIds?: string[] | null;
 }
@@ -118,6 +119,7 @@ export const MapLibreMap = ({
   onLocationSearch,
   timeFilterAvailable = true,
   onLegendSettingsClick,
+  onSidebarExpand,
   legendRangeMode = "dynamic",
   visibleStatIds = null,
 }: MapLibreMapProps) => {
@@ -173,6 +175,8 @@ export const MapLibreMap = ({
   useEffect(() => { onMapDragStartRef.current = onMapDragStart; }, [onMapDragStart]);
   useEffect(() => { onTimeChipClickRef.current = onTimeChipClick; }, [onTimeChipClick]);
   useEffect(() => { onTimeChipClearRef.current = onTimeChipClear; }, [onTimeChipClear]);
+  const onSidebarExpandRef = useRef(onSidebarExpand);
+  useEffect(() => { onSidebarExpandRef.current = onSidebarExpand; }, [onSidebarExpand]);
   useEffect(() => { onLocationSearchRef.current = onLocationSearch; }, [onLocationSearch]);
   useEffect(() => { onLegendSettingsClickRef.current = onLegendSettingsClick; }, [onLegendSettingsClick]);
   useEffect(() => { legendRangeModeRef.current = legendRangeMode; }, [legendRangeMode]);
@@ -251,6 +255,9 @@ export const MapLibreMap = ({
       },
       onTimeChipClear: () => {
         try { onTimeChipClearRef.current?.(); } catch {}
+      },
+      onSidebarExpand: () => {
+        try { onSidebarExpandRef.current?.(); } catch {}
       },
       onLocationSearch: (query) => {
         try { onLocationSearchRef.current?.(query); } catch {}

@@ -207,6 +207,7 @@ export const ReactMapApp = () => {
   const [secondaryStatId, setSecondaryStatId] = useState<string | null>(() => initialMapState.secondaryStatId);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(() => initialMapState.category);
   const [sidebarTab, setSidebarTab] = useState<"orgs" | "stats">(() => initialMapState.sidebarTab);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [hasAppliedDefaultStat, setHasAppliedDefaultStat] = useState(false);
   const [searchSelectionMeta, setSearchSelectionMeta] = useState<{ term: string; ids: string[] } | null>(null);
   const [activeScreen, setActiveScreen] = useState<ScreenName>(() => {
@@ -2339,7 +2340,17 @@ export const ReactMapApp = () => {
 
   const handleMapControllerReady = useCallback((controller: MapViewController | null) => {
     mapControllerRef.current = controller;
+    // Sync initial sidebar expand button visibility
+    controller?.setSidebarExpandVisible(sidebarCollapsed);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Show/hide sidebar expand button on map when sidebar collapses/expands
+  useEffect(() => {
+    mapControllerRef.current?.setSidebarExpandVisible(sidebarCollapsed);
+    // Resize map to fill the space when sidebar collapses/expands
+    mapControllerRef.current?.resize();
+  }, [sidebarCollapsed]);
 
   // Keep the combined legend row visible - always on desktop, only in peek on mobile
   useEffect(() => {
@@ -3319,7 +3330,7 @@ export const ReactMapApp = () => {
       <div className="relative flex flex-1 flex-col overflow-hidden">
         <main className="relative flex flex-1 flex-col overflow-hidden md:flex-row">
           {/* Desktop sidebar — left of map */}
-          {!isMobile && (
+          {!isMobile && !sidebarCollapsed && (
             <Sidebar
               organizations={sidebarOrganizations}
               activeOrganizationId={activeOrganizationId}
@@ -3379,6 +3390,7 @@ export const ReactMapApp = () => {
               }
               initialTab={sidebarTab}
               onTabChange={setSidebarTab}
+              onCollapse={setSidebarCollapsed}
             />
           )}
           <div className="relative flex flex-1 flex-col overflow-hidden">
@@ -3465,6 +3477,7 @@ export const ReactMapApp = () => {
                 handleClearTimeFilter();
               }}
               onLegendSettingsClick={() => setMapSettingsOpen(true)}
+              onSidebarExpand={() => setSidebarCollapsed(false)}
               legendRangeMode={legendRangeMode}
               visibleStatIds={visibleStatIds}
             />

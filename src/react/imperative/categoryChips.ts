@@ -83,6 +83,8 @@ export interface CategoryChipsController {
   setOrgsVisible: (visible: boolean) => void;
   setTimeSelection: (selection: TimeSelection | null) => void;
   setTimeFilterAvailable: (available: boolean) => void;
+  /** Show/hide the sidebar expand button (right-chevron pill) */
+  setSidebarExpandVisible: (visible: boolean) => void;
   destroy: () => void;
 }
 
@@ -95,6 +97,8 @@ interface CategoryChipsOptions {
   onOrgsChipClose?: () => void;
   onTimeChipClick?: () => void;
   onTimeChipClear?: () => void;
+  /** Called when the sidebar expand button is clicked */
+  onSidebarExpand?: () => void;
 }
 
 // Type for chip entry elements with their handlers
@@ -452,6 +456,28 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     timeOpenChipBtn.style.display = showTime ? "" : "none";
     update();
   };
+
+  // Sidebar expand button — shown when sidebar is collapsed (desktop only)
+  let sidebarExpandBtn: HTMLButtonElement | null = null;
+  if (!isMobile) {
+    sidebarExpandBtn = document.createElement("button");
+    sidebarExpandBtn.type = "button";
+    sidebarExpandBtn.className =
+      "pointer-events-auto inline-flex h-8 w-9 items-center justify-center rounded-full border-2 border-slate-300 bg-brand-50 text-slate-600 transition hover:border-slate-400 hover:text-brand-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white";
+    sidebarExpandBtn.setAttribute("aria-label", "Expand sidebar");
+    sidebarExpandBtn.title = "Expand sidebar";
+    // Right-chevron icon
+    sidebarExpandBtn.innerHTML = `
+      <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-3.5 w-3.5">
+        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+      </svg>
+    `;
+    sidebarExpandBtn.style.display = "none"; // hidden by default (sidebar starts collapsed, but caller sets visibility)
+    sidebarExpandBtn.addEventListener("click", () => {
+      options.onSidebarExpand?.();
+    });
+    wrapper.insertBefore(sidebarExpandBtn, wrapper.firstChild);
+  }
 
   if (!isMobile) {
     // Desktop-only search control that mimics the compact mobile search UX.
@@ -952,6 +978,11 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       applyAccessoryChipVisibility();
     },
     setTimeSelection,
+    setSidebarExpandVisible: (visible: boolean) => {
+      if (sidebarExpandBtn) {
+        sidebarExpandBtn.style.display = visible ? "" : "none";
+      }
+    },
     destroy,
   };
 };

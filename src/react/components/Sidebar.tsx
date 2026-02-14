@@ -124,6 +124,8 @@ interface SidebarProps {
   initialTab?: "orgs" | "stats";
   // Callback when tab changes (to update URL)
   onTabChange?: (tab: "orgs" | "stats") => void;
+  // Collapse sidebar callback
+  onCollapse?: (collapsed: boolean) => void;
 }
 
 type TabType = "stats" | "orgs";
@@ -184,6 +186,7 @@ export const Sidebar = ({
   selectionStyleVariant = "default",
   initialTab = "orgs",
   onTabChange,
+  onCollapse,
 }: SidebarProps) => {
   // Fetch categories from InstantDB
   const { sidebarCategories, getCategoryLabel } = useCategories();
@@ -706,7 +709,7 @@ export const Sidebar = ({
           </button>
         </div>
 
-        {/* Category Filter (desktop only) */}
+        {/* Category Filter + Collapse (desktop only) */}
         {variant === "desktop" && (
           <div className="flex items-center gap-1">
             <div className="relative" ref={categoryDropdownRef}>
@@ -778,6 +781,17 @@ export const Sidebar = ({
                 </svg>
               </button>
             )}
+            {/* Collapse sidebar button */}
+            <button
+              type="button"
+              onClick={() => onCollapse?.(true)}
+              className="flex h-6 w-6 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-white"
+              title="Collapse sidebar"
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </button>
           </div>
         )}
       </div>

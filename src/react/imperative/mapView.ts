@@ -90,6 +90,7 @@ interface MapViewOptions {
   onTimeChipClick?: () => void;
   onTimeChipClear?: () => void;
   onLegendSettingsClick?: () => void;
+  onSidebarExpand?: () => void;
   legendRangeMode?: "dynamic" | "scoped" | "global";
 }
 
@@ -125,6 +126,7 @@ export interface MapViewController {
   setLegendVisible: (visible: boolean) => void;
   setLegendRightContent: (el: HTMLElement | null) => void;
   setLegendRangeMode: (mode: "dynamic" | "scoped" | "global") => void;
+  setSidebarExpandVisible: (visible: boolean) => void;
   resize: () => void;
   destroy: () => void;
 }
@@ -278,6 +280,7 @@ export const createMapView = ({
   onTimeChipClick,
   onTimeChipClear,
   onLegendSettingsClick,
+  onSidebarExpand,
   legendRangeMode: legendRangeModeInitial = "dynamic",
 }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
@@ -320,6 +323,7 @@ export const createMapView = ({
     onOrgsChipClose: () => { try { onRequestHideOrgs?.(); } catch {} },
     onTimeChipClick: () => { try { onTimeChipClick?.(); } catch {} },
     onTimeChipClear: () => { try { onTimeChipClear?.(); } catch {} },
+    onSidebarExpand: () => { try { onSidebarExpand?.(); } catch {} },
     onSearch: (query) => {
       try { onLocationSearch?.(query); } catch {}
     },
@@ -3208,6 +3212,9 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     setLegendRightContent,
     setLegendRangeMode: (mode: "dynamic" | "scoped" | "global") => {
       setLegendRangeModeInternal(mode);
+    },
+    setSidebarExpandVisible: (visible: boolean) => {
+      categoryChips.setSidebarExpandVisible(visible);
     },
     resize: () => {
       map.resize();
