@@ -878,7 +878,9 @@ const StatListItem = ({
     <li className={className} onClick={handleClick}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-sm ${isHeader ? "font-medium" : "font-normal"} text-slate-600 dark:text-slate-300`}>{row.name}</span>
+          <span className={`text-sm ${isHeader ? "font-medium" : "font-normal"} text-slate-600 dark:text-slate-300`}>
+            {row.name}
+          </span>
           {/* Context average display - only shown in header when data available */}
           {isHeader && contextAvg && (
             <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal whitespace-nowrap">
@@ -887,11 +889,6 @@ const StatListItem = ({
           )}
           {!isHeader && categoryLabel && (
             <span className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-light ml-1">
-              {categoryLabel}
-            </span>
-          )}
-          {isHeader && categoryLabel && (
-            <span className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-light ml-1 pr-2">
               {categoryLabel}
             </span>
           )}
