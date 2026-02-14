@@ -908,12 +908,12 @@ const StatListItem = ({
                     }
                   }}
                   disabled={!toggle.isAvailable}
-                  className={`px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide rounded transition-colors ${
+                  className={`px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide rounded border shadow-sm transition-colors ${
                     toggle.isActive && toggle.isAvailable
-                      ? "bg-brand-500 text-white"
+                      ? "border-brand-600 bg-brand-500 text-white shadow-md dark:border-brand-400"
                       : toggle.isAvailable
-                      ? "bg-slate-200/50 text-slate-600 hover:bg-slate-200 dark:bg-slate-700/40 dark:text-slate-300 dark:hover:bg-slate-700/60"
-                      : "bg-slate-100/50 text-slate-400 cursor-not-allowed dark:bg-slate-800/30 dark:text-slate-600"
+                      ? "border-slate-300 bg-white text-slate-600 hover:bg-slate-100 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 dark:hover:border-slate-500"
+                      : "border-slate-200 bg-slate-100/50 text-slate-400 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-600"
                   }`}
                   title={toggle.isAvailable ? `Toggle ${toggle.attr} breakdown` : `${toggle.attr} not available for current selection`}
                 >
@@ -937,12 +937,12 @@ const StatListItem = ({
                   }
                 }}
                 disabled={!toggle.isAvailable}
-                className={`px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide rounded transition-colors ${
+                className={`px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide rounded border shadow-sm transition-colors ${
                   toggle.isActive && toggle.isAvailable
-                    ? "bg-brand-500 text-white"
+                    ? "border-brand-600 bg-brand-500 text-white shadow-md dark:border-brand-400"
                     : toggle.isAvailable
-                    ? "bg-slate-200/50 text-slate-600 hover:bg-slate-200 dark:bg-slate-700/40 dark:text-slate-300 dark:hover:bg-slate-700/60"
-                    : "bg-slate-100/50 text-slate-400 cursor-not-allowed dark:bg-slate-800/30 dark:text-slate-600"
+                    ? "border-slate-300 bg-white text-slate-600 hover:bg-slate-100 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 dark:hover:border-slate-500"
+                    : "border-slate-200 bg-slate-100/50 text-slate-400 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-600"
                 }`}
                 title={toggle.isAvailable ? `Toggle ${toggle.attr} breakdown` : `${toggle.attr} not available for current selection`}
               >
