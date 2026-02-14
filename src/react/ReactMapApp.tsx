@@ -207,7 +207,7 @@ export const ReactMapApp = () => {
   const [secondaryStatId, setSecondaryStatId] = useState<string | null>(() => initialMapState.secondaryStatId);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(() => initialMapState.category);
   const [sidebarTab, setSidebarTab] = useState<"orgs" | "stats">(() => initialMapState.sidebarTab);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => initialMapState.sidebarCollapsed);
   const [hasAppliedDefaultStat, setHasAppliedDefaultStat] = useState(false);
   const [searchSelectionMeta, setSearchSelectionMeta] = useState<{ term: string; ids: string[] } | null>(null);
   const [activeScreen, setActiveScreen] = useState<ScreenName>(() => {
@@ -1274,14 +1274,16 @@ export const ReactMapApp = () => {
   const visibleStatIds = useMemo(() => Array.from(statsById.keys()), [statsById]);
 
   useEffect(() => {
+    if (areStatsLoading) return;
     if (!selectedStatId || statsById.has(selectedStatId)) return;
     setSelectedStatId(null);
-  }, [selectedStatId, statsById]);
+  }, [areStatsLoading, selectedStatId, statsById]);
 
   useEffect(() => {
+    if (areStatsLoading) return;
     if (!secondaryStatId || statsById.has(secondaryStatId)) return;
     setSecondaryStatId(null);
-  }, [secondaryStatId, statsById]);
+  }, [areStatsLoading, secondaryStatId, statsById]);
 
   useEffect(() => {
     if (activeScreen !== "report") {
@@ -1471,40 +1473,28 @@ export const ReactMapApp = () => {
   // Compute areasMode from boundaryControlMode and boundaryMode for URL
   const areasMode: AreasMode = boundaryControlMode === "auto" ? "auto" : boundaryMode;
 
-  // Debounced URL update when camera, stat, category, selected orgs, toggles, areas, or selections change
-  const urlUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Keep URL in sync with shareable map state.
   useEffect(() => {
     if (!cameraState) return;
-    // Clear any pending update
-    if (urlUpdateTimeoutRef.current) {
-      clearTimeout(urlUpdateTimeoutRef.current);
-    }
-    // Debounce URL updates to avoid spam during panning
-    urlUpdateTimeoutRef.current = setTimeout(() => {
-      const [lng, lat] = cameraState.center;
-      updateUrlWithMapState(
-        lat,
-        lng,
-        cameraState.zoom,
-        selectedStatId,
-        secondaryStatId,
-        categoryFilter,
-        selectedOrgIds,
-        showAdvanced,
-        orgPinsVisible,
-        areasMode,
-        selectedZips,
-        selectedCounties,
-        sidebarTab,
-        sidebarInsightsState,
-        persistSidebarInsights,
-      );
-    }, 400);
-    return () => {
-      if (urlUpdateTimeoutRef.current) {
-        clearTimeout(urlUpdateTimeoutRef.current);
-      }
-    };
+    const [lng, lat] = cameraState.center;
+    updateUrlWithMapState(
+      lat,
+      lng,
+      cameraState.zoom,
+      selectedStatId,
+      secondaryStatId,
+      categoryFilter,
+      selectedOrgIds,
+      showAdvanced,
+      orgPinsVisible,
+      areasMode,
+      selectedZips,
+      selectedCounties,
+      sidebarTab,
+      sidebarInsightsState,
+      persistSidebarInsights,
+      sidebarCollapsed,
+    );
   }, [
     cameraState,
     selectedStatId,
@@ -1519,6 +1509,7 @@ export const ReactMapApp = () => {
     sidebarTab,
     sidebarInsightsState,
     persistSidebarInsights,
+    sidebarCollapsed,
   ]);
 
   const mergeStatEntry = (

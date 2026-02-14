@@ -3201,6 +3201,9 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     },
     onCameraChange: (fn: (lng: number, lat: number, zoom: number) => void) => {
       cameraListeners.push(fn);
+      // Keep subscribers in sync even before the first move/zoom event.
+      const center = map.getCenter();
+      fn(center.lng, center.lat, map.getZoom());
       return () => {
         const idx = cameraListeners.indexOf(fn);
         if (idx >= 0) cameraListeners.splice(idx, 1);

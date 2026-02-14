@@ -369,6 +369,91 @@ describe("mapUrl selection persistence", () => {
     expect((globalThis as any).window.location.search).toContain("tab=stats");
   });
 
+  it("parses sidebar collapsed state from URL and defaults to collapsed", () => {
+    const w: WindowLike = {
+      location: { href: "http://example.test/", search: "", hostname: "example.test" },
+      history: {
+        replaceState: vi.fn((_data, _unused, url) => {
+          setWindowUrl(url);
+        }),
+      },
+    };
+    (globalThis as any).window = w;
+
+    setWindowUrl("http://example.test/?sc=false");
+    const state = getMapStateFromUrl();
+    expect(state.sidebarCollapsed).toBe(false);
+
+    setWindowUrl("http://example.test/");
+    const state2 = getMapStateFromUrl();
+    expect(state2.sidebarCollapsed).toBe(true);
+  });
+
+  it("writes sidebar collapsed state to URL and removes when default (collapsed)", () => {
+    const w: WindowLike = {
+      location: { href: "http://example.test/", search: "", hostname: "example.test" },
+      history: {
+        replaceState: vi.fn((_data, _unused, url) => {
+          setWindowUrl(url);
+        }),
+      },
+    };
+    (globalThis as any).window = w;
+
+    setWindowUrl("http://example.test/");
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      null,
+      [],
+      false,
+      false,
+      "auto",
+      [],
+      [],
+      "orgs",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+      false,
+    );
+
+    expect((globalThis as any).window.location.search).toContain("sc=false");
+
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      null,
+      [],
+      false,
+      false,
+      "auto",
+      [],
+      [],
+      "orgs",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+      true,
+    );
+
+    expect((globalThis as any).window.location.search).not.toContain("sc=");
+  });
+
   it("parses sidebar insights visibility + expansion state from URL", () => {
     const w: WindowLike = {
       location: { href: "http://example.test/", search: "", hostname: "example.test" },

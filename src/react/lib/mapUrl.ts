@@ -40,6 +40,7 @@ export interface MapState {
   selectedZips: string[];
   selectedCounties: string[];
   sidebarTab: "orgs" | "stats";
+  sidebarCollapsed: boolean;
   sidebarInsights: SidebarInsightsState;
 }
 
@@ -114,6 +115,7 @@ export function getMapStateFromUrl(): MapState {
   const selectedZips = getSelectedZipsFromUrl();
   const selectedCounties = getSelectedCountiesFromUrl();
   const sidebarTab = getSidebarTabFromUrl();
+  const sidebarCollapsed = getSidebarCollapsedFromUrl();
   const sidebarInsights = getSidebarInsightsFromUrl();
   return {
     position,
@@ -127,6 +129,7 @@ export function getMapStateFromUrl(): MapState {
     selectedZips,
     selectedCounties,
     sidebarTab,
+    sidebarCollapsed,
     sidebarInsights,
   };
 }
@@ -264,6 +267,14 @@ export function getSidebarTabFromUrl(): "orgs" | "stats" {
   return defaultTab;
 }
 
+// Get sidebar collapsed state from URL (defaults to true)
+export function getSidebarCollapsedFromUrl(): boolean {
+  if (typeof window === "undefined") return true;
+  const params = new URLSearchParams(window.location.search);
+  const collapsed = parseBoolParam(params, "sc");
+  return collapsed.value ?? true;
+}
+
 // Update URL with stat ID
 export function updateUrlWithStatId(statId: string | null): void {
   if (typeof window === "undefined") return;
@@ -296,6 +307,7 @@ export function updateUrlWithMapState(
   sidebarTab: "orgs" | "stats",
   sidebarInsights: Omit<SidebarInsightsState, "hasAnyParam">,
   persistSidebarInsights: boolean,
+  sidebarCollapsed = true,
 ): void {
   if (typeof window === "undefined") return;
 
@@ -375,6 +387,13 @@ export function updateUrlWithMapState(
     url.searchParams.set("tab", sidebarTab);
   } else {
     url.searchParams.delete("tab");
+  }
+
+  // Update sidebar collapsed state (only write if open, since collapsed=true is default)
+  if (!sidebarCollapsed) {
+    url.searchParams.set("sc", "false");
+  } else {
+    url.searchParams.delete("sc");
   }
 
   // Sidebar insights sections (Demographics + StatViz)
