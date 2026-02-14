@@ -3312,7 +3312,7 @@ export const ReactMapApp = () => {
         onAdvancedToggle={setShowAdvanced}
       />
       <div className="relative flex flex-1 flex-col overflow-hidden">
-        <main className="relative flex flex-1 flex-col overflow-hidden md:flex-row md:overflow-visible">
+        <main className="relative flex flex-1 flex-col overflow-hidden md:flex-row">
           {/* Desktop sidebar — left of map */}
           {!isMobile && (
             <Sidebar
