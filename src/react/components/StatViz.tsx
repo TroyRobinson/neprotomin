@@ -5,8 +5,8 @@ import { areaIdKey } from "../../types/areas";
 import type { SeriesByKind, SeriesEntry, StatBoundaryEntry } from "../hooks/useStats";
 import { formatStatValue } from "../../lib/format";
 
-const LINE_COLORS_ZIP = ["#375bff", "#8f20f8", "#cf873f", "#ff7f00"];
-const LINE_COLORS_COUNTY = ["#0ea5e9", "#10b981", "#f97316", "#a855f7"];
+const LINE_COLORS_ZIP = ["#29215e", "#784578", "#1e98ac"];
+const LINE_COLORS_COUNTY = ["#29215e", "#784578", "#1e98ac"];
 const BAR_COLOR_ZIP = "#64748b";
 const BAR_COLOR_COUNTY = "#64748b";
 const PINNED_BAR_COLOR = "#85a3ff";

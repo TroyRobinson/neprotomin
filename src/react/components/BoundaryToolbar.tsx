@@ -31,7 +31,7 @@ interface BoundaryToolbarProps {
   isMobile?: boolean;
 }
 
-const LINE_COLORS = ["#375bff", "#8f20f8", "#a76d44", "#b4a360"];
+const LINE_COLORS = ["#29215e", "#784578", "#1e98ac"];
 const areaEntryByKind = {
   ZIP: getAreaRegistryEntry("ZIP"),
   COUNTY: getAreaRegistryEntry("COUNTY"),
@@ -109,7 +109,7 @@ export const BoundaryToolbar = ({
   const activeHasSelections = activeSelectedCount > 0;
   const allPinned = activeHasSelections && activePinnedCount === activeSelectedCount;
 
-  const inLineMode = isActiveZip && selectedZips.length > 0 && selectedZips.length < 4;
+  const inLineMode = activeSelectedCount > 0 && activeSelectedCount <= LINE_COLORS.length;
 
   useEffect(() => {
     const unsubscribe = themeController.subscribe((theme) => {
@@ -264,10 +264,10 @@ export const BoundaryToolbar = ({
     onUpdateSelection(kind, { selected: [...selected], pinned: nextPinned });
   };
 
-  // Build color mapping by selection order
-  const colorByZip = new Map<string, string>();
+  // Build color mapping by active selection order (ZIP or COUNTY).
+  const colorByArea = new Map<string, string>();
   if (inLineMode) {
-    selectedZips.forEach((z, i) => colorByZip.set(z, LINE_COLORS[i % LINE_COLORS.length]));
+    activeSelections.forEach((id, i) => colorByArea.set(id, LINE_COLORS[i % LINE_COLORS.length]));
   }
 
   // Sort: pinned first, then unpinned
@@ -301,7 +301,7 @@ export const BoundaryToolbar = ({
               "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors group";
 
             if (inLineMode) {
-              const col = colorByZip.get(zip);
+              const col = colorByArea.get(zip);
               if (col) {
                 const bg = isDark ? shade(col, -0.82) : shade(col, 0.85);
                 const border = isDark ? shade(col, -0.35) : shade(col, 0.55);
@@ -340,12 +340,26 @@ export const BoundaryToolbar = ({
             sortedCounties.map((county) => {
             const isPinned = pinnedCountySet.has(county);
             const isHovered = hoveredCounty === county;
+            let chipStyle: React.CSSProperties = {};
             let chipClasses =
               "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors group";
 
-            chipClasses += isPinned
-              ? " border-brand-300 bg-brand-50 text-brand-700 dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
-              : " border-slate-300 bg-white/70 text-slate-600 hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300";
+            if (inLineMode) {
+              const col = colorByArea.get(county);
+              if (col) {
+                const bg = isDark ? shade(col, -0.82) : shade(col, 0.85);
+                const border = isDark ? shade(col, -0.35) : shade(col, 0.55);
+                chipStyle = {
+                  backgroundColor: bg,
+                  borderColor: border,
+                  color: col,
+                };
+              }
+            } else {
+              chipClasses += isPinned
+                ? " border-brand-300 bg-brand-50 text-brand-700 dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
+                : " border-slate-300 bg-white/70 text-slate-600 hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300";
+            }
 
             if (isHovered) {
               chipClasses += " ring-1 ring-brand-300";
@@ -358,6 +372,7 @@ export const BoundaryToolbar = ({
                 key={`county-${county}`}
                 type="button"
                 className={chipClasses}
+                style={chipStyle}
                 onMouseEnter={() => handleAreaChipHover("COUNTY", county)}
                 onMouseLeave={() => handleAreaChipHover("COUNTY", null)}
                 onClick={() => updateSelectionWithout("COUNTY", county, selectedCounties, pinnedCounties)}
