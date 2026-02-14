@@ -768,7 +768,7 @@ export const TopBar = ({
               <div 
                 className="pointer-events-none absolute right-0 top-0 h-full w-56 hidden dark:block"
                 style={{
-                  background: 'linear-gradient(to left, rgba(15, 23, 42, 0.8) 0%, rgba(15, 23, 42, 0.65) 15%, rgba(15, 23, 42, 0.45) 35%, rgba(15, 23, 42, 0.25) 55%, rgba(15, 23, 42, 0.1) 75%, rgba(15, 23, 42, 0.05) 90%, transparent 100%)'
+                  background: 'linear-gradient(to left, rgba(17, 26, 20, 0.8) 0%, rgba(17, 26, 20, 0.65) 15%, rgba(17, 26, 20, 0.45) 35%, rgba(17, 26, 20, 0.25) 55%, rgba(17, 26, 20, 0.1) 75%, rgba(17, 26, 20, 0.05) 90%, transparent 100%)'
                 }}
               />
             </div>
