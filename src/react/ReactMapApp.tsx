@@ -2082,6 +2082,10 @@ export const ReactMapApp = () => {
       if (source === "map" && sidebarTab !== "orgs") {
         setSidebarTab("orgs");
       }
+      // On desktop, always reveal the sidebar when selecting an org from the map.
+      if (source === "map" && !isMobile) {
+        setSidebarCollapsed(false);
+      }
 
       // Check if clicking the same organization that's already selected (second click)
       const isAlreadySelected = selectedOrgIds.length === 1 && selectedOrgIds[0] === id;
@@ -2162,6 +2166,7 @@ export const ReactMapApp = () => {
       setSidebarFollowMode,
       sidebarTab,
       setSidebarTab,
+      setSidebarCollapsed,
       sheetState,
       setSearchSelectionMeta,
     ],
@@ -2245,6 +2250,10 @@ export const ReactMapApp = () => {
       if (uniqueIds.length <= 3 && sidebarTab !== "orgs") {
         setSidebarTab("orgs");
       }
+      // On desktop, reveal the sidebar when selecting a small cluster from the map.
+      if (uniqueIds.length <= 3 && !isMobile) {
+        setSidebarCollapsed(false);
+      }
       if (uniqueIds.length === 1) {
         setActiveOrganizationId(uniqueIds[0]);
         setHighlightedOrganizationIds(null);
@@ -2272,7 +2281,7 @@ export const ReactMapApp = () => {
         }
       }
     },
-    [expandSheet, isMobile, previewSheet, setSidebarFollowMode, setSidebarTab, sidebarTab],
+    [expandSheet, isMobile, previewSheet, setSidebarCollapsed, setSidebarFollowMode, setSidebarTab, sidebarTab],
   );
 
   const handleUpdateAreaSelection = (kind: AreaKind, selection: { selected: string[]; pinned: string[] }) => {
