@@ -7,18 +7,47 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Primary — Legacy Purple, anchored at #a9abd6
         brand: {
-          50: "#f0f1ff",
-          100: "#e3e5ff",
-          200: "#ccd0ff",
-          300: "#a8afff",
-          400: "#8a93ff",
-          500: "#737de6",
-          600: "#5f68d9",
-          700: "#4d54c7",
-          800: "#3f44a8",
-          900: "#363a89",
-          950: "#252565",
+          50: "#f0f0f8",
+          100: "#e4e4f2",
+          200: "#cccde7",
+          300: "#b8b9de",
+          400: "#a9abd6",
+          500: "#8e90c4",
+          600: "#7678b2",
+          700: "#5f619e",
+          800: "#4e5085",
+          900: "#42446e",
+          950: "#2a2b48",
+        },
+        // Secondary — Cedar Tree, anchored at #0a3023
+        cedar: {
+          50: "#f0f7f4",
+          100: "#dceee6",
+          200: "#bbddce",
+          300: "#8dc5ae",
+          400: "#5da88a",
+          500: "#3d8b6f",
+          600: "#2d7059",
+          700: "#255a48",
+          800: "#1f483b",
+          900: "#153a2e",
+          950: "#0a3023",
+        },
+        // Cedar-tinted neutrals (replaces default blue-grey slate)
+        slate: {
+          50: "#f7f8f7",
+          100: "#f0f2f0",
+          200: "#e0e4e1",
+          300: "#c8cfcb",
+          400: "#8d9990",
+          500: "#637069",
+          600: "#48554c",
+          700: "#313d35",
+          800: "#1e2a22",
+          900: "#111a14",
+          950: "#070f0a",
         },
       },
       fontFamily: {

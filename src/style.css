@@ -7,14 +7,14 @@
     color-scheme: light;
     /* Minimal scrollbar variables */
     --scrollbar-size: 10px;
-    --scrollbar-thumb: #e2e8f0; /* slate-200 */
-    --scrollbar-thumb-hover: #cbd5e1; /* slate-300 */
+    --scrollbar-thumb: #e0e4e1; /* slate-200 cedar-tinted */
+    --scrollbar-thumb-hover: #c8cfcb; /* slate-300 cedar-tinted */
   }
 
   :root.dark {
     color-scheme: dark;
-    --scrollbar-thumb: #334155; /* slate-700 */
-    --scrollbar-thumb-hover: #1e293b; /* slate-800 */
+    --scrollbar-thumb: #313d35; /* slate-700 cedar-tinted */
+    --scrollbar-thumb-hover: #1e2a22; /* slate-800 cedar-tinted */
   }
 
   html,
