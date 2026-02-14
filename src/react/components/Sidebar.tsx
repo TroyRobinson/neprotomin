@@ -619,10 +619,10 @@ export const Sidebar = ({
   };
 
   const tabClasses = (isActive: boolean) =>
-    `pb-2 text-[11px] font-semibold uppercase tracking-wide border-b-2 inline-flex items-center gap-2 ${
+    `min-w-[108px] justify-center px-4 py-2 text-[11px] leading-none font-semibold uppercase tracking-wide border-b-2 inline-flex items-center gap-2 rounded-t-md rounded-b-none transition-colors ${
       isActive
-        ? "border-brand-500 text-brand-700 dark:text-brand-300"
-        : "border-transparent text-slate-500 hover:text-brand-700 dark:text-slate-500"
+        ? "border-brand-500 bg-slate-100 text-brand-700 dark:bg-slate-800 dark:text-brand-300"
+        : "border-transparent text-slate-500 hover:text-brand-700 hover:bg-slate-100/70 dark:text-slate-500 dark:hover:bg-slate-800/70"
     }`;
 
   const containerClassName = useMemo(() => {
@@ -653,13 +653,13 @@ export const Sidebar = ({
       ) : null}
       {/* Tabs Header */}
       <div className="mb-2 flex items-center justify-between px-4 pt-3">
-        <div className="flex items-center gap-4">
+        <div className="mr-2 flex items-center gap-0">
           <button
             type="button"
             className={tabClasses(activeTab === "orgs")}
             onClick={() => handleTabChange("orgs")}
           >
-            <span>Orgs ({countForTab})</span>
+            <span className="whitespace-nowrap">Orgs ({countForTab})</span>
             {/* Keep Orgs On Map Toggle */}
             <span
               role="switch"
@@ -701,7 +701,7 @@ export const Sidebar = ({
 
         {/* Category Filter + Collapse (desktop only) */}
         {variant === "desktop" && (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             <div className="relative" ref={categoryDropdownRef}>
               <button
                 type="button"
