@@ -651,16 +651,6 @@ export const Sidebar = ({
           {issueFeedback}
         </div>
       ) : null}
-      {/* Demographics Bar - shown when advanced mode is on */}
-      {shouldShowDemographicsBar && (
-        <DemographicsBar
-          snapshot={demographicsSnapshot ?? null}
-          expanded={demographicsExpanded}
-          onExpandedChange={(next) => onInsightsStateChange?.({ demographicsExpanded: next })}
-          onClearAreas={onClearAreas}
-        />
-      )}
-
       {/* Tabs Header */}
       <div className="mb-2 flex items-center justify-between px-4 pt-3">
         <div className="flex items-center gap-4">
@@ -800,31 +790,42 @@ export const Sidebar = ({
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Statistics Tab */}
         {activeTab === "stats" && (
-          <StatList
-            variant={variant}
-            statsById={statsById}
-            statSummariesById={statSummariesById}
-            statDataById={statDataById}
-            statRelationsByParent={statRelationsByParent}
-            statRelationsByChild={statRelationsByChild}
-            selectedAreas={selectedAreas}
-            activeAreaKind={activeAreaKind}
-            areaNameLookup={areaNameLookup}
-            zipScopeDisplayName={zipScopeDisplayName}
-            countyScopeDisplayName={countyScopeDisplayName}
-            categoryFilter={categoryFilter}
-            secondaryStatId={secondaryStatId}
-            selectedStatId={selectedStatId}
-            onStatSelect={onStatSelect}
-            onRetryStatData={onRetryStatData}
-            // StatViz props for embedded chart (only shown when showAdvanced is true)
-            showAdvanced={showAdvanced}
-            seriesByStatIdByKind={seriesByStatIdByKind}
-            pinnedAreas={pinnedAreas}
-            hoveredArea={hoveredArea}
-            onHoverArea={onHoverArea}
-            getZipParentCounty={getZipParentCounty}
-          />
+          <div className="flex flex-1 flex-col overflow-hidden">
+            {/* Demographics summary sits inside STATS tab, above StatViz/stat list content */}
+            {shouldShowDemographicsBar && (
+              <DemographicsBar
+                snapshot={demographicsSnapshot ?? null}
+                expanded={demographicsExpanded}
+                onExpandedChange={(next) => onInsightsStateChange?.({ demographicsExpanded: next })}
+                onClearAreas={onClearAreas}
+              />
+            )}
+            <StatList
+              variant={variant}
+              statsById={statsById}
+              statSummariesById={statSummariesById}
+              statDataById={statDataById}
+              statRelationsByParent={statRelationsByParent}
+              statRelationsByChild={statRelationsByChild}
+              selectedAreas={selectedAreas}
+              activeAreaKind={activeAreaKind}
+              areaNameLookup={areaNameLookup}
+              zipScopeDisplayName={zipScopeDisplayName}
+              countyScopeDisplayName={countyScopeDisplayName}
+              categoryFilter={categoryFilter}
+              secondaryStatId={secondaryStatId}
+              selectedStatId={selectedStatId}
+              onStatSelect={onStatSelect}
+              onRetryStatData={onRetryStatData}
+              // StatViz props for embedded chart (only shown when showAdvanced is true)
+              showAdvanced={showAdvanced}
+              seriesByStatIdByKind={seriesByStatIdByKind}
+              pinnedAreas={pinnedAreas}
+              hoveredArea={hoveredArea}
+              onHoverArea={onHoverArea}
+              getZipParentCounty={getZipParentCounty}
+            />
+          </div>
         )}
 
         {/* Organizations Tab */}

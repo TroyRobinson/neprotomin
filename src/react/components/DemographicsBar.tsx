@@ -154,7 +154,7 @@ export const DemographicsBar = ({ snapshot, expanded, onExpandedChange, onClearA
 
   if (!snapshot) {
     return (
-      <div className="border-b border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
+      <div className="border-t-2 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
         Loading demographics…
       </div>
     );
@@ -178,7 +178,7 @@ export const DemographicsBar = ({ snapshot, expanded, onExpandedChange, onClearA
   };
 
   return (
-    <div className="border-b border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
+    <div className="border-t-2 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
       <div
         role="button"
         tabIndex={0}
