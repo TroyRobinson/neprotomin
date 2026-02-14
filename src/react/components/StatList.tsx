@@ -263,13 +263,17 @@ export const StatList = ({
     if (!selectedStatId) return { rootParentId: null, intermediateChildId: null };
 
     // Build ancestor chain: [selectedStatId, parentId, grandparentId, ...]
+    // Guard against cycles and unbounded depth in stat relations data
     const chain: string[] = [selectedStatId];
     let currentId = selectedStatId;
+    const visited = new Set<string>([currentId]);
 
-    while (true) {
+    while (chain.length < 10) {
       const parentRelations = statRelationsByChild.get(currentId);
       if (!parentRelations || parentRelations.length === 0) break;
       currentId = parentRelations[0].parentStatId;
+      if (visited.has(currentId)) break;
+      visited.add(currentId);
       chain.push(currentId);
     }
 
@@ -478,7 +482,9 @@ export const StatList = ({
     if (!relations || relations.length === 0) return;
 
     // We look for an attribute that matches one of our toggles in the ancestry
+    // Guard against cycles with visited set and depth limit
     let currId = selectedStatId;
+    const seen = new Set<string>([currId]);
     while (currId) {
       const rels = statRelationsByChild.get(currId);
       if (!rels || rels.length === 0) break;
@@ -488,8 +494,9 @@ export const StatList = ({
         break;
       }
       currId = rels[0].parentStatId;
-      // Stop if we hit the root displayed stat
-      if (currId === displayStatId) break;
+      // Stop if we hit the root displayed stat or a cycle
+      if (currId === displayStatId || seen.has(currId)) break;
+      seen.add(currId);
     }
   }, [selectedStatId, statRelationsByChild, allToggleAttributes, displayStatId]);
 

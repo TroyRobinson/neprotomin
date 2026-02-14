@@ -25,7 +25,7 @@ import { isDevEnv } from "../../lib/env";
 type SupportedAreaKind = Extract<AreaKind, "ZIP" | "COUNTY">;
 
 const STAT_DATA_CACHE_TTL_MS = PERSISTED_STAT_CACHE_TTL_MS;
-const STAT_DATA_DERIVE_DEBOUNCE_MS = 120;
+const STAT_DATA_DERIVE_DEBOUNCE_MS = 250;
 const NAME_FOR_SORT = (stat: Stat) => (stat.label || stat.name || "").toLowerCase();
 
 export interface SeriesEntry {
@@ -550,18 +550,25 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
       return next;
     });
 
-    const evicted = enforceStatCacheLimit({
-      maxStatIds: maxCachedStatIds,
-      protectedStatIds: new Set(priorityIds),
-    });
-    if (evicted.length > 0) {
-      setLoadedStatIds((prev) => {
-        const next = new Set(prev);
-        for (const statId of evicted) next.delete(statId);
-        return next;
+    // Only evict when trickle loading is active (cache is actively growing).
+    // When trickle is paused, only priority stats are fetched so the cache is
+    // ~stable. Evicting here would thrash recently viewed stats (A evicts B,
+    // switching back to B evicts A) and the resulting re-fetch cycle can hit
+    // React's "Maximum update depth exceeded" limit.
+    if (enableTrickle) {
+      const evicted = enforceStatCacheLimit({
+        maxStatIds: maxCachedStatIds,
+        protectedStatIds: new Set(priorityIds),
       });
-      if (!cacheChanged) {
-        setStatDataCacheVersion((v) => v + 1);
+      if (evicted.length > 0) {
+        setLoadedStatIds((prev) => {
+          const next = new Set(prev);
+          for (const statId of evicted) next.delete(statId);
+          return next;
+        });
+        if (!cacheChanged) {
+          setStatDataCacheVersion((v) => v + 1);
+        }
       }
     }
 
@@ -576,6 +583,7 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     statDataRefreshRequested,
     maxCachedStatIds,
     priorityIds,
+    enableTrickle,
   ]);
 
   const cachedStatDataRows = useMemo(

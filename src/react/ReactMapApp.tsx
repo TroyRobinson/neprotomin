@@ -1168,8 +1168,13 @@ export const ReactMapApp = () => {
     if (performanceTier === "low") return { initial: 6, batch: 6, cache: 14 };
     return { initial: 12, batch: 12, cache: 24 };
   }, [performanceTier]);
+  // Pause trickle loading when the user is actively viewing a stat chart to avoid
+  // continuous recompute/re-render avalanches from background data streaming.
+  const isViewingStatChart = showAdvanced && sidebarTab === "stats" && !!selectedStatId;
   const shouldPrefetchFullStatData =
-    allowBackgroundStatLoading && (selectedZips.length > 0 || selectedCounties.length > 0);
+    allowBackgroundStatLoading && (selectedZips.length > 0 || selectedCounties.length > 0) && !isViewingStatChart;
+  // NOTE: Do NOT reduce maxCachedStatIds dynamically — shrinking the cache mid-session
+  // creates an evict→reload→evict infinite loop ("Maximum update depth exceeded").
   const statDataCacheLimit = allowBackgroundStatLoading ? statDataProfile.cache : 10;
   const statDataInitialBatchSize = shouldPrefetchFullStatData ? statDataProfile.initial : 0;
   const statDataBatchSize = shouldPrefetchFullStatData ? statDataProfile.batch : 0;

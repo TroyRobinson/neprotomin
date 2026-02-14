@@ -1,4 +1,5 @@
 import React from "react";
+import { logCrash } from "../lib/crashLog";
 
 type ErrorBoundaryProps = { children: React.ReactNode };
 type ErrorBoundaryState = { hasError: boolean };
@@ -15,6 +16,9 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
   componentDidCatch(error: unknown, info: unknown) {
     console.error("ErrorBoundary caught error:", error, info);
+    logCrash("ErrorBoundary", error, {
+      componentStack: (info as { componentStack?: string })?.componentStack,
+    });
   }
 
   render() {

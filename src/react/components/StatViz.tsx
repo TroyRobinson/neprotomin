@@ -665,11 +665,18 @@ export const StatViz = ({
 
   const chartMode = !hasMultiYearSeries || areaEntries.length >= 4 ? "bar" : "line";
 
+  // Hard limits to prevent chart explosion with many selected areas
+  const MAX_LINE_AREA_SERIES = 6;
+  const MAX_BAR_ENTRIES = 20;
+  const MAX_ZIPS_FOR_COUNTY_AVG = 800;
+
   const chartData = useMemo(() => {
     if (!statId || !stat) return null;
 
     if (chartMode === "bar") {
-      const entries: BarChartEntry[] = areaEntries.map((area) => {
+      // Cap area entries to prevent oversized bar charts
+      const cappedAreaEntries = areaEntries.slice(0, MAX_BAR_ENTRIES);
+      const entries: BarChartEntry[] = cappedAreaEntries.map((area) => {
         const boundary = statDataByKind[area.kind];
         const raw = boundary?.data?.[area.id];
         const value = typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
@@ -712,10 +719,11 @@ export const StatViz = ({
           if (typeof avgValue === "number") {
             entries.push({ label: "ZIP Avg", color: getAvgColor(), value: avgValue, areaKey: "AVG-ZIP" });
           }
-        } else if (countyCount <= 2) {
+        } else if (countyCount <= 2 && Object.keys(zipData).length <= MAX_ZIPS_FOR_COUNTY_AVG) {
           // 1-2 counties: show per-county averages (using ALL available ZIPs in those counties)
+          // Skip if too many ZIPs to avoid heavy computation on every render
           const countyStats = new Map<string, { sum: number; count: number; name: string }>();
-          
+
           // Initialize accumulators for relevant counties
           for (const [countyKey, { name }] of zipsByCounty) {
             countyStats.set(countyKey, { sum: 0, count: 0, name });
@@ -784,7 +792,9 @@ export const StatViz = ({
       areaKey?: string;
       isAverage?: boolean;
     }[] = [];
-    areaEntries.forEach((area, index) => {
+    // Cap line series to prevent chart explosion with many selected areas
+    const cappedLineAreas = areaEntries.slice(0, MAX_LINE_AREA_SERIES);
+    cappedLineAreas.forEach((area, index) => {
       const series = seriesByKind.get(area.kind) ?? [];
       if (series.length === 0) return;
       const points = series.map((entry: SeriesEntry) => ({
@@ -835,32 +845,41 @@ export const StatViz = ({
         }
       } else if (countyCount <= 2) {
         // 1-2 counties: show per-county averages (using ALL available ZIPs in those counties)
-        for (const [countyKey, { name }] of zipsByCounty) {
-          const avgSeries = avgSeriesEntries.map((e: SeriesEntry) => {
-            const values: number[] = [];
-            // Scan all ZIPs in this time point
-            if (e.data) {
-              for (const [zipCode, val] of Object.entries(e.data)) {
-                if (typeof val !== "number" || !Number.isFinite(val)) continue;
-                const parent = getZipParentCounty(zipCode);
-                if (parent && parent.code.toLowerCase() === countyKey) {
-                  values.push(val);
+        // Skip per-ZIP scan when data is too large; fall back to citywide average
+        const firstEntryDataSize = Object.keys(avgSeriesEntries[0]?.data ?? {}).length;
+        if (firstEntryDataSize <= MAX_ZIPS_FOR_COUNTY_AVG) {
+          for (const [countyKey, { name }] of zipsByCounty) {
+            const avgSeries = avgSeriesEntries.map((e: SeriesEntry) => {
+              const values: number[] = [];
+              if (e.data) {
+                for (const [zipCode, val] of Object.entries(e.data)) {
+                  if (typeof val !== "number" || !Number.isFinite(val)) continue;
+                  const parent = getZipParentCounty(zipCode);
+                  if (parent && parent.code.toLowerCase() === countyKey) {
+                    values.push(val);
+                  }
                 }
               }
-            }
-            const avg = values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : 0;
-            return { date: e.date, value: avg };
-          });
-
-          if (avgSeries.length > 0) {
-            const displayName = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
-            lineSeries.push({
-              label: `${displayName} Avg`,
-              color: getAvgColor(),
-              points: avgSeries,
-              isAverage: true,
-              areaKey: `AVG-COUNTY-${countyKey}`,
+              const avg = values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : 0;
+              return { date: e.date, value: avg };
             });
+
+            if (avgSeries.length > 0) {
+              const displayName = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+              lineSeries.push({
+                label: `${displayName} Avg`,
+                color: getAvgColor(),
+                points: avgSeries,
+                isAverage: true,
+                areaKey: `AVG-COUNTY-${countyKey}`,
+              });
+            }
+          }
+        } else {
+          // Too many ZIPs for per-county scan, use citywide average as fallback
+          const avgSeries = computeCityAvgSeries(avgSeriesEntries);
+          if (avgSeries.length > 0) {
+            lineSeries.push({ label: "ZIP Avg", color: getAvgColor(), points: avgSeries, isAverage: true });
           }
         }
       } else {
@@ -906,14 +925,21 @@ export const StatViz = ({
     return "";
   }, [collapsed, chartData, stat, latestSummaryValue]);
 
-  const handleHoverAreaKey = (areaKey: string | null) => {
+  const handleHoverAreaKey = useCallback((areaKey: string | null) => {
     if (!areaKey) {
       onHoverArea?.(null);
       return;
     }
     const area = areaKeyToAreaId.get(areaKey);
     if (area) onHoverArea?.(area);
-  };
+  }, [areaKeyToAreaId, onHoverArea]);
+
+  // Memoize hover callback to avoid re-creating on every render (prevents effect churn in LineChart)
+  const handleHoverLine = useCallback((label: string | null, areaKey?: string) => {
+    setHoveredLineLabel(label);
+    if (areaKey) handleHoverAreaKey(areaKey);
+    else onHoverArea?.(null);
+  }, [handleHoverAreaKey, onHoverArea]);
 
   // Embedded mode: render chart directly without container/header
   if (embedded) {
@@ -935,11 +961,7 @@ export const StatViz = ({
             <LineChart
               series={chartData.series}
               statType={chartData.statType}
-              onHoverLine={(label, areaKey) => {
-                setHoveredLineLabel(label);
-                if (areaKey) handleHoverAreaKey(areaKey);
-                else onHoverArea?.(null);
-              }}
+              onHoverLine={handleHoverLine}
             />
           )}
         </div>
@@ -979,11 +1001,7 @@ export const StatViz = ({
             <LineChart
               series={chartData.series}
               statType={chartData.statType}
-              onHoverLine={(label, areaKey) => {
-                setHoveredLineLabel(label);
-                if (areaKey) handleHoverAreaKey(areaKey);
-                else onHoverArea?.(null);
-              }}
+              onHoverLine={handleHoverLine}
             />
           )}
 

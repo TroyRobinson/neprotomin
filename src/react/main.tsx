@@ -4,8 +4,19 @@ import { Analytics } from "@vercel/analytics/react";
 import { ReactMapApp } from "./ReactMapApp";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { CensusImportQueueProvider } from "./hooks/useCensusImportQueue";
+import { initCrashLog, logCrash } from "./lib/crashLog";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "../style.css";
+
+// Install global crash handlers so errors are captured even if the UI is destroyed
+initCrashLog();
+
+window.onerror = (_msg, source, line, col, error) => {
+  logCrash("window.onerror", error ?? _msg, { source, line, col });
+};
+window.onunhandledrejection = (event: PromiseRejectionEvent) => {
+  logCrash("unhandledrejection", event.reason);
+};
 
 const container = document.getElementById("app");
 if (!container) {
