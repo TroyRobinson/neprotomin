@@ -2396,6 +2396,11 @@ export const ReactMapApp = () => {
     mapControllerRef.current?.setSidebarExpandVisible(sidebarCollapsed);
     // Resize map to fill the space when sidebar collapses/expands
     mapControllerRef.current?.resize();
+    // Trigger one more resize after the sidebar width transition completes.
+    const timeoutId = window.setTimeout(() => {
+      mapControllerRef.current?.resize();
+    }, 130);
+    return () => window.clearTimeout(timeoutId);
   }, [sidebarCollapsed]);
 
   // Keep the combined legend row visible - always on desktop, only in peek on mobile
@@ -3376,68 +3381,76 @@ export const ReactMapApp = () => {
       <div className="relative flex flex-1 flex-col overflow-hidden">
         <main className="relative flex flex-1 flex-col overflow-hidden md:flex-row">
           {/* Desktop sidebar — left of map */}
-          {!isMobile && !sidebarCollapsed && (
-            <Sidebar
-              organizations={sidebarOrganizations}
-              activeOrganizationId={activeOrganizationId}
-              highlightedOrganizationIds={highlightedOrganizationIds ?? undefined}
-              statsById={statsById}
-              statSummariesById={statSummariesByStatId}
-              seriesByStatIdByKind={seriesByStatIdScoped}
-              statDataById={statDataByStatId}
-              statRelationsByParent={statRelationsByParent}
-              statRelationsByChild={statRelationsByChild}
-              demographicsSnapshot={activeDemographicsSnapshot ?? combinedSnapshot}
-              selectedAreas={selectedAreasMap}
-              pinnedAreas={pinnedAreasMap}
-              activeAreaKind={activeAreaKind}
-              areaNameLookup={areaNameLookup}
-              directOrgSelectionActive={selectedOrgIdsFromMap && selectedOrgIds.length > 0}
-              selectedOrgIds={selectedOrgIds}
-              selectedOrgIdsFromMap={selectedOrgIdsFromMap}
-              zipScopeDisplayName={zipScopeDisplayName}
-              countyScopeDisplayName={countyScopeDisplayName}
-              getZipParentCounty={getZipParentCounty}
-              viewportCountyOrgCount={viewportCountyOrgCount}
-              viewportCountyVisibleCount={viewportCountyVisibleCount}
-              zipScopeCountyCode={zipScopeCountyCode}
-              hoveredArea={hoveredArea}
-              selectedStatId={selectedStatId}
-              secondaryStatId={secondaryStatId}
-              categoryFilter={categoryFilter}
-              onCategoryChange={setCategoryFilter}
-              onHover={handleHover}
-              onOrganizationClick={handleSidebarOrganizationClick}
-              onHoverArea={handleAreaHoverChange}
-              onZoomOutAll={handleZoomOutAll}
-              onZoomToCounty={handleZoomToCounty}
-              onRequestCollapseSheet={isMobile ? collapseSheet : undefined}
-              onStatSelect={handleStatSelect}
-              onRetryStatData={retryStatData}
-              onOrgPinsVisibleChange={setOrgPinsVisible}
-              initialOrgPinsVisible={initialMapState.orgPinsVisible}
-              onClearAreas={handleClearAreas}
-              forceHideOrgsNonce={forceHideOrgsNonce}
-              timeSelection={timeSelection}
-              onClearTimeFilter={handleClearTimeFilter}
-              onChangeTimeFilter={handleChangeTimeFilter}
-              cameraState={cameraState}
-              onZoomToOrg={handleZoomToOrg}
-              variant="desktop"
-              selectionLabelOverride={searchSelectionLabel}
-              selectionStyleVariant={selectionStyleVariant}
-              showAdvanced={showAdvanced}
-              insightsState={sidebarInsightsState}
-              onInsightsStateChange={(patch) =>
-                setSidebarInsightsState((prev) => ({
-                  ...prev,
-                  ...patch,
-                }))
-              }
-              initialTab={sidebarTab}
-              onTabChange={setSidebarTab}
-              onCollapse={setSidebarCollapsed}
-            />
+          {!isMobile && (
+            <div
+              aria-hidden={sidebarCollapsed}
+              className={[
+                "relative shrink-0 overflow-hidden transition-[width] duration-[120ms] ease-out",
+                sidebarCollapsed ? "pointer-events-none w-0" : "w-[24rem]",
+              ].join(" ")}
+            >
+              <Sidebar
+                organizations={sidebarOrganizations}
+                activeOrganizationId={activeOrganizationId}
+                highlightedOrganizationIds={highlightedOrganizationIds ?? undefined}
+                statsById={statsById}
+                statSummariesById={statSummariesByStatId}
+                seriesByStatIdByKind={seriesByStatIdScoped}
+                statDataById={statDataByStatId}
+                statRelationsByParent={statRelationsByParent}
+                statRelationsByChild={statRelationsByChild}
+                demographicsSnapshot={activeDemographicsSnapshot ?? combinedSnapshot}
+                selectedAreas={selectedAreasMap}
+                pinnedAreas={pinnedAreasMap}
+                activeAreaKind={activeAreaKind}
+                areaNameLookup={areaNameLookup}
+                directOrgSelectionActive={selectedOrgIdsFromMap && selectedOrgIds.length > 0}
+                selectedOrgIds={selectedOrgIds}
+                selectedOrgIdsFromMap={selectedOrgIdsFromMap}
+                zipScopeDisplayName={zipScopeDisplayName}
+                countyScopeDisplayName={countyScopeDisplayName}
+                getZipParentCounty={getZipParentCounty}
+                viewportCountyOrgCount={viewportCountyOrgCount}
+                viewportCountyVisibleCount={viewportCountyVisibleCount}
+                zipScopeCountyCode={zipScopeCountyCode}
+                hoveredArea={hoveredArea}
+                selectedStatId={selectedStatId}
+                secondaryStatId={secondaryStatId}
+                categoryFilter={categoryFilter}
+                onCategoryChange={setCategoryFilter}
+                onHover={handleHover}
+                onOrganizationClick={handleSidebarOrganizationClick}
+                onHoverArea={handleAreaHoverChange}
+                onZoomOutAll={handleZoomOutAll}
+                onZoomToCounty={handleZoomToCounty}
+                onRequestCollapseSheet={isMobile ? collapseSheet : undefined}
+                onStatSelect={handleStatSelect}
+                onRetryStatData={retryStatData}
+                onOrgPinsVisibleChange={setOrgPinsVisible}
+                initialOrgPinsVisible={initialMapState.orgPinsVisible}
+                onClearAreas={handleClearAreas}
+                forceHideOrgsNonce={forceHideOrgsNonce}
+                timeSelection={timeSelection}
+                onClearTimeFilter={handleClearTimeFilter}
+                onChangeTimeFilter={handleChangeTimeFilter}
+                cameraState={cameraState}
+                onZoomToOrg={handleZoomToOrg}
+                variant="desktop"
+                selectionLabelOverride={searchSelectionLabel}
+                selectionStyleVariant={selectionStyleVariant}
+                showAdvanced={showAdvanced}
+                insightsState={sidebarInsightsState}
+                onInsightsStateChange={(patch) =>
+                  setSidebarInsightsState((prev) => ({
+                    ...prev,
+                    ...patch,
+                  }))
+                }
+                initialTab={sidebarTab}
+                onTabChange={setSidebarTab}
+                onCollapse={setSidebarCollapsed}
+              />
+            </div>
           )}
           <div className="relative flex flex-1 flex-col overflow-hidden">
             {!isMobile && showAdvanced && (
