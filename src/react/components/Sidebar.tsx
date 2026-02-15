@@ -813,6 +813,7 @@ export const Sidebar = ({
               zipScopeDisplayName={zipScopeDisplayName}
               countyScopeDisplayName={countyScopeDisplayName}
               categoryFilter={categoryFilter}
+              onClearCategory={() => handleCategoryChange(null)}
               secondaryStatId={secondaryStatId}
               selectedStatId={selectedStatId}
               onStatSelect={onStatSelect}

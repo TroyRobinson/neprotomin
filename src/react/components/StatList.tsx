@@ -66,6 +66,7 @@ interface StatListProps {
   selectedStatId?: string | null;
   onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
   onRetryStatData?: (statId: string) => void;
+  onClearCategory?: () => void;
   variant?: "desktop" | "mobile";
   zipScopeDisplayName?: string | null;
   countyScopeDisplayName?: string | null;
@@ -161,6 +162,7 @@ export const StatList = ({
   selectedStatId = null,
   onStatSelect,
   onRetryStatData,
+  onClearCategory,
   variant: _variant = "desktop",
   zipScopeDisplayName = null,
   countyScopeDisplayName: _countyScopeDisplayName = null,
@@ -204,6 +206,17 @@ export const StatList = ({
       if (categoryFilter) return s.category === categoryFilter;
       return true;
     });
+  }, [statsById, categoryFilter, childIdSet]);
+
+  // Count stats hidden by the category filter (shown in the "X more stats available" footer)
+  const hiddenByCategoryCount = useMemo(() => {
+    if (!categoryFilter) return 0;
+    return Array.from(statsById.values()).filter((s) => {
+      if (s.active === false) return false;
+      if (s.visibility === "inactive") return false;
+      if (childIdSet.has(s.id)) return false;
+      return s.category !== categoryFilter;
+    }).length;
   }, [statsById, categoryFilter, childIdSet]);
 
   // Simplified rows: just stat info without value/score computations
@@ -808,6 +821,17 @@ export const StatList = ({
               />
             ))}
           </ul>
+        )}
+
+        {/* Footer: show hidden stat count when a category filter is active */}
+        {categoryFilter && hiddenByCategoryCount > 0 && onClearCategory && (
+          <button
+            type="button"
+            className="block w-full text-left text-xs font-normal text-brand-300 hover:text-brand-800 dark:text-brand-400 dark:hover:text-brand-200 px-1 pb-4 pt-3 transition-colors"
+            onClick={onClearCategory}
+          >
+            {hiddenByCategoryCount} more stat{hiddenByCategoryCount === 1 ? "" : "s"} available (Clear Category)
+          </button>
         )}
       </div>
     </div>
