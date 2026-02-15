@@ -18,6 +18,13 @@ import { db } from "../../lib/reactDb";
 // Enable Features
 // ============================================================================
 const ENABLE_DEMOGRAPHICS_SECTION = true;
+const CATEGORY_FILTER_LABEL_MAX_CHARS = 6;
+
+const abbreviateCategoryFilterLabel = (label: string): string => {
+  const trimmed = label.trim();
+  if (trimmed.length <= CATEGORY_FILTER_LABEL_MAX_CHARS) return trimmed;
+  return `${trimmed.slice(0, CATEGORY_FILTER_LABEL_MAX_CHARS - 2)}..`;
+};
 
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type SelectedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
@@ -619,11 +626,15 @@ export const Sidebar = ({
   };
 
   const tabClasses = (isActive: boolean) =>
-    `min-w-[108px] justify-center px-4 py-2 text-[11px] leading-none font-semibold uppercase tracking-wide border-b-2 inline-flex items-center gap-2 rounded-t-md rounded-b-none transition-colors ${
+    `justify-center px-4 py-2 text-[11px] leading-none font-semibold uppercase tracking-wide border-b-2 inline-flex items-center gap-2 rounded-t-md rounded-b-none transition-colors ${
       isActive
         ? "border-brand-500 bg-slate-100 text-brand-700 dark:bg-slate-800 dark:text-brand-300"
         : "border-transparent text-slate-500 hover:text-brand-700 hover:bg-slate-100/70 dark:text-slate-500 dark:hover:bg-slate-800/70"
     }`;
+  const selectedCategoryLabel = categoryFilter ? getCategoryLabel(categoryFilter as any) : "All Catg.";
+  const categoryToolbarLabel = categoryFilter
+    ? abbreviateCategoryFilterLabel(selectedCategoryLabel)
+    : selectedCategoryLabel;
 
   const containerClassName = useMemo(() => {
     if (variant === "mobile") {
@@ -651,9 +662,8 @@ export const Sidebar = ({
           {issueFeedback}
         </div>
       ) : null}
-      {/* Tabs Header */}
-      <div className="mb-2 flex items-center justify-between px-4 pt-3">
-        <div className="mr-2 flex items-center gap-0">
+      {/* Tabs Header — all items in one row with uniform gap-2 */}
+      <div className="mb-2 flex items-center gap-2 px-4 pt-3">
           <button
             type="button"
             className={tabClasses(activeTab === "orgs")}
@@ -697,92 +707,91 @@ export const Sidebar = ({
           >
             <span>Stats</span>
           </button>
-        </div>
 
         {/* Category Filter + Collapse (desktop only) */}
         {variant === "desktop" && (
-          <div className="flex items-center gap-2">
-            <div className="relative" ref={categoryDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setCategoryDropdownOpen((prev) => !prev)}
-                className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold shadow-sm ring-1 ring-inset transition ${
-                  categoryFilter
-                    ? "bg-brand-700/90 text-white ring-white/10 hover:bg-brand-500"
-                    : "bg-slate-200 text-slate-700 ring-slate-300/70 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:ring-slate-500/70 dark:hover:bg-slate-600"
-                }`}
-                title="Change category filter"
-              >
-                <span className="max-w-[8ch] truncate whitespace-nowrap">
-                  {categoryFilter ? getCategoryLabel(categoryFilter as any) : "All Catg."}
-                </span>
-                <svg
-                  className={`h-3 w-3 ${categoryFilter ? "text-white" : "text-slate-600 dark:text-slate-100"}`}
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
+          <>
+            <div className="flex flex-1 items-center justify-center gap-1">
+              <div className="relative" ref={categoryDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setCategoryDropdownOpen((prev) => !prev)}
+                  className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold shadow-sm ring-1 ring-inset transition ${
+                    categoryFilter
+                      ? "bg-brand-700/90 text-white ring-white/10 hover:bg-brand-500"
+                      : "bg-slate-200 text-slate-700 ring-slate-300/70 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:ring-slate-500/70 dark:hover:bg-slate-600"
+                  }`}
+                  title={`Change category filter (${selectedCategoryLabel})`}
                 >
-                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-              </button>
-              {categoryDropdownOpen && (
-                <div className="absolute right-0 top-full z-50 mt-1 w-40 overflow-hidden rounded-md border border-brand-700/40 bg-brand-800 text-white shadow-lg">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleCategoryChange(null);
-                      setCategoryDropdownOpen(false);
-                    }}
-                    className={`block w-full px-3 py-1.5 text-left text-xs transition hover:bg-brand-700/70 ${!categoryFilter ? "bg-brand-700/60 font-semibold" : "font-medium text-white/90"}`}
+                  <span className="whitespace-nowrap">{categoryToolbarLabel}</span>
+                  <svg
+                    className={`h-3 w-3 ${categoryFilter ? "text-white" : "text-slate-600 dark:text-slate-100"}`}
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
                   >
-                    All Catg.
-                  </button>
-                  {sidebarCategories.map((cat) => (
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                {categoryDropdownOpen && (
+                  <div className="absolute right-0 top-full z-50 mt-1 w-40 overflow-hidden rounded-md border border-brand-700/40 bg-brand-800 text-white shadow-lg">
                     <button
-                      key={cat.slug}
                       type="button"
                       onClick={() => {
-                        handleCategoryChange(cat.slug);
+                        handleCategoryChange(null);
                         setCategoryDropdownOpen(false);
                       }}
-                      className={`block w-full px-3 py-1.5 text-left text-xs transition hover:bg-brand-700/70 ${
-                        categoryFilter === cat.slug
-                          ? "bg-brand-700/60 font-semibold"
-                          : "font-medium text-white/90"
-                      }`}
+                      className={`block w-full px-3 py-1.5 text-left text-xs transition hover:bg-brand-700/70 ${!categoryFilter ? "bg-brand-700/60 font-semibold" : "font-medium text-white/90"}`}
                     >
-                      {cat.label}
+                      All Catg.
                     </button>
-                  ))}
-                </div>
+                    {sidebarCategories.map((cat) => (
+                      <button
+                        key={cat.slug}
+                        type="button"
+                        onClick={() => {
+                          handleCategoryChange(cat.slug);
+                          setCategoryDropdownOpen(false);
+                        }}
+                        className={`block w-full px-3 py-1.5 text-left text-xs transition hover:bg-brand-700/70 ${
+                          categoryFilter === cat.slug
+                            ? "bg-brand-700/60 font-semibold"
+                            : "font-medium text-white/90"
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {categoryFilter && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleCategoryChange(null);
+                    setCategoryDropdownOpen(false);
+                  }}
+                  className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-700/90 text-white hover:bg-brand-500"
+                  title="Clear category filter"
+                >
+                  <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
               )}
             </div>
-            {categoryFilter && (
-              <button
-                type="button"
-                onClick={() => {
-                  handleCategoryChange(null);
-                  setCategoryDropdownOpen(false);
-                }}
-                className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-700/90 text-white hover:bg-brand-500"
-                title="Clear category filter"
-              >
-                <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-              </button>
-            )}
             {/* Collapse sidebar button */}
             <button
               type="button"
               onClick={() => onCollapse?.(true)}
-              className="flex h-6 w-6 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-white"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-white"
               title="Collapse sidebar"
             >
               <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
             </button>
-          </div>
+          </>
         )}
       </div>
 
