@@ -427,6 +427,15 @@ export const Sidebar = ({
   }, [visibleAll, visibleInSelection, visibleRecent]);
   const hasSearchPinnedSection = Boolean(searchPinnedOrg);
   const allSectionOrgs = hasSearchPinnedSection ? searchPinnedAll : visibleAll;
+  const showSelectedSection = Boolean(searchPinnedOrg);
+  const showRecentSection = !hasSearchPinnedSection && visibleRecent.length > 0;
+  const showInSelectionSection = !hasSearchPinnedSection && visibleInSelection.length > 0;
+  const showAllSectionHeading =
+    (hasSearchPinnedSection && allSectionOrgs.length > 0) ||
+    (!hasSearchPinnedSection &&
+      (totalSelectedCount > 0 ||
+        (directOrgSelectionActive && allSectionOrgs.length > 0) ||
+        (visibleRecent.length > 0 && allSectionOrgs.length > 0)));
   const searchResults = useSidebarSearch({
     query: searchText,
     organizations: searchOrganizations.length > 0 ? searchOrganizations : rawAll,
@@ -1131,10 +1140,10 @@ export const Sidebar = ({
                 No organizations are open at the selected time.
               </p>
             ) : (
-              <div className="flex-1">
+                <div className="flex-1">
 
                 {/* Search-selected org pinned to top for stronger orientation after selection. */}
-                {searchPinnedOrg && (
+                {showSelectedSection && searchPinnedOrg && (
                   <>
                     <h3 className="px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                       SELECTED
@@ -1164,7 +1173,7 @@ export const Sidebar = ({
                 )}
 
                 {/* Recently Added Section */}
-                {!hasSearchPinnedSection && visibleRecent.length > 0 && (
+                {showRecentSection && (
                   <>
                     <h3 className="px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                       RECENTLY ADDED
@@ -1196,7 +1205,7 @@ export const Sidebar = ({
                 )}
 
                 {/* In Selection Section */}
-                {!hasSearchPinnedSection && visibleInSelection.length > 0 && (
+                {showInSelectionSection && (
                   <>
                     <h3 className="px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                       {inSelectionLabel}
@@ -1228,12 +1237,7 @@ export const Sidebar = ({
                 )}
 
                 {/* All Section */}
-                {((hasSearchPinnedSection &&
-                  allSectionOrgs.length > 0) ||
-                  (!hasSearchPinnedSection &&
-                    (totalSelectedCount > 0 ||
-                      (directOrgSelectionActive && allSectionOrgs.length > 0) ||
-                      (visibleRecent.length > 0 && allSectionOrgs.length > 0)))) && (
+                {showAllSectionHeading && (
                   <h3 className="px-8 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                     ALL
                   </h3>
