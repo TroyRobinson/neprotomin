@@ -151,6 +151,24 @@ Revise the map sidebar UI to include an always-expanded search bar on desktop. T
    - Clear search text + close dropdown.
 2. This should already cause the StatList to highlight the selected stat and ReactMapApp to load the choropleth (existing behavior when `selectedStatId` changes).
 
+**Slice 2 completion (verified 2026-02-17):**
+- Status: `Completed`
+- Implementation verification:
+  - `src/react/components/Sidebar.tsx` (`handleSearchResultSelect`) already executes the required stat flow:
+    - switches to stats tab via `setActiveTabWithSync("stats")`,
+    - selects stat via `onStatSelect?.(result.id, {})`,
+    - clears/closes search via `setSearchText("")` and `setIsSearchDropdownOpen(false)`.
+  - Existing `StatList` receives `selectedStatId`/`onStatSelect` as before, so selected stat highlighting + map choropleth load continues through existing app wiring.
+- Files altered in this slice:
+  - `handoff/32ci63uomlr1znup_revise_sidebar_search.md`
+    - Updated Slice 2 section with completion status and verification notes.
+  - No product source code changes were required for Slice 2 because required behavior was already implemented.
+- Verification run:
+  - `npm run build` passed (`tsc && vite build`).
+  - Advisory observed: local Node `22.11.0` is below Vite's recommended `22.12+`, but build completes successfully.
+- Context for next slice agent:
+  - Slice 3 remains open: org-result selection should additionally force open (`expandedOrgId`) and scroll selected org into view after switching tabs and map selection.
+
 ### Slice 3: Org selection from search opens org in sidebar
 
 **Goal:** When an org is selected from search, switch to Orgs tab, expand the org card, and zoom to it on the map.
@@ -165,6 +183,79 @@ Revise the map sidebar UI to include an always-expanded search bar on desktop. T
    - Set `expandedOrgId` to the clicked org's id (so hours card opens).
    - Clear search text + close dropdown.
    - After a short delay, call `scrollOrgIntoView(orgId)` to scroll the org into view in the list.
+
+**Slice 3 completion (implemented 2026-02-17):**
+- Status: `Completed`
+- Files altered in this slice:
+  - `src/react/components/Sidebar.tsx`
+    - Search selection state section (near existing search timeout refs):
+      - Added `orgSearchScrollTimeoutRef` to track delayed org scroll timer.
+      - Added `clearOrgSearchScrollTimeout` helper and included timer cleanup in unmount cleanup effect.
+    - `handleSearchResultSelect` callback:
+      - In `result.type === "org"` branch, now:
+        - switches to org tab (`setActiveTabWithSync("orgs")`),
+        - triggers existing map/org selection (`onOrganizationClick?.(result.id)`),
+        - sets `expandedOrgId` to open the org card,
+        - schedules delayed `scrollOrgIntoView(result.id, { padding: 24 })` after 120ms so list scroll happens after tab/content update.
+      - Existing clear/close behavior remains (`setSearchText("")`, `setIsSearchDropdownOpen(false)`).
+  - `handoff/32ci63uomlr1znup_revise_sidebar_search.md`
+    - Updated Slice 3 section with completion details and verification context.
+- Why these changes:
+  - Guarantees org selections from dropdown visibly open the org card in the sidebar and bring it into view, matching requested UX and reducing reliance on indirect side effects from map-driven selection updates.
+- Verification run:
+  - `npm run build` passed (`tsc && vite build`).
+  - Advisory observed: local Node `22.11.0` is below Vite recommended `22.12+`, but build completes successfully.
+- Context for review agent:
+  - Confirm org search selection behavior specifically when selected org is off-screen in a long list.
+  - Confirm no regressions to existing map-originated auto-expansion behavior (`selectedOrgIdsFromMap`) since this slice only changes search-originated selection path.
+
+**Post-slice follow-up (2026-02-17, user-reported UX bugfix):**
+- Trigger: after Slice 3, user reported two behaviors:
+  - selected org from search was highlighted on map but not reliably surfaced near top of sidebar list,
+  - org list could no longer be scrolled in some desktop layouts.
+- Additional UX request:
+  - prefer structural “pinned to top” behavior for orgs chosen from sidebar search (not only scroll-to visibility).
+- Files altered:
+  - `src/react/components/Sidebar.tsx`
+    - Search-org select behavior:
+      - changed delayed scroll from visibility-only (`scrollOrgIntoView(..., { padding: 24 })`) to top-aligned (`scrollOrgIntoView(..., { alignTop: true, padding: 0 })`) so selected org is brought to top region more consistently.
+      - added `searchPinnedOrgId` state set on org search selection.
+      - added a top `SELECTED` section rendering the search-selected org at top of the org tab.
+      - de-duplicated the pinned org from `RECENTLY ADDED`, `IN SELECTION`, and `ALL` sections while pinned.
+      - when a search-pinned org is active, force the org tab into a clean two-section layout (`SELECTED` + `ALL`) by folding the remaining items into the `ALL` list.
+      - auto-clears the pinned-search marker when selection changes away from that org.
+      - updated delayed search-selection scroll to scroll the org list container to top so the `SELECTED` heading stays visible.
+    - Scroll container/layout robustness:
+      - added `min-h-0` across sidebar flex chain (`aside` container class, tab content wrapper, stats wrapper, org list scroll container) so `overflow-y-auto` on org list can shrink and scroll correctly with the new search header present.
+- Verification run:
+  - `npm run build` passed (`tsc && vite build`).
+  - Node advisory unchanged: local `22.11.0` vs Vite recommended `22.12+`.
+- Review focus:
+  - Verify desktop org list is manually scrollable after performing a search and selecting an org.
+  - Verify selected org from search appears in top `SELECTED` section, remains expanded, and is not duplicated lower in the list.
+
+**Post-slice follow-up (2026-02-17, search comprehensiveness parity):**
+- Trigger: user observed that some orgs were missing from the new sidebar search compared to prior map search behavior.
+- Root cause:
+  - Sidebar fuzzy org search indexed `rawAll` (viewport/source-limited sidebar list), not the full org dataset available in app state.
+- Files altered:
+  - `src/react/ReactMapApp.tsx`
+    - Both desktop and mobile `<Sidebar />` mounts now pass `searchOrganizations={availableOrganizations}` so sidebar search can index all currently available orgs, not only viewport-limited sidebar sections.
+  - `src/react/components/Sidebar.tsx`
+    - Added optional prop `searchOrganizations?: Organization[]`.
+    - Updated `useSidebarSearch` call to prefer `searchOrganizations` and fall back to `rawAll` if not provided.
+  - `src/react/hooks/useSidebarSearch.ts`
+    - Upgraded org scoring/indexing to align with existing old-map matcher patterns:
+      - Pre-indexes normalized `name`, `city + name`, `name + address`, `address`, `city`.
+      - Applies boosted exact/contains scores on primary name (`1.2` exact, `1.05` includes) before fuzzy fallback.
+      - Uses org threshold `0.55` (matching old `ORGANIZATION_MATCH_THRESHOLD`) for better precision.
+    - Stats/cities/address behavior remains unchanged.
+- Why this approach:
+  - Improves recall to match user expectation from old search behavior without adding network/database latency.
+  - Maintains responsive UX by keeping all normalization in memoized in-memory indexes and preserving small dropdown result caps.
+- Verification run:
+  - `npm run build` passed (`tsc && vite build`).
+  - Advisory remains: local Node `22.11.0` vs Vite recommended `22.12+`.
 
 ---
 

@@ -22,6 +22,7 @@ interface UseSidebarSearchArgs {
 
 const MIN_QUERY_LENGTH = 2;
 const MIN_SCORE = 0.3;
+const ORGANIZATION_MIN_SCORE = 0.55;
 const MAX_ORG_RESULTS = 3;
 const MAX_STAT_RESULTS = 2;
 const MAX_CITY_RESULTS = 2;
@@ -29,6 +30,12 @@ const ZIP_OR_PARTIAL_ZIP_PATTERN = /^\d{3,5}$/;
 
 type IndexedCandidate<T> = {
   item: T;
+  normalizedValues: string[];
+};
+
+type IndexedOrganization = {
+  item: Organization;
+  normalizedPrimary: string;
   normalizedValues: string[];
 };
 
@@ -43,17 +50,66 @@ const getBestScore = (normalizedQuery: string, normalizedValues: string[]): numb
   return bestScore;
 };
 
+const getOrganizationScore = (
+  normalizedQuery: string,
+  candidate: IndexedOrganization,
+): number => {
+  if (candidate.normalizedPrimary === normalizedQuery) {
+    return 1.2;
+  }
+
+  if (
+    candidate.normalizedPrimary.includes(normalizedQuery) ||
+    normalizedQuery.includes(candidate.normalizedPrimary)
+  ) {
+    return 1.05;
+  }
+
+  let score = 0;
+  for (const value of candidate.normalizedValues) {
+    const nextScore = computeSimilarityFromNormalized(value, normalizedQuery);
+    if (nextScore > score) {
+      score = nextScore;
+    }
+  }
+  return score;
+};
+
 export const useSidebarSearch = ({
   query,
   organizations,
   statsById,
   maxResults = 5,
 }: UseSidebarSearchArgs): SidebarSearchResult[] => {
-  const normalizedOrganizations = useMemo<IndexedCandidate<Organization>[]>(() => {
-    return organizations.map((organization) => ({
-      item: organization,
-      normalizedValues: [normalizeForSearch(organization.name)],
-    }));
+  const normalizedOrganizations = useMemo<IndexedOrganization[]>(() => {
+    return organizations
+      .map((organization) => {
+        const normalizedPrimary = normalizeForSearch(organization.name) ?? "";
+        if (!normalizedPrimary) {
+          return null;
+        }
+
+        const normalizedValues = new Set<string>();
+        const addField = (value: string | null | undefined) => {
+          if (!value) return;
+          const normalized = normalizeForSearch(value);
+          if (!normalized) return;
+          normalizedValues.add(normalized);
+        };
+
+        addField(organization.name);
+        addField(organization.city ? `${organization.city} ${organization.name}` : null);
+        addField(organization.address ? `${organization.name} ${organization.address}` : null);
+        addField(organization.address);
+        addField(organization.city);
+
+        return {
+          item: organization,
+          normalizedPrimary,
+          normalizedValues: Array.from(normalizedValues),
+        };
+      })
+      .filter((entry): entry is IndexedOrganization => entry !== null);
   }, [organizations]);
 
   const normalizedStats = useMemo<IndexedCandidate<Stat>[]>(() => {
@@ -99,8 +155,8 @@ export const useSidebarSearch = ({
 
     const organizationResults: SidebarSearchResult[] = [];
     for (const entry of normalizedOrganizations) {
-      const score = getBestScore(normalizedQuery, entry.normalizedValues);
-      if (score <= MIN_SCORE) continue;
+      const score = getOrganizationScore(normalizedQuery, entry);
+      if (score < ORGANIZATION_MIN_SCORE) continue;
       organizationResults.push({
         type: "org",
         id: entry.item.id,

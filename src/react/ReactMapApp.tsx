@@ -3382,6 +3382,7 @@ export const ReactMapApp = () => {
             >
               <Sidebar
                 organizations={sidebarOrganizations}
+                searchOrganizations={availableOrganizations}
                 activeOrganizationId={activeOrganizationId}
                 highlightedOrganizationIds={highlightedOrganizationIds ?? undefined}
                 statsById={statsById}
@@ -3643,6 +3644,7 @@ export const ReactMapApp = () => {
                 >
                   <Sidebar
                     organizations={sidebarOrganizations}
+                    searchOrganizations={availableOrganizations}
                     activeOrganizationId={activeOrganizationId}
                     highlightedOrganizationIds={highlightedOrganizationIds ?? undefined}
                     statsById={statsById}

@@ -57,6 +57,8 @@ interface SidebarProps {
     visibleInViewport?: number;
     visibleCountByCounty?: Map<string, number>;
   };
+  // Full org list for search indexing (not viewport-limited)
+  searchOrganizations?: Organization[];
   activeOrganizationId?: string | null;
   highlightedOrganizationIds?: string[] | null;
   demographicsSnapshot?: CombinedDemographicsSnapshot | null;
@@ -148,6 +150,7 @@ type TabType = "stats" | "orgs";
 
 export const Sidebar = ({
   organizations = { inSelection: [], all: [], totalSourceCount: 0 },
+  searchOrganizations = [],
   highlightedOrganizationIds = null,
   demographicsSnapshot = null,
   statsById = new Map(),
@@ -211,12 +214,14 @@ export const Sidebar = ({
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [keepOrgsOnMap, setKeepOrgsOnMap] = useState(initialOrgPinsVisible);
   const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
+  const [searchPinnedOrgId, setSearchPinnedOrgId] = useState<string | null>(null);
   const [issueModalOrg, setIssueModalOrg] = useState<Organization | null>(null);
   const [issueFeedback, setIssueFeedback] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
   const orgsScrollRef = useRef<HTMLDivElement>(null);
   const searchDropdownTimeoutRef = useRef<number | null>(null);
+  const orgSearchScrollTimeoutRef = useRef<number | null>(null);
   const lastMapExpandedOrgRef = useRef<string | null>(null);
   const directSelectionStateRef = useRef<{ active: boolean; selectionKey: string | null }>({
     active: false,
@@ -387,9 +392,44 @@ export const Sidebar = ({
     if (!categoryFilter) return rawRecent;
     return rawRecent.filter((org) => org.category === categoryFilter);
   }, [rawRecent, categoryFilter]);
+  // Keep a searched org visibly pinned at the top while it remains selected.
+  const searchPinnedOrg = useMemo(() => {
+    if (!searchPinnedOrgId) return null;
+    const candidates = [inSelection, all, recent, rawInSelection, rawAll, rawRecent];
+    for (const list of candidates) {
+      const match = list.find((org) => org.id === searchPinnedOrgId);
+      if (match) return match;
+    }
+    return null;
+  }, [all, inSelection, rawAll, rawInSelection, rawRecent, recent, searchPinnedOrgId]);
+  const pinnedOrgIdSet = useMemo(
+    () => new Set(searchPinnedOrg ? [searchPinnedOrg.id] : []),
+    [searchPinnedOrg],
+  );
+  const visibleInSelection = useMemo(
+    () => inSelection.filter((org) => !pinnedOrgIdSet.has(org.id)),
+    [inSelection, pinnedOrgIdSet],
+  );
+  const visibleAll = useMemo(
+    () => all.filter((org) => !pinnedOrgIdSet.has(org.id)),
+    [all, pinnedOrgIdSet],
+  );
+  const visibleRecent = useMemo(
+    () => recent.filter((org) => !pinnedOrgIdSet.has(org.id)),
+    [recent, pinnedOrgIdSet],
+  );
+  const searchPinnedAll = useMemo(() => {
+    const byId = new Map<string, Organization>();
+    for (const org of visibleInSelection) byId.set(org.id, org);
+    for (const org of visibleRecent) byId.set(org.id, org);
+    for (const org of visibleAll) byId.set(org.id, org);
+    return Array.from(byId.values());
+  }, [visibleAll, visibleInSelection, visibleRecent]);
+  const hasSearchPinnedSection = Boolean(searchPinnedOrg);
+  const allSectionOrgs = hasSearchPinnedSection ? searchPinnedAll : visibleAll;
   const searchResults = useSidebarSearch({
     query: searchText,
-    organizations: rawAll,
+    organizations: searchOrganizations.length > 0 ? searchOrganizations : rawAll,
     statsById,
   });
   const hasSearchText = searchText.trim().length >= 2;
@@ -412,9 +452,19 @@ export const Sidebar = ({
     }, 120);
   }, [clearSearchDropdownTimeout]);
 
+  const clearOrgSearchScrollTimeout = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (orgSearchScrollTimeoutRef.current === null) return;
+    window.clearTimeout(orgSearchScrollTimeoutRef.current);
+    orgSearchScrollTimeoutRef.current = null;
+  }, []);
+
   useEffect(() => {
-    return () => clearSearchDropdownTimeout();
-  }, [clearSearchDropdownTimeout]);
+    return () => {
+      clearSearchDropdownTimeout();
+      clearOrgSearchScrollTimeout();
+    };
+  }, [clearSearchDropdownTimeout, clearOrgSearchScrollTimeout]);
 
   useEffect(() => {
     if (!hasSearchText) {
@@ -427,6 +477,19 @@ export const Sidebar = ({
       if (result.type === "org") {
         setActiveTabWithSync("orgs");
         onOrganizationClick?.(result.id);
+        setExpandedOrgId(result.id);
+        setSearchPinnedOrgId(result.id);
+        if (typeof window !== "undefined") {
+          clearOrgSearchScrollTimeout();
+          // Wait for tab/content updates, then show the section header and selected card.
+          orgSearchScrollTimeoutRef.current = window.setTimeout(() => {
+            orgsScrollRef.current?.scrollTo({
+              top: 0,
+              behavior: "smooth",
+            });
+            orgSearchScrollTimeoutRef.current = null;
+          }, 120);
+        }
       } else if (result.type === "stat") {
         setActiveTabWithSync("stats");
         onStatSelect?.(result.id, {});
@@ -436,8 +499,20 @@ export const Sidebar = ({
       setSearchText("");
       setIsSearchDropdownOpen(false);
     },
-    [onLocationSearch, onOrganizationClick, onStatSelect, setActiveTabWithSync],
+    [
+      clearOrgSearchScrollTimeout,
+      onLocationSearch,
+      onOrganizationClick,
+      onStatSelect,
+      setActiveTabWithSync,
+    ],
   );
+
+  useEffect(() => {
+    if (!searchPinnedOrgId) return;
+    if (selectedOrgIds.includes(searchPinnedOrgId)) return;
+    setSearchPinnedOrgId(null);
+  }, [searchPinnedOrgId, selectedOrgIds]);
 
   // Determine the "IN SELECTION" label - show area name if only one area is selected
   const inSelectionLabel = useMemo(() => {
@@ -710,7 +785,7 @@ export const Sidebar = ({
   const containerClassName = useMemo(() => {
     if (variant === "mobile") {
       return [
-        "relative flex h-full w-full flex-col bg-white dark:bg-slate-900",
+        "relative flex h-full min-h-0 w-full flex-col bg-white dark:bg-slate-900",
         // Allow callers to add custom styling
         className,
       ]
@@ -718,7 +793,7 @@ export const Sidebar = ({
         .join(" ");
     }
     return [
-      "relative flex w-full max-w-sm flex-col border-r border-slate-200 bg-white/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60",
+      "relative flex h-full min-h-0 w-full max-w-sm flex-col border-r border-slate-200 bg-white/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60",
       className,
     ]
       .filter(Boolean)
@@ -951,10 +1026,10 @@ export const Sidebar = ({
       </div>
 
       {/* Content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {/* Statistics Tab */}
         {activeTab === "stats" && (
-          <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {/* Demographics summary sits inside STATS tab, above StatViz/stat list content */}
             {shouldShowDemographicsBar && (
               <DemographicsBar
@@ -995,7 +1070,7 @@ export const Sidebar = ({
 
         {/* Organizations Tab */}
         {activeTab === "orgs" && (
-          <div ref={orgsScrollRef} className="flex flex-1 flex-col overflow-y-auto">
+          <div ref={orgsScrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             {/* Time Filter Indicator */}
             {timeSelection && (
               <div className="mx-4 mt-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 dark:border-brand-800 dark:bg-brand-900/20">
@@ -1030,7 +1105,7 @@ export const Sidebar = ({
               </div>
             )}
             
-            {categoryFilteredCount === 0 ? (
+            {categoryFilteredCount === 0 && !searchPinnedOrg ? (
               categoryFilter ? (
                 <div className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
                   <p className="mb-2">No organizations yet for this category.</p>
@@ -1047,21 +1122,55 @@ export const Sidebar = ({
                   No organizations found. Add one to get started.
                 </p>
               )
-            ) : timeSelection && inSelection.length === 0 && all.length === 0 && recent.length === 0 ? (
+            ) : timeSelection &&
+              visibleInSelection.length === 0 &&
+              allSectionOrgs.length === 0 &&
+              visibleRecent.length === 0 &&
+              !searchPinnedOrg ? (
               <p className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
                 No organizations are open at the selected time.
               </p>
             ) : (
               <div className="flex-1">
 
+                {/* Search-selected org pinned to top for stronger orientation after selection. */}
+                {searchPinnedOrg && (
+                  <>
+                    <h3 className="px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                      SELECTED
+                    </h3>
+                    <ul className="space-y-2 px-4">
+                      <OrganizationListItem
+                        key={searchPinnedOrg.id}
+                        org={searchPinnedOrg}
+                        isSelected={selectedOrgIdsSet.has(searchPinnedOrg.id)}
+                        isHighlighted={highlightedIds.has(searchPinnedOrg.id)}
+                        isExpanded={expandedOrgId === searchPinnedOrg.id}
+                        onHover={onHover}
+                        onCategoryClick={onCategoryClick}
+                        onOrganizationClick={onOrganizationClick}
+                        onToggleExpand={(id) =>
+                          setExpandedOrgId((prev) => (prev === id ? null : id))
+                        }
+                        onIssueClick={handleOpenIssueModal}
+                        showZoomButton={shouldShowZoomButton(searchPinnedOrg.id)}
+                        onZoomClick={onZoomToOrg}
+                        hideCategoryTag={hideCategoryTags}
+                        selectionStyleVariant={selectionStyleVariant}
+                        getCategoryLabel={getCategoryLabel}
+                      />
+                    </ul>
+                  </>
+                )}
+
                 {/* Recently Added Section */}
-                {recent.length > 0 && (
+                {!hasSearchPinnedSection && visibleRecent.length > 0 && (
                   <>
                     <h3 className="px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                       RECENTLY ADDED
                     </h3>
                     <ul className="space-y-2 px-4">
-                      {recent.map((org) => (
+                      {visibleRecent.map((org) => (
                         <OrganizationListItem
                           key={org.id}
                           org={org}
@@ -1087,13 +1196,13 @@ export const Sidebar = ({
                 )}
 
                 {/* In Selection Section */}
-                {inSelection.length > 0 && (
+                {!hasSearchPinnedSection && visibleInSelection.length > 0 && (
                   <>
                     <h3 className="px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                       {inSelectionLabel}
                     </h3>
                     <ul className="space-y-2 px-4">
-                      {inSelection.map((org) => (
+                      {visibleInSelection.map((org) => (
                         <OrganizationListItem
                           key={org.id}
                           org={org}
@@ -1119,13 +1228,18 @@ export const Sidebar = ({
                 )}
 
                 {/* All Section */}
-                {(totalSelectedCount > 0 || (directOrgSelectionActive && all.length > 0) || (recent.length > 0 && all.length > 0)) && (
+                {(hasSearchPinnedSection &&
+                  allSectionOrgs.length > 0) ||
+                (!hasSearchPinnedSection &&
+                  (totalSelectedCount > 0 ||
+                    (directOrgSelectionActive && allSectionOrgs.length > 0) ||
+                    (visibleRecent.length > 0 && allSectionOrgs.length > 0))) && (
                   <h3 className="px-8 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                     ALL
                   </h3>
                 )}
                 <ul className="space-y-2 px-4 pb-6">
-                  {all.map((org) => (
+                  {allSectionOrgs.map((org) => (
                     <OrganizationListItem
                       key={org.id}
                       org={org}
