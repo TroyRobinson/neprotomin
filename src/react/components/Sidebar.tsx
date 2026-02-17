@@ -1110,7 +1110,7 @@ export const Sidebar = ({
                 <button
                   type="button"
                   onClick={() => setCategoryDropdownOpen((prev) => !prev)}
-                  className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold shadow-sm ring-1 ring-inset transition ${
+                  className={`flex h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold ring-1 ring-inset transition ${
                     categoryFilter
                       ? "bg-brand-100 text-brand-700 ring-brand-200 hover:bg-brand-200 dark:bg-brand-900/40 dark:text-brand-200 dark:ring-brand-700/60 dark:hover:bg-brand-900/55"
                       : "bg-slate-100 text-slate-600 ring-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700"
@@ -1289,7 +1289,7 @@ export const Sidebar = ({
                 {/* Search-selected org pinned to top for stronger orientation after selection. */}
                 {showSelectedSection && searchPinnedOrg && (
                   <>
-                    <h3 className="px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    <h3 className="px-8 pt-1 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                       SELECTED
                     </h3>
                     <ul className="space-y-2 px-4">
