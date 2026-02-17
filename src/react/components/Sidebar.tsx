@@ -225,6 +225,8 @@ export const Sidebar = ({
   const [searchText, setSearchText] = useState("");
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
   const [highlightedSearchIndex, setHighlightedSearchIndex] = useState(-1);
+  const desktopSearchInputRef = useRef<HTMLInputElement>(null);
+  const hasAppliedInitialSearchFocusRef = useRef(false);
   const orgsScrollRef = useRef<HTMLDivElement>(null);
   const searchDropdownTimeoutRef = useRef<number | null>(null);
   const orgSearchScrollTimeoutRef = useRef<number | null>(null);
@@ -506,6 +508,58 @@ export const Sidebar = ({
       setIsSearchDropdownOpen(false);
     }
   }, [hasSearchText]);
+
+  useEffect(() => {
+    if (variant !== "desktop") return;
+    if (typeof window === "undefined") return;
+    if (hasAppliedInitialSearchFocusRef.current) return;
+
+    let attempts = 0;
+    let rafId = 0;
+    let timeoutId: number | null = null;
+    const maxAttempts = 8;
+
+    // Retry briefly because map/layout initialization can steal focus on mount.
+    const tryFocus = () => {
+      const input = desktopSearchInputRef.current;
+      if (!input) return;
+
+      const active = document.activeElement as HTMLElement | null;
+      const isTypingTarget =
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        active instanceof HTMLSelectElement ||
+        Boolean(active?.isContentEditable);
+      if (isTypingTarget && active !== input) {
+        hasAppliedInitialSearchFocusRef.current = true;
+        return;
+      }
+
+      input.focus({ preventScroll: true });
+      if (document.activeElement === input) {
+        hasAppliedInitialSearchFocusRef.current = true;
+        return;
+      }
+
+      if (attempts >= maxAttempts) {
+        hasAppliedInitialSearchFocusRef.current = true;
+        return;
+      }
+      attempts += 1;
+      timeoutId = window.setTimeout(() => {
+        rafId = window.requestAnimationFrame(tryFocus);
+      }, 80);
+    };
+
+    timeoutId = window.setTimeout(() => {
+      rafId = window.requestAnimationFrame(tryFocus);
+    }, 120);
+
+    return () => {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      if (rafId) window.cancelAnimationFrame(rafId);
+    };
+  }, [variant]);
 
   useEffect(() => {
     if (!showSearchDropdown) {
@@ -892,7 +946,9 @@ export const Sidebar = ({
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500"
             />
             <input
+              ref={desktopSearchInputRef}
               type="search"
+              autoFocus
               value={searchText}
               onChange={(event) => {
                 const next = event.target.value;
