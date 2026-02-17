@@ -979,9 +979,18 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     },
     setTimeSelection,
     setSidebarExpandVisible: (visible: boolean) => {
+      // When sidebar is collapsed (visible=true), the persistent search bar floats
+      // over the map at top-left. Hide the redundant expand/search buttons and
+      // shift the chips wrapper right to clear the search bar.
       if (sidebarExpandBtn) {
-        sidebarExpandBtn.style.display = visible ? "" : "none";
+        sidebarExpandBtn.style.display = "none"; // always hidden; the search bar has the expand button
       }
+      if (searchContainer) {
+        // Always hide on desktop — the persistent sidebar search bar replaces it
+        searchContainer.style.display = "none";
+      }
+      // Shift chips right of the persistent search bar (w-[24rem] = 384px)
+      wrapper.style.left = visible ? "25rem" : "";
     },
     destroy,
   };

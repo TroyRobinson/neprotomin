@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { track } from "@vercel/analytics";
 import {
+  Bars3Icon,
   BuildingOfficeIcon,
   ChartBarIcon,
   MagnifyingGlassIcon,
   MapIcon,
   MapPinIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { DemographicsBar } from "./DemographicsBar";
 import { StatList } from "./StatList";
@@ -142,6 +144,8 @@ interface SidebarProps {
   initialTab?: "orgs" | "stats";
   // Callback when tab changes (to update URL)
   onTabChange?: (tab: "orgs" | "stats") => void;
+  // Whether the sidebar is currently collapsed (content hidden, search bar persists)
+  collapsed?: boolean;
   // Collapse sidebar callback
   onCollapse?: (collapsed: boolean) => void;
 }
@@ -204,6 +208,7 @@ export const Sidebar = ({
   onZoomToOrg,
   selectionLabelOverride = null,
   selectionStyleVariant = "default",
+  collapsed = false,
   initialTab = "orgs",
   onTabChange,
   onCollapse,
@@ -490,6 +495,8 @@ export const Sidebar = ({
 
   const handleSearchResultSelect = useCallback(
     (result: SidebarSearchResult) => {
+      // Auto-expand sidebar when selecting a search result while collapsed
+      if (collapsed) onCollapse?.(false);
       if (result.type === "org") {
         setActiveTabWithSync("orgs");
         onOrganizationClick?.(result.id);
@@ -517,6 +524,8 @@ export const Sidebar = ({
     },
     [
       clearOrgSearchScrollTimeout,
+      collapsed,
+      onCollapse,
       onLocationSearch,
       onOrganizationClick,
       onStatSelect,
@@ -795,31 +804,34 @@ export const Sidebar = ({
     if (variant === "mobile") {
       return [
         "relative flex h-full min-h-0 w-full flex-col bg-white dark:bg-slate-900",
-        // Allow callers to add custom styling
         className,
       ]
         .filter(Boolean)
         .join(" ");
     }
+    // When collapsed, sidebar chrome (bg, border, blur) is hidden so only the search bar shows
     return [
-      "relative flex h-full min-h-0 w-full max-w-sm flex-col border-r border-slate-200 bg-white/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60",
+      "relative flex h-full min-h-0 w-full max-w-sm flex-col",
+      collapsed
+        ? ""
+        : "border-r border-slate-200 bg-white/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60",
       className,
     ]
       .filter(Boolean)
       .join(" ");
-  }, [variant, className]);
+  }, [variant, className, collapsed]);
 
   return (
     <>
       <aside className={containerClassName}>
-      {issueFeedback ? (
+      {issueFeedback && !collapsed ? (
         <div className="mx-4 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 shadow-sm dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
           {issueFeedback}
         </div>
       ) : null}
       {variant === "desktop" && (
         <div
-          className="relative px-4 pt-3"
+          className={`relative px-4 pt-3 ${collapsed ? "pointer-events-auto" : ""}`}
           onFocus={() => {
             clearSearchDropdownTimeout();
           }}
@@ -829,7 +841,9 @@ export const Sidebar = ({
             scheduleSearchDropdownClose();
           }}
         >
-          <label className="relative block">
+          {/* Search bar row: input + collapse button side by side */}
+          <div className="flex gap-2">
+          <label className="relative flex-1">
             <span className="sr-only">Search organizations, statistics, cities, or addresses</span>
             <MagnifyingGlassIcon
               aria-hidden="true"
@@ -863,6 +877,16 @@ export const Sidebar = ({
               className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-brand-300 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-brand-600 dark:focus:ring-brand-900/40"
             />
           </label>
+          {/* Toggle button — close (X) when expanded, open (hamburger) when collapsed */}
+          <button
+            type="button"
+            onClick={() => onCollapse?.(!collapsed)}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-white"
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <Bars3Icon className="h-4 w-4" /> : <XMarkIcon className="h-4 w-4" />}
+          </button>
+          </div>
           {showSearchDropdown && (
             <ul className="absolute left-4 right-4 z-50 mt-1 max-h-[12rem] overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
               {searchResults.map((result) => {
@@ -901,6 +925,11 @@ export const Sidebar = ({
           )}
         </div>
       )}
+      {/* Everything below the search bar fades when collapsed */}
+      <div className={[
+        "flex min-h-0 flex-1 flex-col transition-opacity duration-150 ease-out",
+        collapsed ? "pointer-events-none opacity-0" : "opacity-100",
+      ].join(" ")}>
       {/* Tabs Header — all items in one row with uniform gap-2 */}
       <div className={`mb-2 flex items-center gap-2 px-4 ${variant === "desktop" ? "pt-2" : "pt-3"}`}>
           <button
@@ -950,7 +979,7 @@ export const Sidebar = ({
         {/* Category Filter + Collapse (desktop only) */}
         {variant === "desktop" && (
           <>
-            <div className="flex flex-1 items-center justify-center gap-1">
+            <div className="ml-auto flex items-center gap-1">
               <div className="relative" ref={categoryDropdownRef}>
                 <button
                   type="button"
@@ -1019,17 +1048,6 @@ export const Sidebar = ({
                 </button>
               )}
             </div>
-            {/* Collapse sidebar button */}
-            <button
-              type="button"
-              onClick={() => onCollapse?.(true)}
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-white"
-              title="Collapse sidebar"
-            >
-              <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-            </button>
           </>
         )}
       </div>
@@ -1299,6 +1317,7 @@ export const Sidebar = ({
           </div>
         )}
       </div>
+      </div>{/* end fade wrapper */}
       </aside>
       <IssueReportModal
         org={issueModalOrg}

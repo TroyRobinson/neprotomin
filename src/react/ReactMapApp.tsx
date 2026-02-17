@@ -2387,10 +2387,10 @@ export const ReactMapApp = () => {
     mapControllerRef.current?.setSidebarExpandVisible(sidebarCollapsed);
     // Resize map to fill the space when sidebar collapses/expands
     mapControllerRef.current?.resize();
-    // Trigger one more resize after the sidebar width transition completes.
+    // Trigger one more resize shortly after width change settles
     const timeoutId = window.setTimeout(() => {
       mapControllerRef.current?.resize();
-    }, 130);
+    }, 200);
     return () => window.clearTimeout(timeoutId);
   }, [sidebarCollapsed]);
 
@@ -3374,13 +3374,16 @@ export const ReactMapApp = () => {
           {/* Desktop sidebar — left of map */}
           {!isMobile && (
             <div
-              aria-hidden={sidebarCollapsed}
               className={[
-                "relative shrink-0 overflow-hidden transition-[width] duration-[120ms] ease-out",
-                sidebarCollapsed ? "pointer-events-none w-0" : "w-[24rem]",
+                "shrink-0",
+                // When collapsed: absolute (out of flow so map expands), search bar stays via Sidebar
+                sidebarCollapsed
+                  ? "pointer-events-none absolute left-0 top-0 z-10 h-full w-[24rem]"
+                  : "relative w-[24rem]",
               ].join(" ")}
             >
               <Sidebar
+                collapsed={sidebarCollapsed}
                 organizations={sidebarOrganizations}
                 searchOrganizations={availableOrganizations}
                 activeOrganizationId={activeOrganizationId}
