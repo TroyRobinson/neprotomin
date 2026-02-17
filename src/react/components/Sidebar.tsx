@@ -1228,12 +1228,12 @@ export const Sidebar = ({
                 )}
 
                 {/* All Section */}
-                {(hasSearchPinnedSection &&
+                {((hasSearchPinnedSection &&
                   allSectionOrgs.length > 0) ||
-                (!hasSearchPinnedSection &&
-                  (totalSelectedCount > 0 ||
-                    (directOrgSelectionActive && allSectionOrgs.length > 0) ||
-                    (visibleRecent.length > 0 && allSectionOrgs.length > 0))) && (
+                  (!hasSearchPinnedSection &&
+                    (totalSelectedCount > 0 ||
+                      (directOrgSelectionActive && allSectionOrgs.length > 0) ||
+                      (visibleRecent.length > 0 && allSectionOrgs.length > 0)))) && (
                   <h3 className="px-8 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                     ALL
                   </h3>

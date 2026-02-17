@@ -257,6 +257,23 @@ Revise the map sidebar UI to include an always-expanded search bar on desktop. T
   - `npm run build` passed (`tsc && vite build`).
   - Advisory remains: local Node `22.11.0` vs Vite recommended `22.12+`.
 
+**Post-slice follow-up (2026-02-17, pinned layout heading visibility fix):**
+- Trigger: user reported that in pinned-search mode the `ALL` heading appeared missing/obscured under the `SELECTED` card.
+- Root cause:
+  - JSX conditional precedence bug in the `ALL` header render expression:
+    - expression shape was `A || B && <Header />`, which evaluates to boolean `true` (non-rendering) whenever `A` is true.
+    - In pinned mode, `A` (`hasSearchPinnedSection && allSectionOrgs.length > 0`) is typically true, so `ALL` heading did not render.
+- File altered:
+  - `src/react/components/Sidebar.tsx`
+    - Updated `ALL` section heading condition to explicitly group the boolean condition before `&& <h3>ALL</h3>`:
+      - from `(A || B && <h3>...)`
+      - to `((A || B) && <h3>...)`
+- Why this change:
+  - Ensures the `ALL` section header reliably renders in pinned-search layout (`SELECTED` + `ALL`) and restores clear visual separation.
+- Verification run:
+  - `npm run build` passed (`tsc && vite build`).
+  - Advisory unchanged: local Node `22.11.0` vs Vite recommended `22.12+`.
+
 ---
 
 ## Key Architecture Decisions
