@@ -53,7 +53,7 @@ export const updateStatDataChoropleth = (
     const match: any[] = ["match", ["get", featureKey]];
 
     if (isPercentChange) {
-      // Diverging colors: burnt yellow for negative, indigo for positive
+      // Diverging colors: plum for negative, indigo for positive
       for (const id of keys) {
         const v = entry.data[id];
         const color = getDivergingColor(v, entry.min, entry.max);
@@ -109,7 +109,7 @@ export const updateChoroplethLegend = (
 
   const isPercentChange = dataEntry.type === "percent_change";
   if (isPercentChange) {
-    // Diverging legend: burnt yellow (negative) to indigo (positive)
+    // Diverging legend: plum (negative) to indigo (positive)
     const negColor = DIVERGING_NEGATIVE_COLORS[DIVERGING_NEGATIVE_COLORS.length - 1];
     const posColor = DIVERGING_POSITIVE_COLORS[DIVERGING_POSITIVE_COLORS.length - 1];
     legend.setColors(negColor, posColor);

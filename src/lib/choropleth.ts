@@ -18,15 +18,15 @@ export const TEAL_COLORS = [
   "#0f766e",
 ];
 
-// Diverging scale for percent change: burnt yellow (negative) -> neutral -> indigo (positive)
-// Negative values: creamy burnt yellow, darker as more negative
+// Diverging scale for percent change: plum (negative) -> neutral -> indigo (positive)
+// Negative values: light plum tint to #784578, darker as more negative
 export const DIVERGING_NEGATIVE_COLORS = [
-  "#fffbeb", // very light cream
-  "#fef3c7", // light amber
-  "#fcd34d", // amber-300
-  "#f59e0b", // amber-500
-  "#d97706", // amber-600
-  "#b45309", // amber-700 - burnt
+  "#f6f0f7", // very light tint
+  "#ead9ec", // light plum
+  "#d7b7dc", // medium-light plum
+  "#c08fc7", // medium plum
+  "#a56cab", // medium-dark plum
+  "#8a5a92", // softened strongest negative (based on #784578)
 ];
 
 // Positive values: indigo scale, darker as more positive
@@ -79,5 +79,3 @@ export const getDivergingColor = (
     return negColors[Math.min(negColors.length - 1, Math.max(0, idx))];
   }
 };
-
-
