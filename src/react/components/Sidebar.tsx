@@ -270,9 +270,6 @@ export const Sidebar = ({
       });
     }
   }, []);
-  const scrollSelectedOrgToTop = useCallback((orgId: string) => {
-    scrollOrgIntoView(orgId, { alignTop: true, padding: 0 });
-  }, [scrollOrgIntoView]);
   const { user } = db.useAuth();
   const canShowInsights = Boolean(showInsights && showAdvanced);
 
@@ -523,6 +520,14 @@ export const Sidebar = ({
     setSearchPinnedOrgId(null);
   }, [searchPinnedOrgId, selectedOrgIds]);
 
+  // Keep a single selected org pinned at the top, including URL-restored selections after refresh.
+  useEffect(() => {
+    if (selectedOrgIds.length !== 1) return;
+    const selectedId = selectedOrgIds[0];
+    if (!selectedId || searchPinnedOrgId === selectedId) return;
+    setSearchPinnedOrgId(selectedId);
+  }, [searchPinnedOrgId, selectedOrgIds]);
+
   // Determine the "IN SELECTION" label - show area name if only one area is selected
   const inSelectionLabel = useMemo(() => {
     if (selectionLabelOverride && directOrgSelectionActive) {
@@ -593,12 +598,6 @@ export const Sidebar = ({
   const hideCategoryTags = Boolean(categoryFilter);
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
-  const viewportFilterStateRef = useRef({
-    missingCount,
-    visibleCount,
-    filtered: missingCount > 0,
-  });
-
   // Close category dropdown when clicking outside
   useEffect(() => {
     if (!categoryDropdownOpen) return;
@@ -610,30 +609,6 @@ export const Sidebar = ({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [categoryDropdownOpen]);
-
-  // Keep automatic scrolling disabled except when the map filters the list to the current viewport.
-  useEffect(() => {
-    const prev = viewportFilterStateRef.current;
-    const isFiltered = missingCount > 0;
-    const prevFiltered = prev.filtered;
-    const filterActivated = !prevFiltered && isFiltered;
-    const visibleShrank = isFiltered && visibleCount < prev.visibleCount;
-    viewportFilterStateRef.current = { missingCount, visibleCount, filtered: isFiltered };
-
-    if (activeTab !== "orgs") return;
-    if (!primarySelectedOrgId) return;
-    if (directOrgSelectionActive) return;
-    if (!(filterActivated || visibleShrank)) return;
-
-    scrollSelectedOrgToTop(primarySelectedOrgId);
-  }, [
-    activeTab,
-    missingCount,
-    primarySelectedOrgId,
-    scrollSelectedOrgToTop,
-    visibleCount,
-    directOrgSelectionActive,
-  ]);
 
   // Jump to the list top whenever the map triggers a direct org selection.
   useEffect(() => {
