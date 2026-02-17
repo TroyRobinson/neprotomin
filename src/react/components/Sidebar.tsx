@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { track } from "@vercel/analytics";
+import {
+  BuildingOfficeIcon,
+  ChartBarIcon,
+  MagnifyingGlassIcon,
+  MapIcon,
+  MapPinIcon,
+} from "@heroicons/react/24/outline";
 import { DemographicsBar } from "./DemographicsBar";
 import { StatList } from "./StatList";
 import { IssueReportModal } from "./IssueReportModal";
 import type { Organization, OrganizationHours } from "../../types/organization";
 import type { Stat, StatRelationsByParent, StatRelationsByChild } from "../../types/stat";
 import { useCategories } from "../hooks/useCategories";
+import { useSidebarSearch, type SidebarSearchResult } from "../hooks/useSidebarSearch";
 import type { CombinedDemographicsSnapshot } from "../hooks/useDemographics";
 import type { SeriesByKind, StatBoundaryEntry } from "../hooks/useStats";
 import type { AreaId } from "../../types/areas";
@@ -85,6 +93,7 @@ interface SidebarProps {
   onZoomOutAll?: () => void;
   onZoomToCounty?: (countyCode: string) => void;
   onRequestCollapseSheet?: () => void;
+  onLocationSearch?: (query: string) => void;
   onCategoryClick?: (categoryId: string) => void;
   onCategoryChange?: (categoryId: string | null) => void;
   onHoverArea?: (area: AreaId | null) => void;
@@ -169,6 +178,7 @@ export const Sidebar = ({
   onZoomOutAll,
   onZoomToCounty,
   onRequestCollapseSheet,
+  onLocationSearch,
   onCategoryClick,
   onCategoryChange,
   onHoverArea,
@@ -203,7 +213,10 @@ export const Sidebar = ({
   const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
   const [issueModalOrg, setIssueModalOrg] = useState<Organization | null>(null);
   const [issueFeedback, setIssueFeedback] = useState<string | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
   const orgsScrollRef = useRef<HTMLDivElement>(null);
+  const searchDropdownTimeoutRef = useRef<number | null>(null);
   const lastMapExpandedOrgRef = useRef<string | null>(null);
   const directSelectionStateRef = useRef<{ active: boolean; selectionKey: string | null }>({
     active: false,
@@ -374,6 +387,57 @@ export const Sidebar = ({
     if (!categoryFilter) return rawRecent;
     return rawRecent.filter((org) => org.category === categoryFilter);
   }, [rawRecent, categoryFilter]);
+  const searchResults = useSidebarSearch({
+    query: searchText,
+    organizations: rawAll,
+    statsById,
+  });
+  const hasSearchText = searchText.trim().length >= 2;
+  const showSearchDropdown =
+    variant === "desktop" && isSearchDropdownOpen && hasSearchText && searchResults.length > 0;
+
+  const clearSearchDropdownTimeout = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (searchDropdownTimeoutRef.current === null) return;
+    window.clearTimeout(searchDropdownTimeoutRef.current);
+    searchDropdownTimeoutRef.current = null;
+  }, []);
+
+  const scheduleSearchDropdownClose = useCallback(() => {
+    if (typeof window === "undefined") return;
+    clearSearchDropdownTimeout();
+    searchDropdownTimeoutRef.current = window.setTimeout(() => {
+      setIsSearchDropdownOpen(false);
+      searchDropdownTimeoutRef.current = null;
+    }, 120);
+  }, [clearSearchDropdownTimeout]);
+
+  useEffect(() => {
+    return () => clearSearchDropdownTimeout();
+  }, [clearSearchDropdownTimeout]);
+
+  useEffect(() => {
+    if (!hasSearchText) {
+      setIsSearchDropdownOpen(false);
+    }
+  }, [hasSearchText]);
+
+  const handleSearchResultSelect = useCallback(
+    (result: SidebarSearchResult) => {
+      if (result.type === "org") {
+        setActiveTabWithSync("orgs");
+        onOrganizationClick?.(result.id);
+      } else if (result.type === "stat") {
+        setActiveTabWithSync("stats");
+        onStatSelect?.(result.id, {});
+      } else {
+        onLocationSearch?.(result.id);
+      }
+      setSearchText("");
+      setIsSearchDropdownOpen(false);
+    },
+    [onLocationSearch, onOrganizationClick, onStatSelect, setActiveTabWithSync],
+  );
 
   // Determine the "IN SELECTION" label - show area name if only one area is selected
   const inSelectionLabel = useMemo(() => {
@@ -582,6 +646,13 @@ export const Sidebar = ({
     return () => window.clearTimeout(timeout);
   }, [issueFeedback]);
 
+  useEffect(() => {
+    if (variant !== "desktop") {
+      setSearchText("");
+      setIsSearchDropdownOpen(false);
+    }
+  }, [variant]);
+
   // Respond to external force-hide requests (e.g., closing the Orgs chip on the map)
   const lastForceHideNonceRef = useRef<number | undefined>(undefined);
 
@@ -662,8 +733,92 @@ export const Sidebar = ({
           {issueFeedback}
         </div>
       ) : null}
+      {variant === "desktop" && (
+        <div
+          className="relative px-4 pt-3"
+          onFocus={() => {
+            clearSearchDropdownTimeout();
+          }}
+          onBlur={(event) => {
+            const next = event.relatedTarget as Node | null;
+            if (next && event.currentTarget.contains(next)) return;
+            scheduleSearchDropdownClose();
+          }}
+        >
+          <label className="relative block">
+            <span className="sr-only">Search organizations, statistics, cities, or addresses</span>
+            <MagnifyingGlassIcon
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+            />
+            <input
+              type="search"
+              value={searchText}
+              onChange={(event) => {
+                const next = event.target.value;
+                setSearchText(next);
+                setIsSearchDropdownOpen(next.trim().length >= 2);
+              }}
+              onFocus={() => {
+                if (hasSearchText && searchResults.length > 0) {
+                  setIsSearchDropdownOpen(true);
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setIsSearchDropdownOpen(false);
+                  event.currentTarget.blur();
+                  return;
+                }
+                if (event.key === "Enter" && showSearchDropdown) {
+                  event.preventDefault();
+                  handleSearchResultSelect(searchResults[0]);
+                }
+              }}
+              placeholder="Search orgs, stats, cities..."
+              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-brand-300 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-brand-600 dark:focus:ring-brand-900/40"
+            />
+          </label>
+          {showSearchDropdown && (
+            <ul className="absolute left-4 right-4 z-50 mt-1 max-h-[12rem] overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+              {searchResults.map((result) => {
+                const Icon =
+                  result.type === "org"
+                    ? BuildingOfficeIcon
+                    : result.type === "stat"
+                    ? ChartBarIcon
+                    : result.type === "city"
+                    ? MapPinIcon
+                    : MapIcon;
+                return (
+                  <li key={`${result.type}-${result.id}`}>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => handleSearchResultSelect(result)}
+                      className="flex w-full items-start gap-2 px-3 py-2 text-left transition hover:bg-slate-100 dark:hover:bg-slate-800"
+                    >
+                      <Icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+                          {result.label}
+                        </span>
+                        {result.sublabel ? (
+                          <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                            {result.sublabel}
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
       {/* Tabs Header — all items in one row with uniform gap-2 */}
-      <div className="mb-2 flex items-center gap-2 px-4 pt-3">
+      <div className={`mb-2 flex items-center gap-2 px-4 ${variant === "desktop" ? "pt-2" : "pt-3"}`}>
           <button
             type="button"
             className={tabClasses(activeTab === "orgs")}

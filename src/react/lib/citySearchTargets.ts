@@ -29,7 +29,7 @@ const createBounds = (center: [number, number], latDelta: number, lngDelta: numb
   ];
 };
 
-const CITY_SEARCH_TARGETS: CitySearchTarget[] = [
+export const CITY_SEARCH_TARGETS: CitySearchTarget[] = [
   {
     name: "Oklahoma City",
     aliases: ["oklahoma city", "okc"],

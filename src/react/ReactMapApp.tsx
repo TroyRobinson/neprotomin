@@ -3415,6 +3415,7 @@ export const ReactMapApp = () => {
                 onZoomOutAll={handleZoomOutAll}
                 onZoomToCounty={handleZoomToCounty}
                 onRequestCollapseSheet={isMobile ? collapseSheet : undefined}
+                onLocationSearch={handleMobileLocationSearch}
                 onStatSelect={handleStatSelect}
                 onRetryStatData={retryStatData}
                 onOrgPinsVisibleChange={setOrgPinsVisible}
