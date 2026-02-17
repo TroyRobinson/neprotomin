@@ -222,6 +222,8 @@ export const Sidebar = ({
   const orgsScrollRef = useRef<HTMLDivElement>(null);
   const searchDropdownTimeoutRef = useRef<number | null>(null);
   const orgSearchScrollTimeoutRef = useRef<number | null>(null);
+  const searchPinnedClearTimeoutRef = useRef<number | null>(null);
+  const hasAppliedInitialSelectionPinRef = useRef(false);
   const lastMapExpandedOrgRef = useRef<string | null>(null);
   const directSelectionStateRef = useRef<{ active: boolean; selectionKey: string | null }>({
     active: false,
@@ -465,12 +467,20 @@ export const Sidebar = ({
     orgSearchScrollTimeoutRef.current = null;
   }, []);
 
+  const clearSearchPinnedClearTimeout = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (searchPinnedClearTimeoutRef.current === null) return;
+    window.clearTimeout(searchPinnedClearTimeoutRef.current);
+    searchPinnedClearTimeoutRef.current = null;
+  }, []);
+
   useEffect(() => {
     return () => {
       clearSearchDropdownTimeout();
       clearOrgSearchScrollTimeout();
+      clearSearchPinnedClearTimeout();
     };
-  }, [clearSearchDropdownTimeout, clearOrgSearchScrollTimeout]);
+  }, [clearSearchDropdownTimeout, clearOrgSearchScrollTimeout, clearSearchPinnedClearTimeout]);
 
   useEffect(() => {
     if (!hasSearchText) {
@@ -516,17 +526,32 @@ export const Sidebar = ({
 
   useEffect(() => {
     if (!searchPinnedOrgId) return;
-    if (selectedOrgIds.includes(searchPinnedOrgId)) return;
-    setSearchPinnedOrgId(null);
-  }, [searchPinnedOrgId, selectedOrgIds]);
+    if (selectedOrgIds.includes(searchPinnedOrgId)) {
+      clearSearchPinnedClearTimeout();
+      return;
+    }
+    if (typeof window === "undefined") {
+      setSearchPinnedOrgId(null);
+      return;
+    }
+    const pendingPinnedOrgId = searchPinnedOrgId;
+    clearSearchPinnedClearTimeout();
+    // Let parent selection state settle before clearing; search selections update through callbacks.
+    searchPinnedClearTimeoutRef.current = window.setTimeout(() => {
+      setSearchPinnedOrgId((current) => (current === pendingPinnedOrgId ? null : current));
+      searchPinnedClearTimeoutRef.current = null;
+    }, 120);
+  }, [clearSearchPinnedClearTimeout, searchPinnedOrgId, selectedOrgIds]);
 
-  // Keep a single selected org pinned at the top, including URL-restored selections after refresh.
+  // Only apply auto-pin once on first load so sidebar clicks continue to select in-place.
   useEffect(() => {
+    if (hasAppliedInitialSelectionPinRef.current) return;
+    hasAppliedInitialSelectionPinRef.current = true;
     if (selectedOrgIds.length !== 1) return;
     const selectedId = selectedOrgIds[0];
-    if (!selectedId || searchPinnedOrgId === selectedId) return;
+    if (!selectedId) return;
     setSearchPinnedOrgId(selectedId);
-  }, [searchPinnedOrgId, selectedOrgIds]);
+  }, [selectedOrgIds]);
 
   // Determine the "IN SELECTION" label - show area name if only one area is selected
   const inSelectionLabel = useMemo(() => {
