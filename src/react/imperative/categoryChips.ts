@@ -995,7 +995,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
           wrapper.style.right = "1rem";
         } else {
           // Keep chips adjacent to the persistent desktop search bar.
-          wrapper.style.left = "25rem";
+          wrapper.style.left = "24.25rem";
           wrapper.style.right = "";
         }
       } else {

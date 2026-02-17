@@ -24,6 +24,17 @@ const formatValue = (value: number, type?: string, isMobile?: boolean): string =
   return formatStatValueCompact(value, t);
 };
 
+const blendHexWithWhite = (hex: string, colorWeight = 0.72): string => {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!match) return hex;
+  const value = parseInt(match[1], 16);
+  const r = (value >> 16) & 0xff;
+  const g = (value >> 8) & 0xff;
+  const b = value & 0xff;
+  const mix = (channel: number) => Math.round(channel * colorWeight + 255 * (1 - colorWeight));
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+};
+
 export const createChoroplethLegend = (
   isMobile?: boolean,
   onSettingsClick?: () => void,
@@ -84,8 +95,10 @@ export const createChoroplethLegend = (
   };
 
   const setColors = (lowHex: string, highHex: string) => {
-    minDot.style.backgroundColor = lowHex;
-    maxDot.style.backgroundColor = highHex;
+    // Map fills are partially transparent, so blend swatches slightly with white
+    // to keep legend dots perceptually aligned with on-map choropleth colors.
+    minDot.style.backgroundColor = blendHexWithWhite(lowHex);
+    maxDot.style.backgroundColor = blendHexWithWhite(highHex);
   };
 
   const destroy = () => {

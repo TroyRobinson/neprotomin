@@ -224,6 +224,7 @@ export const Sidebar = ({
   const [issueFeedback, setIssueFeedback] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
+  const [highlightedSearchIndex, setHighlightedSearchIndex] = useState(-1);
   const orgsScrollRef = useRef<HTMLDivElement>(null);
   const searchDropdownTimeoutRef = useRef<number | null>(null);
   const orgSearchScrollTimeoutRef = useRef<number | null>(null);
@@ -445,9 +446,22 @@ export const Sidebar = ({
     organizations: searchOrganizations.length > 0 ? searchOrganizations : rawAll,
     statsById,
   });
+  const searchSourceOrganizations = searchOrganizations.length > 0 ? searchOrganizations : rawAll;
+  const searchOrgCategoryById = useMemo(() => {
+    const map = new Map<string, Organization["category"]>();
+    for (const org of searchSourceOrganizations) {
+      if (!org?.id) continue;
+      map.set(org.id, org.category);
+    }
+    return map;
+  }, [searchSourceOrganizations]);
   const hasSearchText = searchText.trim().length >= 2;
   const showSearchDropdown =
     variant === "desktop" && isSearchDropdownOpen && hasSearchText && searchResults.length > 0;
+  const highlightedSearchResult =
+    highlightedSearchIndex >= 0 && highlightedSearchIndex < searchResults.length
+      ? searchResults[highlightedSearchIndex]
+      : null;
 
   const clearSearchDropdownTimeout = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -493,10 +507,33 @@ export const Sidebar = ({
     }
   }, [hasSearchText]);
 
+  useEffect(() => {
+    if (!showSearchDropdown) {
+      setHighlightedSearchIndex(-1);
+      return;
+    }
+    setHighlightedSearchIndex((current) => {
+      if (current < searchResults.length) return current;
+      return searchResults.length - 1;
+    });
+  }, [showSearchDropdown, searchResults.length]);
+
   const handleSearchResultSelect = useCallback(
     (result: SidebarSearchResult) => {
       // Auto-expand sidebar when selecting a search result while collapsed
       if (collapsed) onCollapse?.(false);
+      if (categoryFilter) {
+        const resultCategory =
+          result.type === "org"
+            ? searchOrgCategoryById.get(result.id) ?? null
+            : result.type === "stat"
+            ? statsById.get(result.id)?.category ?? null
+            : null;
+        if (resultCategory && resultCategory !== categoryFilter) {
+          // Search can return cross-category matches, so clear active category when selecting one.
+          onCategoryChange?.(null);
+        }
+      }
       if (result.type === "org") {
         setActiveTabWithSync("orgs");
         onOrganizationClick?.(result.id);
@@ -521,15 +558,20 @@ export const Sidebar = ({
       }
       setSearchText("");
       setIsSearchDropdownOpen(false);
+      setHighlightedSearchIndex(-1);
     },
     [
       clearOrgSearchScrollTimeout,
       collapsed,
       onCollapse,
+      categoryFilter,
+      onCategoryChange,
       onLocationSearch,
       onOrganizationClick,
       onStatSelect,
+      searchOrgCategoryById,
       setActiveTabWithSync,
+      statsById,
     ],
   );
 
@@ -795,7 +837,7 @@ export const Sidebar = ({
         ? "border-brand-500 bg-slate-100 text-brand-700 dark:bg-slate-800 dark:text-brand-300"
         : "border-transparent text-slate-500 hover:text-brand-700 hover:bg-slate-100/70 dark:text-slate-500 dark:hover:bg-slate-800/70"
     }`;
-  const selectedCategoryLabel = categoryFilter ? getCategoryLabel(categoryFilter as any) : "All Catg.";
+  const selectedCategoryLabel = categoryFilter ? getCategoryLabel(categoryFilter as any) : "All Categories";
   const categoryToolbarLabel = categoryFilter
     ? abbreviateCategoryFilterLabel(selectedCategoryLabel)
     : selectedCategoryLabel;
@@ -856,6 +898,7 @@ export const Sidebar = ({
                 const next = event.target.value;
                 setSearchText(next);
                 setIsSearchDropdownOpen(next.trim().length >= 2);
+                setHighlightedSearchIndex(-1);
               }}
               onFocus={() => {
                 if (hasSearchText && searchResults.length > 0) {
@@ -865,12 +908,34 @@ export const Sidebar = ({
               onKeyDown={(event) => {
                 if (event.key === "Escape") {
                   setIsSearchDropdownOpen(false);
+                  setHighlightedSearchIndex(-1);
                   event.currentTarget.blur();
+                  return;
+                }
+                if (
+                  (event.key === "ArrowDown" || event.key === "ArrowUp") &&
+                  hasSearchText &&
+                  searchResults.length > 0
+                ) {
+                  event.preventDefault();
+                  setIsSearchDropdownOpen(true);
+                  setHighlightedSearchIndex((current) => {
+                    if (event.key === "ArrowDown") {
+                      if (current < 0 || current >= searchResults.length - 1) {
+                        return 0;
+                      }
+                      return current + 1;
+                    }
+                    if (current <= 0) {
+                      return searchResults.length - 1;
+                    }
+                    return current - 1;
+                  });
                   return;
                 }
                 if (event.key === "Enter" && showSearchDropdown) {
                   event.preventDefault();
-                  handleSearchResultSelect(searchResults[0]);
+                  handleSearchResultSelect(highlightedSearchResult ?? searchResults[0]);
                 }
               }}
               placeholder="Search orgs, stats, cities..."
@@ -889,7 +954,7 @@ export const Sidebar = ({
           </div>
           {showSearchDropdown && (
             <ul className="absolute left-4 right-4 z-50 mt-1 max-h-[12rem] overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-              {searchResults.map((result) => {
+              {searchResults.map((result, index) => {
                 const Icon =
                   result.type === "org"
                     ? BuildingOfficeIcon
@@ -903,8 +968,13 @@ export const Sidebar = ({
                     <button
                       type="button"
                       onMouseDown={(event) => event.preventDefault()}
+                      onMouseEnter={() => setHighlightedSearchIndex(index)}
                       onClick={() => handleSearchResultSelect(result)}
-                      className="flex w-full items-start gap-2 px-3 py-2 text-left transition hover:bg-slate-100 dark:hover:bg-slate-800"
+                      className={`flex w-full items-start gap-2 px-3 py-2 text-left transition ${
+                        index === highlightedSearchIndex
+                          ? "bg-brand-50 dark:bg-brand-900/30"
+                          : "hover:bg-slate-100 dark:hover:bg-slate-800"
+                      }`}
                     >
                       <Icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
                       <span className="min-w-0">
@@ -986,14 +1056,14 @@ export const Sidebar = ({
                   onClick={() => setCategoryDropdownOpen((prev) => !prev)}
                   className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold shadow-sm ring-1 ring-inset transition ${
                     categoryFilter
-                      ? "bg-brand-700/90 text-white ring-white/10 hover:bg-brand-500"
-                      : "bg-slate-200 text-slate-700 ring-slate-300/70 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:ring-slate-500/70 dark:hover:bg-slate-600"
+                      ? "bg-brand-100 text-brand-700 ring-brand-200 hover:bg-brand-200 dark:bg-brand-900/40 dark:text-brand-200 dark:ring-brand-700/60 dark:hover:bg-brand-900/55"
+                      : "bg-slate-100 text-slate-600 ring-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700"
                   }`}
                   title={`Change category filter (${selectedCategoryLabel})`}
                 >
                   <span className="whitespace-nowrap">{categoryToolbarLabel}</span>
                   <svg
-                    className={`h-3 w-3 ${categoryFilter ? "text-white" : "text-slate-600 dark:text-slate-100"}`}
+                    className={`h-3 w-3 ${categoryFilter ? "text-brand-700 dark:text-brand-200" : "text-slate-600 dark:text-slate-200"}`}
                     viewBox="0 0 20 20"
                     fill="currentColor"
                   >
@@ -1001,16 +1071,16 @@ export const Sidebar = ({
                   </svg>
                 </button>
                 {categoryDropdownOpen && (
-                  <div className="absolute right-0 top-full z-50 mt-1 w-40 overflow-hidden rounded-md border border-brand-700/40 bg-brand-800 text-white shadow-lg">
+                  <div className="absolute right-0 top-full z-50 mt-1 w-40 overflow-hidden rounded-md border border-slate-200 bg-white text-slate-700 shadow-lg dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
                     <button
                       type="button"
                       onClick={() => {
                         handleCategoryChange(null);
                         setCategoryDropdownOpen(false);
                       }}
-                      className={`block w-full px-3 py-1.5 text-left text-xs transition hover:bg-brand-700/70 ${!categoryFilter ? "bg-brand-700/60 font-semibold" : "font-medium text-white/90"}`}
+                      className={`block w-full px-3 py-1.5 text-left text-xs transition hover:bg-slate-100 dark:hover:bg-slate-800 ${!categoryFilter ? "bg-slate-100 font-semibold text-slate-800 dark:bg-slate-800 dark:text-slate-100" : "font-medium text-slate-600 dark:text-slate-300"}`}
                     >
-                      All Catg.
+                      All Categories
                     </button>
                     {sidebarCategories.map((cat) => (
                       <button
@@ -1020,10 +1090,10 @@ export const Sidebar = ({
                           handleCategoryChange(cat.slug);
                           setCategoryDropdownOpen(false);
                         }}
-                        className={`block w-full px-3 py-1.5 text-left text-xs transition hover:bg-brand-700/70 ${
+                        className={`block w-full px-3 py-1.5 text-left text-xs transition hover:bg-slate-100 dark:hover:bg-slate-800 ${
                           categoryFilter === cat.slug
-                            ? "bg-brand-700/60 font-semibold"
-                            : "font-medium text-white/90"
+                            ? "bg-slate-100 font-semibold text-slate-800 dark:bg-slate-800 dark:text-slate-100"
+                            : "font-medium text-slate-600 dark:text-slate-300"
                         }`}
                       >
                         {cat.label}
@@ -1039,7 +1109,7 @@ export const Sidebar = ({
                     handleCategoryChange(null);
                     setCategoryDropdownOpen(false);
                   }}
-                  className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-700/90 text-white hover:bg-brand-500"
+                  className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-100 text-brand-700 hover:bg-brand-200 dark:bg-brand-900/40 dark:text-brand-200 dark:hover:bg-brand-900/55"
                   title="Clear category filter"
                 >
                   <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
