@@ -767,7 +767,10 @@ export const Sidebar = ({
     visibleRecent.length,
   ]);
   const baseTotalCount = typeof totalSourceCount === "number" ? totalSourceCount : visibleCount;
-  const countForTab = totalSelectedCount > 0 ? inSelection.length : visibleCount;
+  // If area selection yields no direct matches, keep showing viewport count
+  // so the ORGS tab label doesn't get stuck at 0 while results still exist in "ALL".
+  const countForTab =
+    totalSelectedCount > 0 && inSelection.length > 0 ? inSelection.length : visibleCount;
   const countyVisibleCount =
     typeof viewportCountyVisibleCount === "number" ? viewportCountyVisibleCount : visibleCount;
   const countyZoomContext = useMemo(() => {
