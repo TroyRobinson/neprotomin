@@ -2546,53 +2546,7 @@ export const ReactMapApp = () => {
       }
 
       if (!targetRecord) {
-        const orgMatches = findOrganizationMatches(query, 6);
-        if (orgMatches.length > 0) {
-          suppressAreaSelectionClearRef.current.ZIP += 1;
-          suppressAreaSelectionClearRef.current.COUNTY += 1;
-          applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
-          applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
-
-          const matchIds = orgMatches.map((entry) => entry.org.id);
-          setActiveScreen("map");
-          setOrgPinsVisible(true);
-          setActiveOrganizationId(matchIds[0]);
-          setHighlightedOrganizationIds(matchIds.length > 1 ? matchIds : null);
-          setSidebarFollowMode("map");
-          setSelectedOrgIds(matchIds);
-          setSelectedOrgIdsFromMap(true);
-          setSearchSelectionMeta({
-            term: query,
-            ids: matchIds,
-          });
-
-          const controller = mapControllerRef.current;
-          if (controller) {
-            try {
-              controller.centerOnOrganization(matchIds[0], { animate: true });
-            } catch {}
-          }
-
-          if (isMobile) {
-            if (matchIds.length <= 3) {
-              previewSheet();
-            } else {
-              expandSheet();
-            }
-          }
-
-          track("map_search_organization_match", {
-            query,
-            matchCount: matchIds.length,
-            topOrganizationId: matchIds[0],
-            topScore: Number(orgMatches[0].score.toFixed(3)),
-          });
-          setHasInteractedWithMap(true);
-          return;
-        }
-      }
-
-      if (!targetRecord) {
+        // Prioritize explicit address geocoding before fuzzy org matching so full addresses don't get hijacked.
         const parsedAddress = parseFullAddress(query);
         const shouldAttemptGeocode = Boolean(parsedAddress) || looksLikeAddress(query);
 
@@ -2639,6 +2593,53 @@ export const ReactMapApp = () => {
             setHasInteractedWithMap(true);
             return;
           }
+        }
+      }
+
+      if (!targetRecord) {
+        const orgMatches = findOrganizationMatches(query, 6);
+        if (orgMatches.length > 0) {
+          suppressAreaSelectionClearRef.current.ZIP += 1;
+          suppressAreaSelectionClearRef.current.COUNTY += 1;
+          applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
+          applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
+
+          const matchIds = orgMatches.map((entry) => entry.org.id);
+          setActiveScreen("map");
+          setOrgPinsVisible(true);
+          setActiveOrganizationId(matchIds[0]);
+          setHighlightedOrganizationIds(matchIds.length > 1 ? matchIds : null);
+          setSidebarFollowMode("map");
+          setSelectedOrgIds(matchIds);
+          setSelectedOrgIdsFromMap(true);
+          setSearchSelectionMeta({
+            term: query,
+            ids: matchIds,
+          });
+
+          const controller = mapControllerRef.current;
+          if (controller) {
+            try {
+              controller.centerOnOrganization(matchIds[0], { animate: true });
+            } catch {}
+          }
+
+          if (isMobile) {
+            if (matchIds.length <= 3) {
+              previewSheet();
+            } else {
+              expandSheet();
+            }
+          }
+
+          track("map_search_organization_match", {
+            query,
+            matchCount: matchIds.length,
+            topOrganizationId: matchIds[0],
+            topScore: Number(orgMatches[0].score.toFixed(3)),
+          });
+          setHasInteractedWithMap(true);
+          return;
         }
       }
 
