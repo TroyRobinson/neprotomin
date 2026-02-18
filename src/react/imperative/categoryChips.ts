@@ -640,10 +640,6 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       });
     }
 
-    // Desktop UX: start with the search pill expanded + focused for immediate typing.
-    requestAnimationFrame(() => {
-      openSearch();
-    });
   }
 
   const setSelected = (categoryId: string | null) => {
@@ -979,6 +975,25 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     },
     setTimeSelection,
     setSidebarExpandVisible: (visible: boolean) => {
+      // Defensive reset: if desktop search UI has been hidden externally, ensure
+      // internal expanded state is also cleared so map chips remain visible.
+      if (!isMobile && searchExpanded) {
+        searchExpanded = false;
+        searchButton?.classList.remove("hidden");
+        searchButton?.setAttribute("aria-expanded", "false");
+        searchForm?.classList.add("hidden");
+        if (searchInput) {
+          searchInput.value = "";
+        }
+        if (removeSearchOutsideHandler) {
+          removeSearchOutsideHandler();
+          removeSearchOutsideHandler = null;
+        }
+        applyAccessoryChipVisibility();
+        renderStatChips();
+        renderSecondaryStatChip();
+        update();
+      }
       // When sidebar is collapsed, the persistent search bar lives at top-left.
       // Keep mobile chips anchored from the right so the time chip doesn't
       // drift or clip, but keep desktop chips near the persistent search bar.
