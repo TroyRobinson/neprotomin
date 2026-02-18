@@ -1222,6 +1222,7 @@ export const ReactMapApp = () => {
     statDataSummaryByParent,
     statRelationsByParent,
     statRelationsByChild,
+    pendingStatIds,
     isLoading: areStatsLoading,
     retryStatData,
   } = useStats({
@@ -1243,6 +1244,8 @@ export const ReactMapApp = () => {
     viewerId: user?.id ?? null,
     isAdmin,
   });
+
+  const isSelectedStatLoading = selectedStatId ? pendingStatIds.has(selectedStatId) : false;
 
   // Derive children of selected stat so they're included in priority batch for fast line charts
   useEffect(() => {
@@ -3412,6 +3415,7 @@ export const ReactMapApp = () => {
                 hoveredArea={hoveredArea}
                 selectedStatId={selectedStatId}
                 secondaryStatId={secondaryStatId}
+                selectedStatLoading={isSelectedStatLoading}
                 categoryFilter={categoryFilter}
                 onCategoryChange={setCategoryFilter}
                 onHover={handleHover}
@@ -3674,6 +3678,7 @@ export const ReactMapApp = () => {
                     hoveredArea={hoveredArea}
                     selectedStatId={selectedStatId}
                     secondaryStatId={secondaryStatId}
+                    selectedStatLoading={isSelectedStatLoading}
                     categoryFilter={categoryFilter}
                     onCategoryChange={setCategoryFilter}
                     onHover={handleHover}

@@ -90,6 +90,7 @@ interface SidebarProps {
   zipScopeCountyCode?: string | null;
   selectedStatId?: string | null;
   secondaryStatId?: string | null;
+  selectedStatLoading?: boolean;
   categoryFilter?: string | null;
   hoveredArea?: AreaId | null;
   onHover?: (idOrIds: string | string[] | null) => void;
@@ -178,6 +179,7 @@ export const Sidebar = ({
   zipScopeCountyCode = null,
   selectedStatId = null,
   secondaryStatId = null,
+  selectedStatLoading = false,
   categoryFilter = null,
   hoveredArea = null,
   onHover,
@@ -1290,6 +1292,7 @@ export const Sidebar = ({
               onClearCategory={() => handleCategoryChange(null)}
               secondaryStatId={secondaryStatId}
               selectedStatId={selectedStatId}
+              selectedStatLoading={selectedStatLoading}
               onStatSelect={onStatSelect}
               onRetryStatData={onRetryStatData}
               // StatViz props for embedded chart (only shown when showAdvanced is true)

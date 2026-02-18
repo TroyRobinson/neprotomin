@@ -627,6 +627,15 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     statData: statDataRows,
   };
 
+  const pendingStatIds = useMemo(() => {
+    if (!canQueryStatData || batchIds.length === 0) return new Set<string>();
+    const pending = new Set<string>();
+    for (const statId of batchIds) {
+      if (!loadedStatIds.has(statId)) pending.add(statId);
+    }
+    return pending;
+  }, [batchIds, canQueryStatData, loadedStatIds]);
+
   const isLoading = statsLoading || statDataLoading;
   const error = statsError || statDataError;
 
@@ -1287,6 +1296,7 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     statDataSummaryByParent,
     statRelationsByParent,
     statRelationsByChild,
+    pendingStatIds,
     isLoading,
     error,
     retryStatData,

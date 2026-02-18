@@ -72,6 +72,8 @@ interface StatVizProps {
   zipScopeCountyName?: string | null;
   /** Context average value for the selected stat (State Avg when at county level, County Avg when at ZIP level) */
   stateAvg?: number | null;
+  /** True when selected stat is still pending from the current stat-data batch. */
+  selectedStatLoading?: boolean;
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
   /** When true, renders without container/header - for embedding in StatList selected stat section */
@@ -423,6 +425,8 @@ interface BarChartEntry {
   color: string;
   value: number;
   areaKey?: string;
+  isLoading?: boolean;
+  isSelectedArea?: boolean;
 }
 
 interface BarChartProps {
@@ -454,6 +458,7 @@ const BarChart = ({ entries, statType, hoveredAreaKey, onHoverArea }: BarChartPr
   const gap = 6;
   const right = 90;
   const top = 6;
+  const isDark = document.documentElement.classList.contains("dark");
 
   const maxLabelWidth = useMemo(() => {
     if (entries.length === 0) return 0;
@@ -477,9 +482,13 @@ const BarChart = ({ entries, statType, hoveredAreaKey, onHoverArea }: BarChartPr
       {entries.map((entry, i) => {
         const yPos = top + i * (barH + gap);
         const w = (entry.value / max) * innerW;
-        const isHoverable = entry.areaKey && !entry.areaKey.startsWith("AVG-");
+        const isEntryLoading = entry.isLoading === true;
+        const barWidth = isEntryLoading ? Math.max(20, innerW * 0.22) : Math.max(0, w);
+        const isHoverable = !isEntryLoading && entry.areaKey && !entry.areaKey.startsWith("AVG-");
         const isHovered = isHoverable && entry.areaKey === hoveredAreaKey;
         const fillColor = isHovered ? shade(entry.color, 0.15) : entry.color;
+        const spinnerCx = left + Math.max(8, barWidth + 8);
+        const spinnerCy = yPos + barH / 2;
 
         return (
           <g key={i}>
@@ -496,24 +505,40 @@ const BarChart = ({ entries, statType, hoveredAreaKey, onHoverArea }: BarChartPr
             <rect
               x={left}
               y={yPos}
-              width={Math.max(0, w)}
+              width={barWidth}
               height={barH}
-              fill={fillColor}
+              fill={isEntryLoading ? (isDark ? "#475569" : "#cbd5e1") : fillColor}
+              opacity={isEntryLoading ? 0.65 : 1}
               rx={3}
               ry={3}
               style={{ cursor: isHoverable ? "pointer" : "default" }}
               onMouseEnter={() => isHoverable && onHoverArea?.(entry.areaKey ?? null)}
               onMouseLeave={() => isHoverable && onHoverArea?.(null)}
             />
-            <text
-              x={left + Math.max(6, w + 4)}
-              y={yPos + barH / 2}
-              dominantBaseline="middle"
-              fill="#94a3b8"
-              fontSize={10}
-            >
-              {formatStatValue(entry.value, statType)}
-            </text>
+            {isEntryLoading ? (
+              <g className="animate-spin" style={{ transformOrigin: `${spinnerCx}px ${spinnerCy}px` }}>
+                <circle
+                  cx={spinnerCx}
+                  cy={spinnerCy}
+                  r={4}
+                  fill="none"
+                  stroke={isDark ? "#94a3b8" : "#64748b"}
+                  strokeWidth={1.5}
+                  strokeLinecap="round"
+                  strokeDasharray="14 8"
+                />
+              </g>
+            ) : (
+              <text
+                x={left + Math.max(6, w + 4)}
+                y={yPos + barH / 2}
+                dominantBaseline="middle"
+                fill="#94a3b8"
+                fontSize={10}
+              >
+                {formatStatValue(entry.value, statType)}
+              </text>
+            )}
           </g>
         );
       })}
@@ -535,6 +560,7 @@ export const StatViz = ({
   getZipParentCounty,
   zipScopeCountyName = null,
   stateAvg = null,
+  selectedStatLoading = false,
   collapsed: collapsedProp,
   onCollapsedChange,
   embedded = false,
@@ -679,11 +705,12 @@ export const StatViz = ({
       const entries: BarChartEntry[] = cappedAreaEntries.map((area) => {
         const boundary = statDataByKind[area.kind];
         const raw = boundary?.data?.[area.id];
+        const isLoading = selectedStatLoading && raw === undefined;
         const value = typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
         const color = pinnedAreaKeys.has(area.key)
           ? PINNED_BAR_COLOR
           : getBarColorForKind(area.kind);
-        return { label: area.label, color, value, areaKey: area.key };
+        return { label: area.label, color, value, areaKey: area.key, isLoading, isSelectedArea: true };
       });
 
       // Add average(s) based on selected areas' parent counties
@@ -717,7 +744,7 @@ export const StatViz = ({
           // No parent info available, show generic ZIP Avg
           const avgValue = cityAvgByKind.get("ZIP");
           if (typeof avgValue === "number") {
-            entries.push({ label: "ZIP Avg", color: getAvgColor(), value: avgValue, areaKey: "AVG-ZIP" });
+            entries.push({ label: "ZIP Avg", color: getAvgColor(), value: avgValue, areaKey: "AVG-ZIP", isSelectedArea: false });
           }
         } else if (countyCount <= 2 && Object.keys(zipData).length <= MAX_ZIPS_FOR_COUNTY_AVG) {
           // 1-2 counties: show per-county averages (using ALL available ZIPs in those counties)
@@ -752,25 +779,26 @@ export const StatViz = ({
               color: getAvgColor(),
               value: avg,
               areaKey: `AVG-COUNTY-${countyCode}`,
+              isSelectedArea: false,
             });
           }
         } else {
           // 3+ counties: show State Avg (use true statewide average if available)
           const avgValue = stateAvg ?? cityAvgByKind.get("ZIP");
           if (typeof avgValue === "number") {
-            entries.push({ label: "State Avg", color: getAvgColor(), value: avgValue, areaKey: "AVG-STATE" });
+            entries.push({ label: "State Avg", color: getAvgColor(), value: avgValue, areaKey: "AVG-STATE", isSelectedArea: false });
           }
         }
       } else if (avgKind === "COUNTY") {
         const avgValue = cityAvgByKind.get("COUNTY");
         if (typeof avgValue === "number") {
-          entries.push({ label: "County Avg", color: getAvgColor(), value: avgValue, areaKey: "AVG-COUNTY" });
+          entries.push({ label: "County Avg", color: getAvgColor(), value: avgValue, areaKey: "AVG-COUNTY", isSelectedArea: false });
         }
       } else if (avgKind === "ZIP") {
         // Fallback when no getZipParentCounty provided
         const avgValue = cityAvgByKind.get("ZIP");
         if (typeof avgValue === "number") {
-          entries.push({ label: "ZIP Avg", color: getAvgColor(), value: avgValue, areaKey: "AVG-ZIP" });
+          entries.push({ label: "ZIP Avg", color: getAvgColor(), value: avgValue, areaKey: "AVG-ZIP", isSelectedArea: false });
         }
       }
 
@@ -903,7 +931,7 @@ export const StatViz = ({
     }
 
     return { mode: "line" as const, series: lineSeries, statType: avgSeriesEntries[0]?.type ?? "count" };
-  }, [stat, statId, chartMode, areaEntries, seriesByKind, statDataByKind, cityAvgByKind, pinnedAreaKeys, activeAreaKind, getZipParentCounty, zipScopeCountyName, stateAvg]);
+  }, [stat, statId, chartMode, areaEntries, seriesByKind, statDataByKind, cityAvgByKind, pinnedAreaKeys, activeAreaKind, getZipParentCounty, zipScopeCountyName, stateAvg, selectedStatLoading]);
 
   const subtitle = useMemo(() => {
     if (collapsed) {
@@ -940,6 +968,15 @@ export const StatViz = ({
     return true;
   }, [statId, stat, seriesByKind, statDataByKind]);
 
+  const allSelectedBarsLoading = useMemo(() => {
+    if (!chartData || chartData.mode !== "bar") return false;
+    const selectedAreaRows = chartData.entries.filter((entry) => entry.isSelectedArea);
+    if (selectedAreaRows.length === 0) return false;
+    return selectedAreaRows.every((entry) => entry.isLoading === true);
+  }, [chartData]);
+
+  const shouldShowLoadingDonut = isStatDataLoading || allSelectedBarsLoading;
+
   const handleHoverAreaKey = useCallback((areaKey: string | null) => {
     if (!areaKey) {
       onHoverArea?.(null);
@@ -962,7 +999,7 @@ export const StatViz = ({
       return null;
     }
 
-    if (isStatDataLoading) {
+    if (shouldShowLoadingDonut) {
       return (
         <div className="mt-3 mb-2 flex items-center justify-center py-6">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500 dark:border-slate-600 dark:border-t-brand-400" />
@@ -1013,7 +1050,7 @@ export const StatViz = ({
         <div className="relative w-full" style={{ overflow: "visible" }}>
           {!stat || !chartData ? (
             <div className="text-xs text-slate-400 dark:text-slate-500">No data</div>
-          ) : isStatDataLoading ? (
+          ) : shouldShowLoadingDonut ? (
             <div className="flex items-center justify-center py-6">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500 dark:border-slate-600 dark:border-t-brand-400" />
             </div>

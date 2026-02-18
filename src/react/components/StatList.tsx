@@ -64,6 +64,7 @@ interface StatListProps {
   categoryFilter?: string | null;
   secondaryStatId?: string | null;
   selectedStatId?: string | null;
+  selectedStatLoading?: boolean;
   onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
   onRetryStatData?: (statId: string) => void;
   onClearCategory?: () => void;
@@ -161,6 +162,7 @@ export const StatList = ({
   categoryFilter = null,
   secondaryStatId = null,
   selectedStatId = null,
+  selectedStatLoading = false,
   onStatSelect,
   onRetryStatData,
   onClearCategory,
@@ -799,6 +801,7 @@ export const StatList = ({
                 getZipParentCounty={getZipParentCounty}
                 zipScopeCountyName={zipScopeDisplayName}
                 stateAvg={selectedStatContextAvg?.value ?? null}
+                selectedStatLoading={selectedStatLoading}
                 embedded={true}
               />
             )
