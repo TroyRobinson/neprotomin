@@ -756,22 +756,28 @@ export const StatList = ({
 
           {/* Embedded StatViz chart - only shown in advanced mode */}
           {showAdvanced && (
-            <StatViz
-              statsById={statsById}
-              seriesByStatIdByKind={seriesByStatIdByKind}
-              statDataById={statDataById}
-              selectedAreas={selectedAreas}
-              pinnedAreas={pinnedAreas}
-              selectedStatId={selectedStatId}
-              hoveredArea={hoveredArea}
-              onHoverArea={onHoverArea}
-              areaNameLookup={areaNameLookup}
-              activeAreaKind={activeAreaKind}
-              getZipParentCounty={getZipParentCounty}
-              zipScopeCountyName={zipScopeDisplayName}
-              stateAvg={selectedStatContextAvg?.value ?? null}
-              embedded={true}
-            />
+            areaEntries.length === 0 ? (
+              <div className="mt-3 mb-1 text-[10px] text-slate-400 dark:text-slate-500 italic text-center">
+                Shift+click an area(s) to see charts
+              </div>
+            ) : (
+              <StatViz
+                statsById={statsById}
+                seriesByStatIdByKind={seriesByStatIdByKind}
+                statDataById={statDataById}
+                selectedAreas={selectedAreas}
+                pinnedAreas={pinnedAreas}
+                selectedStatId={selectedStatId}
+                hoveredArea={hoveredArea}
+                onHoverArea={onHoverArea}
+                areaNameLookup={areaNameLookup}
+                activeAreaKind={activeAreaKind}
+                getZipParentCounty={getZipParentCounty}
+                zipScopeCountyName={zipScopeDisplayName}
+                stateAvg={selectedStatContextAvg?.value ?? null}
+                embedded={true}
+              />
+            )
           )}
         </div>
       )}
