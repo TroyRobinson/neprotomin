@@ -2650,6 +2650,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   }
 
   function updateSecondaryStatOverlay() {
+    if (!map.isStyleLoaded()) return;
     const primaryEntry = selectedStatId ? scopedStatDataByBoundary.get(selectedStatId) : undefined;
     const primaryZipScope = new Set<string>(Object.keys(primaryEntry?.ZIP?.data ?? {}));
     const primaryCountyScope = new Set<string>(Object.keys(primaryEntry?.COUNTY?.data ?? {}));

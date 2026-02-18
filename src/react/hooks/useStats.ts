@@ -122,6 +122,52 @@ const removeIdsFromAllContexts = (
   return changed ? next : prev;
 };
 
+const makeLoadedContextKey = (contextKey: string, statId: string): string =>
+  `${contextKey}::${statId}`;
+
+const addLoadedIdsToContext = (
+  prev: Set<string>,
+  contextKey: string,
+  ids: Iterable<string>,
+): Set<string> => {
+  const next = new Set(prev);
+  let changed = false;
+  for (const statId of ids) {
+    if (typeof statId !== "string" || statId.length === 0) continue;
+    const key = makeLoadedContextKey(contextKey, statId);
+    if (!next.has(key)) {
+      next.add(key);
+      changed = true;
+    }
+  }
+  return changed ? next : prev;
+};
+
+const removeLoadedIdsFromAllContexts = (
+  prev: Set<string>,
+  ids: Iterable<string>,
+): Set<string> => {
+  const removeSet = new Set<string>();
+  for (const id of ids) {
+    if (typeof id === "string" && id.length > 0) removeSet.add(id);
+  }
+  if (removeSet.size === 0 || prev.size === 0) return prev;
+
+  let changed = false;
+  const next = new Set<string>();
+  for (const key of prev) {
+    // Key format is `${queryContextKey}::${statId}`; strip only the trailing stat id.
+    const separatorIndex = key.lastIndexOf("::");
+    const statId = separatorIndex >= 0 ? key.slice(separatorIndex + 2) : "";
+    if (removeSet.has(statId)) {
+      changed = true;
+      continue;
+    }
+    next.add(key);
+  }
+  return changed ? next : prev;
+};
+
 interface UseStatsOptions {
   statDataEnabled?: boolean;
   statMapsEnabled?: boolean;
@@ -198,7 +244,7 @@ export const useStats = ({
   const [statDataCacheVersion, setStatDataCacheVersion] = useState(0);
   const [statDataSnapshotVersion, setStatDataSnapshotVersion] = useState(0);
   const [statDataDateFilter, setStatDataDateFilter] = useState<string[] | null>(null);
-  const [loadedStatIds, setLoadedStatIds] = useState<Set<string>>(new Set());
+  const [loadedStatContextKeys, setLoadedStatContextKeys] = useState<Set<string>>(new Set());
   const [completedStatIdsByContext, setCompletedStatIdsByContext] = useState<
     Map<string, Set<string>>
   >(new Map());
@@ -263,7 +309,7 @@ export const useStats = ({
     if (age >= STAT_DATA_CACHE_TTL_MS) {
       if (!statDataRefreshRequested) {
         setStatDataRefreshRequested(true);
-        setLoadedStatIds(new Set());
+        setLoadedStatContextKeys(new Set());
         setBatchGeneration((prev) => prev + 1);
       }
       return;
@@ -407,18 +453,6 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     return `${statId}::${name}::${parentArea}::${boundaryType}::${date}`;
   };
 
-  // Seed loaded set from any cached statData (initial render after cache restore)
-  useEffect(() => {
-    if (loadedStatIds.size > 0) return;
-    const cached = Array.from(cachedStatDataByKeyRef.current.values());
-    if (cached.length === 0) return;
-    const next = new Set<string>();
-    for (const row of cached) {
-      if (row && typeof (row as any).statId === "string") next.add((row as any).statId);
-    }
-    if (next.size > 0) setLoadedStatIds(next);
-  }, [loadedStatIds.size]);
-
   const priorityIds = useMemo(() => {
     const unique = new Set<string>();
     for (const id of priorityStatIds) {
@@ -515,6 +549,18 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     return [...statDataBoundaryTypes].sort().join("|");
   }, [statDataBoundaryTypes]);
 
+  // Scope key for loaded-cache bookkeeping: avoid volatile date lists to prevent
+  // feedback loops between date-filter derivation and batch selection.
+  const loadedScopeKey = useMemo(
+    () =>
+      [
+        `mode:${timeSeriesEnabled ? "series" : "snapshot"}`,
+        `parents:${statDataScopeParentsKey}`,
+        `boundaries:${statDataBoundaryTypesKey}`,
+      ].join("::"),
+    [timeSeriesEnabled, statDataScopeParentsKey, statDataBoundaryTypesKey],
+  );
+
   // Keep request completion state scoped to filters that can change result shape.
   const queryContextKey = useMemo(
     () =>
@@ -540,15 +586,22 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     if (!statDataEnabled) return [];
     const batch: string[] = [];
     const seen = new Set<string>();
-    const loaded = loadedStatIds;
-    const desired = (loaded.size === 0 ? initialBatchSize : batchSize) + priorityIds.length;
+    const prioritySet = new Set(priorityIds);
+    // Use context-scoped loaded keys so scope/date/boundary changes can re-fetch.
+    const hasLoadedInScope = Array.from(loadedStatContextKeys).some((key) =>
+      key.startsWith(`${loadedScopeKey}::`),
+    );
+    const desired = (hasLoadedInScope ? batchSize : initialBatchSize) + priorityIds.length;
     const add = (id?: string | null) => {
       if (!id || typeof id !== "string") return;
+      if (seen.has(id)) return;
+      const hasCachedRows = (cachedStatKeysByStatIdRef.current.get(id)?.size ?? 0) > 0;
+      const forcePriorityCacheMissRefetch = prioritySet.has(id) && !hasCachedRows;
       if (
-        loaded.has(id) ||
-        completedStatIdsForContext.has(id) ||
-        emptyStatIdsForContext.has(id) ||
-        seen.has(id)
+        !forcePriorityCacheMissRefetch &&
+        (loadedStatContextKeys.has(makeLoadedContextKey(loadedScopeKey, id)) ||
+          completedStatIdsForContext.has(id) ||
+          emptyStatIdsForContext.has(id))
       ) {
         return;
       }
@@ -582,9 +635,10 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     return batch;
   }, [
     statDataEnabled,
-    loadedStatIds,
+    loadedStatContextKeys,
     completedStatIdsForContext,
     emptyStatIdsForContext,
+    loadedScopeKey,
     priorityIds,
     orderedStatIds,
     initialBatchSize,
@@ -593,6 +647,7 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     trickleReady,
     batchGeneration,
     childrenByParent,
+    statDataCacheVersion,
   ]);
 
   const shouldIncludeStatData =
@@ -635,12 +690,14 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
   const lastRequestedBatchKeyRef = useRef<string>("");
   const lastRequestedBatchIdsRef = useRef<string[]>([]);
   const lastRequestedContextKeyRef = useRef<string>("");
+  const lastRequestedLoadedScopeKeyRef = useRef<string>("");
   useEffect(() => {
     if (!queryEnabled || !canQueryStatData || batchIds.length === 0) return;
     lastRequestedBatchKeyRef.current = `${batchGeneration}::${queryContextKey}::${batchIds.join("|")}`;
     lastRequestedBatchIdsRef.current = batchIds;
     lastRequestedContextKeyRef.current = queryContextKey;
-  }, [batchGeneration, batchIds, canQueryStatData, queryEnabled, queryContextKey]);
+    lastRequestedLoadedScopeKeyRef.current = loadedScopeKey;
+  }, [batchGeneration, batchIds, canQueryStatData, queryEnabled, queryContextKey, loadedScopeKey]);
 
   const processedBatchKeyRef = useRef<string>("");
   useEffect(() => {
@@ -654,6 +711,7 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     const rows = Array.isArray(statDataResp?.statData) ? (statDataResp.statData as any[]) : [];
     const requested = lastRequestedBatchIdsRef.current;
     const contextKey = lastRequestedContextKeyRef.current || queryContextKey;
+    const loadedScopeKeyForRequest = lastRequestedLoadedScopeKeyRef.current || loadedScopeKey;
     const completedIds = new Set<string>();
     let cacheChanged = false;
     const now = Date.now();
@@ -690,11 +748,11 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
       return next;
     });
 
-    setLoadedStatIds((prev) => {
-      const next = new Set(prev);
-      for (const statId of completedIds) next.add(statId);
-      return next;
-    });
+    if (completedIds.size > 0) {
+      setLoadedStatContextKeys((prev) =>
+        addLoadedIdsToContext(prev, loadedScopeKeyForRequest, completedIds),
+      );
+    }
 
     // After a batch completes, pause before allowing the next trickle batch.
     if (trickleDelayMs > 0 && enableTrickle) {
@@ -714,13 +772,6 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
         protectedStatIds: new Set(priorityIds),
       });
       if (evicted.length > 0) {
-        setCompletedStatIdsByContext((prev) => removeIdsFromAllContexts(prev, evicted));
-        setEmptyStatIdsByContext((prev) => removeIdsFromAllContexts(prev, evicted));
-        setLoadedStatIds((prev) => {
-          const next = new Set(prev);
-          for (const statId of evicted) next.delete(statId);
-          return next;
-        });
         if (!cacheChanged) {
           setStatDataCacheVersion((v) => v + 1);
         }
@@ -741,6 +792,7 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     enableTrickle,
     trickleDelayMs,
     queryContextKey,
+    loadedScopeKey,
   ]);
 
   const cachedStatDataRows = useMemo(
@@ -788,12 +840,7 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
       cachedStatLastAccessRef.current.delete(statId);
       setCompletedStatIdsByContext((prev) => removeIdsFromAllContexts(prev, [statId]));
       setEmptyStatIdsByContext((prev) => removeIdsFromAllContexts(prev, [statId]));
-      setLoadedStatIds((prev) => {
-        if (!prev.has(statId)) return prev;
-        const next = new Set(prev);
-        next.delete(statId);
-        return next;
-      });
+      setLoadedStatContextKeys((prev) => removeLoadedIdsFromAllContexts(prev, [statId]));
       setStatDataCacheVersion((v) => v + 1);
       setStatDataRefreshRequested(true);
       setBatchGeneration((prev) => prev + 1);
