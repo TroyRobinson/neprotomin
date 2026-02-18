@@ -1,9 +1,9 @@
 # Handoff: StatViz Loading Robustness (Advanced Mode)
 
 ## Current Status (February 18, 2026)
-- Phase 1 in this document is **not implemented** in the current `main` working state.
-- What is implemented in code now is the earlier granular UI loading wiring from commit `6d9d7b4`.
-- This handoff is intended for the next dev to implement Phase 1 onward.
+- Phase 1 in this document is now implemented in the current working state.
+- Granular UI loading wiring from commit `6d9d7b4` remains active.
+- Remaining work is Phase 2 onward.
 
 ## Context
 - Branch history reference:
@@ -17,7 +17,7 @@
 The following is in code and active now:
 
 1. Per-row loading metadata in bar mode.
-   - `src/react/components/StatViz.tsx:705`
+   - `src/react/components/StatViz.tsx:708`
    - Row is treated as loading when `selectedStatLoading && raw === undefined`.
 
 2. Donut spinner when all selected rows are unresolved.
@@ -25,24 +25,29 @@ The following is in code and active now:
    - `allSelectedBarsLoading` + `shouldShowLoadingDonut`.
 
 3. Selected-stat loading wiring from `useStats` to `StatViz`.
-   - `src/react/hooks/useStats.ts:630` (`pendingStatIds`)
+   - `src/react/hooks/useStats.ts:763` (`pendingStatIds`)
    - `src/react/ReactMapApp.tsx:1248` (`isSelectedStatLoading`)
    - Prop pass-through via `Sidebar` and `StatList`.
 
+4. Phase 1 pending bookkeeping fix in `useStats`.
+   - Removed optimistic "requested IDs are loaded" behavior.
+   - Added context-aware request completion tracking with:
+     - `completedStatIdsByContext`
+     - `emptyStatIdsByContext`
+   - Added `queryContextKey` derived from:
+     - time-series mode (`series` vs `snapshot`)
+     - `statDataDateKey`
+     - scoped parents (`statDataScopeParents`)
+     - boundary type filters (`statDataBoundaryTypes`)
+   - Pending now resolves per current batch + context:
+     - Pending iff stat is in `batchIds` and not completed/empty in the active `queryContextKey`.
+   - Empty/no-data IDs are treated as resolved for the active context so no infinite spinner on true no-data.
+   - Retry + cache eviction now clear context completion/empty markers for affected IDs.
+
 ## Why It Can Still Show Temporary 0s
-Current pending signal is not robust enough.
+Main Phase 1 pending issue is fixed. Remaining temporary `0` risk is now primarily Phase 2 scope-awareness.
 
-Root issue:
-- `loadedStatIds` is marked with *all requested IDs* after a batch completes, even when rows may not yet represent the needed selected-area/scope data.
-  - `src/react/hooks/useStats.ts:559`
-  - Specifically: `for (const id of requested) next.add(id);`
-
-Impact:
-- `pendingStatIds` becomes empty too early.
-- `selectedStatLoading` flips false.
-- `StatViz` row logic stops showing loading and falls back to `0`.
-
-Secondary design gap:
+Current remaining design gap:
 - Loaded tracking is by `statId` only, not by `(statId + scope/parentArea + boundaryType + date-context)`.
 - Scope changes can require fresh data even when a stat is globally “loaded”.
 
@@ -61,11 +66,13 @@ Live variability can be amplified by:
 ### Phase 1: Fix pending bookkeeping (highest priority)
 Goal: stop clearing loading state prematurely.
 
-1. In `useStats`, remove optimistic “requested IDs are loaded” behavior.
-2. Track request completion in a context-aware way:
+Status: done on February 18, 2026.
+
+1. In `useStats`, removed optimistic “requested IDs are loaded” behavior.
+2. Request completion now tracked in a context-aware way:
    - Add a `queryContextKey` from relevant filters (`statDataDateKey`, `statDataScopeParents`, `statDataBoundaryTypes`, time-series mode).
    - Track `completedStatIdsByContext` and `emptyStatIdsByContext`.
-3. Compute `pendingStatIds` from current batch/context:
+3. `pendingStatIds` now computed from current batch/context:
    - Pending if in current `batchIds` and neither completed nor explicitly empty for this context.
 
 ### Phase 2: Make loading/cache scope-aware

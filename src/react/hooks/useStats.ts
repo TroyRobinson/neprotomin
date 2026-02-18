@@ -50,6 +50,78 @@ const SUPPORTED_AREA_KINDS: SupportedAreaKind[] = ["ZIP", "COUNTY"];
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
+const getContextSet = (
+  map: Map<string, Set<string>>,
+  contextKey: string,
+): Set<string> => map.get(contextKey) ?? new Set<string>();
+
+const addIdsToContext = (
+  prev: Map<string, Set<string>>,
+  contextKey: string,
+  ids: Iterable<string>,
+): Map<string, Set<string>> => {
+  const existing = prev.get(contextKey) ?? new Set<string>();
+  const nextSet = new Set(existing);
+  let changed = false;
+  for (const id of ids) {
+    if (typeof id !== "string" || id.length === 0) continue;
+    if (!nextSet.has(id)) {
+      nextSet.add(id);
+      changed = true;
+    }
+  }
+  if (!changed) return prev;
+  const next = new Map(prev);
+  next.set(contextKey, nextSet);
+  return next;
+};
+
+const removeIdsFromContext = (
+  prev: Map<string, Set<string>>,
+  contextKey: string,
+  ids: Iterable<string>,
+): Map<string, Set<string>> => {
+  const existing = prev.get(contextKey);
+  if (!existing || existing.size === 0) return prev;
+  const removeSet = new Set<string>();
+  for (const id of ids) {
+    if (typeof id === "string" && id.length > 0) removeSet.add(id);
+  }
+  if (removeSet.size === 0) return prev;
+  let changed = false;
+  const nextSet = new Set(existing);
+  for (const id of removeSet) {
+    if (nextSet.delete(id)) changed = true;
+  }
+  if (!changed) return prev;
+  const next = new Map(prev);
+  if (nextSet.size === 0) next.delete(contextKey);
+  else next.set(contextKey, nextSet);
+  return next;
+};
+
+const removeIdsFromAllContexts = (
+  prev: Map<string, Set<string>>,
+  ids: Iterable<string>,
+): Map<string, Set<string>> => {
+  const removeSet = new Set<string>();
+  for (const id of ids) {
+    if (typeof id === "string" && id.length > 0) removeSet.add(id);
+  }
+  if (removeSet.size === 0 || prev.size === 0) return prev;
+
+  let changed = false;
+  const next = new Map<string, Set<string>>();
+  for (const [contextKey, contextIds] of prev.entries()) {
+    const nextSet = new Set(contextIds);
+    for (const id of removeSet) {
+      if (nextSet.delete(id)) changed = true;
+    }
+    if (nextSet.size > 0) next.set(contextKey, nextSet);
+  }
+  return changed ? next : prev;
+};
+
 interface UseStatsOptions {
   statDataEnabled?: boolean;
   statMapsEnabled?: boolean;
@@ -127,6 +199,12 @@ export const useStats = ({
   const [statDataSnapshotVersion, setStatDataSnapshotVersion] = useState(0);
   const [statDataDateFilter, setStatDataDateFilter] = useState<string[] | null>(null);
   const [loadedStatIds, setLoadedStatIds] = useState<Set<string>>(new Set());
+  const [completedStatIdsByContext, setCompletedStatIdsByContext] = useState<
+    Map<string, Set<string>>
+  >(new Map());
+  const [emptyStatIdsByContext, setEmptyStatIdsByContext] = useState<Map<string, Set<string>>>(
+    new Map(),
+  );
   const [batchGeneration, setBatchGeneration] = useState(0);
 
   // Trickle delay: after each batch completes, pause before fetching the next one
@@ -407,6 +485,57 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     return [...preferred, ...rest].map((s) => s.id);
   }, [statsById, categoryFilter]);
 
+  const statDataScopeParents = useMemo(() => {
+    if (!limitStatDataToScopes) return null;
+    const set = new Set<string>();
+    const add = (value: string | null | undefined) => {
+      const normalized = normalizeScopeLabel(value ?? null);
+      if (normalized) set.add(normalized);
+    };
+    add(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
+    add(DEFAULT_PARENT_AREA_BY_KIND.COUNTY ?? "Oklahoma");
+    add(zipScopes[0]);
+    add(countyScopes[0]);
+    return Array.from(set);
+  }, [limitStatDataToScopes, zipScopes, countyScopes]);
+
+  const statDataDateKey = timeSeriesEnabled
+    ? "series"
+    : statDataDateFilter && statDataDateFilter.length > 0
+      ? statDataDateFilter.join("|")
+      : "";
+
+  const statDataScopeParentsKey = useMemo(() => {
+    if (!statDataScopeParents || statDataScopeParents.length === 0) return "*";
+    return [...statDataScopeParents].sort().join("|");
+  }, [statDataScopeParents]);
+
+  const statDataBoundaryTypesKey = useMemo(() => {
+    if (!statDataBoundaryTypes || statDataBoundaryTypes.length === 0) return "*";
+    return [...statDataBoundaryTypes].sort().join("|");
+  }, [statDataBoundaryTypes]);
+
+  // Keep request completion state scoped to filters that can change result shape.
+  const queryContextKey = useMemo(
+    () =>
+      [
+        `mode:${timeSeriesEnabled ? "series" : "snapshot"}`,
+        `date:${statDataDateKey || "*"}`,
+        `parents:${statDataScopeParentsKey}`,
+        `boundaries:${statDataBoundaryTypesKey}`,
+      ].join("::"),
+    [timeSeriesEnabled, statDataDateKey, statDataScopeParentsKey, statDataBoundaryTypesKey],
+  );
+
+  const completedStatIdsForContext = useMemo(
+    () => getContextSet(completedStatIdsByContext, queryContextKey),
+    [completedStatIdsByContext, queryContextKey],
+  );
+  const emptyStatIdsForContext = useMemo(
+    () => getContextSet(emptyStatIdsByContext, queryContextKey),
+    [emptyStatIdsByContext, queryContextKey],
+  );
+
   const batchIds = useMemo(() => {
     if (!statDataEnabled) return [];
     const batch: string[] = [];
@@ -415,7 +544,14 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     const desired = (loaded.size === 0 ? initialBatchSize : batchSize) + priorityIds.length;
     const add = (id?: string | null) => {
       if (!id || typeof id !== "string") return;
-      if (loaded.has(id) || seen.has(id)) return;
+      if (
+        loaded.has(id) ||
+        completedStatIdsForContext.has(id) ||
+        emptyStatIdsForContext.has(id) ||
+        seen.has(id)
+      ) {
+        return;
+      }
       seen.add(id);
       batch.push(id);
     };
@@ -447,6 +583,8 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
   }, [
     statDataEnabled,
     loadedStatIds,
+    completedStatIdsForContext,
+    emptyStatIdsForContext,
     priorityIds,
     orderedStatIds,
     initialBatchSize,
@@ -457,28 +595,9 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     childrenByParent,
   ]);
 
-  const statDataScopeParents = useMemo(() => {
-    if (!limitStatDataToScopes) return null;
-    const set = new Set<string>();
-    const add = (value: string | null | undefined) => {
-      const normalized = normalizeScopeLabel(value ?? null);
-      if (normalized) set.add(normalized);
-    };
-    add(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma");
-    add(DEFAULT_PARENT_AREA_BY_KIND.COUNTY ?? "Oklahoma");
-    add(zipScopes[0]);
-    add(countyScopes[0]);
-    return Array.from(set);
-  }, [limitStatDataToScopes, zipScopes, countyScopes]);
-
   const shouldIncludeStatData =
     statMapsActive &&
     (batchIds.length > 0 || statDataRefreshRequested || lastStatDataAt === null);
-  const statDataDateKey = timeSeriesEnabled
-    ? "series"
-    : statDataDateFilter && statDataDateFilter.length > 0
-      ? statDataDateFilter.join("|")
-      : "";
   const canQueryStatData =
     shouldIncludeStatData &&
     (timeSeriesEnabled || (statDataDateFilter && statDataDateFilter.length > 0));
@@ -515,11 +634,13 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
 
   const lastRequestedBatchKeyRef = useRef<string>("");
   const lastRequestedBatchIdsRef = useRef<string[]>([]);
+  const lastRequestedContextKeyRef = useRef<string>("");
   useEffect(() => {
     if (!queryEnabled || !canQueryStatData || batchIds.length === 0) return;
-    lastRequestedBatchKeyRef.current = `${batchGeneration}::${statDataDateKey}::${batchIds.join("|")}`;
+    lastRequestedBatchKeyRef.current = `${batchGeneration}::${queryContextKey}::${batchIds.join("|")}`;
     lastRequestedBatchIdsRef.current = batchIds;
-  }, [batchGeneration, batchIds, canQueryStatData, queryEnabled, statDataDateKey]);
+    lastRequestedContextKeyRef.current = queryContextKey;
+  }, [batchGeneration, batchIds, canQueryStatData, queryEnabled, queryContextKey]);
 
   const processedBatchKeyRef = useRef<string>("");
   useEffect(() => {
@@ -531,12 +652,15 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     processedBatchKeyRef.current = batchKey;
 
     const rows = Array.isArray(statDataResp?.statData) ? (statDataResp.statData as any[]) : [];
-    if (rows.length === 0) return;
+    const requested = lastRequestedBatchIdsRef.current;
+    const contextKey = lastRequestedContextKeyRef.current || queryContextKey;
+    const completedIds = new Set<string>();
     let cacheChanged = false;
     const now = Date.now();
     for (const row of rows) {
       const key = statDataRowKey(row);
       if (!key) continue;
+      if (typeof row?.statId === "string") completedIds.add(row.statId);
       cachedStatDataByKeyRef.current.set(key, row);
       const statId = typeof row?.statId === "string" ? row.statId : null;
       if (statId) {
@@ -555,14 +679,20 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
       setLastStatDataAt(now);
     }
 
-    const requested = lastRequestedBatchIdsRef.current;
+    const emptyRequestedIds = requested.filter((id) => !completedIds.has(id));
+    if (completedIds.size > 0) {
+      setCompletedStatIdsByContext((prev) => addIdsToContext(prev, contextKey, completedIds));
+    }
+    setEmptyStatIdsByContext((prev) => {
+      let next = prev;
+      if (completedIds.size > 0) next = removeIdsFromContext(next, contextKey, completedIds);
+      if (emptyRequestedIds.length > 0) next = addIdsToContext(next, contextKey, emptyRequestedIds);
+      return next;
+    });
+
     setLoadedStatIds((prev) => {
       const next = new Set(prev);
-      for (const row of rows) {
-        if (row && typeof row.statId === "string") next.add(row.statId);
-      }
-      // Only mark requested IDs "loaded" if we actually received rows.
-      for (const id of requested) next.add(id);
+      for (const statId of completedIds) next.add(statId);
       return next;
     });
 
@@ -584,6 +714,8 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
         protectedStatIds: new Set(priorityIds),
       });
       if (evicted.length > 0) {
+        setCompletedStatIdsByContext((prev) => removeIdsFromAllContexts(prev, evicted));
+        setEmptyStatIdsByContext((prev) => removeIdsFromAllContexts(prev, evicted));
         setLoadedStatIds((prev) => {
           const next = new Set(prev);
           for (const statId of evicted) next.delete(statId);
@@ -608,6 +740,7 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     priorityIds,
     enableTrickle,
     trickleDelayMs,
+    queryContextKey,
   ]);
 
   const cachedStatDataRows = useMemo(
@@ -631,10 +764,11 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     if (!canQueryStatData || batchIds.length === 0) return new Set<string>();
     const pending = new Set<string>();
     for (const statId of batchIds) {
-      if (!loadedStatIds.has(statId)) pending.add(statId);
+      if (completedStatIdsForContext.has(statId) || emptyStatIdsForContext.has(statId)) continue;
+      pending.add(statId);
     }
     return pending;
-  }, [batchIds, canQueryStatData, loadedStatIds]);
+  }, [batchIds, canQueryStatData, completedStatIdsForContext, emptyStatIdsForContext]);
 
   const isLoading = statsLoading || statDataLoading;
   const error = statsError || statDataError;
@@ -652,6 +786,8 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
         cachedStatKeysByStatIdRef.current.delete(statId);
       }
       cachedStatLastAccessRef.current.delete(statId);
+      setCompletedStatIdsByContext((prev) => removeIdsFromAllContexts(prev, [statId]));
+      setEmptyStatIdsByContext((prev) => removeIdsFromAllContexts(prev, [statId]));
       setLoadedStatIds((prev) => {
         if (!prev.has(statId)) return prev;
         const next = new Set(prev);
