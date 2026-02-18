@@ -163,7 +163,7 @@ export const StatList = ({
   onStatSelect,
   onRetryStatData,
   onClearCategory,
-  variant: _variant = "desktop",
+  variant = "desktop",
   zipScopeDisplayName = null,
   countyScopeDisplayName: _countyScopeDisplayName = null,
   // StatViz props
@@ -175,9 +175,11 @@ export const StatList = ({
   getZipParentCounty,
 }: StatListProps) => {
   const { getCategoryLabel } = useCategories();
+  const showStatSearch = variant === "mobile";
   const areaEntries = useMemo(() => buildAreaEntries(selectedAreas), [selectedAreas]);
   const [searchQuery, setSearchQuery] = useState("");
   const normalizedQuery = useMemo(() => normalizeForSearch(searchQuery), [searchQuery]);
+  const effectiveNormalizedQuery = showStatSearch ? normalizedQuery : "";
 
   // Determine which boundary level to use: prefer activeAreaKind if set, otherwise infer from selections
   const effectiveAreaKind = useMemo<SupportedAreaKind | null>(() => {
@@ -258,17 +260,17 @@ export const StatList = ({
   }, [listStats, statDataById, statSummariesById, effectiveAreaKind]);
 
   const filteredRows = useMemo(() => {
-    if (!normalizedQuery) return rows;
+    if (!effectiveNormalizedQuery) return rows;
     return rows.filter((row) => {
       const normalizedName = normalizeForSearch(row.name);
       if (!normalizedName) return false;
-      if (normalizedName.includes(normalizedQuery) || normalizedQuery.includes(normalizedName)) {
+      if (normalizedName.includes(effectiveNormalizedQuery) || effectiveNormalizedQuery.includes(normalizedName)) {
         return true;
       }
-      const score = computeSimilarityFromNormalized(normalizedName, normalizedQuery);
+      const score = computeSimilarityFromNormalized(normalizedName, effectiveNormalizedQuery);
       return score >= STAT_SEARCH_MATCH_THRESHOLD;
     });
-  }, [rows, normalizedQuery]);
+  }, [rows, effectiveNormalizedQuery]);
 
   // Find the root parent and intermediate child by traversing up the hierarchy
   // This handles parent → child → grandchild relationships
@@ -784,33 +786,35 @@ export const StatList = ({
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-4 pt-2 pb-6 bg-slate-100 dark:bg-slate-800">
-        <div className="pt-2 mb-2">
-          <div className="flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 shadow-sm transition-colors focus-within:border-brand-200 focus-within:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:focus-within:border-slate-600 dark:focus-within:bg-slate-800/70">
-            <MagnifyingGlassIcon className="h-4 w-4 text-slate-400 dark:text-slate-500" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search stats"
-              aria-label="Search statistics"
-              className="w-full bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none dark:text-slate-200 dark:placeholder:text-slate-500"
-              spellCheck={false}
-            />
-            {searchQuery.trim().length > 0 && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                className="rounded-full p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300"
-                aria-label="Clear search"
-              >
-                <XMarkIcon className="h-4 w-4" />
-              </button>
-            )}
+        {showStatSearch && (
+          <div className="pt-2 mb-2">
+            <div className="flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 shadow-sm transition-colors focus-within:border-brand-200 focus-within:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:focus-within:border-slate-600 dark:focus-within:bg-slate-800/70">
+              <MagnifyingGlassIcon className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search stats"
+                aria-label="Search statistics"
+                className="w-full bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none dark:text-slate-200 dark:placeholder:text-slate-500"
+                spellCheck={false}
+              />
+              {searchQuery.trim().length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="rounded-full p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+                  aria-label="Clear search"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
         {filteredRows.length === 0 ? (
           <p className="px-1 pt-2 text-xs text-slate-500 dark:text-slate-400">
-            {normalizedQuery
+            {effectiveNormalizedQuery
               ? "No statistics match your search."
               : "No statistics to display for the current selection."}
           </p>
