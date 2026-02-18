@@ -772,6 +772,19 @@ export const TopBar = ({
             </div>
           </div>
           <div className="relative z-10 flex shrink-0 items-center gap-3 bg-white/80 pl-4 -ml-4 -mr-2 dark:bg-slate-900/80 backdrop-blur-lg">
+            {/* Blend the left seam where the nav lane meets the right action cluster on tight desktop widths. */}
+            <div
+              className="pointer-events-none absolute -left-12 top-0 h-full w-12 dark:hidden"
+              style={{
+                background: "linear-gradient(to right, transparent 0%, rgba(255, 255, 255, 0.8) 100%)",
+              }}
+            />
+            <div
+              className="pointer-events-none absolute -left-12 top-0 hidden h-full w-12 dark:block"
+              style={{
+                background: "linear-gradient(to right, transparent 0%, rgba(15, 23, 42, 0.8) 100%)",
+              }}
+            />
             {!isLoading && (!user || user.isGuest) && (
               <button
                 type="button"
