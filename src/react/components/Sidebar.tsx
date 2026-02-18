@@ -226,6 +226,7 @@ export const Sidebar = ({
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
   const [highlightedSearchIndex, setHighlightedSearchIndex] = useState(-1);
   const sidebarRef = useRef<HTMLElement>(null);
+  const lastSidebarPointerDownRef = useRef(false);
   const desktopSearchInputRef = useRef<HTMLInputElement>(null);
   const hasAppliedInitialSearchFocusRef = useRef(false);
   const [isOrgsScrollAtTop, setIsOrgsScrollAtTop] = useState(true);
@@ -586,15 +587,39 @@ export const Sidebar = ({
 
   useEffect(() => {
     if (variant !== "desktop" || collapsed || !onCollapse) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const sidebarEl = sidebarRef.current;
+      const target = event.target;
+      if (!sidebarEl || !(target instanceof Node)) {
+        lastSidebarPointerDownRef.current = false;
+        return;
+      }
+      lastSidebarPointerDownRef.current = sidebarEl.contains(target);
+    };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       const sidebarEl = sidebarRef.current;
       const target = event.target;
-      if (!sidebarEl || !(target instanceof Node) || !sidebarEl.contains(target)) return;
+      const activeElement = document.activeElement;
+      const eventFromSidebar = Boolean(sidebarEl && target instanceof Node && sidebarEl.contains(target));
+      const focusInSidebar =
+        Boolean(sidebarEl && activeElement instanceof Node && sidebarEl.contains(activeElement));
+      const eventFromMap = Boolean(
+        (target instanceof Element &&
+          target.closest(".maplibregl-canvas, .maplibregl-canvas-container, .maplibregl-map")) ||
+          (activeElement instanceof Element &&
+            activeElement.closest(".maplibregl-canvas, .maplibregl-canvas-container, .maplibregl-map")),
+      );
+      if (!eventFromSidebar && !focusInSidebar && !lastSidebarPointerDownRef.current && !eventFromMap) return;
       onCollapse(true);
+      lastSidebarPointerDownRef.current = false;
     };
+    document.addEventListener("pointerdown", handlePointerDown, true);
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, [collapsed, onCollapse, variant]);
 
   const handleSearchResultSelect = useCallback(
