@@ -1025,7 +1025,7 @@ export const TopBar = ({
                     })
                   }
                   placeholder="City, Org, ZIP, Address, ..."
-                  className="flex-1 min-w-0 bg-transparent text-base text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
+                  className="search-input-brand-cancel flex-1 min-w-0 bg-transparent text-base text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
                   enterKeyHint="search"
                 />
                 <button

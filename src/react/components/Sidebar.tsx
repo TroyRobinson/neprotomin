@@ -1071,7 +1071,7 @@ export const Sidebar = ({
                 }
               }}
               placeholder="Search orgs, stats, cities..."
-              className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-brand-300 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-brand-600 dark:focus:ring-brand-900/40"
+              className="search-input-brand-cancel h-8 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-brand-300 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-brand-600 dark:focus:ring-brand-900/40"
             />
           </label>
           {/* Toggle button — close (X) when expanded, open (hamburger) when collapsed */}
