@@ -955,7 +955,7 @@ export const Sidebar = ({
   };
 
   const tabClasses = (isActive: boolean) =>
-    `justify-center px-4 py-2 text-[11px] leading-none font-semibold uppercase tracking-wide border-b-2 inline-flex items-center gap-2 rounded-t-md rounded-b-none transition-colors ${
+    `justify-center px-4 h-8 text-[11px] leading-none font-semibold uppercase tracking-wide border-b-2 inline-flex items-center gap-2 rounded-t-md rounded-b-none transition-colors ${
       isActive
         ? "border-brand-500 bg-slate-100 text-brand-700 dark:bg-slate-800 dark:text-brand-300"
         : "border-transparent text-slate-500 hover:text-brand-700 hover:bg-slate-100/70 dark:text-slate-500 dark:hover:bg-slate-800/70"
@@ -1182,10 +1182,10 @@ export const Sidebar = ({
                 <button
                   type="button"
                   onClick={() => setCategoryDropdownOpen((prev) => !prev)}
-                  className={`flex h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold ring-1 ring-inset transition ${
+                  className={`flex h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold border transition ${
                     categoryFilter
-                      ? "bg-brand-100 text-brand-700 ring-brand-200 hover:bg-brand-200 dark:bg-brand-900/40 dark:text-brand-200 dark:ring-brand-700/60 dark:hover:bg-brand-900/55"
-                      : "bg-slate-100 text-slate-600 ring-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700"
+                      ? "bg-brand-100 text-brand-700 border-brand-200 hover:bg-brand-200 dark:bg-brand-900/40 dark:text-brand-200 dark:border-brand-700/60 dark:hover:bg-brand-900/55"
+                      : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-700"
                   }`}
                   title={`Change category filter (${selectedCategoryLabel})`}
                 >

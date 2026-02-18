@@ -149,29 +149,29 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         onKeyDown={handleKeyDown}
         disabled={disabled}
         className={`
-          ${compact ? 'h-6 text-[10px]' : 'h-7 text-xs'} ${compact ? 'w-auto' : 'w-full'} ${compact ? '' : 'min-w-32'} rounded-lg border border-slate-300 bg-white pl-2 pr-7 text-slate-700 shadow-sm transition 
+          ${compact ? 'h-[21px] text-[10px]' : 'h-7 text-xs'} ${compact ? 'w-auto' : 'w-full'} ${compact ? '' : 'min-w-32'} rounded border border-slate-300 bg-white pl-2 pr-7 text-slate-700 shadow-sm transition 
           focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 
           dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50
           ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
           ${isOpen ? 'border-brand-400 ring-1 ring-brand-200 dark:border-brand-300 dark:ring-brand-800/50' : ''}
-          ${compact ? 'inline-grid grid-cols-1 items-center' : ''}
+          flex items-center
         `}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-labelledby={id ? `${id}-label` : undefined}
       >
-        <span className={`block truncate text-left ${compact ? 'col-start-1 row-start-1' : ''}`}>
+        <span className={`block truncate text-left w-full`}>
           {selectedOption?.label || placeholder || 'Select an option'}
         </span>
         {compact && (
-          <span className="invisible col-start-1 row-start-1 block whitespace-nowrap" aria-hidden="true">
+          <span className="sr-only">
             {longestLabel}
           </span>
         )}
       </button>
 
       {/* Custom dropdown arrow */}
-      <div className={`absolute ${compact ? 'right-1.5' : 'right-2'} top-1/2 h-3 w-3 -translate-y-1/2 pointer-events-none text-slate-400 dark:text-slate-500`}>
+      <div className={`absolute ${compact ? 'right-1.5' : 'right-2'} top-1/2 h-3 w-3 -translate-y-1/2 mt-px pointer-events-none text-slate-400 dark:text-slate-500`}>
         <svg 
           viewBox="0 0 20 20" 
           fill="currentColor" 
@@ -190,7 +190,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       {isOpen && (
         <div 
           ref={dropdownRef}
-          className={`absolute z-50 w-full min-w-40 rounded-lg border border-slate-300 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800 ${
+          className={`absolute z-50 w-full min-w-40 rounded border border-slate-300 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800 ${
             dropdownPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'
           }`}
         >

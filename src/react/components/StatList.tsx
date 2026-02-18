@@ -128,7 +128,7 @@ const ChildStatDropdown = ({
   ];
 
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex items-center gap-2">
       <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 whitespace-nowrap">
         {attributeName}
       </label>
@@ -718,7 +718,7 @@ export const StatList = ({
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Fixed area: Pinned selected stat */}
       {selectedStatRow && (
-        <div className="border-t border-b border-slate-200 dark:border-slate-700 px-4 pt-0 pb-2 shadow-md bg-slate-50 dark:bg-slate-800/50">
+        <div className="border-t border-b border-slate-200 dark:border-slate-700 px-4 pt-0 pb-3 shadow-md bg-slate-50 dark:bg-slate-800/50">
           <ul>
             <StatListItem
               row={selectedStatRow}
@@ -740,7 +740,7 @@ export const StatList = ({
           </ul>
           {/* Child stat attribute dropdowns (only for multi-child attributes) */}
           {multiChildAttrs.length > 0 && (
-            <div className="mt-1.5 space-y-1.5">
+            <div className="mt-2.5 space-y-2.5">
               {multiChildAttrs.map(([attributeName, relations]) => (
                 <ChildStatDropdown
                   key={attributeName}
@@ -889,7 +889,7 @@ const StatListItem = ({
     "group relative flex items-center justify-between rounded-2xl border px-3 py-2 shadow-sm transition-colors cursor-pointer select-none";
 
   const className = isHeader
-    ? "group relative flex items-center justify-between px-0 pt-2 pb-0 transition-colors cursor-pointer select-none"
+    ? "group relative flex items-center justify-between px-0 pt-2.5 pb-0 transition-colors cursor-pointer select-none"
     : isSelected
     ? `${common} border-2 border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-400/15`
     : isSecondary
@@ -946,8 +946,8 @@ const StatListItem = ({
         </div>
 
         {isHeader && grandchildToggles.length > 0 && (
-          <div className="flex items-center gap-1 mt-1.5 mb-0">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 whitespace-nowrap mr-3">
+          <div className="flex items-center gap-1 mt-2.5 mb-0">
+            <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 whitespace-nowrap mr-2">
               Options:
             </label>
             {grandchildToggles.map((toggle) => (
