@@ -285,10 +285,8 @@ export const BoundaryToolbar = ({
     >
       {/* Chips and Add Button */}
       <div
-        className={`flex flex-1 items-center gap-2 overflow-x-auto self-center py-1 pl-0 pr-1 ${
-          isMobile ? "no-scrollbar" : ""
-        }`}
-        style={isMobile ? { scrollbarWidth: "none" } : undefined}
+        className="no-scrollbar flex flex-1 items-center gap-2 overflow-x-auto self-center py-1 pl-0 pr-1"
+        style={{ scrollbarWidth: "none" }}
       >
         {/* Chips Container */}
         <div className="flex items-center gap-2">
