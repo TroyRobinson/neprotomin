@@ -904,14 +904,12 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
 
   useEffect(() => {
     if (timeSeriesEnabled) {
-      if (statDataDateFilter !== null) {
-        setStatDataDateFilter(null);
-      }
+      setStatDataDateFilter((prev) => (prev === null ? prev : null));
       return;
     }
     if (!statMapsActive) return;
     if (batchIds.length === 0) {
-      if (statDataDateFilter !== null) setStatDataDateFilter([]);
+      setStatDataDateFilter((prev) => (prev !== null && prev.length === 0 ? prev : []));
       return;
     }
     const desiredStatIds = new Set(batchIds);
@@ -943,7 +941,6 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
   }, [
     batchIds,
     statDataBoundaryTypes,
-    statDataDateFilter,
     statDataScopeParents,
     statMapsActive,
     summaryRowsVersion,
