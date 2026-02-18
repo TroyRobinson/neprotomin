@@ -961,7 +961,7 @@ export const Sidebar = ({
   };
 
   const tabClasses = (isActive: boolean) =>
-    `justify-center px-4 h-8 text-[11px] leading-none font-semibold uppercase tracking-wide border-b-2 inline-flex items-center gap-2 rounded-t-md rounded-b-none transition-colors ${
+    `justify-center px-4 h-8 -mb-[5px] text-[11px] leading-none font-semibold uppercase tracking-wide border-b-2 inline-flex items-center gap-2 rounded-t-md rounded-b-none transition-colors ${
       isActive
         ? "border-brand-500 bg-slate-100 text-brand-700 dark:bg-slate-800 dark:text-brand-300"
         : "border-transparent text-slate-500 hover:text-brand-700 hover:bg-slate-100/70 dark:text-slate-500 dark:hover:bg-slate-800/70"
@@ -1138,7 +1138,7 @@ export const Sidebar = ({
         collapsed ? "pointer-events-none opacity-0" : "opacity-100",
       ].join(" ")}>
       {/* Tabs Header — all items in one row with uniform gap-2 */}
-      <div className={`mb-2 flex items-center gap-2 px-4 ${variant === "desktop" ? "pt-2" : "pt-3"}`}>
+      <div className={`border-b border-slate-200 dark:border-slate-700 pb-1 flex items-end gap-2 px-4 ${variant === "desktop" ? "pt-2" : "pt-3"}`}>
           <button
             type="button"
             className={tabClasses(activeTab === "orgs")}
@@ -1186,12 +1186,12 @@ export const Sidebar = ({
         {/* Category Filter + Collapse (desktop only) */}
         {variant === "desktop" && (
           <>
-            <div className="ml-auto flex items-center gap-1">
+            <div className="ml-auto flex items-center gap-1 self-start">
               <div className="relative" ref={categoryDropdownRef}>
                 <button
                   type="button"
                   onClick={() => setCategoryDropdownOpen((prev) => !prev)}
-                  className={`flex h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold border transition ${
+                  className={`flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-semibold border transition ${
                     categoryFilter
                       ? "bg-brand-100 text-brand-700 border-brand-200 hover:bg-brand-200 dark:bg-brand-900/40 dark:text-brand-200 dark:border-brand-700/60 dark:hover:bg-brand-900/55"
                       : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-700"
@@ -1246,7 +1246,7 @@ export const Sidebar = ({
                     handleCategoryChange(null);
                     setCategoryDropdownOpen(false);
                   }}
-                  className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-100 text-brand-700 hover:bg-brand-200 dark:bg-brand-900/40 dark:text-brand-200 dark:hover:bg-brand-900/55"
+                  className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-100 text-brand-700 hover:bg-brand-200 dark:bg-brand-900/40 dark:text-brand-200 dark:hover:bg-brand-900/55"
                   title="Clear category filter"
                 >
                   <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
