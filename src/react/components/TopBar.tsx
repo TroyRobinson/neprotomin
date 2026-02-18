@@ -74,8 +74,8 @@ const CloseIcon = () => (
   </svg>
 );
 
-const PlusIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6">
+const PlusIcon = ({ className = "h-6 w-6" }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
     <path
       fill="currentColor"
       d="M12 5a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H6a1 1 0 110-2h5V6a1 1 0 011-1z"
@@ -499,17 +499,17 @@ export const TopBar = ({
         data-role="topbar"
         className="sticky top-0 z-40 flex flex-col gap-2 border-b border-slate-200 bg-white/80 px-4 pt-safe backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/80 sm:gap-0 sm:px-6"
       >
-        <div className="hidden h-16 w-full items-center justify-between sm:flex">
+        <div className="hidden h-14 w-full items-center justify-between sm:flex">
           <div className="flex min-w-0 flex-1 items-center gap-4">
             <a
               href="#"
               onClick={handleBrandClick}
               className="flex shrink-0 items-center gap-3 text-sm font-medium text-slate-500 dark:text-slate-400 -ml-2"
             >
-              <img src="/icons/NE_Logos_Logomark_Prp.svg" alt="NourishED" className="h-10 w-10 rounded-lg shadow-floating" />
+              <img src="/icons/NE_Logos_Logomark_Prp.svg" alt="NourishED" className="h-9 w-9 rounded-lg shadow-floating" />
             </a>
-            <div className="relative flex min-w-0 flex-1 items-center">
-              <nav className="hidden items-center gap-2 sm:flex">
+            <div className="relative flex min-w-0 flex-1 items-center overflow-hidden">
+              <nav className="hidden min-w-0 items-center gap-2 sm:flex">
                 <a
                   href="#map"
                   onClick={(e) => {
@@ -771,7 +771,7 @@ export const TopBar = ({
               />
             </div>
           </div>
-          <div className="relative z-10 flex shrink-0 items-center gap-4 bg-white/80 pl-4 -ml-4 pr-2 -mr-2 dark:bg-slate-900/80 backdrop-blur-lg">
+          <div className="relative z-10 flex shrink-0 items-center gap-3 bg-white/80 pl-4 -ml-4 -mr-2 dark:bg-slate-900/80 backdrop-blur-lg">
             {!isLoading && (!user || user.isGuest) && (
               <button
                 type="button"
@@ -920,7 +920,7 @@ export const TopBar = ({
             <button
               type="button"
               onClick={handleThemeToggle}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
               aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
               aria-pressed={theme === "dark"}
             >
@@ -930,10 +930,10 @@ export const TopBar = ({
               <button
                 type="button"
                 onClick={handleAddOrganization}
-                className="inline-flex h-10 items-center gap-2 rounded-full bg-brand-100 px-3 py-1.5 text-sm font-medium text-brand-700 shadow-sm transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900"
+                className="inline-flex h-9 items-center gap-1.5 rounded-full bg-brand-100 px-2.5 text-sm font-medium text-brand-700 transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900"
                 aria-label="Add organization"
               >
-                <PlusIcon />
+                <PlusIcon className="h-5 w-5" />
                 <span>Location</span>
               </button>
             )}
