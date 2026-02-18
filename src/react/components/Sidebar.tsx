@@ -1005,7 +1005,10 @@ export const Sidebar = ({
       ) : null}
       {variant === "desktop" && (
         <div
-          className={`relative px-4 pt-4 ${collapsed ? "pointer-events-auto" : ""}`}
+          className={`relative px-4 ${
+            // In collapsed + advanced mode, align the persistent search row below the 40px boundary toolbar.
+            collapsed && showAdvanced ? "pt-14" : "pt-4"
+          } ${collapsed ? "pointer-events-auto" : ""}`}
           onFocus={() => {
             clearSearchDropdownTimeout();
           }}
