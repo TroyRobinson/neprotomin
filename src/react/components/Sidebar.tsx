@@ -225,6 +225,7 @@ export const Sidebar = ({
   const [searchText, setSearchText] = useState("");
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
   const [highlightedSearchIndex, setHighlightedSearchIndex] = useState(-1);
+  const sidebarRef = useRef<HTMLElement>(null);
   const desktopSearchInputRef = useRef<HTMLInputElement>(null);
   const hasAppliedInitialSearchFocusRef = useRef(false);
   const [isOrgsScrollAtTop, setIsOrgsScrollAtTop] = useState(true);
@@ -582,6 +583,19 @@ export const Sidebar = ({
       return searchResults.length - 1;
     });
   }, [showSearchDropdown, searchResults.length]);
+
+  useEffect(() => {
+    if (variant !== "desktop" || collapsed || !onCollapse) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const sidebarEl = sidebarRef.current;
+      const target = event.target;
+      if (!sidebarEl || !(target instanceof Node) || !sidebarEl.contains(target)) return;
+      onCollapse(true);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [collapsed, onCollapse, variant]);
 
   const handleSearchResultSelect = useCallback(
     (result: SidebarSearchResult) => {
@@ -949,7 +963,7 @@ export const Sidebar = ({
 
   return (
     <>
-      <aside className={containerClassName}>
+      <aside ref={sidebarRef} className={containerClassName}>
       {issueFeedback && !collapsed ? (
         <div className="mx-4 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 shadow-sm dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
           {issueFeedback}
