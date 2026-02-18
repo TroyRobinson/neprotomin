@@ -1237,7 +1237,7 @@ export const Sidebar = ({
                     handleCategoryChange(null);
                     setCategoryDropdownOpen(false);
                   }}
-                  className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-100 text-brand-700 hover:bg-brand-200 dark:bg-brand-900/40 dark:text-brand-200 dark:hover:bg-brand-900/55"
+                  className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-100 text-brand-700 hover:bg-brand-200 dark:bg-brand-900/40 dark:text-brand-200 dark:hover:bg-brand-900/55"
                   title="Clear category filter"
                 >
                   <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
