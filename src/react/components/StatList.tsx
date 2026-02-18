@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import type { Stat, StatRelation, StatRelationsByParent, StatRelationsByChild } from "../../types/stat";
 import { UNDEFINED_STAT_ATTRIBUTE } from "../../types/stat";
@@ -67,6 +67,7 @@ interface StatListProps {
   onStatSelect?: (statId: string | null, meta?: StatSelectMeta) => void;
   onRetryStatData?: (statId: string) => void;
   onClearCategory?: () => void;
+  onScrollTopChange?: (atTop: boolean) => void;
   variant?: "desktop" | "mobile";
   zipScopeDisplayName?: string | null;
   countyScopeDisplayName?: string | null;
@@ -163,6 +164,7 @@ export const StatList = ({
   onStatSelect,
   onRetryStatData,
   onClearCategory,
+  onScrollTopChange,
   variant = "desktop",
   zipScopeDisplayName = null,
   countyScopeDisplayName: _countyScopeDisplayName = null,
@@ -180,6 +182,14 @@ export const StatList = ({
   const [searchQuery, setSearchQuery] = useState("");
   const normalizedQuery = useMemo(() => normalizeForSearch(searchQuery), [searchQuery]);
   const effectiveNormalizedQuery = showStatSearch ? normalizedQuery : "";
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const reportScrollTop = useCallback(() => {
+    if (!onScrollTopChange) return;
+    const node = scrollContainerRef.current;
+    if (!node) return;
+    onScrollTopChange(node.scrollTop <= 2);
+  }, [onScrollTopChange]);
 
   // Determine which boundary level to use: prefer activeAreaKind if set, otherwise infer from selections
   const effectiveAreaKind = useMemo<SupportedAreaKind | null>(() => {
@@ -271,6 +281,18 @@ export const StatList = ({
       return score >= STAT_SEARCH_MATCH_THRESHOLD;
     });
   }, [rows, effectiveNormalizedQuery]);
+
+  // Keep parent fade state in sync with this list's current scroll position.
+  useEffect(() => {
+    reportScrollTop();
+  }, [reportScrollTop, filteredRows.length, showAdvanced, showStatSearch]);
+
+  const handleListScroll = useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      onScrollTopChange?.(event.currentTarget.scrollTop <= 2);
+    },
+    [onScrollTopChange],
+  );
 
   // Find the root parent and intermediate child by traversing up the hierarchy
   // This handles parent → child → grandchild relationships
@@ -785,7 +807,11 @@ export const StatList = ({
       )}
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-4 pt-2 pb-6 bg-slate-100 dark:bg-slate-800">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleListScroll}
+        className="flex-1 overflow-y-auto px-4 pt-2 pb-6 bg-slate-100 dark:bg-slate-800"
+      >
         {showStatSearch && (
           <div className="pt-2 mb-2">
             <div className="flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 shadow-sm transition-colors focus-within:border-brand-200 focus-within:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:focus-within:border-slate-600 dark:focus-within:bg-slate-800/70">

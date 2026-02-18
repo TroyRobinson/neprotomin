@@ -230,6 +230,7 @@ export const Sidebar = ({
   const desktopSearchInputRef = useRef<HTMLInputElement>(null);
   const hasAppliedInitialSearchFocusRef = useRef(false);
   const [isOrgsScrollAtTop, setIsOrgsScrollAtTop] = useState(true);
+  const [isStatsScrollAtTop, setIsStatsScrollAtTop] = useState(true);
   const orgsScrollRef = useRef<HTMLDivElement>(null);
   const searchDropdownTimeoutRef = useRef<number | null>(null);
   const orgSearchScrollTimeoutRef = useRef<number | null>(null);
@@ -294,6 +295,9 @@ export const Sidebar = ({
   const handleOrgsScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
     const atTop = event.currentTarget.scrollTop <= 2;
     setIsOrgsScrollAtTop((prev) => (prev === atTop ? prev : atTop));
+  }, []);
+  const handleStatsScrollTopChange = useCallback((atTop: boolean) => {
+    setIsStatsScrollAtTop((prev) => (prev === atTop ? prev : atTop));
   }, []);
 
   // When a category is cleared from the sidebar, also clear any active stat selection
@@ -966,7 +970,7 @@ export const Sidebar = ({
     : selectedCategoryLabel;
   const shouldShowContentTopFade =
     variant === "desktop" &&
-    ((activeTab === "orgs" && !isOrgsScrollAtTop) || (activeTab === "stats" && !selectedStatId));
+    ((activeTab === "orgs" && !isOrgsScrollAtTop) || (activeTab === "stats" && !isStatsScrollAtTop));
 
   const containerClassName = useMemo(() => {
     if (variant === "mobile") {
@@ -1271,6 +1275,7 @@ export const Sidebar = ({
             )}
             <StatList
               variant={variant}
+              onScrollTopChange={handleStatsScrollTopChange}
               statsById={statsById}
               statSummariesById={statSummariesById}
               statDataById={statDataById}
