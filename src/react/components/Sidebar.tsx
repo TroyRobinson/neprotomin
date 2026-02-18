@@ -227,6 +227,7 @@ export const Sidebar = ({
   const [highlightedSearchIndex, setHighlightedSearchIndex] = useState(-1);
   const desktopSearchInputRef = useRef<HTMLInputElement>(null);
   const hasAppliedInitialSearchFocusRef = useRef(false);
+  const [isOrgsScrollAtTop, setIsOrgsScrollAtTop] = useState(true);
   const orgsScrollRef = useRef<HTMLDivElement>(null);
   const searchDropdownTimeoutRef = useRef<number | null>(null);
   const orgSearchScrollTimeoutRef = useRef<number | null>(null);
@@ -287,6 +288,11 @@ export const Sidebar = ({
   const demographicsExpanded = insightsState?.demographicsExpanded ?? false;
 
   const shouldShowDemographicsBar = ENABLE_DEMOGRAPHICS_SECTION && canShowInsights && demographicsVisible;
+
+  const handleOrgsScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const atTop = event.currentTarget.scrollTop <= 2;
+    setIsOrgsScrollAtTop((prev) => (prev === atTop ? prev : atTop));
+  }, []);
 
   // When a category is cleared from the sidebar, also clear any active stat selection
   // so the choropleth overlay matches the category chips behavior on the map.
@@ -402,13 +408,18 @@ export const Sidebar = ({
   // Keep a searched org visibly pinned at the top while it remains selected.
   const searchPinnedOrg = useMemo(() => {
     if (!searchPinnedOrgId) return null;
+    // Prefer the full search source so a sidebar-selected org pins immediately
+    // even when viewport-filtered sidebar buckets haven't refreshed yet.
+    const searchSource = searchOrganizations.length > 0 ? searchOrganizations : rawAll;
+    const directMatch = searchSource.find((org) => org.id === searchPinnedOrgId);
+    if (directMatch) return directMatch;
     const candidates = [inSelection, all, recent, rawInSelection, rawAll, rawRecent];
     for (const list of candidates) {
       const match = list.find((org) => org.id === searchPinnedOrgId);
       if (match) return match;
     }
     return null;
-  }, [all, inSelection, rawAll, rawInSelection, rawRecent, recent, searchPinnedOrgId]);
+  }, [all, inSelection, rawAll, rawInSelection, rawRecent, recent, searchOrganizations, searchPinnedOrgId]);
   const pinnedOrgIdSet = useMemo(
     () => new Set(searchPinnedOrg ? [searchPinnedOrg.id] : []),
     [searchPinnedOrg],
@@ -700,6 +711,22 @@ export const Sidebar = ({
   const categoryFilteredCount = categoryFilter
     ? inSelection.length + all.length + recent.length
     : visibleCount;
+  useEffect(() => {
+    if (activeTab !== "orgs") return;
+    const node = orgsScrollRef.current;
+    if (!node) return;
+    const atTop = node.scrollTop <= 2;
+    setIsOrgsScrollAtTop((prev) => (prev === atTop ? prev : atTop));
+  }, [
+    activeTab,
+    categoryFilteredCount,
+    showSelectedSection,
+    showRecentSection,
+    showInSelectionSection,
+    allSectionOrgs.length,
+    visibleInSelection.length,
+    visibleRecent.length,
+  ]);
   const baseTotalCount = typeof totalSourceCount === "number" ? totalSourceCount : visibleCount;
   const countForTab = totalSelectedCount > 0 ? inSelection.length : visibleCount;
   const countyVisibleCount =
@@ -895,6 +922,9 @@ export const Sidebar = ({
   const categoryToolbarLabel = categoryFilter
     ? abbreviateCategoryFilterLabel(selectedCategoryLabel)
     : selectedCategoryLabel;
+  const shouldShowContentTopFade =
+    variant === "desktop" &&
+    ((activeTab === "orgs" && !isOrgsScrollAtTop) || (activeTab === "stats" && !selectedStatId));
 
   const containerClassName = useMemo(() => {
     if (variant === "mobile") {
@@ -1177,9 +1207,14 @@ export const Sidebar = ({
           </>
         )}
       </div>
-
       {/* Content */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        {shouldShowContentTopFade && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-slate-100/95 via-slate-100/55 to-transparent dark:from-slate-800/95 dark:via-slate-800/55 dark:to-transparent"
+          />
+        )}
         {/* Statistics Tab */}
         {activeTab === "stats" && (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1223,7 +1258,11 @@ export const Sidebar = ({
 
         {/* Organizations Tab */}
         {activeTab === "orgs" && (
-          <div ref={orgsScrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div
+            ref={orgsScrollRef}
+            onScroll={handleOrgsScroll}
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+          >
             {/* Time Filter Indicator */}
             {timeSelection && (
               <div className="mx-4 mt-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 dark:border-brand-800 dark:bg-brand-900/20">
@@ -1351,7 +1390,9 @@ export const Sidebar = ({
                 {/* In Selection Section */}
                 {showInSelectionSection && (
                   <>
-                    <h3 className="px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    <h3
+                      className={`px-8 ${inSelectionLabel === "SELECTED" ? "pt-1" : "pt-3"} pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500`}
+                    >
                       {inSelectionLabel}
                     </h3>
                     <ul className="space-y-2 px-4">
