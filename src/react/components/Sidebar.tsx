@@ -129,6 +129,8 @@ interface SidebarProps {
   className?: string;
   // When incremented, force switch to Statistics tab and hide orgs toggle
   forceHideOrgsNonce?: number;
+  // When incremented, force switch to Orgs tab and show orgs toggle
+  forceShowOrgsNonce?: number;
   // Time selection for filtering organizations by availability
   timeSelection?: TimeSelection | null;
   // Callback to clear the time filter
@@ -203,6 +205,7 @@ export const Sidebar = ({
   onInsightsStateChange,
   className = "",
   forceHideOrgsNonce,
+  forceShowOrgsNonce,
   timeSelection,
   onClearTimeFilter,
   onChangeTimeFilter,
@@ -934,6 +937,19 @@ export const Sidebar = ({
     lastForceHideNonceRef.current = forceHideOrgsNonce;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forceHideOrgsNonce]);
+
+  // Respond to external force-show requests (e.g., brand/logo reset)
+  const lastForceShowNonceRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (typeof forceShowOrgsNonce !== "number") return;
+    if (lastForceShowNonceRef.current === forceShowOrgsNonce) return;
+    if (lastForceShowNonceRef.current !== undefined) {
+      setKeepOrgsOnMap(true);
+      setActiveTabWithSync("orgs");
+    }
+    lastForceShowNonceRef.current = forceShowOrgsNonce;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceShowOrgsNonce]);
 
   useEffect(() => {
     if (!onTabChange) return;

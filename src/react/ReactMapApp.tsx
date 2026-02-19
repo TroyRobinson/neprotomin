@@ -369,6 +369,8 @@ export const ReactMapApp = () => {
     prevShowAdvancedRef.current = showAdvanced;
     if (prev === undefined) return;
     if (prev === false && showAdvanced === true) {
+      // Open sidebar if it's collapsed when advanced mode is enabled
+      setSidebarCollapsed(false);
       setSidebarInsightsState({
         demographicsVisible: true,
         demographicsExpanded: false,
@@ -1982,10 +1984,30 @@ export const ReactMapApp = () => {
   const [clearMapCategoryNonce] = useState(0);
   // Nonce to force Sidebar switch to Statistics and hide orgs toggle
   const [forceHideOrgsNonce, setForceHideOrgsNonce] = useState(0);
+  const [forceShowOrgsNonce, setForceShowOrgsNonce] = useState(0);
 
   const handleBrandClick = () => {
+    // Reset all URL-driven state to defaults
+    setSelectedStatId(null);
+    setHasAppliedDefaultStat(false); // allow default stat to re-apply
+    setSecondaryStatId(null);
+    setCategoryFilter(null);
+    setSelectedOrgIds([]);
+    setShowAdvanced(false);
+    setOrgPinsVisible(true);
+    setForceShowOrgsNonce((n) => n + 1); // reset sidebar's keepOrgsOnMap + switch to orgs tab
+    setBoundaryMode("zips");
+    setBoundaryControlMode("auto");
     applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
     applyAreaSelection("COUNTY", { selected: [], pinned: [], transient: [] });
+    setSidebarTab("orgs");
+    setSidebarCollapsed(true);
+    setSidebarInsightsState({
+      statVizVisible: true,
+      statVizCollapsed: false,
+      demographicsVisible: true,
+      demographicsExpanded: false,
+    });
     setActiveScreen("map");
     const controller = mapControllerRef.current;
     if (controller) {
@@ -1995,6 +2017,8 @@ export const ReactMapApp = () => {
         OKLAHOMA_DEFAULT_ZOOM,
       );
     }
+    // Clear all URL params to reset to base state
+    window.history.replaceState(null, "", window.location.pathname);
   };
 
   const handleOpenAddOrganization = useCallback(() => {
@@ -3431,6 +3455,7 @@ export const ReactMapApp = () => {
                 initialOrgPinsVisible={initialMapState.orgPinsVisible}
                 onClearAreas={handleClearAreas}
                 forceHideOrgsNonce={forceHideOrgsNonce}
+                forceShowOrgsNonce={forceShowOrgsNonce}
                 timeSelection={timeSelection}
                 onClearTimeFilter={handleClearTimeFilter}
                 onChangeTimeFilter={handleChangeTimeFilter}
@@ -3693,6 +3718,7 @@ export const ReactMapApp = () => {
                     initialOrgPinsVisible={initialMapState.orgPinsVisible}
                     onClearAreas={handleClearAreas}
                     forceHideOrgsNonce={forceHideOrgsNonce}
+                    forceShowOrgsNonce={forceShowOrgsNonce}
                     timeSelection={timeSelection}
                     onClearTimeFilter={handleClearTimeFilter}
                     onChangeTimeFilter={handleChangeTimeFilter}
