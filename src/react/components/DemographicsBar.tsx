@@ -198,7 +198,7 @@ export const DemographicsBar = ({ snapshot, expanded, onExpandedChange, onClearA
               {headerLabel}
             </span>
             {showSelectedPill && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 pl-2 pr-1 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-600 dark:text-slate-200">
+              <span className="inline-flex items-center gap-1 rounded-full border border-brand-600 bg-brand-500 pl-2 pr-1 py-[2px] text-[10px] font-medium text-white shadow-sm dark:border-brand-400">
                 <span>{selectedCount} selected</span>
                 {onClearAreas && (
                   <button
@@ -207,7 +207,7 @@ export const DemographicsBar = ({ snapshot, expanded, onExpandedChange, onClearA
                       e.stopPropagation();
                       onClearAreas();
                     }}
-                    className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                    className="inline-flex items-center justify-center rounded-full p-0.5 transition-colors hover:bg-brand-600 dark:hover:bg-brand-400/30"
                     aria-label="Clear all selections"
                     title="Clear all selections"
                   >

@@ -804,6 +804,7 @@ export const StatList = ({
                   zipScopeCountyName={zipScopeDisplayName}
                   stateAvg={selectedStatContextAvg?.value ?? null}
                   selectedStatLoading={selectedStatLoading}
+                  onRetryStatData={onRetryStatData}
                   embedded={true}
                 />
               )}

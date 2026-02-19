@@ -8,13 +8,60 @@ import { initCrashLog, logCrash } from "./lib/crashLog";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "../style.css";
 
+declare global {
+  interface Window {
+    __ignoredIndexedDbClosingErrors?: number;
+  }
+}
+
+const isBenignIndexedDbClosingError = (value: unknown): boolean => {
+  const message =
+    value instanceof Error
+      ? value.message
+      : typeof value === "string"
+        ? value
+        : value && typeof value === "object" && "message" in value && typeof (value as any).message === "string"
+          ? (value as any).message
+          : "";
+  const name =
+    value instanceof Error
+      ? value.name
+      : value && typeof value === "object" && "name" in value && typeof (value as any).name === "string"
+        ? (value as any).name
+        : "";
+  return (
+    name === "InvalidStateError" &&
+    message.includes("Failed to execute 'transaction' on 'IDBDatabase'") &&
+    message.includes("database connection is closing")
+  );
+};
+
+const markIgnoredIndexedDbClosingError = () => {
+  const next = (window.__ignoredIndexedDbClosingErrors ?? 0) + 1;
+  window.__ignoredIndexedDbClosingErrors = next;
+  // Keep a single dev breadcrumb without polluting production logs.
+  if (import.meta.env.DEV && next === 1) {
+    console.info("[dev] Ignoring benign IndexedDB closing transaction errors from cache storage");
+  }
+};
+
 // Install global crash handlers so errors are captured even if the UI is destroyed
 initCrashLog();
 
 window.onerror = (_msg, source, line, col, error) => {
+  if (isBenignIndexedDbClosingError(error ?? _msg)) {
+    markIgnoredIndexedDbClosingError();
+    return true;
+  }
   logCrash("window.onerror", error ?? _msg, { source, line, col });
+  return false;
 };
 window.onunhandledrejection = (event: PromiseRejectionEvent) => {
+  if (isBenignIndexedDbClosingError(event.reason)) {
+    markIgnoredIndexedDbClosingError();
+    event.preventDefault();
+    return;
+  }
   logCrash("unhandledrejection", event.reason);
 };
 

@@ -54,6 +54,7 @@ type SeriesByKindMap = Map<string, SeriesByKind>;
 type StatDataByKindMap = Map<string, Partial<Record<SupportedAreaKind, StatBoundaryEntry>>>;
 
 const SUPPORTED_KINDS: SupportedAreaKind[] = ["ZIP", "COUNTY"];
+const SLOW_LOADING_MESSAGE_DELAY_MS = 5000;
 
 interface StatVizProps {
   statsById?: Map<string, Stat>;
@@ -74,6 +75,8 @@ interface StatVizProps {
   stateAvg?: number | null;
   /** True when selected stat is still pending from the current stat-data batch. */
   selectedStatLoading?: boolean;
+  /** Retry selected stat data load when the current request is slow/stalled. */
+  onRetryStatData?: (statId: string) => void;
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
   /** When true, renders without container/header - for embedding in StatList selected stat section */
@@ -561,6 +564,7 @@ export const StatViz = ({
   zipScopeCountyName = null,
   stateAvg = null,
   selectedStatLoading = false,
+  onRetryStatData,
   collapsed: collapsedProp,
   onCollapsedChange,
   embedded = false,
@@ -977,6 +981,68 @@ export const StatViz = ({
 
   const shouldShowLoadingDonut = isStatDataLoading || allSelectedBarsLoading;
 
+  const selectedAreaLoadingProgress = useMemo(() => {
+    if (!selectedStatLoading) return null;
+    if (!chartData || chartData.mode !== "bar") {
+      if (areaEntries.length === 0) return null;
+      return { resolved: 0, total: areaEntries.length, unresolved: areaEntries.length };
+    }
+    const selectedAreaRows = chartData.entries.filter((entry) => entry.isSelectedArea);
+    if (selectedAreaRows.length === 0) return null;
+    const unresolved = selectedAreaRows.filter((entry) => entry.isLoading === true).length;
+    return {
+      resolved: selectedAreaRows.length - unresolved,
+      total: selectedAreaRows.length,
+      unresolved,
+    };
+  }, [selectedStatLoading, chartData, areaEntries.length]);
+
+  const hasSelectedAreaLoading = (selectedAreaLoadingProgress?.unresolved ?? 0) > 0;
+
+  const [showSlowLoadingMessage, setShowSlowLoadingMessage] = useState(false);
+  useEffect(() => {
+    if (!hasSelectedAreaLoading) {
+      setShowSlowLoadingMessage(false);
+      return;
+    }
+    setShowSlowLoadingMessage(false);
+    const timeout = window.setTimeout(
+      () => setShowSlowLoadingMessage(true),
+      SLOW_LOADING_MESSAGE_DELAY_MS,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [hasSelectedAreaLoading, statId]);
+
+  const loadingProgressCopy = useMemo(() => {
+    if (!hasSelectedAreaLoading || !selectedAreaLoadingProgress) return null;
+    return `Loading ${selectedAreaLoadingProgress.resolved} of ${selectedAreaLoadingProgress.total} selected areas...`;
+  }, [hasSelectedAreaLoading, selectedAreaLoadingProgress]);
+
+  const handleRetrySelectedStat = useCallback(() => {
+    if (!onRetryStatData || !statId) return;
+    onRetryStatData(statId);
+  }, [onRetryStatData, statId]);
+
+  const loadingStatus = hasSelectedAreaLoading ? (
+    <div className="mt-2 flex flex-col items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+      {loadingProgressCopy ? <div>{loadingProgressCopy}</div> : null}
+      {showSlowLoadingMessage && (
+        <div className="flex items-center gap-2">
+          <span>Still loading data...</span>
+          {onRetryStatData && statId && (
+            <button
+              type="button"
+              onClick={handleRetrySelectedStat}
+              className="font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  ) : null;
+
   const handleHoverAreaKey = useCallback((areaKey: string | null) => {
     if (!areaKey) {
       onHoverArea?.(null);
@@ -1001,8 +1067,11 @@ export const StatViz = ({
 
     if (shouldShowLoadingDonut) {
       return (
-        <div className="mt-3 mb-2 flex items-center justify-center py-6">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500 dark:border-slate-600 dark:border-t-brand-400" />
+        <div className="mt-3 mb-2 py-6">
+          <div className="flex items-center justify-center">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500 dark:border-slate-600 dark:border-t-brand-400" />
+          </div>
+          {loadingStatus}
         </div>
       );
     }
@@ -1025,6 +1094,7 @@ export const StatViz = ({
             />
           )}
         </div>
+        {loadingStatus}
       </div>
     );
   }
@@ -1051,8 +1121,11 @@ export const StatViz = ({
           {!stat || !chartData ? (
             <div className="text-xs text-slate-400 dark:text-slate-500">No data</div>
           ) : shouldShowLoadingDonut ? (
-            <div className="flex items-center justify-center py-6">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500 dark:border-slate-600 dark:border-t-brand-400" />
+            <div className="py-6">
+              <div className="flex items-center justify-center">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500 dark:border-slate-600 dark:border-t-brand-400" />
+              </div>
+              {loadingStatus}
             </div>
           ) : chartData.mode === "bar" ? (
             <BarChart
@@ -1068,6 +1141,7 @@ export const StatViz = ({
               onHoverLine={handleHoverLine}
             />
           )}
+          {!shouldShowLoadingDonut ? loadingStatus : null}
 
           {hoveredLineLabel && chartData?.mode === "line" && (
             <div className="pointer-events-none absolute z-10 hidden rounded border border-black/10 bg-slate-800 px-1.5 py-0.5 text-[10px] text-white shadow-sm dark:border-white/20 dark:bg-slate-200 dark:text-slate-900">
