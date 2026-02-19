@@ -750,7 +750,7 @@ export const StatList = ({
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Fixed area: Pinned selected stat */}
       {selectedStatRow && (
-        <div className="border-t border-b border-slate-200 dark:border-slate-700 px-4 pt-0 pb-3 shadow-md bg-slate-50 dark:bg-slate-800/50">
+        <div className="min-h-[112px] border-t border-b border-slate-200 dark:border-slate-700 px-4 pt-0 pb-3 shadow-md bg-slate-50 dark:bg-slate-800/50">
           <ul>
             <StatListItem
               row={selectedStatRow}
@@ -787,9 +787,9 @@ export const StatList = ({
           )}
 
           {/* Embedded StatViz chart - only shown in advanced mode; min-h reserves
-             space so the stat list doesn't jump when the chart loads in */}
+             space so the stat list doesn't jump and the selected-stat panel stays stable */}
           {showAdvanced && (
-            <div className="mt-2 min-h-[146px] flex items-center justify-center">
+            <div className="mt-2 min-h-[180px] flex items-center justify-center">
               {areaEntries.length === 0 ? (
                 <div className="flex h-[130px] w-full items-center justify-center rounded-2xl border border-dashed border-slate-300 text-[10px] text-slate-400 italic text-center dark:border-slate-600 dark:text-slate-500">
                   Shift+click an area(s) to see charts
