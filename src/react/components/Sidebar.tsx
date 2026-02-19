@@ -1498,7 +1498,7 @@ export const Sidebar = ({
                     ALL
                   </h3>
                 )}
-                <ul className="space-y-2 px-4 pb-6">
+                <ul className={`space-y-2 px-4 pb-6 ${showAllSectionHeading ? "" : "pt-2"}`}>
                   {allSectionOrgs.map((org) => (
                     <OrganizationListItem
                       key={org.id}
