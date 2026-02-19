@@ -957,21 +957,6 @@ export const StatViz = ({
     return "";
   }, [collapsed, chartData, stat, latestSummaryValue]);
 
-  // Detect "loading" state: stat is selected but no data has arrived yet.
-  // Distinguishes from "no data" (data arrived but is empty) by checking
-  // whether the stat has ANY entries in either the series or snapshot maps.
-  const isStatDataLoading = useMemo(() => {
-    if (!statId || !stat) return false;
-    // Check time series data
-    if (seriesByKind.size > 0) return false;
-    // Check snapshot data
-    for (const kind of SUPPORTED_KINDS) {
-      const entry = statDataByKind[kind];
-      if (entry && Object.keys(entry.data).length > 0) return false;
-    }
-    return true;
-  }, [statId, stat, seriesByKind, statDataByKind]);
-
   const allSelectedBarsLoading = useMemo(() => {
     if (!chartData || chartData.mode !== "bar") return false;
     const selectedAreaRows = chartData.entries.filter((entry) => entry.isSelectedArea);
@@ -979,7 +964,9 @@ export const StatViz = ({
     return selectedAreaRows.every((entry) => entry.isLoading === true);
   }, [chartData]);
 
-  const shouldShowLoadingDonut = isStatDataLoading || allSelectedBarsLoading;
+  // Keep donut tied to active pending state only. This prevents indefinite spinners
+  // when a request has already settled but derived rows are still empty/missing.
+  const shouldShowLoadingDonut = selectedStatLoading && allSelectedBarsLoading;
 
   const selectedAreaLoadingProgress = useMemo(() => {
     if (!selectedStatLoading) return null;
