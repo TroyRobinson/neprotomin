@@ -851,6 +851,11 @@ export const StatList = ({
             </div>
           </div>
         )}
+        {selectedStatId && variant !== "mobile" && (
+          <div className="mb-2 rounded-lg border border-slate-200/70 bg-slate-100/80 px-3 py-1.5 text-[11px] text-slate-500 dark:border-slate-700/70 dark:bg-slate-700/30 dark:text-slate-400">
+            Shift+click another stat to show secondary on map
+          </div>
+        )}
         {filteredRows.length === 0 ? (
           <p className="px-1 pt-2 text-xs text-slate-500 dark:text-slate-400">
             {effectiveNormalizedQuery
