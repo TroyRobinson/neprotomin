@@ -208,7 +208,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   const orgsChipBtn = document.createElement("button");
   orgsChipBtn.type = "button";
   // Match org cluster color: peach accent family
-  orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} border-transparent bg-[#f7e2d6] text-[#7a4030] shadow-floating hover:bg-[#f1d3c3] dark:bg-[#7a4030]/22 dark:text-[#f7dccf]`;
+  orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} border-transparent bg-[#f7e2d6] text-[#7a4030] shadow-floating hover:bg-[#f1d3c3] dark:bg-[#7a4030]/22 dark:text-[#d79c84]`;
   const orgsLabel = document.createElement("span");
   orgsLabel.textContent = "Organizations";
   orgsLabel.className = "whitespace-nowrap";
