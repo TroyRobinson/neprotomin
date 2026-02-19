@@ -7,6 +7,7 @@ interface ZipLabelsOptions {
   map: maplibregl.Map;
   getCentroidsMap?: () => Map<string, [number, number]>;
   labelForId?: (id: string) => string;
+  stackedStatsMinZoom?: number;
 }
 
 export interface ZipLabelsController {
@@ -25,7 +26,7 @@ const formatStatValue = (value: number, type: string = "count"): string => {
   return formatStatValueCompact(value, type);
 };
 
-export const createZipLabels = ({ map, getCentroidsMap, labelForId }: ZipLabelsOptions): ZipLabelsController => {
+export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStatsMinZoom = 0 }: ZipLabelsOptions): ZipLabelsController => {
   const resolveCentroids = getCentroidsMap ?? defaultCentroids;
   const idToLabel = labelForId || ((id: string) => id);
   const labelElements = new Map<string, HTMLElement>();
@@ -41,6 +42,9 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId }: ZipLabelsO
   let currentTheme: "light" | "dark" = "light";
   let updatePositionHandler: (() => void) | null = null;
   let visible = true;
+  let shouldShowStackedStats = map.getZoom() >= stackedStatsMinZoom;
+
+  const computeShouldShowStackedStats = (): boolean => map.getZoom() >= stackedStatsMinZoom;
 
   const createLabelElement = (zip: string, isSelected: boolean, isPinned: boolean, isHovered: boolean): HTMLElement | null => {
     const centroid = resolveCentroids().get(zip);
@@ -50,25 +54,47 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId }: ZipLabelsO
     const element = document.createElement("div");
     element.className = "absolute z-0 flex flex-col items-center";
     const baseTransform = "translate(-50%, -50%)";
+    const isSelectedOrPinned = isSelected || isPinned;
+    const canShowStatStacks = shouldShowStackedStats;
 
     const pillLabel = document.createElement("div");
     const hasStatOverlay = Boolean(currentStatId);
     const baseHeight = hasStatOverlay ? "h-6" : "h-5";
     const selectedHeight = hasStatOverlay && (isSelected || isPinned) ? "h-7" : baseHeight;
-
-    let pillClassName, backgroundColor, textColor;
-    if (hasStatOverlay && currentStatData && zip in currentStatData) {
+    const primaryPalette = (() => {
+      if (!hasStatOverlay || !currentStatData || !(zip in currentStatData)) return null;
+      const value = currentStatData[zip];
       const allValues = Object.values(currentStatData || {});
-      const numericValues = allValues.filter(v => typeof v === 'number' && Number.isFinite(v)) as number[];
+      const numericValues = allValues.filter(v => typeof v === "number" && Number.isFinite(v)) as number[];
       const min = numericValues.length > 0 ? Math.min(...numericValues) : 0;
       const max = numericValues.length > 0 ? Math.max(...numericValues) : 1;
-      const classes = CHOROPLETH_COLORS.length;
-      const statValue = currentStatData[zip];
-      const colorIndex = getClassIndex(statValue, min, max, classes);
-      backgroundColor = CHOROPLETH_COLORS[colorIndex];
-      const isLightColor = colorIndex <= 2;
-      textColor = isLightColor ? '#000000' : 'white';
-      const borderClass = isLightColor ? 'border border-slate-300/70' : '';
+      const colorIndex = getClassIndex(value, min, max, CHOROPLETH_COLORS.length);
+      return {
+        value,
+        bg: CHOROPLETH_COLORS[colorIndex],
+        text: colorIndex <= 2 ? "#000000" : "#ffffff",
+      };
+    })();
+
+    let pillClassName: string;
+    let backgroundColor: string | null;
+    let textColor: string | null;
+    let borderColorOverride: string | null = null;
+    if (hasStatOverlay && currentStatData && zip in currentStatData) {
+      const isHoverOnlyPrimaryValue = canShowStatStacks && isHovered && !isSelectedOrPinned;
+      const hasSecondaryStat = Boolean(currentSecondaryStatId);
+      // Selected areas keep the dark/light inverted label style; hover-only value pills use white/black.
+      backgroundColor = isHoverOnlyPrimaryValue
+        ? (currentTheme === "light" ? "#ffffff" : "#111827")
+        : (currentTheme === "light" ? "#111827" : "#ffffff");
+      textColor = isHoverOnlyPrimaryValue
+        ? (currentTheme === "light" ? "#111827" : "#ffffff")
+        : (currentTheme === "light" ? "#ffffff" : "#111827");
+      // When secondary stat is active, add a thin primary-color border on hover-only value pills.
+      borderColorOverride = isHoverOnlyPrimaryValue && hasSecondaryStat && primaryPalette ? primaryPalette.bg : null;
+      const borderClass = isHoverOnlyPrimaryValue
+        ? "border"
+        : (currentTheme === "light" ? "border border-slate-900/80" : "border border-slate-300/90");
       pillClassName = `
         ${selectedHeight} px-2 rounded-full font-medium text-xs flex items-center justify-center
         shadow-lg backdrop-blur-sm ${borderClass}
@@ -87,22 +113,15 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId }: ZipLabelsO
     pillLabel.className = pillClassName;
     if (backgroundColor) pillLabel.style.backgroundColor = backgroundColor as any;
     if (textColor) pillLabel.style.color = textColor as any;
+    if (borderColorOverride) pillLabel.style.borderColor = borderColorOverride;
 
     const displayLabel = idToLabel(zip);
 
     if (hasStatOverlay && currentStatData && zip in currentStatData) {
       const statValue = currentStatData[zip];
-      const isSelectedOrPinned = isSelected || isPinned;
-      if (isSelectedOrPinned) {
+      if (isSelectedOrPinned || !canShowStatStacks) {
         pillLabel.textContent = displayLabel;
-        element.style.pointerEvents = "auto";
-        element.style.cursor = "pointer";
-        pillLabel.addEventListener('mouseenter', () => {
-          pillLabel.textContent = formatStatValue(statValue, currentStatType);
-        });
-        pillLabel.addEventListener('mouseleave', () => {
-          pillLabel.textContent = displayLabel;
-        });
+        element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
       } else {
         pillLabel.textContent = formatStatValue(statValue, currentStatType);
         element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
@@ -112,36 +131,52 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId }: ZipLabelsO
       element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
     }
 
+    const hasPrimaryData = Boolean(currentStatId && currentStatData && zip in currentStatData);
+    const shouldShowPrimaryStat = canShowStatStacks && hasPrimaryData && (isSelected || isPinned);
+    let primaryPill: HTMLDivElement | null = null;
+    if (shouldShowPrimaryStat && primaryPalette) {
+      primaryPill = document.createElement("div");
+      primaryPill.className = "h-5 px-2 rounded-full font-medium text-xs flex items-center justify-center shadow-md";
+      primaryPill.style.backgroundColor = primaryPalette.bg;
+      primaryPill.style.color = primaryPalette.text;
+      primaryPill.style.marginBottom = "-4px";
+      primaryPill.style.zIndex = "0";
+      primaryPill.textContent = formatStatValue(primaryPalette.value, currentStatType);
+    }
+
     const hasSecondaryData = Boolean(currentSecondaryStatId && currentSecondaryData && (zip in currentSecondaryData));
-    const shouldShowSecondary = hasSecondaryData && (isHovered || isSelected || isPinned);
+    const shouldShowSecondary = canShowStatStacks && hasSecondaryData && (isHovered || isSelected || isPinned);
     let secondaryPill: HTMLDivElement | null = null;
     if (shouldShowSecondary) {
       const secondaryVal = currentSecondaryData![zip];
-        secondaryPill = document.createElement("div");
-        const allValues = Object.values(currentSecondaryData || {});
-        const numericValues = allValues.filter(v => typeof v === 'number' && Number.isFinite(v)) as number[];
-        const min = numericValues.length > 0 ? Math.min(...numericValues) : 0;
+      secondaryPill = document.createElement("div");
+      const allValues = Object.values(currentSecondaryData || {});
+      const numericValues = allValues.filter(v => typeof v === 'number' && Number.isFinite(v)) as number[];
+      const min = numericValues.length > 0 ? Math.min(...numericValues) : 0;
       const max = numericValues.length > 0 ? Math.max(...numericValues) : 1;
-        const classes = TEAL_COLORS.length;
-        const colorIndex = getClassIndex(secondaryVal, min, max, classes);
-        const backgroundColor = TEAL_COLORS[colorIndex];
-        const isLightColor = colorIndex <= 2;
-        const textColor = isLightColor ? '#64748b' : 'white';
-        secondaryPill.className = `h-5 px-2 rounded-full font-medium text-xs flex items-center justify-center shadow-md`;
-        secondaryPill.style.backgroundColor = backgroundColor;
-        secondaryPill.style.color = textColor as any;
-        secondaryPill.style.marginBottom = "-4px";
-        secondaryPill.style.zIndex = "0";
-        secondaryPill.textContent = formatStatValue(secondaryVal, currentSecondaryStatType);
-        element.appendChild(secondaryPill);
+      const classes = TEAL_COLORS.length;
+      const colorIndex = getClassIndex(secondaryVal, min, max, classes);
+      const backgroundColor = TEAL_COLORS[colorIndex];
+      const isLightColor = colorIndex <= 2;
+      const textColor = isLightColor ? '#64748b' : 'white';
+      secondaryPill.className = "h-5 px-2 rounded-full font-medium text-xs flex items-center justify-center shadow-md";
+      secondaryPill.style.backgroundColor = backgroundColor;
+      secondaryPill.style.color = textColor as any;
+      secondaryPill.style.marginBottom = "-4px";
+      secondaryPill.style.zIndex = "0";
+      secondaryPill.textContent = formatStatValue(secondaryVal, currentSecondaryStatType);
     }
+    // Keep stacked stat chips behind the area label for quick visual comparison.
+    if (secondaryPill) element.appendChild(secondaryPill);
+    if (primaryPill) element.appendChild(primaryPill);
     element.appendChild(pillLabel);
 
     const point = map.project([lng, lat]);
     element.style.left = `${point.x}px`;
     element.style.top = `${point.y}px`;
-    if (secondaryPill) {
-      element.style.transform = `${baseTransform} translateY(6px)`;
+    const stackCount = (secondaryPill ? 1 : 0) + (primaryPill ? 1 : 0);
+    if (stackCount > 0) {
+      element.style.transform = `${baseTransform} translateY(${stackCount * 6}px)`;
     } else {
       element.style.transform = baseTransform;
     }
@@ -150,6 +185,12 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId }: ZipLabelsO
   };
 
   const updateAllPositions = () => {
+    const nextShouldShowStackedStats = computeShouldShowStackedStats();
+    if (nextShouldShowStackedStats !== shouldShowStackedStats) {
+      shouldShowStackedStats = nextShouldShowStackedStats;
+      updateLabels();
+      return;
+    }
     for (const [zipCode, element] of labelElements) {
       const centroid = resolveCentroids().get(zipCode);
       if (!centroid) continue;
@@ -162,6 +203,7 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId }: ZipLabelsO
 
   const updateLabels = () => {
     if (!visible) return;
+    shouldShowStackedStats = computeShouldShowStackedStats();
     for (const [_zip, element] of labelElements) {
       element.remove();
     }

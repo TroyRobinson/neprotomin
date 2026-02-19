@@ -229,6 +229,8 @@ const MOBILE_DRAG_COLLAPSE_DISTANCE_METERS = 8;
 const ZCTA_STATE: ZctaStateCode = "ok";
 const ZCTA_LOAD_MIN_ZOOM = 9;
 const ZCTA_LOAD_PADDING_DEGREES = 0.75;
+const ZIP_LABEL_STACK_MIN_ZOOM = 10.8;
+const COUNTY_LABEL_STACK_MIN_ZOOM = 8.6;
 
 const zipAreaEntry = getAreaRegistryEntry("ZIP");
 const countyAreaEntry = getAreaRegistryEntry("COUNTY");
@@ -1051,13 +1053,17 @@ export const createMapView = ({
   });
 
   // Helper to attach a small overlay label inside a pill
-  const attachLegendMessage = (pillEl: HTMLElement, onClear?: () => void) => {
+  const attachLegendMessage = (
+    pillEl: HTMLElement,
+    onClear?: () => void,
+    textColorClasses = "text-brand-700 dark:text-brand-300",
+  ) => {
     pillEl.style.position = pillEl.style.position || "relative";
     const msg = document.createElement("div");
     msg.className = [
       "pointer-events-none absolute inset-0 flex items-center",
       isMobile && onClear ? "pl-1 pr-1" : "px-2",
-      "text-[10px] leading-tight text-brand-700 dark:text-brand-300",
+      `text-[10px] leading-tight ${textColorClasses}`,
       isMobile && onClear ? "justify-end gap-1" : "justify-center text-center",
     ].join(" ");
     msg.style.display = "none";
@@ -1176,7 +1182,11 @@ export const createMapView = ({
   };
 
   const primaryMsg = attachLegendMessage(choroplethLegend.pill, isMobile ? clearPrimaryStat : undefined);
-  const secondaryMsg = attachLegendMessage(secondaryChoroplethLegend.pill, isMobile ? clearSecondaryStat : undefined);
+  const secondaryMsg = attachLegendMessage(
+    secondaryChoroplethLegend.pill,
+    isMobile ? clearSecondaryStat : undefined,
+    "text-[#2b8698] dark:text-[#7f9ea7]",
+  );
 
   if (isMobile) {
     choroplethLegend.pill.addEventListener("click", () => {
@@ -1956,8 +1966,13 @@ export const createMapView = ({
 
     zipFloatingTitle = createZipFloatingTitle({ map });
     
-    zipLabels = createZipLabels({ map });
-    countyLabels = createZipLabels({ map, getCentroidsMap: getCountyCentroidsMap, labelForId: getCountyName });
+    zipLabels = createZipLabels({ map, stackedStatsMinZoom: ZIP_LABEL_STACK_MIN_ZOOM });
+    countyLabels = createZipLabels({
+      map,
+      getCentroidsMap: getCountyCentroidsMap,
+      labelForId: getCountyName,
+      stackedStatsMinZoom: COUNTY_LABEL_STACK_MIN_ZOOM,
+    });
     zipLabels.setTheme(currentTheme);
     countyLabels.setTheme(currentTheme);
 

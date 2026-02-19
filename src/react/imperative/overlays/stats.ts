@@ -154,49 +154,22 @@ export const updateSecondaryStatHoverOnly = (
   hoveredCounty: string | null,
 ) => {
   if (!secondaryStatId) return;
-  const entry = statDataByStatId.get(secondaryStatId);
-  if (!entry) return;
-
+  // Keep hover layers suppressed so pills are the only hover affordance.
+  void statDataByStatId;
+  void primaryZipScope;
+  void primaryCountyScope;
+  void hoveredZip;
+  void hoveredCounty;
   const { SECONDARY_STAT_HOVER_LAYER_ID, COUNTY_SECONDARY_HOVER_LAYER_ID } = ids;
 
-  // ZIP hover layer
   if (boundaryMode === "zips" && map.getLayer(SECONDARY_STAT_HOVER_LAYER_ID)) {
-    const zipEntry = entry.ZIP;
-    if (hoveredZip && primaryZipScope.has(hoveredZip) && zipEntry) {
-      const { data, min, max } = zipEntry;
-      const v = data?.[hoveredZip];
-      const classes = TEAL_COLORS.length;
-      let idx = 0;
-      if (typeof v === "number" && Number.isFinite(v)) {
-        if (max - min <= 0) idx = Math.floor((classes - 1) / 2);
-        else idx = Math.max(0, Math.min(classes - 1, Math.floor(((v - min) / (max - min)) * (classes - 1))));
-      }
-      map.setFilter(SECONDARY_STAT_HOVER_LAYER_ID, ["==", ["get", "zip"], hoveredZip] as any);
-      map.setPaintProperty(SECONDARY_STAT_HOVER_LAYER_ID, "circle-color", TEAL_COLORS[idx]);
-      map.setPaintProperty(SECONDARY_STAT_HOVER_LAYER_ID, "circle-opacity", 1);
-    } else {
-      map.setPaintProperty(SECONDARY_STAT_HOVER_LAYER_ID, "circle-opacity", 0);
-    }
+    map.setPaintProperty(SECONDARY_STAT_HOVER_LAYER_ID, "circle-opacity", 0);
+    map.setFilter(SECONDARY_STAT_HOVER_LAYER_ID, ["==", ["get", "zip"], "__none__"] as any);
   }
 
-  // County hover layer
   if (boundaryMode === "counties" && map.getLayer(COUNTY_SECONDARY_HOVER_LAYER_ID)) {
-    const countyEntry = entry.COUNTY;
-    if (hoveredCounty && primaryCountyScope.has(hoveredCounty) && countyEntry) {
-      const { data, min, max } = countyEntry;
-      const v = data?.[hoveredCounty];
-      const classes = TEAL_COLORS.length;
-      let idx = 0;
-      if (typeof v === "number" && Number.isFinite(v)) {
-        if (max - min <= 0) idx = Math.floor((classes - 1) / 2);
-        else idx = Math.max(0, Math.min(classes - 1, Math.floor(((v - min) / (max - min)) * (classes - 1))));
-      }
-      map.setFilter(COUNTY_SECONDARY_HOVER_LAYER_ID, ["==", ["get", "county"], hoveredCounty] as any);
-      map.setPaintProperty(COUNTY_SECONDARY_HOVER_LAYER_ID, "circle-color", TEAL_COLORS[idx]);
-      map.setPaintProperty(COUNTY_SECONDARY_HOVER_LAYER_ID, "circle-opacity", 1);
-    } else {
-      map.setPaintProperty(COUNTY_SECONDARY_HOVER_LAYER_ID, "circle-opacity", 0);
-    }
+    map.setPaintProperty(COUNTY_SECONDARY_HOVER_LAYER_ID, "circle-opacity", 0);
+    map.setFilter(COUNTY_SECONDARY_HOVER_LAYER_ID, ["==", ["get", "county"], "__none__"] as any);
   }
 };
 
@@ -298,25 +271,8 @@ export const updateSecondaryStatOverlay = (
       map.setPaintProperty(SECONDARY_STAT_LAYER_ID, "circle-translate", translateExpr);
 
       if (map.getLayer(SECONDARY_STAT_HOVER_LAYER_ID)) {
-        if (hoveredZip && primaryZipScope.has(hoveredZip)) {
-          const v = zipEntry.data?.[hoveredZip];
-          let idx = 0;
-          if (typeof v === "number" && Number.isFinite(v)) {
-            if (max - min <= 0) idx = Math.floor((classes - 1) / 2);
-            else idx = Math.max(0, Math.min(classes - 1, Math.floor(((v - min) / (max - min)) * (classes - 1))));
-          }
-          const color = COLORS[idx];
-          map.setFilter(
-            SECONDARY_STAT_HOVER_LAYER_ID,
-            ["all", ["==", ["get", "zip"], hoveredZip], ["in", ["get", "zip"], ["literal", zipScopeIds]]] as any,
-          );
-          map.setPaintProperty(SECONDARY_STAT_HOVER_LAYER_ID, "circle-color", color as any);
-          map.setPaintProperty(SECONDARY_STAT_HOVER_LAYER_ID, "circle-opacity", 1);
-          map.setPaintProperty(SECONDARY_STAT_HOVER_LAYER_ID, "circle-translate", [0, -14] as any);
-        } else {
-          map.setPaintProperty(SECONDARY_STAT_HOVER_LAYER_ID, "circle-opacity", 0);
-          map.setFilter(SECONDARY_STAT_HOVER_LAYER_ID, ["==", ["get", "zip"], "__none__"] as any);
-        }
+        map.setPaintProperty(SECONDARY_STAT_HOVER_LAYER_ID, "circle-opacity", 0);
+        map.setFilter(SECONDARY_STAT_HOVER_LAYER_ID, ["==", ["get", "zip"], "__none__"] as any);
       }
     } else {
       disableZipLayers();
@@ -360,25 +316,8 @@ export const updateSecondaryStatOverlay = (
       map.setPaintProperty(COUNTY_SECONDARY_LAYER_ID, "circle-translate", translateExpr);
 
       if (map.getLayer(COUNTY_SECONDARY_HOVER_LAYER_ID)) {
-        if (hoveredCounty && primaryCountyScope.has(hoveredCounty)) {
-          const v = countyEntry.data?.[hoveredCounty];
-          let idx = 0;
-          if (typeof v === "number" && Number.isFinite(v)) {
-            if (max - min <= 0) idx = Math.floor((classes - 1) / 2);
-            else idx = Math.max(0, Math.min(classes - 1, Math.floor(((v - min) / (max - min)) * (classes - 1))));
-          }
-          const color = COLORS[idx];
-          map.setFilter(
-            COUNTY_SECONDARY_HOVER_LAYER_ID,
-            ["all", ["==", ["get", "county"], hoveredCounty], ["in", ["get", "county"], ["literal", countyScopeIds]]] as any,
-          );
-          map.setPaintProperty(COUNTY_SECONDARY_HOVER_LAYER_ID, "circle-color", color as any);
-          map.setPaintProperty(COUNTY_SECONDARY_HOVER_LAYER_ID, "circle-opacity", 1);
-          map.setPaintProperty(COUNTY_SECONDARY_HOVER_LAYER_ID, "circle-translate", [0, -18] as any);
-        } else {
-          map.setPaintProperty(COUNTY_SECONDARY_HOVER_LAYER_ID, "circle-opacity", 0);
-          map.setFilter(COUNTY_SECONDARY_HOVER_LAYER_ID, ["==", ["get", "county"], "__none__"] as any);
-        }
+        map.setPaintProperty(COUNTY_SECONDARY_HOVER_LAYER_ID, "circle-opacity", 0);
+        map.setFilter(COUNTY_SECONDARY_HOVER_LAYER_ID, ["==", ["get", "county"], "__none__"] as any);
       }
     } else {
       disableCountyLayers();
