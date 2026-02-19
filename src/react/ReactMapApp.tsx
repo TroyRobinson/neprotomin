@@ -2438,6 +2438,15 @@ export const ReactMapApp = () => {
     setBoundaryMode(mode);
   };
 
+  const handleMapAreasModeChange = (mode: AreasMode) => {
+    if (mode === "auto") {
+      setBoundaryControlMode("auto");
+      return;
+    }
+    setBoundaryControlMode("manual");
+    setBoundaryMode(mode);
+  };
+
   const handleMapControllerReady = useCallback((controller: MapViewController | null) => {
     mapControllerRef.current = controller;
     // Sync initial sidebar expand button visibility
@@ -3551,6 +3560,7 @@ export const ReactMapApp = () => {
                 setForceHideOrgsNonce((n) => n + 1);
               }}
               boundaryMode={boundaryMode}
+              areasMode={areasMode}
               autoBoundarySwitch={autoBoundarySwitch}
               selectedZips={selectedZips}
               pinnedZips={pinnedZips}
@@ -3575,6 +3585,7 @@ export const ReactMapApp = () => {
                 applyMapVisibleIds(ids, allSourceIds);
               }}
               onBoundaryModeChange={handleMapBoundaryModeChange}
+              onAreasModeChange={handleMapAreasModeChange}
               onZipScopeChange={(scope, neighbors) => {
                 setZipScope(scope);
                 setZipNeighborScopes(neighbors);

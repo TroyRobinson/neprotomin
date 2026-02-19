@@ -7,6 +7,9 @@ const CATEGORY_CHIP_NEUTRAL_CLASSES =
 const TIME_OPEN_CHIP_CLASSES =
   "border-[#f5c4ae]/60 bg-[#fdd6c3]/20 text-[#7a4030] hover:border-[#e8a990]/80 hover:bg-[#fdd6c3]/40 hover:text-[#6b3525] dark:border-[#7a4030]/40 dark:bg-[#7a4030]/15 dark:text-[#f5c4ae] dark:hover:border-[#e8a990]/60 dark:hover:text-[#fdd6c3]";
 
+const AREAS_CHIP_CLASSES =
+  "border-slate-200/80 bg-white/55 text-slate-700 hover:border-brand-200 hover:bg-white/75 hover:text-brand-700 dark:border-slate-600/70 dark:bg-slate-900/55 dark:text-slate-200 dark:hover:border-brand-400/70 dark:hover:bg-slate-900/75 dark:hover:text-white";
+
 const SEARCH_ICON = `
   <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px] text-brand-600 dark:text-brand-400">
     <path
@@ -22,6 +25,26 @@ const ARROW_ICON = `
     <path
       fill-rule="evenodd"
       d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z"
+      clip-rule="evenodd"
+    />
+  </svg>
+`;
+
+const CHEVRON_DOWN_ICON = `
+  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-3 w-3 transition-transform duration-150">
+    <path
+      fill-rule="evenodd"
+      d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+      clip-rule="evenodd"
+    />
+  </svg>
+`;
+
+const CHECK_ICON = `
+  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-3.5 w-3.5">
+    <path
+      fill-rule="evenodd"
+      d="M16.704 5.29a1 1 0 010 1.42l-7.24 7.24a1 1 0 01-1.42 0L3.29 9.196a1 1 0 011.42-1.42l4.044 4.044 6.53-6.53a1 1 0 011.42 0z"
       clip-rule="evenodd"
     />
   </svg>
@@ -77,12 +100,15 @@ import { statsStore } from "../../state/stats";
 import { categoriesStore, type CategoryRow } from "../../state/categories";
 import { formatTimeSelection as formatTimeSelectionLabel, type TimeSelection } from "../lib/timeFilters";
 
+export type AreasChipMode = "auto" | "zips" | "counties" | "none";
+
 export interface CategoryChipsController {
   element: HTMLElement;
   setSelected: (categoryId: string | null) => void;
   setSelectedStat: (statId: string | null) => void;
   setSecondaryStat: (statId: string | null) => void;
   setVisibleStatIds: (ids: string[] | null) => void;
+  setAreasMode: (mode: AreasChipMode) => void;
   setOrgsVisible: (visible: boolean) => void;
   setTimeSelection: (selection: TimeSelection | null) => void;
   setTimeFilterAvailable: (available: boolean) => void;
@@ -100,6 +126,7 @@ interface CategoryChipsOptions {
   onOrgsChipClose?: () => void;
   onTimeChipClick?: () => void;
   onTimeChipClear?: () => void;
+  onAreasModeChange?: (mode: AreasChipMode) => void;
   /** Called when the sidebar expand button is clicked */
   onSidebarExpand?: () => void;
 }
@@ -274,6 +301,131 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   
   list.appendChild(timeOpenChipBtn);
 
+  const AREA_MODE_OPTIONS: Array<{ value: AreasChipMode; label: string }> = [
+    { value: "auto", label: "Zoom" },
+    { value: "zips", label: "ZIPs" },
+    { value: "counties", label: "Counties" },
+    { value: "none", label: "None" },
+  ];
+
+  const formatAreasModeLabel = (mode: AreasChipMode): string => {
+    const match = AREA_MODE_OPTIONS.find((entry) => entry.value === mode);
+    return match?.label ?? "Zoom";
+  };
+
+  let areasMenuOpen = false;
+  let removeAreasOutsideHandler: (() => void) | null = null;
+  const areasChipContainer = document.createElement("div");
+  const areasChipBtn = document.createElement("button");
+  const areasChipLabel = document.createElement("span");
+  const areasChipChevron = document.createElement("span");
+  const areasChipMenu = document.createElement("div");
+  const areasMenuOptions = new Map<AreasChipMode, HTMLButtonElement>();
+
+  // Map chip-level Areas control mirrors the toolbar's mode options.
+  areasChipContainer.className = "relative pointer-events-auto";
+  areasChipContainer.style.display = isMobile ? "none" : "";
+  areasChipBtn.type = "button";
+  areasChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${AREAS_CHIP_CLASSES} pr-2`;
+  areasChipBtn.setAttribute("aria-haspopup", "listbox");
+  areasChipBtn.setAttribute("aria-expanded", "false");
+  areasChipBtn.setAttribute("aria-label", "Areas mode");
+  areasChipLabel.className = "whitespace-nowrap";
+  areasChipChevron.className = "flex items-center text-slate-400 dark:text-slate-500";
+  areasChipChevron.innerHTML = CHEVRON_DOWN_ICON;
+  areasChipBtn.appendChild(areasChipLabel);
+  areasChipBtn.appendChild(areasChipChevron);
+
+  areasChipMenu.className =
+    "absolute right-0 top-full z-20 mt-1 hidden min-w-[9rem] rounded-xl border border-slate-200/80 bg-white/90 p-1.5 shadow-lg backdrop-blur-md dark:border-slate-700/80 dark:bg-slate-900/90";
+  areasChipMenu.setAttribute("role", "listbox");
+  areasChipMenu.setAttribute("aria-label", "Areas mode");
+
+  AREA_MODE_OPTIONS.forEach((option) => {
+    const optionBtn = document.createElement("button");
+    optionBtn.type = "button";
+    optionBtn.className =
+      "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800";
+    optionBtn.setAttribute("data-areas-mode", option.value);
+    optionBtn.setAttribute("role", "option");
+    optionBtn.addEventListener("click", () => {
+      setAreasModeInternal(option.value, { emitChange: true, closeMenu: true });
+    });
+    areasMenuOptions.set(option.value, optionBtn);
+    areasChipMenu.appendChild(optionBtn);
+  });
+
+  areasChipContainer.appendChild(areasChipBtn);
+  areasChipContainer.appendChild(areasChipMenu);
+  list.appendChild(areasChipContainer);
+
+  const closeAreasMenu = () => {
+    if (!areasMenuOpen) return;
+    areasMenuOpen = false;
+    areasChipMenu.classList.add("hidden");
+    areasChipBtn.setAttribute("aria-expanded", "false");
+    areasChipChevron.firstElementChild?.classList.remove("rotate-180");
+    if (removeAreasOutsideHandler) {
+      removeAreasOutsideHandler();
+      removeAreasOutsideHandler = null;
+    }
+  };
+
+  const openAreasMenu = () => {
+    if (areasMenuOpen) return;
+    areasMenuOpen = true;
+    areasChipMenu.classList.remove("hidden");
+    areasChipBtn.setAttribute("aria-expanded", "true");
+    areasChipChevron.firstElementChild?.classList.add("rotate-180");
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && areasChipContainer.contains(target)) return;
+      closeAreasMenu();
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    removeAreasOutsideHandler = () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  };
+
+  const setAreasModeInternal = (
+    mode: AreasChipMode,
+    config: { emitChange?: boolean; closeMenu?: boolean } = {},
+  ) => {
+    areasChipLabel.textContent = `Areas: ${formatAreasModeLabel(mode)}`;
+    AREA_MODE_OPTIONS.forEach((entry) => {
+      const optionBtn = areasMenuOptions.get(entry.value);
+      if (!optionBtn) return;
+      const isActive = entry.value === mode;
+      optionBtn.innerHTML = `<span>${entry.label}</span>${isActive ? `<span class="text-brand-500 dark:text-brand-300">${CHECK_ICON}</span>` : `<span class="h-3.5 w-3.5"></span>`}`;
+      optionBtn.setAttribute("aria-selected", isActive ? "true" : "false");
+      optionBtn.className = isActive
+        ? "flex w-full items-center justify-between rounded-lg bg-brand-50 px-2.5 py-1.5 text-left text-xs text-brand-700 transition dark:bg-brand-400/15 dark:text-brand-300"
+        : "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800";
+    });
+    if (config.closeMenu) closeAreasMenu();
+    if (config.emitChange) {
+      try {
+        options.onAreasModeChange?.(mode);
+      } catch {}
+    }
+  };
+
+  areasChipBtn.addEventListener("click", () => {
+    if (areasMenuOpen) closeAreasMenu();
+    else openAreasMenu();
+  });
+
+  areasChipBtn.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeAreasMenu();
+      areasChipBtn.blur();
+    }
+  });
+
+  setAreasModeInternal("auto");
+
   let selectedId: string | null = null;
   let selectedStatId: string | null = null;
   let secondaryStatId: string | null = null;
@@ -354,6 +506,23 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     update();
   };
 
+  const positionTrailingChips = () => {
+    if (isMobile) return;
+    if (orgsChipBtn.style.display !== "none") {
+      if (orgsChipBtn.parentElement !== list) list.appendChild(orgsChipBtn);
+      list.appendChild(orgsChipBtn);
+    }
+    if (timeOpenChipBtn.style.display !== "none") {
+      if (timeOpenChipBtn.parentElement !== list) list.appendChild(timeOpenChipBtn);
+      list.appendChild(timeOpenChipBtn);
+    }
+    if (areasChipContainer.style.display !== "none") {
+      if (areasChipContainer.parentElement !== list) list.appendChild(areasChipContainer);
+      // Keep Areas chip fixed as the right-most trailing control.
+      list.appendChild(areasChipContainer);
+    }
+  };
+
   const update = () => {
     const selectedStat = selectedStatId ? allStats.find(s => s.id === selectedStatId) : null;
     const selectedStatCategory = selectedStat?.category;
@@ -400,15 +569,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       }
     }
     
-    // Always position orgs chip at the right end (after all category and stat chips)
-    if (orgsChipBtn.style.display !== "none") {
-      if (orgsChipBtn.parentElement !== list) list.appendChild(orgsChipBtn);
-      // Always append to the very end to ensure it's rightmost
-      list.appendChild(orgsChipBtn);
-      // Position time open chip right after orgs chip
-      if (timeOpenChipBtn.parentElement !== list) list.appendChild(timeOpenChipBtn);
-      list.appendChild(timeOpenChipBtn);
-    }
+    positionTrailingChips();
 
     entries.forEach(({ button, closeIcon, categoryId }) => {
       const isSelected = selectedId === categoryId;
@@ -450,6 +611,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       orgsChipBtn.style.display = "none";
       const showTime = orgsChipVisible && timeFilterAvailable;
       timeOpenChipBtn.style.display = showTime ? "" : "none";
+      areasChipContainer.style.display = "none";
+      closeAreasMenu();
       return;
     }
     const showOrganizations = orgsChipVisible && !searchExpanded;
@@ -457,6 +620,9 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
     const showTime = orgsChipVisible && timeFilterAvailable && !searchExpanded;
     timeOpenChipBtn.style.display = showTime ? "" : "none";
+    const showAreas = !searchExpanded;
+    areasChipContainer.style.display = showAreas ? "" : "none";
+    if (!showAreas) closeAreasMenu();
     update();
   };
 
@@ -885,6 +1051,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     secondaryChipEntry = chipData;
     // Append directly to list so it appears in the same row
     list.appendChild(chipData.btn);
+    positionTrailingChips();
   };
 
   const setSecondaryStat = (statId: string | null) => {
@@ -903,6 +1070,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     if (removeSearchOutsideHandler) {
       removeSearchOutsideHandler();
       removeSearchOutsideHandler = null;
+    }
+    if (removeAreasOutsideHandler) {
+      removeAreasOutsideHandler();
+      removeAreasOutsideHandler = null;
     }
     if (unsubscribeStats) unsubscribeStats();
     if (unsubscribeCategories) unsubscribeCategories();
@@ -964,6 +1135,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     setSelectedStat,
     setSecondaryStat,
     setVisibleStatIds,
+    setAreasMode: (mode: AreasChipMode) => {
+      setAreasModeInternal(mode);
+      positionTrailingChips();
+    },
     setOrgsVisible: (visible: boolean) => {
       orgsChipVisible = visible;
       if (isMobile) {

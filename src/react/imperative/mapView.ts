@@ -9,7 +9,7 @@ import type { Organization } from "../../types/organization";
 import { OKLAHOMA_CENTER, OKLAHOMA_DEFAULT_ZOOM } from "../../types/organization";
 import { themeController } from "./theme";
 // palettes/hover are used inside boundary layer helpers now
-import { createCategoryChips } from "./categoryChips";
+import { createCategoryChips, type AreasChipMode } from "./categoryChips";
 import { setStatDataPrefetchStatIds, setStatDataPriorityStatIds, setStatDataScopeParentAreas, statDataStore } from "../../state/statData";
 import type { StatDataByParentArea, StatDataStoreState } from "../../state/statData";
 import { createZipFloatingTitle, type ZipFloatingTitleController } from "./components/zipFloatingTitle";
@@ -62,6 +62,7 @@ interface AreaSelectionChange {
 }
 
 interface MapViewOptions {
+  initialAreasMode?: AreasChipMode;
   initialUserLocation?: { lng: number; lat: number } | null;
   initialMapPosition?: { lng: number; lat: number; zoom: number } | null;
   onHover: (idOrIds: string | string[] | null) => void;
@@ -76,6 +77,7 @@ interface MapViewOptions {
   onSecondaryStatChange?: (statId: string | null) => void;
   onCategorySelectionChange?: (categoryId: string | null) => void;
   onBoundaryModeChange?: (mode: BoundaryMode) => void;
+  onAreasModeChange?: (mode: AreasChipMode) => void;
   onZipScopeChange?: (scopeLabel: string, neighbors: string[]) => void;
   shouldAutoBoundarySwitch?: () => boolean;
   onMapDragStart?: () => void;
@@ -104,6 +106,7 @@ export interface MapViewController {
   setSelectedStat: (statId: string | null) => void;
   setSecondaryStat: (statId: string | null) => void;
   setVisibleStatIds: (ids: string[] | null) => void;
+  setAreasMode: (mode: AreasChipMode) => void;
   setBoundaryMode: (mode: BoundaryMode) => void;
   setPinnedZips: (zips: string[]) => void;
   setHoveredZip: (zip: string | null) => void;
@@ -255,6 +258,7 @@ const getZipAreaBounds = zipAreaEntry.getBounds;
 const getCountyAreaBounds = countyAreaEntry.getBounds;
 
 export const createMapView = ({
+  initialAreasMode = "auto",
   initialUserLocation = null,
   initialMapPosition = null,
   onHover,
@@ -269,6 +273,7 @@ export const createMapView = ({
   onSecondaryStatChange,
   onCategorySelectionChange,
   onBoundaryModeChange,
+  onAreasModeChange,
   onZipScopeChange,
   shouldAutoBoundarySwitch,
   onMapDragStart,
@@ -323,12 +328,23 @@ export const createMapView = ({
     onOrgsChipClose: () => { try { onRequestHideOrgs?.(); } catch {} },
     onTimeChipClick: () => { try { onTimeChipClick?.(); } catch {} },
     onTimeChipClear: () => { try { onTimeChipClear?.(); } catch {} },
+    onAreasModeChange: (mode) => {
+      if (mode !== "auto") {
+        setBoundaryMode(mode);
+      } else {
+        const zoom = map.getZoom();
+        const nextMode = zoom <= COUNTY_MODE_ENABLE_ZOOM ? "counties" : "zips";
+        setBoundaryMode(nextMode);
+      }
+      onAreasModeChange?.(mode);
+    },
     onSidebarExpand: () => { try { onSidebarExpand?.(); } catch {} },
     onSearch: (query) => {
       try { onLocationSearch?.(query); } catch {}
     },
   });
   container.appendChild(categoryChips.element);
+  categoryChips.setAreasMode(initialAreasMode);
 
   // Loading indicator: bottom-center pill on desktop, top-right spinner on mobile
   const loadingIndicator = createMapLoadingIndicator({ isMobile });
@@ -3193,6 +3209,9 @@ export const createMapView = ({
     },
     setVisibleStatIds: (ids: string[] | null) => {
       categoryChips.setVisibleStatIds(ids);
+    },
+    setAreasMode: (mode: AreasChipMode) => {
+      categoryChips.setAreasMode(mode);
     },
     setBoundaryMode,
     setPinnedZips: (zips: string[]) => {

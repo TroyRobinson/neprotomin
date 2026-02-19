@@ -11,8 +11,12 @@ interface CustomSelectProps {
   options: SelectOption[];
   onChange: (value: string) => void;
   className?: string;
+  buttonClassName?: string;
   disabled?: boolean;
   compact?: boolean; // If true, shrinks to fit content width instead of filling container
+  fitContent?: boolean; // If true, keeps default size while shrinking width to content
+  selectedPrefix?: string;
+  ariaLabel?: string;
   placeholder?: string;
 }
 
@@ -22,8 +26,12 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   options,
   onChange,
   className = "",
+  buttonClassName = "",
   disabled = false,
   compact = false,
+  fitContent = false,
+  selectedPrefix = "",
+  ariaLabel,
   placeholder = "Select an option",
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -139,7 +147,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   };
 
   return (
-    <div ref={selectRef} className={`relative ${compact ? 'inline-block' : 'w-full'} ${className}`}>
+    <div ref={selectRef} className={`relative ${compact || fitContent ? 'inline-block' : 'w-full'} ${className}`}>
       {/* Select Button */}
       <button
         ref={buttonRef}
@@ -149,19 +157,21 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         onKeyDown={handleKeyDown}
         disabled={disabled}
         className={`
-          ${compact ? 'h-[21px] text-[10px]' : 'h-7 text-xs'} ${compact ? 'w-auto' : 'w-full'} ${compact ? '' : 'min-w-32'} rounded border border-slate-300 bg-white pl-2 pr-7 text-slate-700 shadow-sm transition 
+          ${compact ? 'h-[21px] text-[10px]' : 'h-7 text-xs'} ${compact || fitContent ? 'w-auto' : 'w-full'} ${compact || fitContent ? '' : 'min-w-32'} rounded border border-slate-300 bg-white pl-2 pr-7 text-slate-700 shadow-sm transition 
           focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 
           dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50
           ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
           ${isOpen ? 'border-brand-400 ring-1 ring-brand-200 dark:border-brand-300 dark:ring-brand-800/50' : ''}
           flex items-center
+          ${buttonClassName}
         `}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
+        aria-label={ariaLabel}
         aria-labelledby={id ? `${id}-label` : undefined}
       >
         <span className={`block truncate text-left w-full`}>
-          {selectedOption?.label || placeholder || 'Select an option'}
+          {selectedPrefix}{selectedOption?.label || placeholder || 'Select an option'}
         </span>
         {compact && (
           <span className="sr-only">

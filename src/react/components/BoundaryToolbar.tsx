@@ -501,28 +501,29 @@ export const BoundaryToolbar = ({
 
         {/* Areas Selector */}
         {!hideAreaSelect && (
-          <label className="flex items-center gap-2 font-medium" htmlFor="boundary-select">
-            Areas
-            <CustomSelect
-              id="boundary-select"
-              value={boundaryControlMode === "auto" ? "auto" : boundaryMode}
-              options={[
-                { value: "zips", label: "ZIPs" },
-                { value: "counties", label: "Counties" },
-                { value: "auto", label: "Auto" },
-                { value: "none", label: "None" }
-              ]}
-              onChange={(value) => {
-                if (value === "auto") {
-                  onBoundaryControlModeChange?.("auto");
-                  return;
-                }
-                const cast = value as BoundaryMode;
-                onBoundaryControlModeChange?.("manual");
-                onBoundaryModeChange?.(cast);
-              }}
-            />
-          </label>
+          <CustomSelect
+            id="boundary-select"
+            value={boundaryControlMode === "auto" ? "auto" : boundaryMode}
+            options={[
+              { value: "zips", label: "ZIPs" },
+              { value: "counties", label: "Counties" },
+              { value: "auto", label: "Zoom" },
+              { value: "none", label: "None" }
+            ]}
+            selectedPrefix="Areas: "
+            ariaLabel="Areas mode"
+            fitContent
+            buttonClassName="rounded-full border-slate-300 bg-white/70 pl-3 pr-8 text-xs font-medium text-slate-700 hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-brand-400 dark:hover:text-brand-200"
+            onChange={(value) => {
+              if (value === "auto") {
+                onBoundaryControlModeChange?.("auto");
+                return;
+              }
+              const cast = value as BoundaryMode;
+              onBoundaryControlModeChange?.("manual");
+              onBoundaryModeChange?.(cast);
+            }}
+          />
         )}
       </div>
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { BoundaryMode } from "../../types/boundaries";
 import type { Organization } from "../../types/organization";
 import type { AreaId, AreaKind } from "../../types/areas";
+import type { AreasMode } from "../lib/mapUrl";
 import { createMapView, type MapViewController } from "../imperative/mapView";
 
 interface AreaSelectionChange {
@@ -31,6 +32,7 @@ interface MapLibreMapProps {
   activeOrganizationId?: string | null;
   selectedOrgIds?: string[];
   categoryFilter?: string | null;
+  areasMode?: AreasMode;
   selectedStatId?: string | null;
   secondaryStatId?: string | null;
   onHover?: (idOrIds: string | string[] | null) => void;
@@ -50,6 +52,7 @@ interface MapLibreMapProps {
   onSecondaryStatChange?: (statId: string | null) => void;
   onCategorySelectionChange?: (categoryId: string | null) => void;
   onBoundaryModeChange?: (mode: BoundaryMode) => void;
+  onAreasModeChange?: (mode: AreasMode) => void;
   onZipScopeChange?: (scope: string, neighbors: string[]) => void;
   onCameraChange?: (state: { center: [number, number]; zoom: number }) => void;
   autoBoundarySwitch?: boolean;
@@ -92,6 +95,7 @@ export const MapLibreMap = ({
   activeOrganizationId = null,
   selectedOrgIds = [],
   categoryFilter = null,
+  areasMode = "auto",
   selectedStatId = null,
   secondaryStatId = null,
   onHover,
@@ -106,6 +110,7 @@ export const MapLibreMap = ({
   onSecondaryStatChange,
   onCategorySelectionChange,
   onBoundaryModeChange,
+  onAreasModeChange,
   onZipScopeChange,
   onCameraChange,
   autoBoundarySwitch = true,
@@ -143,6 +148,7 @@ export const MapLibreMap = ({
   const onSecondaryStatChangeRef = useRef(onSecondaryStatChange);
   const onCategorySelectionChangeRef = useRef(onCategorySelectionChange);
   const onBoundaryModeChangeRef = useRef(onBoundaryModeChange);
+  const onAreasModeChangeRef = useRef(onAreasModeChange);
   const onZipScopeChangeRef = useRef(onZipScopeChange);
   const onCameraChangeRef = useRef(onCameraChange);
   const shouldAutoSwitchRef = useRef<boolean>(autoBoundarySwitch);
@@ -169,6 +175,7 @@ export const MapLibreMap = ({
   useEffect(() => { onSecondaryStatChangeRef.current = onSecondaryStatChange; }, [onSecondaryStatChange]);
   useEffect(() => { onCategorySelectionChangeRef.current = onCategorySelectionChange; }, [onCategorySelectionChange]);
   useEffect(() => { onBoundaryModeChangeRef.current = onBoundaryModeChange; }, [onBoundaryModeChange]);
+  useEffect(() => { onAreasModeChangeRef.current = onAreasModeChange; }, [onAreasModeChange]);
   useEffect(() => { onZipScopeChangeRef.current = onZipScopeChange; }, [onZipScopeChange]);
   useEffect(() => { onCameraChangeRef.current = onCameraChange; }, [onCameraChange]);
   useEffect(() => { shouldAutoSwitchRef.current = autoBoundarySwitch; }, [autoBoundarySwitch]);
@@ -204,6 +211,7 @@ export const MapLibreMap = ({
     if (!containerRef.current) return;
 
     const mapController = createMapView({
+      initialAreasMode: areasMode,
       initialUserLocation: userLocation,
       initialMapPosition,
       onHover: (v) => onHoverRef.current?.(v),
@@ -241,6 +249,7 @@ export const MapLibreMap = ({
         appliedBoundaryModeRef.current = mode;
         onBoundaryModeChangeRef.current?.(mode);
       },
+      onAreasModeChange: (mode) => onAreasModeChangeRef.current?.(mode),
       onZipScopeChange: (scope, neighbors) => onZipScopeChangeRef.current?.(scope, neighbors),
       shouldAutoBoundarySwitch: () => shouldAutoSwitchRef.current,
       onMapDragStart: () => onMapDragStartRef.current?.(),
@@ -291,6 +300,12 @@ export const MapLibreMap = ({
       setLegendInsetRef.current = () => {};
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (mapControllerRef.current) {
+      mapControllerRef.current.setAreasMode(areasMode);
+    }
+  }, [areasMode]);
 
   // Update organizations when they change
   useEffect(() => {
