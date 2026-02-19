@@ -69,6 +69,9 @@ const CHIP_VISIBLE_STYLES = {
   pointerEvents: "auto" as const,
 };
 
+const DESKTOP_CHIP_LEFT_OFFSET =
+  "var(--map-chips-left-offset, calc(var(--desktop-sidebar-width, 24rem) + 0.25rem))";
+
 import type { Stat } from "../../types/stat";
 import { statsStore } from "../../state/stats";
 import { categoriesStore, type CategoryRow } from "../../state/categories";
@@ -1010,7 +1013,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
           wrapper.style.right = "1rem";
         } else {
           // Keep chips adjacent to the persistent desktop search bar.
-          wrapper.style.left = "24.25rem";
+          wrapper.style.left = DESKTOP_CHIP_LEFT_OFFSET;
           wrapper.style.right = "";
         }
       } else {

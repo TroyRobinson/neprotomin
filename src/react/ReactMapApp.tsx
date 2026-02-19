@@ -1,5 +1,5 @@
 import { useState, lazy, Suspense, useEffect, useMemo, useRef, useCallback } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { track } from "@vercel/analytics";
 import { TopBar } from "./components/TopBar";
 import { BoundaryToolbar } from "./components/BoundaryToolbar";
@@ -2414,8 +2414,7 @@ export const ReactMapApp = () => {
     mapControllerRef.current = controller;
     // Sync initial sidebar expand button visibility
     controller?.setSidebarExpandVisible(sidebarCollapsed);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sidebarCollapsed]);
 
   // Show/hide sidebar expand button on map when sidebar collapses/expands
   useEffect(() => {
@@ -2427,7 +2426,12 @@ export const ReactMapApp = () => {
       mapControllerRef.current?.resize();
     }, 200);
     return () => window.clearTimeout(timeoutId);
-  }, [sidebarCollapsed]);
+  }, [sidebarCollapsed, isMobile]);
+
+  const desktopLayoutVars = {
+    "--desktop-sidebar-width": "24rem",
+    "--map-chips-left-offset": "calc(var(--desktop-sidebar-width) + 0.25rem)",
+  } as CSSProperties;
 
   // Keep the combined legend row visible - always on desktop, only in peek on mobile
   useEffect(() => {
@@ -3380,7 +3384,10 @@ export const ReactMapApp = () => {
   ]);
 
   return (
-    <div className="app-shell relative flex flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
+    <div
+      className="app-shell relative flex flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950"
+      style={desktopLayoutVars}
+    >
       <TopBar
         onBrandClick={handleBrandClick}
         onNavigate={handleTopBarNavigate}
@@ -3414,8 +3421,8 @@ export const ReactMapApp = () => {
                 "shrink-0",
                 // When collapsed: absolute (out of flow so map expands), search bar stays via Sidebar
                 sidebarCollapsed
-                  ? "pointer-events-none absolute left-0 top-0 z-10 h-full w-[24rem]"
-                  : "relative w-[24rem]",
+                  ? "pointer-events-none absolute left-0 top-0 z-10 h-full w-[var(--desktop-sidebar-width)]"
+                  : "relative w-[var(--desktop-sidebar-width)]",
               ].join(" ")}
             >
               <Sidebar
