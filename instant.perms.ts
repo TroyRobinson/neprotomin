@@ -122,6 +122,15 @@ const rules = {
     },
     bind: ["isAdmin", adminCondition],
   },
+  pointsOfInterest: {
+    allow: {
+      view: "true",
+      create: "isAdmin",
+      update: "isAdmin",
+      delete: "isAdmin",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
   statRelations: {
     allow: {
       view: "true",

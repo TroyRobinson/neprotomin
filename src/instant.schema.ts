@@ -141,6 +141,8 @@ const _schema = i.schema({
       // Used to control which stats appear as selectable chips in the map UI
       // Indexed because we filter by this field in queries
       featured: i.boolean().indexed().optional(),
+      // Enables persisted high/low map markers for no-stat mode.
+      pointsOfInterestEnabled: i.boolean().indexed().optional(),
       homeFeatured: i.boolean().indexed().optional(),
       active: i.boolean().indexed().optional(),
       // Visibility state: "inactive" | "private" | "public" (null => inherit from parent)
@@ -193,6 +195,25 @@ const _schema = i.schema({
       max: i.number(),
       updatedAt: i.number().indexed(),
       createdAt: i.number().indexed().optional(),
+    }),
+    // Persisted extrema markers for no-stat map mode.
+    pointsOfInterest: i.entity({
+      poiKey: i.string().unique().indexed(), // `${statId}::${scopeKey}::${boundaryType}::${extremaKind}`
+      statId: i.string().indexed(),
+      statCategory: i.string().indexed(),
+      statName: i.string().optional(),
+      boundaryType: i.string().indexed(), // ZIP | COUNTY
+      scopeKey: i.string().indexed(), // oklahoma | tulsa_area | okc_area
+      scopeLabel: i.string().optional(),
+      extremaKind: i.string().indexed(), // high | low
+      areaCode: i.string().indexed(),
+      areaName: i.string().optional(),
+      value: i.number(),
+      goodIfUp: i.boolean().optional(),
+      isActive: i.boolean().indexed(),
+      computedAt: i.number().indexed(),
+      sourceDate: i.string().optional(),
+      runId: i.string().indexed().optional(),
     }),
     // Parent/child relationships between stats
     statRelations: i.entity({

@@ -6,6 +6,7 @@ export interface Stat {
   label?: string; // Human-friendly display label (use instead of name when available)
   category: Category;
   goodIfUp?: boolean;
+  pointsOfInterestEnabled?: boolean;
   featured?: boolean;
   homeFeatured?: boolean;
   /** Visibility state; null/undefined means "inherit from parent" (or default public for root stats). */

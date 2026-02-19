@@ -30,6 +30,7 @@ interface StatItem {
   neId?: string | null;
   source?: string | null;
   goodIfUp?: boolean | null;
+  pointsOfInterestEnabled?: boolean | null;
   featured?: boolean | null;
   homeFeatured?: boolean | null;
   visibility?: StatVisibility | null;
@@ -275,6 +276,8 @@ const parseStat = (row: unknown): StatItem | null => {
     neId: typeof r.neId === "string" ? r.neId : null,
     source: typeof r.source === "string" ? r.source : null,
     goodIfUp: typeof r.goodIfUp === "boolean" ? r.goodIfUp : null,
+    pointsOfInterestEnabled:
+      typeof r.pointsOfInterestEnabled === "boolean" ? r.pointsOfInterestEnabled : null,
     featured: typeof r.featured === "boolean" ? r.featured : null,
     homeFeatured: typeof r.homeFeatured === "boolean" ? r.homeFeatured : null,
     visibility: normalizeStatVisibility(r.visibility) ?? null,
@@ -306,9 +309,18 @@ interface EditFormState {
   category: string;
   source: string;
   goodIfUp: boolean | null;
+  pointsOfInterestEnabled: boolean;
   visibility: VisibilityInput;
   featured: boolean | null;
   homeFeatured: boolean | null;
+}
+
+type PoiActionState = "idle" | "running" | "success" | "error";
+
+interface PoiStatus {
+  state: PoiActionState;
+  message?: string | null;
+  updatedAt?: number | null;
 }
 
 interface PendingDerivedJob {
@@ -327,6 +339,7 @@ const createEditForm = (stat: StatItem, hasParent: boolean): EditFormState => {
     category: stat.category,
     source: stat.source ?? "",
     goodIfUp: stat.goodIfUp ?? null,
+    pointsOfInterestEnabled: stat.pointsOfInterestEnabled === true,
     visibility,
     featured: stat.featured ?? null,
     homeFeatured: stat.homeFeatured ?? null,
@@ -357,6 +370,10 @@ interface StatListItemProps {
   onToggleExpand?: () => void;
   childrenCount?: number;
   onUnlink?: () => void;
+  poiInfo?: { activeCount: number; lastComputedAt: number | null };
+  poiStatus?: PoiStatus | null;
+  onRecalculatePoi?: () => void;
+  poiBusy?: boolean;
 }
 
 // Stat list item component with bar shape and curved corners
@@ -383,6 +400,10 @@ const StatListItem = ({
   onToggleExpand,
   childrenCount = 0,
   onUnlink,
+  poiInfo,
+  poiStatus,
+  onRecalculatePoi,
+  poiBusy = false,
 }: StatListItemProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [form, setForm] = useState<EditFormState>(() => createEditForm(stat, hasParent));
@@ -580,6 +601,17 @@ const StatListItem = ({
               )}
             </span>
           )}
+          {stat.pointsOfInterestEnabled && (
+            <span className="flex items-center gap-1">
+              <span className="font-medium">POI:</span>
+              <span>
+                {poiInfo?.activeCount ?? 0} active
+                {typeof poiInfo?.lastComputedAt === "number" && Number.isFinite(poiInfo.lastComputedAt)
+                  ? ` · ${formatDate(poiInfo.lastComputedAt)}`
+                  : ""}
+              </span>
+            </span>
+          )}
           {summary && summaryYearsDisplay && (
             <span className="flex items-center gap-1">
               <span className="font-medium">Data:</span>
@@ -629,6 +661,20 @@ const StatListItem = ({
             <span className="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
               Home default
             </span>
+          )}
+          {stat.pointsOfInterestEnabled && (
+            <span className="rounded-full bg-indigo-100 px-2 py-0.5 font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+              Points of interest
+            </span>
+          )}
+          {poiStatus?.state === "running" && (
+            <span className="text-amber-600 dark:text-amber-400">POI recalculating…</span>
+          )}
+          {poiStatus?.state === "success" && poiStatus.message && (
+            <span className="text-emerald-600 dark:text-emerald-400">{poiStatus.message}</span>
+          )}
+          {poiStatus?.state === "error" && poiStatus.message && (
+            <span className="text-rose-600 dark:text-rose-400">{poiStatus.message}</span>
           )}
           {(stat.createdOn || stat.lastUpdated) && (
             <span className="ml-auto text-slate-400 dark:text-slate-500">
@@ -745,6 +791,37 @@ const StatListItem = ({
             No
           </label>
         </fieldset>
+
+        <div className="flex flex-col gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/50">
+          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={form.pointsOfInterestEnabled === true}
+              onChange={(e) => handleChange("pointsOfInterestEnabled", e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-600 dark:bg-slate-700"
+            />
+            Points of Interest
+          </label>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Stores high/low map points for Oklahoma, Tulsa Area, and OKC Area.
+          </p>
+          {onRecalculatePoi && (
+            <button
+              type="button"
+              onClick={onRecalculatePoi}
+              disabled={!form.pointsOfInterestEnabled || poiBusy}
+              className="mt-1 self-start rounded-md border border-indigo-200 px-2 py-1 text-[11px] font-medium text-indigo-700 transition hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+            >
+              {poiBusy ? "Recalculating…" : "Recalculate now"}
+            </button>
+          )}
+          {poiStatus?.state === "success" && poiStatus.message && (
+            <p className="text-[11px] text-emerald-600 dark:text-emerald-400">{poiStatus.message}</p>
+          )}
+          {poiStatus?.state === "error" && poiStatus.message && (
+            <p className="text-[11px] text-rose-600 dark:text-rose-400">{poiStatus.message}</p>
+          )}
+        </div>
       </div>
 
       {/* Info section: Years, Areas, IDs - compact inline */}
@@ -3318,6 +3395,20 @@ export const AdminScreen = () => {
       : null,
   );
 
+  const { data: poiRowsData } = db.useQuery(
+    statsQueryEnabled
+      ? {
+          pointsOfInterest: {
+            $: {
+              fields: ["statId", "computedAt", "isActive"],
+              order: { computedAt: "desc" as const },
+              limit: 4000,
+            },
+          },
+        }
+      : null,
+  );
+
   // State to control statDataSummaries query (for retry logic)
   const [statSummariesQueryEnabled, setStatSummariesQueryEnabled] = useState(true);
 
@@ -3361,6 +3452,7 @@ export const AdminScreen = () => {
   // State for which stat is being edited (null = none)
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [poiStatusByStatId, setPoiStatusByStatId] = useState<Record<string, PoiStatus>>({});
   const [isNewStatOpen, setIsNewStatOpen] = useState(false);
   const [recentStatIds, setRecentStatIds] = useState<string[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -3379,6 +3471,7 @@ export const AdminScreen = () => {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<SortOption>("created");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const poiApiKey = getEnvString("VITE_POINTS_OF_INTEREST_API_KEY") ?? "";
 
   // Parse and filter stats
   const stats = useMemo(() => {
@@ -3404,6 +3497,37 @@ export const AdminScreen = () => {
     }
     return map;
   }, [stats]);
+
+  const poiInfoByStatId = useMemo(() => {
+    const map = new Map<string, { activeCount: number; lastComputedAt: number | null }>();
+    const rows = (poiRowsData?.pointsOfInterest ?? []) as Array<{
+      statId?: unknown;
+      isActive?: unknown;
+      computedAt?: unknown;
+    }>;
+
+    for (const row of rows) {
+      const statId = typeof row?.statId === "string" ? row.statId : null;
+      if (!statId) continue;
+      const existing = map.get(statId) ?? { activeCount: 0, lastComputedAt: null };
+      const computedAt =
+        typeof row?.computedAt === "number" && Number.isFinite(row.computedAt)
+          ? row.computedAt
+          : null;
+      if (
+        computedAt !== null &&
+        (existing.lastComputedAt === null || computedAt > existing.lastComputedAt)
+      ) {
+        existing.lastComputedAt = computedAt;
+      }
+      if (row?.isActive === true) {
+        existing.activeCount += 1;
+      }
+      map.set(statId, existing);
+    }
+
+    return map;
+  }, [poiRowsData?.pointsOfInterest]);
 
   const { statRelationsByParent, statRelationsByChild } = useMemo(() => {
     const byParent = new Map<string, Map<string, Array<StatRelation & { child: StatItem | null }>>>();
@@ -5030,19 +5154,113 @@ export const AdminScreen = () => {
     setEditingId(null);
   }, []);
 
+  const setPoiStatus = useCallback((statId: string, next: PoiStatus) => {
+    setPoiStatusByStatId((prev) => ({
+      ...prev,
+      [statId]: next,
+    }));
+  }, []);
+
+  const runPoiAction = useCallback(
+    async (statId: string, action: "recompute" | "deactivate", force = false): Promise<boolean> => {
+      setPoiStatus(statId, {
+        state: "running",
+        message: action === "deactivate" ? "Deactivating…" : "Recalculating…",
+        updatedAt: Date.now(),
+      });
+      try {
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (poiApiKey) {
+          headers["x-poi-api-key"] = poiApiKey;
+        }
+        const response = await fetch("/api/points-of-interest-recompute", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            statId,
+            action,
+            force,
+            callerEmail: user?.email ?? null,
+          }),
+        });
+        const payload = (await response.json().catch(() => null)) as
+          | {
+              rowsUpserted?: number;
+              rowsDeactivated?: number;
+              computedAt?: number;
+              skipped?: boolean;
+            }
+          | null;
+        if (!response.ok) {
+          const reason =
+            payload && typeof (payload as any).reason === "string"
+              ? String((payload as any).reason)
+              : "Request failed";
+          throw new Error(reason);
+        }
+        const rowsUpserted =
+          typeof payload?.rowsUpserted === "number" ? payload.rowsUpserted : 0;
+        const rowsDeactivated =
+          typeof payload?.rowsDeactivated === "number" ? payload.rowsDeactivated : 0;
+        const computedAt =
+          typeof payload?.computedAt === "number" && Number.isFinite(payload.computedAt)
+            ? payload.computedAt
+            : Date.now();
+        const message = payload?.skipped
+          ? "POI skipped (stat is not public or disabled)."
+          : action === "deactivate"
+          ? `POI deactivated (${rowsDeactivated} rows).`
+          : `POI recalculated (${rowsUpserted} upserted, ${rowsDeactivated} deactivated).`;
+        setPoiStatus(statId, {
+          state: "success",
+          message,
+          updatedAt: computedAt,
+        });
+        return true;
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : typeof error === "string"
+            ? error
+            : "POI operation failed";
+        setPoiStatus(statId, {
+          state: "error",
+          message: `POI error: ${message}`,
+          updatedAt: Date.now(),
+        });
+        return false;
+      }
+    },
+    [poiApiKey, setPoiStatus, user?.email],
+  );
+
+  const handleRecalculatePoi = useCallback(
+    async (statId: string) => {
+      await runPoiAction(statId, "recompute", true);
+    },
+    [runPoiAction],
+  );
+
   // Save changes to a stat
   const handleSave = useCallback(
     async (statId: string, form: EditFormState) => {
       setIsSaving(true);
       try {
         const current = statsById.get(statId) ?? null;
+        const poiWasEnabled = current?.pointsOfInterestEnabled === true;
+        const poiIsEnabled = form.pointsOfInterestEnabled === true;
         const resolvedVisibility = form.visibility === "inherit" ? null : form.visibility;
+        const nextLabel = form.label.trim() || null;
         const updates: Record<string, unknown> = {
           name: form.name,
-          label: form.label.trim() || null, // Store null if empty
+          label: nextLabel, // Store null if empty
           category: form.category,
           source: form.source.trim() || null,
           goodIfUp: form.goodIfUp,
+          pointsOfInterestEnabled: poiIsEnabled,
           visibility: resolvedVisibility,
           featured: form.featured,
           homeFeatured: form.homeFeatured,
@@ -5061,6 +5279,19 @@ export const AdminScreen = () => {
           }),
         );
         setEditingId(null);
+
+        const poiRelevantChange =
+          (current?.category ?? null) !== form.category ||
+          (current?.goodIfUp ?? null) !== form.goodIfUp ||
+          (current?.name ?? null) !== form.name ||
+          (current?.label ?? null) !== nextLabel ||
+          (current?.visibility ?? null) !== resolvedVisibility;
+
+        if (poiWasEnabled && !poiIsEnabled) {
+          await runPoiAction(statId, "deactivate", false);
+        } else if (poiIsEnabled && (!poiWasEnabled || poiRelevantChange)) {
+          await runPoiAction(statId, "recompute", true);
+        }
       } catch (err) {
         console.error("Failed to save stat:", err);
         // Could show a toast here
@@ -5068,7 +5299,7 @@ export const AdminScreen = () => {
         setIsSaving(false);
       }
     },
-    [statsById, user?.id],
+    [runPoiAction, statsById, user?.id],
   );
 
   // Recursively collect orphaned descendants (children with no other parents outside the deletion set)
@@ -5629,6 +5860,10 @@ export const AdminScreen = () => {
                     onToggleExpand={() =>
                       setExpandedParentId((prev) => (prev === stat.id ? null : stat.id))
                     }
+                    poiInfo={poiInfoByStatId.get(stat.id)}
+                    poiStatus={poiStatusByStatId[stat.id] ?? null}
+                    onRecalculatePoi={() => handleRecalculatePoi(stat.id)}
+                    poiBusy={poiStatusByStatId[stat.id]?.state === "running"}
                   />
                   {isExpanded && hasChildren && (
                     <div className="ml-4 mt-1 space-y-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
@@ -5719,6 +5954,10 @@ export const AdminScreen = () => {
                                         : undefined
                                     }
                                     onUnlink={() => handleUnlinkRelation(rel.id)}
+                                    poiInfo={poiInfoByStatId.get(child.id)}
+                                    poiStatus={poiStatusByStatId[child.id] ?? null}
+                                    onRecalculatePoi={() => handleRecalculatePoi(child.id)}
+                                    poiBusy={poiStatusByStatId[child.id]?.state === "running"}
                                   />
                                   {childHasChildren && isChildExpanded && (
                                     <div className="ml-4 space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
@@ -5785,6 +6024,10 @@ export const AdminScreen = () => {
                                                   effectiveVisibility={grandChildEffectiveVisibility}
                                                   hasChildren={false}
                                                   onUnlink={() => handleUnlinkRelation(gRel.id)}
+                                                  poiInfo={poiInfoByStatId.get(grandChild.id)}
+                                                  poiStatus={poiStatusByStatId[grandChild.id] ?? null}
+                                                  onRecalculatePoi={() => handleRecalculatePoi(grandChild.id)}
+                                                  poiBusy={poiStatusByStatId[grandChild.id]?.state === "running"}
                                                 />
                                               );
                                             })}

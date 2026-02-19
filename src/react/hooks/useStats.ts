@@ -557,6 +557,10 @@ export const useStats = ({
           label: typeof row.label === "string" && row.label.trim() ? row.label : undefined,
           category: row.category as Category,
           goodIfUp: typeof row.goodIfUp === "boolean" ? row.goodIfUp : undefined,
+          pointsOfInterestEnabled:
+            typeof row.pointsOfInterestEnabled === "boolean"
+              ? row.pointsOfInterestEnabled
+              : undefined,
           featured: typeof row.featured === "boolean" ? row.featured : undefined,
           homeFeatured: typeof row.homeFeatured === "boolean" ? row.homeFeatured : undefined,
           active: typeof row.active === "boolean" ? row.active : undefined,

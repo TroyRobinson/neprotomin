@@ -48,6 +48,10 @@ class StatsStore {
             label: typeof (row as any).label === "string" ? (row as any).label : undefined,
             category: (row as any).category,
             goodIfUp: typeof (row as any).goodIfUp === "boolean" ? (row as any).goodIfUp : undefined,
+            pointsOfInterestEnabled:
+              typeof (row as any).pointsOfInterestEnabled === "boolean"
+                ? (row as any).pointsOfInterestEnabled
+                : undefined,
             featured: typeof (row as any).featured === "boolean" ? (row as any).featured : undefined,
             homeFeatured:
               typeof (row as any).homeFeatured === "boolean" ? (row as any).homeFeatured : undefined,
