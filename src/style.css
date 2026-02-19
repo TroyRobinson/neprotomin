@@ -101,6 +101,37 @@
   }
 }
 
+/* Soften MapLibre attribution in both normal and compact modes. */
+.maplibregl-ctrl.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-attrib.maplibregl-compact,
+.maplibregl-ctrl-attrib.maplibregl-compact-show,
+.maplibregl-ctrl-attrib-button {
+  color: rgba(71, 85, 105, 0.9) !important;
+  background-color: rgba(226, 232, 240, 0.72) !important;
+  backdrop-filter: blur(2px);
+}
+
+.maplibregl-ctrl-attrib a,
+.maplibregl-ctrl-attrib button,
+.maplibregl-ctrl-attrib summary.maplibregl-ctrl-attrib-button {
+  color: rgba(71, 85, 105, 0.9) !important;
+}
+
+/* Dark mode attribution contrast: near-black pill with muted gray text. */
+:root.dark .maplibregl-ctrl.maplibregl-ctrl-attrib,
+:root.dark .maplibregl-ctrl-attrib.maplibregl-compact,
+:root.dark .maplibregl-ctrl-attrib.maplibregl-compact-show,
+:root.dark .maplibregl-ctrl-attrib-button {
+  color: rgba(148, 163, 184, 0.92) !important;
+  background-color: rgba(2, 6, 23, 0.84) !important;
+}
+
+:root.dark .maplibregl-ctrl-attrib a,
+:root.dark .maplibregl-ctrl-attrib button,
+:root.dark .maplibregl-ctrl-attrib summary.maplibregl-ctrl-attrib-button {
+  color: rgba(148, 163, 184, 0.92) !important;
+}
+
 @layer components {
   /* Hide number input spinners */
   input[type="number"]::-webkit-outer-spin-button,
