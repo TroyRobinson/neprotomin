@@ -35,6 +35,13 @@ type StatDataMapEntry = Partial<Record<BoundaryTypeKey, BoundaryStatEntry>>;
 export type StatDataByParentArea = Map<ParentAreaKey, StatDataMapEntry>;
 
 type Listener = (byStatId: Map<string, StatDataByParentArea>) => void;
+type StateListener = (state: StatDataStoreState) => void;
+
+export type StatDataStoreState = {
+  byStatId: Map<string, StatDataByParentArea>;
+  isRefreshing: boolean;
+  hasPendingRefresh: boolean;
+};
 
 const normalizeBoundaryType = (value: unknown): BoundaryTypeKey | null => {
   if (value === "ZIP") return "ZIP";
@@ -78,6 +85,7 @@ const statMapKey = (statId: string, parentArea: string, boundaryType: BoundaryTy
 
 class StatDataStore {
   private listeners = new Set<Listener>();
+  private stateListeners = new Set<StateListener>();
   private byStatId: Map<string, StatDataByParentArea> = new Map();
   private enabled = true;
   private priorityStatIds: string[] = [];
@@ -102,7 +110,32 @@ class StatDataStore {
     this.initialize();
     return () => {
       this.listeners.delete(listener);
-      if (this.listeners.size === 0) this.teardown();
+      if (this.getSubscriberCount() === 0) this.teardown();
+    };
+  }
+
+  subscribeState(listener: StateListener): () => void {
+    this.stateListeners.add(listener);
+    listener(this.getState());
+    this.initialize();
+    return () => {
+      this.stateListeners.delete(listener);
+      if (this.getSubscriberCount() === 0) this.teardown();
+    };
+  }
+
+  private getSubscriberCount() {
+    return this.listeners.size + this.stateListeners.size;
+  }
+
+  private getState(): StatDataStoreState {
+    return {
+      byStatId: this.byStatId,
+      isRefreshing: this.inflightRefresh !== null,
+      hasPendingRefresh:
+        this.inflightRefresh !== null ||
+        this.refreshTimeout !== null ||
+        this.refreshQueued,
     };
   }
 
@@ -114,7 +147,7 @@ class StatDataStore {
           this.byStatId = new Map();
           this.hydratedKeys.clear();
           this.metaByKey.clear();
-          this.emit();
+          this.emitAll();
           this.scheduleRefresh({ force: true });
           return;
         }
@@ -158,8 +191,18 @@ class StatDataStore {
     }
   }
 
-  private emit() {
+  private emitData() {
     this.listeners.forEach((l) => l(this.byStatId));
+  }
+
+  private emitState() {
+    const state = this.getState();
+    this.stateListeners.forEach((l) => l(state));
+  }
+
+  private emitAll() {
+    this.emitData();
+    this.emitState();
   }
 
   setEnabled(enabled: boolean) {
@@ -167,7 +210,7 @@ class StatDataStore {
     this.enabled = enabled;
     if (!enabled) {
       this.teardown();
-    } else if (this.listeners.size > 0) {
+    } else if (this.getSubscriberCount() > 0) {
       this.initialize();
     }
   }
@@ -226,19 +269,22 @@ class StatDataStore {
 
   private scheduleRefresh({ force }: { force: boolean }) {
     if (!this.enabled) return;
-    if (this.listeners.size === 0) return;
+    if (this.getSubscriberCount() === 0) return;
 
     if (this.inflightRefresh) {
       this.refreshQueued = true;
       this.queuedRefreshForce = this.queuedRefreshForce || force;
+      this.emitState();
       return;
     }
 
     if (this.refreshTimeout) clearTimeout(this.refreshTimeout);
     this.refreshTimeout = setTimeout(() => {
       this.refreshTimeout = null;
+      this.emitState();
       this.refresh({ force }).catch(() => {});
     }, 120);
+    this.emitState();
   }
 
   private getExpandedParentAreas(): string[] {
@@ -255,7 +301,7 @@ class StatDataStore {
 
   private async hydrateFocusFromCache(): Promise<void> {
     if (!this.enabled) return;
-    if (this.listeners.size === 0) return;
+    if (this.getSubscriberCount() === 0) return;
     if (typeof window === "undefined") return;
     if (this.focusHydratePromise) return this.focusHydratePromise;
 
@@ -345,12 +391,15 @@ class StatDataStore {
     }
 
     this.byStatId = nextByStatId;
-    this.emit();
+    this.emitAll();
   }
 
   private async refresh({ force }: { force: boolean }) {
     if (this.inflightRefresh) return this.inflightRefresh;
-    if (this.priorityStatIds.length === 0) return;
+    if (this.priorityStatIds.length === 0) {
+      this.emitState();
+      return;
+    }
 
     this.inflightRefresh = (async () => {
       const statIds = Array.from(new Set([...this.priorityStatIds, ...this.prefetchStatIds]));
@@ -630,7 +679,7 @@ class StatDataStore {
 
         if (didUpdate) {
           this.byStatId = nextByStatId;
-          this.emit();
+          this.emitAll();
         }
 
         this.scheduleTtlRefresh();
@@ -639,14 +688,19 @@ class StatDataStore {
       }
     })().finally(() => {
       this.inflightRefresh = null;
+      this.emitState();
       if (this.refreshQueued) {
         const force = this.queuedRefreshForce;
-        this.refreshQueued = false;
         this.queuedRefreshForce = false;
         // Run immediately (no debounce) so stat switching stays snappy.
-        setTimeout(() => this.refresh({ force }).catch(() => {}), 0);
+        setTimeout(() => {
+          this.refreshQueued = false;
+          this.refresh({ force }).catch(() => {});
+        }, 0);
       }
     });
+
+    this.emitState();
 
     return this.inflightRefresh;
   }

@@ -11,7 +11,7 @@ import { themeController } from "./theme";
 // palettes/hover are used inside boundary layer helpers now
 import { createCategoryChips } from "./categoryChips";
 import { setStatDataPrefetchStatIds, setStatDataPriorityStatIds, setStatDataScopeParentAreas, statDataStore } from "../../state/statData";
-import type { StatDataByParentArea } from "../../state/statData";
+import type { StatDataByParentArea, StatDataStoreState } from "../../state/statData";
 import { createZipFloatingTitle, type ZipFloatingTitleController } from "./components/zipFloatingTitle";
 import { createZipLabels, type ZipLabelsController } from "./components/zipLabels";
 import { createChoroplethLegend, type ChoroplethLegendController } from "./components/choroplethLegend";
@@ -396,9 +396,16 @@ export const createMapView = ({
   let visibleZipIds = new Set<string>();
   let pendingVisibleZipRefresh = false;
 
-let statDataStoreMap: StatDataStoreMap = new Map();
-let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
+  let statDataStoreMap: StatDataStoreMap = new Map();
+  let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   let unsubscribeStatData: (() => void) | null = null;
+  let unsubscribeStatDataState: (() => void) | null = null;
+  let statDataStoreState: Pick<StatDataStoreState, "isRefreshing" | "hasPendingRefresh"> = {
+    isRefreshing: false,
+    hasPendingRefresh: false,
+  };
+  let isTileLoading = true;
+  let isStatDataLoading = false;
   let activeZipParentArea: string | null = FALLBACK_ZIP_PARENT_AREA;
   const destroyFns: Array<() => void> = [];
 
@@ -410,6 +417,42 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   const getStatEntryByBoundary = (statId: string | null, boundary: BoundaryTypeKey): StatDataEntry | undefined => {
     const entry = resolveScopedStatEntry(statId);
     return entry?.[boundary];
+  };
+
+  // Keep map spinner active until all loading sources (tiles + selected stat data) settle.
+  const applyCompositeLoading = () => {
+    loadingIndicator.setLoading(isTileLoading || isStatDataLoading);
+  };
+
+  const getRequiredBoundariesForLoading = (): BoundaryTypeKey[] => {
+    if (boundaryMode === "zips") return ["ZIP"];
+    if (boundaryMode === "counties") return ["COUNTY"];
+    return [];
+  };
+
+  const hasStatDataForBoundary = (statId: string, boundary: BoundaryTypeKey): boolean => {
+    const entry = getStatEntryByBoundary(statId, boundary);
+    if (!entry) return false;
+    return Object.keys(entry.data ?? {}).length > 0;
+  };
+
+  const recomputeStatDataLoading = () => {
+    const requiredBoundaries = getRequiredBoundariesForLoading();
+    const selectedStatIds = [selectedStatId, secondaryStatId].filter(
+      (id): id is string => typeof id === "string" && id.trim().length > 0,
+    );
+    if (selectedStatIds.length === 0 || requiredBoundaries.length === 0) {
+      isStatDataLoading = false;
+      applyCompositeLoading();
+      return;
+    }
+
+    const missingRequiredData = selectedStatIds.some((statId) =>
+      requiredBoundaries.some((boundary) => !hasStatDataForBoundary(statId, boundary)),
+    );
+    const statStoreBusy = statDataStoreState.isRefreshing || statDataStoreState.hasPendingRefresh;
+    isStatDataLoading = missingRequiredData && statStoreBusy;
+    applyCompositeLoading();
   };
 
   // Coalesce multiple refreshStatVisuals calls into one frame
@@ -428,6 +471,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     countyLabels?.setStatOverlay(selectedStatId, countyEntry?.data || null, countyEntry?.type || "count");
     const countySecondary = getStatEntryByBoundary(secondaryStatId, "COUNTY");
     countyLabels?.setSecondaryStatOverlay?.(secondaryStatId, countySecondary?.data || null, countySecondary?.type || "count");
+    recomputeStatDataLoading();
   };
   
   const refreshStatVisuals = () => {
@@ -486,6 +530,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     );
     setStatDataPriorityStatIds(statIds);
     setStatDataScopeParentAreas(getScopeAreaNames());
+    recomputeStatDataLoading();
 
     // Phase 3: idle prefetch for recently viewed stats so switching back feels instant.
     try {
@@ -2491,7 +2536,8 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   });
   map.on("idle", () => {
     ensureSourcesAndLayers();
-    loadingIndicator.setLoading(false);
+    isTileLoading = false;
+    applyCompositeLoading();
   });
   map.once("idle", () => updateVisibleZipSet());
 
@@ -2500,7 +2546,8 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   map.on("sourcedataloading", (e: maplibregl.MapSourceDataEvent) => {
     // Only trigger for tile loading events (has a tile property)
     if (e.tile) {
-      loadingIndicator.setLoading(true);
+      isTileLoading = true;
+      applyCompositeLoading();
     }
   });
 
@@ -2508,6 +2555,13 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     statDataStoreMap = byStat;
     recomputeScopedStatData();
     refreshStatVisuals(); // Already deferred via coalescing
+  });
+  unsubscribeStatDataState = statDataStore.subscribeState((state) => {
+    statDataStoreState = {
+      isRefreshing: state.isRefreshing,
+      hasPendingRefresh: state.hasPendingRefresh,
+    };
+    recomputeStatDataLoading();
   });
 
   function updateHighlight() {
@@ -2703,6 +2757,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
     
     // Notify React immediately so UI can update (mode indicator, etc.)
     onBoundaryModeChange?.(boundaryMode);
+    recomputeStatDataLoading();
     
     // Deferred: React callbacks for selection clearing (next frame)
     requestAnimationFrame(() => {
@@ -3234,6 +3289,7 @@ let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
       unsubscribeTheme();
       categoryChips.destroy();
       if (unsubscribeStatData) unsubscribeStatData();
+      if (unsubscribeStatDataState) unsubscribeStatDataState();
       zipFloatingTitle?.destroy();
       zipLabels?.destroy();
       choroplethLegend?.destroy();
