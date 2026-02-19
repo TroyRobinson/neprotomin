@@ -1023,19 +1023,26 @@ export const StatViz = ({
     onRetryStatData(statId);
   }, [onRetryStatData, statId]);
 
+  const canRefreshSelectedStat = Boolean(onRetryStatData && statId);
+  const showInlineRefreshWithSlowMessage = hasSelectedAreaLoading && showSlowLoadingMessage && canRefreshSelectedStat;
+  const showStandaloneDonutRefresh = shouldShowLoadingDonut && canRefreshSelectedStat && !showInlineRefreshWithSlowMessage;
+
   const loadingStatus = hasSelectedAreaLoading ? (
     <div className="mt-2 flex flex-col items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
       {loadingProgressCopy ? <div>{loadingProgressCopy}</div> : null}
       {showSlowLoadingMessage && (
         <div className="flex items-center gap-2">
           <span>Still loading data...</span>
-          {onRetryStatData && statId && (
+          {showInlineRefreshWithSlowMessage && (
             <button
               type="button"
-              onClick={handleRetrySelectedStat}
-              className="font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleRetrySelectedStat();
+              }}
+              className="font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
             >
-              Retry
+              refresh
             </button>
           )}
         </div>
@@ -1072,6 +1079,20 @@ export const StatViz = ({
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500 dark:border-slate-600 dark:border-t-brand-400" />
           </div>
           {loadingStatus}
+          {showStandaloneDonutRefresh && (
+            <div className={`${loadingStatus ? "mt-1" : "mt-2"} flex items-center justify-center text-[11px]`}>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleRetrySelectedStat();
+                }}
+                className="font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+              >
+                refresh
+              </button>
+            </div>
+          )}
         </div>
       );
     }
@@ -1126,6 +1147,20 @@ export const StatViz = ({
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500 dark:border-slate-600 dark:border-t-brand-400" />
               </div>
               {loadingStatus}
+              {showStandaloneDonutRefresh && (
+                <div className={`${loadingStatus ? "mt-1" : "mt-2"} flex items-center justify-center text-[11px]`}>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleRetrySelectedStat();
+                    }}
+                    className="font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+                  >
+                    refresh
+                  </button>
+                </div>
+              )}
             </div>
           ) : chartData.mode === "bar" ? (
             <BarChart
