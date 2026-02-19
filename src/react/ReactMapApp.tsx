@@ -3534,20 +3534,6 @@ export const ReactMapApp = () => {
             </div>
           )}
           <div className="relative flex flex-1 flex-col overflow-hidden">
-            {!isMobile && showAdvanced && (
-              <BoundaryToolbar
-                boundaryMode={boundaryMode}
-                boundaryControlMode={boundaryControlMode}
-                selections={toolbarSelections}
-                hoveredArea={hoveredArea}
-                stickyTopClass="top-0"
-                onBoundaryModeChange={handleBoundaryModeManualSelect}
-                onBoundaryControlModeChange={handleBoundaryControlModeChange}
-                onHoverArea={setHoveredAreaState}
-                onExport={handleExport}
-                onUpdateSelection={handleUpdateAreaSelection}
-              />
-            )}
             <MapLibreMap
               key={isMobile ? "mobile" : "desktop"}
               organizations={availableOrganizations}
