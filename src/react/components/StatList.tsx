@@ -148,8 +148,8 @@ const ChildStatDropdown = ({
         compact={true}
         buttonClassName={`!text-[9px] !font-normal !uppercase !tracking-wide ${
           hasSelectedChild
-            ? "!border-brand-300 !bg-brand-50 !text-brand-700 dark:!border-brand-400/60 dark:!bg-brand-400/10 dark:!text-brand-200"
-            : "!bg-slate-50 !text-slate-500 dark:!text-slate-400"
+            ? "!border-brand-300 !bg-brand-50 !text-brand-700 !shadow-none dark:!border-brand-400/60 dark:!bg-brand-400/10 dark:!text-brand-200"
+            : "!bg-slate-50 !text-slate-500 !shadow-none dark:!text-slate-400"
         }`}
       />
     </div>
@@ -935,7 +935,7 @@ const StatListItem = ({
   };
 
   const common =
-    "group relative flex items-center justify-between rounded-2xl border px-3 py-2 shadow-sm transition-colors cursor-pointer select-none";
+    "group relative flex items-center justify-between rounded-2xl border px-3 py-2 transition-colors cursor-pointer select-none";
 
   const className = isHeader
     ? "group relative flex items-center justify-between px-0 pt-2.5 pb-0 transition-colors cursor-pointer select-none"
@@ -951,7 +951,13 @@ const StatListItem = ({
     <li className={className} onClick={handleClick}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-normal text-slate-600 dark:text-slate-300">
+          <span
+            className={`text-sm ${
+              isHeader
+                ? "font-semibold text-slate-700 dark:text-slate-200"
+                : "font-light text-slate-600 dark:text-slate-300"
+            }`}
+          >
             {row.name}
           </span>
           {/* Context average display - only shown in header when data available */}
@@ -978,9 +984,9 @@ const StatListItem = ({
                     }
                   }}
                   disabled={!toggle.isAvailable}
-                  className={`px-1.5 py-0.5 text-[9px] font-normal uppercase tracking-wide rounded border shadow-sm transition-colors ${
+                  className={`px-1.5 py-0.5 text-[9px] font-normal uppercase tracking-wide rounded border transition-colors ${
                     toggle.isActive && toggle.isAvailable
-                      ? "border-brand-300 bg-brand-50 text-brand-700 font-medium shadow-sm dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
+                      ? "border-brand-300 bg-brand-50 text-brand-700 font-medium dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
                       : toggle.isAvailable
                       ? "border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:border-slate-500"
                       : "border-slate-200 bg-slate-100/50 text-slate-400 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-600"
@@ -1010,9 +1016,9 @@ const StatListItem = ({
                   }
                 }}
                 disabled={!toggle.isAvailable}
-                className={`px-1.5 py-0.5 text-[9px] font-normal uppercase tracking-wide rounded border shadow-sm transition-colors ${
+                className={`px-1.5 py-0.5 text-[9px] font-normal uppercase tracking-wide rounded border transition-colors ${
                   toggle.isActive && toggle.isAvailable
-                    ? "border-brand-300 bg-brand-50 text-brand-700 font-medium shadow-sm dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
+                    ? "border-brand-300 bg-brand-50 text-brand-700 font-medium dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
                     : toggle.isAvailable
                     ? "border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:border-slate-500"
                     : "border-slate-200 bg-slate-100/50 text-slate-400 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-600"
@@ -1060,12 +1066,10 @@ const StatListItem = ({
               e.stopPropagation();
               onStatSelect?.(null, { clear: true });
             }}
-            className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300 transition-colors"
+            className="flex h-5 w-5 items-center justify-center rounded text-slate-300 hover:bg-slate-200 hover:text-slate-400 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-300 transition-colors"
             aria-label="Clear selection"
           >
-            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
+            <XMarkIcon className="h-4 w-4" />
           </button>
         </div>
       )}

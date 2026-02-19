@@ -691,45 +691,6 @@ export const TopBar = ({
                     </div>
                   )}
                 </div>
-                <a
-                  href={nextNeHomeUrl}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    // Persist the selected homepage mode before browser navigation.
-                    setNeHomeRedirectDisabled(nextNeHomeRedirectDisabled);
-                    setNeHomeRedirectState(nextNeHomeRedirectDisabled);
-                    if (nextNeHomeRedirectDisabled) {
-                      // Switching to original home: open classic homepage in a new tab,
-                      // and keep this tab on the map host.
-                      const opened = window.open(nextNeHomeUrl, "_blank");
-                      if (opened) {
-                        // Detach opener to avoid tabnabbing while still allowing reliable popup detection.
-                        opened.opener = null;
-                      }
-                      window.location.assign("https://map.neighborhoodexplorer.org");
-                      return;
-                    }
-                    // Switching to map home: navigate in this tab (server redirects to map).
-                    window.location.assign(nextNeHomeUrl);
-                  }}
-                  className="relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 dark:text-slate-300"
-                  title={neHomeRedirectDisabled ? "Make map the default homepage" : "Open original homepage in a new tab"}
-                >
-                  <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
-                    neHomeRedirectDisabled
-                      ? "bg-slate-300 dark:bg-slate-600"
-                      : "bg-brand-400 dark:bg-brand-500"
-                  }`}>
-                    <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition ${
-                      neHomeRedirectDisabled
-                        ? "translate-x-1.5" 
-                        : "translate-x-3"
-                    }`} />
-                  </span>
-                  <span className="whitespace-nowrap text-slate-400 dark:text-slate-500">
-                    {neHomeRedirectDisabled ? "Home: Original" : "Home: Map"}
-                  </span>
-                </a>
               </nav>
               {/* Gradient fade overlay for truncating links */}
               <div 
@@ -760,6 +721,45 @@ export const TopBar = ({
                 background: "linear-gradient(to right, transparent 0%, rgba(15, 23, 42, 0.8) 100%)",
               }}
             />
+            <a
+              href={nextNeHomeUrl}
+              onClick={(e) => {
+                e.preventDefault();
+                // Persist the selected homepage mode before browser navigation.
+                setNeHomeRedirectDisabled(nextNeHomeRedirectDisabled);
+                setNeHomeRedirectState(nextNeHomeRedirectDisabled);
+                if (nextNeHomeRedirectDisabled) {
+                  // Switching to original home: open classic homepage in a new tab,
+                  // and keep this tab on the map host.
+                  const opened = window.open(nextNeHomeUrl, "_blank");
+                  if (opened) {
+                    // Detach opener to avoid tabnabbing while still allowing reliable popup detection.
+                    opened.opener = null;
+                  }
+                  window.location.assign("https://map.neighborhoodexplorer.org");
+                  return;
+                }
+                // Switching to map home: navigate in this tab (server redirects to map).
+                window.location.assign(nextNeHomeUrl);
+              }}
+              className="relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 dark:text-slate-300"
+              title={neHomeRedirectDisabled ? "Make map the default homepage" : "Open original homepage in a new tab"}
+            >
+              <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                neHomeRedirectDisabled
+                  ? "bg-slate-300 dark:bg-slate-600"
+                  : "bg-brand-400 dark:bg-brand-500"
+              }`}>
+                <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition ${
+                  neHomeRedirectDisabled
+                    ? "translate-x-1.5"
+                    : "translate-x-3"
+                }`} />
+              </span>
+              <span className="whitespace-nowrap text-slate-400 dark:text-slate-500">
+                {neHomeRedirectDisabled ? "Home: Original" : "Home: Map"}
+              </span>
+            </a>
             {!isLoading && (!user || user.isGuest) && (
               <button
                 type="button"

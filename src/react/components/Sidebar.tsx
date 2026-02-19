@@ -1170,7 +1170,7 @@ export const Sidebar = ({
           <button
             type="button"
             onClick={() => onCollapse?.(!collapsed)}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-white"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-300 shadow-sm transition hover:border-slate-300 hover:text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-slate-300"
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? <Bars3Icon className="h-4 w-4" /> : <XMarkIcon className="h-4 w-4" />}
@@ -1308,7 +1308,7 @@ export const Sidebar = ({
                   className={`flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-normal border transition ${
                     categoryFilter
                       ? "bg-brand-50 text-brand-700 border-brand-300 hover:bg-brand-100 dark:bg-brand-400/10 dark:text-brand-200 dark:border-brand-400/60 dark:hover:bg-brand-400/20"
-                      : "bg-slate-50 text-slate-500 border-slate-300 hover:bg-slate-100 dark:bg-slate-700 dark:text-slate-400 dark:border-slate-600 dark:hover:bg-slate-600"
+                      : "bg-slate-50/80 text-slate-500 border-slate-200 hover:bg-slate-100 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-600 dark:hover:bg-slate-700"
                   }`}
                   title={`Change category filter (${selectedCategoryLabel})`}
                 >

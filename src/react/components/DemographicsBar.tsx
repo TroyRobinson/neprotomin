@@ -401,7 +401,7 @@ export const DemographicsBar = ({
         <div className="flex items-start justify-between gap-3">
           <div className="relative flex min-w-0 items-center gap-2">
             <span
-              className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+              className="text-sm font-semibold text-slate-700 dark:text-slate-200"
               onMouseEnter={() => showFullLabelTooltip && setShowTooltip(true)}
               onMouseLeave={() => setShowTooltip(false)}
               title={showFullLabelTooltip ? fullLabel : undefined}
@@ -581,8 +581,13 @@ export const DemographicsBar = ({
               }`}
               aria-hidden="true"
             >
-              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-3.5 w-3.5">
-                <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
+              <svg
+                viewBox="0 0 20 20"
+                fill="none"
+                aria-hidden="true"
+                className="h-5 w-5 stroke-current stroke-[1.75]"
+              >
+                <path d="M6 8.5l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </span>
           </div>
