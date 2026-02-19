@@ -592,19 +592,20 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
       key.startsWith(`${loadedScopeKey}::`),
     );
     const desired = (hasLoadedInScope ? batchSize : initialBatchSize) + priorityIds.length;
+    const shouldRequest = (id: string, isPriority: boolean): boolean => {
+      const hasCachedRows = (cachedStatKeysByStatIdRef.current.get(id)?.size ?? 0) > 0;
+      const forcePriorityCacheMissRefetch = isPriority && !hasCachedRows;
+      if (forcePriorityCacheMissRefetch) return true;
+      return !(
+        loadedStatContextKeys.has(makeLoadedContextKey(loadedScopeKey, id)) ||
+        completedStatIdsForContext.has(id) ||
+        emptyStatIdsForContext.has(id)
+      );
+    };
     const add = (id?: string | null) => {
       if (!id || typeof id !== "string") return;
       if (seen.has(id)) return;
-      const hasCachedRows = (cachedStatKeysByStatIdRef.current.get(id)?.size ?? 0) > 0;
-      const forcePriorityCacheMissRefetch = prioritySet.has(id) && !hasCachedRows;
-      if (
-        !forcePriorityCacheMissRefetch &&
-        (loadedStatContextKeys.has(makeLoadedContextKey(loadedScopeKey, id)) ||
-          completedStatIdsForContext.has(id) ||
-          emptyStatIdsForContext.has(id))
-      ) {
-        return;
-      }
+      if (!shouldRequest(id, prioritySet.has(id))) return;
       seen.add(id);
       batch.push(id);
     };
@@ -621,8 +622,15 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
       }
     };
 
-    // Priority IDs always included — selected stat + its children render immediately.
-    for (const id of priorityIds) addWithChildren(id, 0);
+    // Prioritize immediate visible feedback: fetch one unresolved priority stat
+    // first (selected, then secondary, then family/report priorities).
+    const nextPriorityId = priorityIds.find(
+      (id) => typeof id === "string" && id.length > 0 && shouldRequest(id, true),
+    );
+    if (nextPriorityId) {
+      addWithChildren(nextPriorityId, 0);
+      return batch;
+    }
 
     // Skip trickle when delay is active — only priority IDs fetched until timer expires.
     if (!trickleReady) return batch;

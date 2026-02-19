@@ -1165,7 +1165,7 @@ export const ReactMapApp = () => {
   const [selectedStatChildren, setSelectedStatChildren] = useState<string[]>([]);
   const priorityStatIds = useMemo(
     () =>
-      [selectedStatId, ...selectedStatChildren, secondaryStatId, ...reportPriorityStatIds].filter(
+      [selectedStatId, secondaryStatId, ...selectedStatChildren, ...reportPriorityStatIds].filter(
         (id): id is string => typeof id === "string",
       ),
     [selectedStatId, selectedStatChildren, secondaryStatId, reportPriorityStatIds],

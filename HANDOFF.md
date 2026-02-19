@@ -1,123 +1,105 @@
 # Handoff: StatViz Loading Robustness (Advanced Mode)
 
-## Current Status (February 18, 2026)
-- Phase 1 in this document is now implemented in the current working state.
-- Granular UI loading wiring from commit `6d9d7b4` remains active.
-- Remaining work is Phase 2 onward.
+## Current Status (February 19, 2026)
+- Phase 1 is implemented.
+- Phase 2 is implemented.
+- Selected-stat-first foreground loading is implemented (before family/background stats).
+- Remaining work is Phase 3 and Phase 4.
 
 ## Context
-- Branch history reference:
-  - `6d9d7b4` added granular StatViz loading signals.
-  - `cd04da7` removed previous temporary handoff doc.
-- User report:
-  - On live (`map.neighborhoodexplorer.org`), selected-area rows can show temporary `0`s before real values arrive.
-  - Localhost appears faster/more reliable.
+- Original user report:
+  - On live (`map.neighborhoodexplorer.org`), selected-area rows could show temporary `0`s before real values arrived.
+  - Localhost appeared faster/more reliable.
+- Additional field observation:
+  - Perceived "not loading" after cache clear was reproduced under network throttling (3G), which can make first paint look stalled.
 
-## What Is Already Implemented
-The following is in code and active now:
+## What Is Implemented Now
 
-1. Per-row loading metadata in bar mode.
-   - `src/react/components/StatViz.tsx:708`
-   - Row is treated as loading when `selectedStatLoading && raw === undefined`.
+1. Granular row-level loading UX in StatViz.
+   - Selected rows are treated as loading when data is unresolved.
+   - Donut spinner appears when all selected rows are unresolved.
+   - Row-level spinners appear for partial unresolved states.
 
-2. Donut spinner when all selected rows are unresolved.
-   - `src/react/components/StatViz.tsx:971`
-   - `allSelectedBarsLoading` + `shouldShowLoadingDonut`.
+2. Context-aware pending bookkeeping in `useStats`.
+   - Completion tracked by `queryContextKey` (`mode + date + parents + boundaries`).
+   - `completedStatIdsByContext` and `emptyStatIdsByContext` prevent premature pending clear.
+   - True no-data is treated as resolved for the active context (no infinite spinner).
 
-3. Selected-stat loading wiring from `useStats` to `StatViz`.
-   - `src/react/hooks/useStats.ts:763` (`pendingStatIds`)
-   - `src/react/ReactMapApp.tsx:1248` (`isSelectedStatLoading`)
-   - Prop pass-through via `Sidebar` and `StatList`.
+3. Scope-aware loaded cache tracking in `useStats` (Phase 2).
+   - Old global `loadedStatIds` behavior is replaced with scoped loaded keys.
+   - Loaded keys are tracked by `loadedScopeKey` (`mode + parents + boundaries`).
+   - Scope/boundary changes can trigger selected-stat fetch even if that stat loaded elsewhere.
 
-4. Phase 1 pending bookkeeping fix in `useStats`.
-   - Removed optimistic "requested IDs are loaded" behavior.
-   - Added context-aware request completion tracking with:
-     - `completedStatIdsByContext`
-     - `emptyStatIdsByContext`
-   - Added `queryContextKey` derived from:
-     - time-series mode (`series` vs `snapshot`)
-     - `statDataDateKey`
-     - scoped parents (`statDataScopeParents`)
-     - boundary type filters (`statDataBoundaryTypes`)
-   - Pending now resolves per current batch + context:
-     - Pending iff stat is in `batchIds` and not completed/empty in the active `queryContextKey`.
-   - Empty/no-data IDs are treated as resolved for the active context so no infinite spinner on true no-data.
-   - Retry + cache eviction now clear context completion/empty markers for affected IDs.
+4. Selected-stat-first fetch prioritization.
+   - `priorityStatIds` order is now:
+     - `selectedStatId`
+     - `secondaryStatId`
+     - `selectedStatChildren`
+     - `reportPriorityStatIds`
+   - Batch builder now pulls one unresolved priority stat first, then returns that batch immediately.
+   - Family/background stats continue loading after foreground stat resolves.
 
-## Why It Can Still Show Temporary 0s
-Main Phase 1 pending issue is fixed. Remaining temporary `0` risk is now primarily Phase 2 scope-awareness.
+5. Priority cache-miss protection.
+   - If a priority stat has no cached rows, it is forced into the next batch even when context completion sets would otherwise skip it.
 
-Current remaining design gap:
-- Loaded tracking is by `statId` only, not by `(statId + scope/parentArea + boundaryType + date-context)`.
-- Scope changes can require fresh data even when a stat is globally “loaded”.
+6. Retry + cache eviction coherence.
+   - Retry clears cached rows and context completion/empty markers.
+   - Eviction clears context bookkeeping and loaded-scope markers for evicted IDs.
 
-## Likely Live vs Local Difference
-Not just Wi-Fi.
+## Important Behavioral Notes
 
-Live variability can be amplified by:
-1. Network latency/loss (especially first query and larger responses).
-2. Different localStorage flags in browser profile (for example `settings.reducedDataLoading`).
-   - `src/lib/settings.ts:2`
-   - This can alter scope-limiting behavior and fetch patterns.
-3. Existing cache/data shape differences between sessions.
+1. Advanced vs non-advanced data loading is still separated.
+   - Time-series is only enabled in advanced/report contexts.
+   - Non-advanced mode remains snapshot/scoped.
 
-## Proposed Implementation Plan
+2. "Clear localStorage" is not a full stat-data cache clear.
+   - Persistent stat caches are stored in IndexedDB (`persistentStatsCache`), not localStorage.
+   - Use Map Settings -> "Clear cached data" for actual stats cache reset.
 
-### Phase 1: Fix pending bookkeeping (highest priority)
-Goal: stop clearing loading state prematurely.
+3. Some instant-feeling switches are expected.
+   - If required rows are already cached for current scope/boundary, UI updates can be near-instant.
+   - This does not imply missing scope filtering; query filters still include `statId`, `parentArea`, `boundaryType`, and snapshot date where applicable.
 
-Status: done on February 18, 2026.
-
-1. In `useStats`, removed optimistic “requested IDs are loaded” behavior.
-2. Request completion now tracked in a context-aware way:
-   - Add a `queryContextKey` from relevant filters (`statDataDateKey`, `statDataScopeParents`, `statDataBoundaryTypes`, time-series mode).
-   - Track `completedStatIdsByContext` and `emptyStatIdsByContext`.
-3. `pendingStatIds` now computed from current batch/context:
-   - Pending if in current `batchIds` and neither completed nor explicitly empty for this context.
-
-### Phase 2: Make loading/cache scope-aware
-Goal: selected stat always re-fetched when scope needs new data.
-
-1. Move from `loadedStatIds: Set<statId>` to scope-aware loaded keying (at least internally), e.g.:
-   - `${statId}::${parentArea}::${boundaryType}::${dateMode}`
-2. Ensure selected stat remains in priority fetch when current scope data is missing, even if stat was loaded elsewhere.
+## Remaining Work
 
 ### Phase 3: Improve UX messaging
-Goal: manage expectations when backend/network is slow.
+Goal: set clearer expectations when backend/network is slow.
 
-1. In `StatViz`, show progress copy:
+1. Add progress copy in StatViz:
    - `Loading X of Y selected areas...`
-2. Add delayed state (e.g. after 5s):
+2. Add delayed state (for example after 5s):
    - `Still loading data...`
-   - show a small `Retry` action wired to `retryStatData(selectedStatId)`.
-3. Keep donut for “all selected unresolved”; row spinners for partial unresolved.
+   - show `Retry` wired to `retryStatData(selectedStatId)`.
+3. Keep donut/row spinner behavior unchanged.
 
 ### Phase 4: Lightweight observability
-Goal: quickly diagnose live-only slow states.
+Goal: diagnose live-only slow/stalled states quickly.
 
-1. Add timing logs (dev + optional analytics event):
+1. Add timing logs (dev + optional analytics):
    - batch request start/end
    - rows returned
-   - selected area count resolved vs unresolved
-2. Add a debug flag in URL/localStorage to enable verbose stat-loading diagnostics.
+   - selected rows resolved vs unresolved
+2. Add debug flag (URL/localStorage) for verbose stat-loading diagnostics.
 
-## Acceptance Criteria
-1. No temporary fallback `0` for unresolved selected rows while selected stat is still pending.
+## Acceptance Criteria (Updated)
+1. No temporary fallback `0` for unresolved selected rows while selected stat is pending.
 2. If all selected rows unresolved, donut spinner is shown.
-3. If some rows resolved and some unresolved, resolved rows show values and unresolved rows show row spinner.
+3. If partially resolved, unresolved rows show row spinner while resolved rows show values.
 4. True loaded zeros display as `0` (no spinner).
 5. Scope change triggers selected stat fetch for the new scope without manual retry.
 6. No infinite spinner for true no-data cases.
+7. Selected stat is fetched before family/background stats when unresolved.
 
 ## Suggested Test Matrix
-1. Local: fast network, cold cache.
-2. Local: throttled network (Fast 3G), cold cache.
-3. Production domain with normal profile.
+1. Local fast network, cold IndexedDB cache (clear via Map Settings).
+2. Local throttled network (Fast 3G), cold IndexedDB cache.
+3. Production domain, normal profile.
 4. Production domain with `settings.reducedDataLoading=true`.
-5. Switch county selections repeatedly with same selected stat.
-6. Switch selected stat while same areas remain selected.
+5. Switch county/ZIP scope repeatedly with same selected stat.
+6. Switch selected stat repeatedly within a family (parent/children).
+7. Verify selected stat paints before substats under throttling.
 
 ## Notes for Next Dev
-- Keep using `@instantdb/react` query hooks; no custom store wrappers.
-- Do not regress hover callback stability in `StatViz` (memoized handler pattern is intentional).
-- Avoid broad global-loading gates for row-level loading UX.
+- Keep using `@instantdb/react` hooks; do not introduce custom subscription stores.
+- Avoid broad global loading gates; preserve row-level loading UX behavior.
+- Keep hover callback stability in `StatViz` (memoized handler/ref pattern) to avoid update-depth loops.
