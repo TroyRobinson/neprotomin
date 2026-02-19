@@ -1860,6 +1860,8 @@ export const createMapView = ({
   const ensureSourcesAndLayers = () => {
     if (!map.isStyleLoaded()) return;
 
+    applyBasemapLabelTone(map, currentTheme);
+
     // Ensure a slightly gray map background in light mode to contrast the UI
     try {
       if (currentTheme === "light") {
