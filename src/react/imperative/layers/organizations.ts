@@ -7,11 +7,11 @@ import type {
 const desktopClusterRadiusExpression = [
   "step",
   ["get", "point_count"],
-  12,
   10,
-  16,
+  10,
+  13,
   25,
-  20,
+  16,
 ] as ExpressionSpecification;
 
 const mobileClusterRadiusExpression = [
@@ -19,7 +19,7 @@ const mobileClusterRadiusExpression = [
   ["zoom"],
   desktopClusterRadiusExpression,
   10.01,
-  ["step", ["get", "point_count"], 18, 10, 22, 25, 26],
+  ["step", ["get", "point_count"], 14, 10, 17, 25, 20],
 ] as ExpressionSpecification;
 
 const desktopClusterTextSize = 12;
@@ -32,34 +32,34 @@ const mobileClusterTextSizeExpression = [
   14,
 ] as ExpressionSpecification;
 
-const desktopPointRadius = 6;
+const desktopPointRadius = 5;
 
 const mobilePointRadiusExpression = [
   "step",
   ["zoom"],
-  6,
+  5,
   10.01,
-  16,
+  12,
 ] as ExpressionSpecification;
 
-const desktopHighlightRadius = 9;
+const desktopHighlightRadius = 7;
 
 const mobileHighlightRadiusExpression = [
   "step",
   ["zoom"],
-  9,
+  7,
   10.01,
-  20,
+  15,
 ] as ExpressionSpecification;
 
 const desktopClusterHighlightRadiusExpression = [
   "step",
   ["get", "point_count"],
-  18,
+  14,
   10,
-  22,
+  17,
   25,
-  28,
+  21,
 ] as ExpressionSpecification;
 
 const mobileClusterHighlightRadiusExpression = [
@@ -67,7 +67,7 @@ const mobileClusterHighlightRadiusExpression = [
   ["zoom"],
   desktopClusterHighlightRadiusExpression,
   10.01,
-  ["step", ["get", "point_count"], 24, 10, 28, 25, 32],
+  ["step", ["get", "point_count"], 18, 10, 21, 25, 24],
 ] as ExpressionSpecification;
 
 const getClusterRadius = (
@@ -138,9 +138,9 @@ export const ensureOrganizationLayers = (
   }
 
   if (!map.getLayer(LAYER_CLUSTERS_ID)) {
-    // On mobile when zoomed in past level 10, make clusters larger for better tap targets
-    // Desktop: base 12, >=10 count: 16, >=25 count: 20
-    // Mobile + zoom > 10: base 18, >=10 count: 22, >=25 count: 26
+    // Keep cluster circles smaller overall while preserving touch targets on mobile.
+    // Desktop: base 10, >=10 count: 13, >=25 count: 16
+    // Mobile + zoom > 10: base 14, >=10 count: 17, >=25 count: 20
     const clusterRadius = getClusterRadius(isMobile);
 
     map.addLayer({
@@ -175,7 +175,7 @@ export const ensureOrganizationLayers = (
       filter: ["has", "point_count"],
       layout: {
         "text-field": ["get", "point_count"],
-        "text-font": ["Open Sans Bold"],
+        "text-font": ["Open Sans Regular"],
         "text-size": clusterTextSize,
       },
       paint: {
@@ -208,8 +208,8 @@ export const ensureOrganizationLayers = (
     });
     requestAnimationFrame(() => {
       if (!map.getLayer(LAYER_POINTS_ID)) return;
-      // On mobile when zoomed in past level 10, make individual points larger (similar to cluster base size)
-      // Desktop: 6, Mobile + zoom > 10: 16
+      // Keep individual points smaller while still readable/tappable on mobile.
+      // Desktop: 5, Mobile + zoom > 10: 12
       const pointRadius = getPointRadius(isMobile);
       map.setPaintProperty(LAYER_POINTS_ID, "circle-radius", pointRadius);
       map.setPaintProperty(LAYER_POINTS_ID, "circle-opacity", 1);
@@ -223,8 +223,8 @@ export const ensureOrganizationLayers = (
   }
 
   if (!map.getLayer(LAYER_HIGHLIGHT_ID)) {
-    // Scale highlight proportionally with point size on mobile when zoomed in
-    // Desktop: 9, Mobile + zoom > 10: 20 (proportional to point size increase from 6 to 16)
+    // Keep highlight circles proportional to the reduced point sizes.
+    // Desktop: 7, Mobile + zoom > 10: 15
     const highlightRadius = getHighlightRadius(isMobile);
 
     map.addLayer({
@@ -249,9 +249,9 @@ export const ensureOrganizationLayers = (
   }
 
   if (!map.getLayer(LAYER_CLUSTER_HIGHLIGHT_ID)) {
-    // Scale cluster highlight proportionally with cluster size on mobile when zoomed in
-    // Desktop: base 18, >=10 count: 22, >=25 count: 28
-    // Mobile + zoom > 10: base 24, >=10 count: 28, >=25 count: 32
+    // Keep cluster highlight circles proportional to the reduced cluster sizes.
+    // Desktop: base 14, >=10 count: 17, >=25 count: 21
+    // Mobile + zoom > 10: base 18, >=10 count: 21, >=25 count: 24
     const clusterHighlightRadius = getClusterHighlightRadius(isMobile);
 
     map.addLayer({
