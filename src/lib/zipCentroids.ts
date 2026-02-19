@@ -3,7 +3,6 @@ import type { Feature, FeatureCollection, Point } from "geojson";
 import {
   ensureZctasForState,
   getLoadedZctaCount,
-  getZctaRevision,
   getZctaCentroid,
   getZctaFeatureCollection,
   type ZctaStateCode,
@@ -20,12 +19,10 @@ const ZCTA_STATE: ZctaStateCode = "ok";
 
 let cachedCentroidsMap: Map<string, ZipCentroid> | null = null;
 let cachedCentroidsCount = -1;
-let cachedCentroidsRevision = -1;
 let cachedCentroidsFC: FeatureCollection<Point, { zip: string }> | null = null;
 
-const rebuildCentroidCache = (
-  collection: FeatureCollection<GeoJSON.MultiPolygon | GeoJSON.Polygon, { zip: string }>,
-): void => {
+const rebuildCentroidCache = (): void => {
+  const collection = getZctaFeatureCollection(ZCTA_STATE);
   const newMap = new Map<string, ZipCentroid>();
   const newFeatures: Feature<Point, { zip: string }>[] = [];
 
@@ -45,21 +42,14 @@ const rebuildCentroidCache = (
   cachedCentroidsMap = newMap;
   cachedCentroidsFC = { type: "FeatureCollection", features: newFeatures };
   cachedCentroidsCount = getLoadedZctaCount(ZCTA_STATE);
-  cachedCentroidsRevision = getZctaRevision(ZCTA_STATE);
 };
 
 const ensureCacheFresh = (): void => {
-  const collection = getZctaFeatureCollection(ZCTA_STATE);
   const loadedCount = getLoadedZctaCount(ZCTA_STATE);
-  const revision = getZctaRevision(ZCTA_STATE);
-  if (
-    cachedCentroidsMap &&
-    cachedCentroidsCount === loadedCount &&
-    cachedCentroidsRevision === revision
-  ) {
+  if (cachedCentroidsMap && cachedCentroidsCount === loadedCount) {
     return;
   }
-  rebuildCentroidCache(collection);
+  rebuildCentroidCache();
 };
 
 export const getZipCentroidsMap = (): Map<string, ZipCentroid> => {
@@ -79,5 +69,5 @@ export const getZipCentroidFeatureCollection = (): FeatureCollection<Point, { zi
 
 export const ensureZipCentroidsLoaded = async (): Promise<void> => {
   await ensureZctasForState(ZCTA_STATE);
-  rebuildCentroidCache(getZctaFeatureCollection(ZCTA_STATE));
+  rebuildCentroidCache();
 };

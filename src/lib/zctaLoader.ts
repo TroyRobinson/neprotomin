@@ -13,7 +13,6 @@ type ZctaFeature = Feature<
 >;
 
 interface StateCache {
-  revision: number;
   chunksLoaded: Set<string>;
   featureCollection: FeatureCollection<GeoJSON.MultiPolygon | GeoJSON.Polygon, { zip: string }>;
   featuresByZip: Map<string, ZctaFeature>;
@@ -88,7 +87,6 @@ const getOrCreateStateCache = (state: ZctaStateCode): StateCache => {
     }
   }
   cache = {
-    revision: 0,
     chunksLoaded: new Set(),
     featureCollection: { type: "FeatureCollection", features: [] },
     featuresByZip: new Map(),
@@ -269,7 +267,6 @@ const ensureChunkLoaded = async (state: ZctaStateCode, chunkId: string): Promise
   }
   cache.chunkZips.set(chunkId, chunkZipSet);
   cache.featureCollection.features = Array.from(cache.featuresByZip.values()) as any;
-  cache.revision += 1;
 };
 
 export const ensureZctasForState = async (state: ZctaStateCode): Promise<void> => {
@@ -360,9 +357,6 @@ export const getZctaCountyId = (state: ZctaStateCode, zip: string): string | nul
 export const getLoadedZctaCount = (state: ZctaStateCode): number =>
   stateCaches.get(state)?.featuresByZip.size ?? 0;
 
-export const getZctaRevision = (state: ZctaStateCode): number =>
-  stateCaches.get(state)?.revision ?? 0;
-
 const removeChunkFromCache = (state: ZctaStateCode, chunkId: string): void => {
   const cache = stateCaches.get(state);
   if (!cache) return;
@@ -379,7 +373,6 @@ const removeChunkFromCache = (state: ZctaStateCode, chunkId: string): void => {
   cache.chunkZips.delete(chunkId);
   cache.chunksLoaded.delete(chunkId);
   cache.featureCollection.features = Array.from(cache.featuresByZip.values()) as any;
-  cache.revision += 1;
 };
 
 export const pruneZctaChunks = (state: ZctaStateCode, keepChunkIds: Set<string>): void => {
