@@ -53,9 +53,9 @@ const CHECK_ICON = `
 const CATEGORY_CHIP_SELECTED_CLASSES =
   "border-transparent bg-brand-500 text-white shadow-floating hover:bg-brand-500 dark:bg-brand-400 dark:text-white";
 
-// Slightly fainter fill for selected STAT chip in both modes; white text in dark mode
+// Selected stat chip uses a subtle brand fill in dark mode without glass blur.
 const STAT_CHIP_SELECTED_CLASSES =
-  "border-transparent bg-brand-100 text-brand-700 shadow-floating hover:bg-brand-100 dark:bg-brand-400/20 dark:text-white";
+  "border-transparent bg-brand-100 text-brand-700 shadow-floating hover:bg-brand-100 dark:bg-brand-400/24 dark:text-brand-600 dark:!backdrop-blur-none";
 
 const CATEGORY_CHIP_INACTIVE_FEATURED_CLASSES =
   "border-slate-300 bg-slate-200 text-slate-700 shadow-sm hover:bg-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200";
@@ -71,7 +71,7 @@ const SECONDARY_STAT_CHIP_BASE_CLASSES =
 
 // Secondary-stat chip styling aligned with the secondary map palette
 const SECONDARY_STAT_CHIP_CLASSES =
-  "bg-[#e9f5fa] text-[#2b8698] hover:bg-[#f1f9fc] dark:bg-[#1e98ac]/24 dark:text-[#d8eef3]";
+  "bg-[#e9f5fa] text-[#2b8698] hover:bg-[#f1f9fc] dark:bg-[#2a7685]/22 dark:text-[#7f9ea7]";
 
 const CLOSE_ICON = `
   <svg viewBox="0 0 12 12" aria-hidden="true" class="h-2.5 w-2.5">
