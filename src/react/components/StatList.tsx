@@ -120,6 +120,7 @@ const ChildStatDropdown = ({
   const currentValue = selectedChildId && validRelations.some(r => r.childStatId === selectedChildId)
     ? selectedChildId
     : "__none__";
+  const hasSelectedChild = currentValue !== "__none__";
 
   const options = [
     { value: "__none__", label: `No ${attributeName.toLowerCase()}` },
@@ -131,7 +132,7 @@ const ChildStatDropdown = ({
 
   return (
     <div className="flex items-center gap-2">
-      <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 whitespace-nowrap">
+      <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 whitespace-nowrap">
         {attributeName}
       </label>
       <CustomSelect
@@ -145,6 +146,11 @@ const ChildStatDropdown = ({
           onStatSelect?.(childId);
         }}
         compact={true}
+        buttonClassName={`!text-[9px] !font-normal !uppercase !tracking-wide ${
+          hasSelectedChild
+            ? "!border-brand-300 !bg-brand-50 !text-brand-700 dark:!border-brand-400/60 dark:!bg-brand-400/10 dark:!text-brand-200"
+            : "!text-slate-500 dark:!text-slate-400"
+        }`}
       />
     </div>
   );
@@ -934,7 +940,7 @@ const StatListItem = ({
   const className = isHeader
     ? "group relative flex items-center justify-between px-0 pt-2.5 pb-0 transition-colors cursor-pointer select-none"
     : isSelected
-    ? `${common} border-2 border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-400/15`
+    ? `${common} border-slate-300 bg-brand-50 dark:border-slate-600 dark:bg-brand-400/15`
     : isSecondary
     ? `${common} border-2 border-teal-500 bg-teal-50 dark:border-teal-400 dark:bg-teal-400/15`
     : `${common} border-slate-200/70 bg-white/70 hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:hover:border-slate-600 dark:hover:bg-slate-800/70`;
@@ -945,7 +951,7 @@ const StatListItem = ({
     <li className={className} onClick={handleClick}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-sm ${isHeader ? "font-medium" : "font-normal"} text-slate-600 dark:text-slate-300`}>
+          <span className="text-sm font-normal text-slate-600 dark:text-slate-300">
             {row.name}
           </span>
           {/* Context average display - only shown in header when data available */}
@@ -972,11 +978,11 @@ const StatListItem = ({
                     }
                   }}
                   disabled={!toggle.isAvailable}
-                  className={`px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide rounded border shadow-sm transition-colors ${
+                  className={`px-1.5 py-0.5 text-[9px] font-normal uppercase tracking-wide rounded border shadow-sm transition-colors ${
                     toggle.isActive && toggle.isAvailable
-                      ? "border-brand-600 bg-brand-500 text-white shadow-md dark:border-brand-400"
+                      ? "border-brand-300 bg-brand-50 text-brand-700 font-medium shadow-sm dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
                       : toggle.isAvailable
-                      ? "border-slate-300 bg-white text-slate-600 hover:bg-slate-100 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 dark:hover:border-slate-500"
+                      ? "border-slate-300 bg-white text-slate-500 hover:bg-slate-100 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:border-slate-500"
                       : "border-slate-200 bg-slate-100/50 text-slate-400 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-600"
                   }`}
                   title={toggle.isAvailable ? `Toggle ${toggle.attr} breakdown` : `${toggle.attr} not available for current selection`}
@@ -990,7 +996,7 @@ const StatListItem = ({
 
         {isHeader && grandchildToggles.length > 0 && (
           <div className="flex items-center gap-1 mt-2.5 mb-0">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 whitespace-nowrap mr-2">
+            <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 whitespace-nowrap mr-2">
               Options:
             </label>
             {grandchildToggles.map((toggle) => (
@@ -1004,11 +1010,11 @@ const StatListItem = ({
                   }
                 }}
                 disabled={!toggle.isAvailable}
-                className={`px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide rounded border shadow-sm transition-colors ${
+                className={`px-1.5 py-0.5 text-[9px] font-normal uppercase tracking-wide rounded border shadow-sm transition-colors ${
                   toggle.isActive && toggle.isAvailable
-                    ? "border-brand-600 bg-brand-500 text-white shadow-md dark:border-brand-400"
+                    ? "border-brand-300 bg-brand-50 text-brand-700 font-medium shadow-sm dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
                     : toggle.isAvailable
-                    ? "border-slate-300 bg-white text-slate-600 hover:bg-slate-100 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 dark:hover:border-slate-500"
+                    ? "border-slate-300 bg-white text-slate-500 hover:bg-slate-100 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:border-slate-500"
                     : "border-slate-200 bg-slate-100/50 text-slate-400 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-600"
                 }`}
                 title={toggle.isAvailable ? `Toggle ${toggle.attr} breakdown` : `${toggle.attr} not available for current selection`}

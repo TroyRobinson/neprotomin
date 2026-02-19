@@ -81,7 +81,7 @@ const SegmentBar = ({ segments, label }: SegmentBarProps) => {
       <div className="relative h-full w-full overflow-hidden rounded bg-slate-200 dark:bg-slate-800">
         {label && (
           <div className="pointer-events-none absolute inset-y-0 left-1 z-10 flex items-center">
-            <span className="px-2 py-[1px] text-[11px] font-semibold uppercase leading-none text-slate-900 drop-shadow-[0_1px_1px_rgba(255,255,255,0.65)]">
+            <span className="px-2 py-[1px] text-[11px] font-medium uppercase leading-none text-slate-600 dark:text-slate-400 drop-shadow-[0_1px_1px_rgba(255,255,255,0.45)]">
               {label}
             </span>
           </div>
@@ -157,9 +157,11 @@ export const DemographicsBar = ({
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [showSelectedAreasTooltip, setShowSelectedAreasTooltip] = useState(false);
+  const [selectedAreasTooltipMounted, setSelectedAreasTooltipMounted] = useState(false);
   const [addInputOpen, setAddInputOpen] = useState(false);
   const [addInputValue, setAddInputValue] = useState("");
   const closeSelectedAreasTooltipTimeoutRef = useRef<number | null>(null);
+  const unmountSelectedAreasTooltipTimeoutRef = useRef<number | null>(null);
   const addInputRef = useRef<HTMLInputElement>(null);
   const isExpanded = isControlled ? (expanded as boolean) : uncontrolledExpanded;
 
@@ -283,15 +285,34 @@ export const DemographicsBar = ({
   }, [selectedAreaEntries.length, showAddAreaTrigger]);
 
   useEffect(() => {
-    if (!showSelectedAreasTooltip) {
+    if (typeof window === "undefined") {
+      if (showSelectedAreasTooltip) setSelectedAreasTooltipMounted(true);
+      return;
+    }
+    if (showSelectedAreasTooltip) {
+      if (unmountSelectedAreasTooltipTimeoutRef.current !== null) {
+        window.clearTimeout(unmountSelectedAreasTooltipTimeoutRef.current);
+        unmountSelectedAreasTooltipTimeoutRef.current = null;
+      }
+      setSelectedAreasTooltipMounted(true);
+      return;
+    }
+
+    unmountSelectedAreasTooltipTimeoutRef.current = window.setTimeout(() => {
+      setSelectedAreasTooltipMounted(false);
       setAddInputOpen(false);
       setAddInputValue("");
-    }
+      unmountSelectedAreasTooltipTimeoutRef.current = null;
+    }, 140);
   }, [showSelectedAreasTooltip]);
 
   useEffect(() => {
     return () => {
       clearSelectedAreasTooltipClose();
+      if (typeof window === "undefined") return;
+      if (unmountSelectedAreasTooltipTimeoutRef.current === null) return;
+      window.clearTimeout(unmountSelectedAreasTooltipTimeoutRef.current);
+      unmountSelectedAreasTooltipTimeoutRef.current = null;
     };
   }, [clearSelectedAreasTooltipClose]);
 
@@ -432,9 +453,13 @@ export const DemographicsBar = ({
                     </span>
                   )}
                 </div>
-                {showSelectedAreasTooltip && (selectedAreaEntries.length > 0 || showAddAreaTrigger) && (
+                {(showSelectedAreasTooltip || selectedAreasTooltipMounted) && (selectedAreaEntries.length > 0 || showAddAreaTrigger) && (
                   <div
-                    className="absolute left-0 top-6 z-20 min-w-44 max-w-80 rounded-lg border border-slate-300 bg-white p-2 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+                    className={`absolute left-0 top-6 z-20 min-w-44 max-w-80 rounded-lg border border-slate-300 bg-white p-2 shadow-lg transition-opacity duration-[120ms] ease-out dark:border-slate-700 dark:bg-slate-900 ${
+                      showSelectedAreasTooltip
+                        ? "opacity-100"
+                        : "opacity-0 pointer-events-none"
+                    }`}
                     onClick={(event) => event.stopPropagation()}
                   >
                     <div className="mb-1 flex items-center justify-between gap-2">
@@ -551,26 +576,26 @@ export const DemographicsBar = ({
               </button>
             )}
             <span
-              className={`text-slate-400 transition-transform dark:text-slate-500 ${
+              className={`inline-flex h-5 w-5 items-center justify-center text-slate-400 transition-transform dark:text-slate-500 ${
                 isExpanded ? "rotate-180" : ""
               }`}
               aria-hidden="true"
             >
-              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-4 w-4">
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-3.5 w-3.5">
                 <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
               </svg>
             </span>
           </div>
         </div>
-        <div className="mt-1 flex items-center gap-4 overflow-x-auto whitespace-nowrap text-slate-600 dark:text-slate-300">
+        <div className="mt-3 flex items-center gap-4 overflow-x-auto whitespace-nowrap text-slate-400 dark:text-slate-500">
           <span>
-            <span className="font-medium text-slate-400 dark:text-slate-500">Population:</span> {populationLabel}
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Population:</span> {populationLabel}
           </span>
           <span>
-            <span className="font-medium text-slate-400 dark:text-slate-500">Avg Age:</span> {avgAgeLabel}
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Avg Age:</span> {avgAgeLabel}
           </span>
           <span>
-            <span className="font-medium text-slate-400 dark:text-slate-500">Married:</span> {marriedLabel}
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Married:</span> {marriedLabel}
           </span>
         </div>
       </div>
