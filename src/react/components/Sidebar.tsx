@@ -107,6 +107,7 @@ interface SidebarProps {
   onOrgPinsVisibleChange?: (visible: boolean) => void;
   initialOrgPinsVisible?: boolean;
   onClearAreas?: () => void;
+  onRemoveArea?: (area: { kind: SupportedAreaKind; id: string }) => void;
   variant?: "desktop" | "mobile";
   showInsights?: boolean;
   showAdvanced?: boolean;
@@ -198,6 +199,7 @@ export const Sidebar = ({
   onOrgPinsVisibleChange,
   initialOrgPinsVisible = true,
   onClearAreas,
+  onRemoveArea,
   variant = "desktop",
   showInsights = true,
   showAdvanced = false,
@@ -1294,6 +1296,10 @@ export const Sidebar = ({
                 expanded={demographicsExpanded}
                 onExpandedChange={(next) => onInsightsStateChange?.({ demographicsExpanded: next })}
                 onClearAreas={onClearAreas}
+                selectedAreas={selectedAreas}
+                activeAreaKind={activeAreaKind}
+                areaNameLookup={areaNameLookup}
+                onRemoveArea={onRemoveArea}
               />
             )}
             <StatList

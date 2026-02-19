@@ -93,6 +93,11 @@ Remember: Large data files are now managed outside Git. See `data/raw/README.md`
   - Stat loading diagnostics (Phase 4): use `?statsDebug=1` to enable verbose `useStats` batch timing logs (`batch:start`, `batch:end`, `retry`) with selected-area resolved/unresolved counts.
   - Optional telemetry for diagnostics: add `?statsDebugAnalytics=1` (or set localStorage keys `ne.statsLoadingDebug`, `ne.statsLoadingDebugAnalytics` to `1`).
 
+- Commit hygiene
+  - When asked to commit only the files you worked on, stage only those files.
+  - If any file you worked on includes both your changes and unrelated changes from others (file-overlap), stop and ask the user exactly what to include before committing.
+  - Never include unrelated modified files in the commit unless the user explicitly asks for them.
+
 
 --
 

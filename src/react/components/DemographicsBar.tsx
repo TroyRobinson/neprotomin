@@ -2,11 +2,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { CombinedDemographicsSnapshot, BreakdownGroup } from "../hooks/useDemographics";
 
+type SupportedAreaKind = "ZIP" | "COUNTY";
+
+interface SelectedAreaEntry {
+  kind: SupportedAreaKind;
+  id: string;
+  label: string;
+}
+
 interface DemographicsBarProps {
   snapshot: CombinedDemographicsSnapshot | null;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   onClearAreas?: () => void;
+  selectedAreas?: Partial<Record<SupportedAreaKind, string[]>>;
+  activeAreaKind?: SupportedAreaKind | null;
+  areaNameLookup?: (kind: SupportedAreaKind, code: string) => string;
+  onRemoveArea?: (area: { kind: SupportedAreaKind; id: string }) => void;
 }
 
 interface BreakdownSegmentDisplay {
@@ -121,10 +133,20 @@ const renderBreakdowns = (groups: Map<string, BreakdownGroup>) => {
   });
 };
 
-export const DemographicsBar = ({ snapshot, expanded, onExpandedChange, onClearAreas }: DemographicsBarProps) => {
+export const DemographicsBar = ({
+  snapshot,
+  expanded,
+  onExpandedChange,
+  onClearAreas,
+  selectedAreas = {},
+  activeAreaKind = null,
+  areaNameLookup,
+  onRemoveArea,
+}: DemographicsBarProps) => {
   const isControlled = typeof expanded === "boolean";
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
+  const [showSelectedAreasTooltip, setShowSelectedAreasTooltip] = useState(false);
   const isExpanded = isControlled ? (expanded as boolean) : uncontrolledExpanded;
 
   const setIsExpanded = useCallback(
@@ -171,6 +193,40 @@ export const DemographicsBar = ({ snapshot, expanded, onExpandedChange, onClearA
   const headerLabel = stats?.label ?? snapshot.label;
   const fullLabel = stats?.fullLabel ?? headerLabel;
   const showFullLabelTooltip = fullLabel !== headerLabel && !showSelectedPill;
+  const selectedZips = selectedAreas.ZIP ?? [];
+  const selectedCounties = selectedAreas.COUNTY ?? [];
+  const mixedKinds = !activeAreaKind && selectedZips.length > 0 && selectedCounties.length > 0;
+  // Keep tooltip list anchored to the active area kind; otherwise show all selected kinds.
+  const selectedAreaEntries: SelectedAreaEntry[] = activeAreaKind
+    ? (selectedAreas[activeAreaKind] ?? []).map((id) => {
+        const label = areaNameLookup?.(activeAreaKind, id) || id;
+        return { kind: activeAreaKind, id, label };
+      })
+    : [
+        ...selectedZips.map((id) => {
+          const label = areaNameLookup?.("ZIP", id) || id;
+          return {
+            kind: "ZIP" as const,
+            id,
+            label: mixedKinds ? `ZIP ${label}` : label,
+          };
+        }),
+        ...selectedCounties.map((id) => {
+          const label = areaNameLookup?.("COUNTY", id) || id;
+          return {
+            kind: "COUNTY" as const,
+            id,
+            label: mixedKinds ? `County ${label}` : label,
+          };
+        }),
+      ];
+
+  useEffect(() => {
+    if (selectedAreaEntries.length === 0) {
+      setShowSelectedAreasTooltip(false);
+    }
+  }, [selectedAreaEntries.length]);
+
   const handleHeaderKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
@@ -198,30 +254,65 @@ export const DemographicsBar = ({ snapshot, expanded, onExpandedChange, onClearA
               {headerLabel}
             </span>
             {showSelectedPill && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-brand-600 bg-brand-500 pl-2 pr-1 py-[2px] text-[10px] font-medium text-white shadow-sm dark:border-brand-400">
-                <span>{selectedCount} selected</span>
-                {onClearAreas && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onClearAreas();
-                    }}
-                    className="inline-flex items-center justify-center rounded-full p-0.5 transition-colors hover:bg-brand-600 dark:hover:bg-brand-400/30"
-                    aria-label="Clear all selections"
-                    title="Clear all selections"
-                  >
-                    <svg
-                      viewBox="0 0 16 16"
-                      fill="currentColor"
-                      className="h-3 w-3"
-                      aria-hidden="true"
+              <div
+                className="relative inline-flex"
+                onMouseEnter={() => {
+                  if (selectedAreaEntries.length > 0) setShowSelectedAreasTooltip(true);
+                }}
+                onMouseLeave={() => setShowSelectedAreasTooltip(false)}
+              >
+                <span className="inline-flex items-center gap-1 rounded-full border border-brand-600 bg-brand-500 pl-2 pr-1 py-[2px] text-[10px] font-medium text-white shadow-sm dark:border-brand-400">
+                  <span>{selectedCount} selected</span>
+                  {onClearAreas && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClearAreas();
+                      }}
+                      className="inline-flex items-center justify-center rounded-full p-0.5 transition-colors hover:bg-brand-600 dark:hover:bg-brand-400/30"
+                      aria-label="Clear all selections"
+                      title="Clear all selections"
                     >
-                      <path d="M4.28 3.22a.75.75 0 00-1.06 1.06L6.94 8l-3.72 3.72a.75.75 0 101.06 1.06L8 9.06l3.72 3.72a.75.75 0 101.06-1.06L9.06 8l3.72-3.72a.75.75 0 00-1.06-1.06L8 6.94 4.28 3.22z" />
-                    </svg>
-                  </button>
+                      <svg
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        className="h-3 w-3"
+                        aria-hidden="true"
+                      >
+                        <path d="M4.28 3.22a.75.75 0 00-1.06 1.06L6.94 8l-3.72 3.72a.75.75 0 101.06 1.06L8 9.06l3.72 3.72a.75.75 0 101.06-1.06L9.06 8l3.72-3.72a.75.75 0 00-1.06-1.06L8 6.94 4.28 3.22z" />
+                      </svg>
+                    </button>
+                  )}
+                </span>
+                {showSelectedAreasTooltip && selectedAreaEntries.length > 0 && (
+                  <div
+                    className="absolute left-0 top-6 z-20 min-w-44 max-w-80 rounded-lg border border-slate-300 bg-white p-2 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      Selected Areas
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedAreaEntries.map((area) => (
+                        <button
+                          key={`${area.kind}:${area.id}`}
+                          type="button"
+                          className="group inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/80 px-2 py-0.5 text-[10px] font-medium text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onRemoveArea?.({ kind: area.kind, id: area.id });
+                          }}
+                          title={`Remove ${area.label}`}
+                        >
+                          <span>{area.label}</span>
+                          <span className="ml-0.5 hidden text-brand-600 group-hover:inline">×</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 )}
-              </span>
+              </div>
             )}
             {showTooltip && showFullLabelTooltip && (
               <div className="pointer-events-none absolute left-0 top-6 z-10 whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-[10px] font-medium text-white shadow dark:bg-slate-200 dark:text-slate-900">

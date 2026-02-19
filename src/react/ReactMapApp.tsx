@@ -2333,6 +2333,17 @@ export const ReactMapApp = () => {
     handleUpdateAreaSelection("COUNTY", { selected: [], pinned: [] });
   }, [handleUpdateAreaSelection]);
 
+  const handleRemoveArea = useCallback(
+    (area: { kind: "ZIP" | "COUNTY"; id: string }) => {
+      const current = areaSelections[area.kind];
+      handleUpdateAreaSelection(area.kind, {
+        selected: current.selected.filter((value) => value !== area.id),
+        pinned: current.pinned.filter((value) => value !== area.id),
+      });
+    },
+    [areaSelections, handleUpdateAreaSelection],
+  );
+
   const handleAreaSelectionChange = (change: { kind: AreaKind; selected: string[]; pinned: string[]; transient: string[] }) => {
     setSidebarFollowMode("map");
     const current = areaSelections[change.kind];
@@ -3469,6 +3480,7 @@ export const ReactMapApp = () => {
                 onOrgPinsVisibleChange={setOrgPinsVisible}
                 initialOrgPinsVisible={initialMapState.orgPinsVisible}
                 onClearAreas={handleClearAreas}
+                onRemoveArea={handleRemoveArea}
                 forceHideOrgsNonce={forceHideOrgsNonce}
                 forceShowOrgsNonce={forceShowOrgsNonce}
                 timeSelection={timeSelection}
@@ -3732,6 +3744,7 @@ export const ReactMapApp = () => {
                     onOrgPinsVisibleChange={setOrgPinsVisible}
                     initialOrgPinsVisible={initialMapState.orgPinsVisible}
                     onClearAreas={handleClearAreas}
+                    onRemoveArea={handleRemoveArea}
                     forceHideOrgsNonce={forceHideOrgsNonce}
                     forceShowOrgsNonce={forceShowOrgsNonce}
                     timeSelection={timeSelection}
