@@ -191,6 +191,9 @@ export const updateSecondaryStatOverlay = (
 ) => {
   // theme currently does not affect rendering for secondary overlay; keep param for parity
   void theme;
+  // Keep params for API parity with mapView call sites.
+  void primaryZipScope;
+  void primaryCountyScope;
   const {
     SECONDARY_STAT_LAYER_ID,
     SECONDARY_STAT_HOVER_LAYER_ID,
@@ -203,8 +206,13 @@ export const updateSecondaryStatOverlay = (
   const entry = secondaryStatId ? statDataByStatId.get(secondaryStatId) : undefined;
   const zipEntry = entry?.ZIP;
   const countyEntry = entry?.COUNTY;
-  const zipScopeIds = Array.from(primaryZipScope);
-  const countyScopeIds = Array.from(primaryCountyScope);
+  // Drive secondary overlays from the secondary stat's own keyed data.
+  // This avoids races where primary ZIP/COUNTY scope is briefly empty/stale
+  // after zoom-mode switches and causes dots to disappear until re-toggle.
+  const zipScopeIds = Array.from(Object.keys(zipEntry?.data ?? {}));
+  const countyScopeIds = Array.from(Object.keys(countyEntry?.data ?? {}));
+  const zipScopeSet = new Set(zipScopeIds);
+  const countyScopeSet = new Set(countyScopeIds);
 
   const disableZipLayers = () => {
     if (zipLayerAvailable) {
@@ -237,14 +245,14 @@ export const updateSecondaryStatOverlay = (
   if (zipLayerAvailable) {
     if (boundaryMode === "zips" && zipEntry && zipScopeIds.length > 0) {
       const baseFilter: any[] = ["all", ["in", ["get", "zip"], ["literal", zipScopeIds]]];
-      if (hoveredZip && primaryZipScope.has(hoveredZip)) {
+      if (hoveredZip && zipScopeSet.has(hoveredZip)) {
         baseFilter.push(["!=", ["get", "zip"], hoveredZip]);
       }
       map.setFilter(SECONDARY_STAT_LAYER_ID, baseFilter as any);
 
       const selectedOrPinned = new Set<string>();
-      for (const zip of pinnedZips) if (primaryZipScope.has(zip)) selectedOrPinned.add(zip);
-      for (const zip of transientZips) if (primaryZipScope.has(zip)) selectedOrPinned.add(zip);
+      for (const zip of pinnedZips) if (zipScopeSet.has(zip)) selectedOrPinned.add(zip);
+      for (const zip of transientZips) if (zipScopeSet.has(zip)) selectedOrPinned.add(zip);
       const selectedArray = Array.from(selectedOrPinned);
 
       const { data, min, max } = zipEntry;
@@ -282,14 +290,14 @@ export const updateSecondaryStatOverlay = (
   if (countyLayerAvailable) {
     if (boundaryMode === "counties" && countyEntry && countyScopeIds.length > 0) {
       const baseFilter: any[] = ["all", ["in", ["get", "county"], ["literal", countyScopeIds]]];
-      if (hoveredCounty && primaryCountyScope.has(hoveredCounty)) {
+      if (hoveredCounty && countyScopeSet.has(hoveredCounty)) {
         baseFilter.push(["!=", ["get", "county"], hoveredCounty]);
       }
       map.setFilter(COUNTY_SECONDARY_LAYER_ID, baseFilter as any);
 
       const selectedOrPinnedCounties = new Set<string>();
-      for (const county of pinnedCounties) if (primaryCountyScope.has(county)) selectedOrPinnedCounties.add(county);
-      for (const county of transientCounties) if (primaryCountyScope.has(county)) selectedOrPinnedCounties.add(county);
+      for (const county of pinnedCounties) if (countyScopeSet.has(county)) selectedOrPinnedCounties.add(county);
+      for (const county of transientCounties) if (countyScopeSet.has(county)) selectedOrPinnedCounties.add(county);
       const selectedArray = Array.from(selectedOrPinnedCounties);
 
       const { data, min, max } = countyEntry;

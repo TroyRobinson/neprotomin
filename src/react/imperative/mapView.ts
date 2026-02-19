@@ -20,6 +20,7 @@ import { statsStore } from "../../state/stats";
 import { createOrgLegend, type OrgLegendController } from "./components/orgLegend";
 import { createMapLoadingIndicator } from "./components/mapLoadingIndicator";
 import { getCountyCentroidsMap, getCountyName } from "../../lib/countyCentroids";
+import { getZipCentroidFeatureCollection } from "../../lib/zipCentroids";
 import type { AreaId, AreaKind } from "../../types/areas";
 import { DEFAULT_PARENT_AREA_BY_KIND } from "../../types/areas";
 import type { TimeSelection } from "../lib/timeFilters";
@@ -904,10 +905,19 @@ export const createMapView = ({
   ];
 
   const syncZctaSource = () => {
-    const source = map.getSource(BOUNDARY_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    if (!source) return;
+    const boundarySource = map.getSource(BOUNDARY_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    const centroidSource = map.getSource(ZIP_CENTROIDS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     const collection = getZctaFeatureCollection(ZCTA_STATE);
-    source.setData(collection as any);
+    if (boundarySource) {
+      try {
+        boundarySource.setData(collection as any);
+      } catch {}
+    }
+    if (centroidSource) {
+      try {
+        centroidSource.setData(getZipCentroidFeatureCollection() as any);
+      } catch {}
+    }
   };
 
   const ensureZctasForCurrentView = async ({ force = false }: { force?: boolean } = {}) => {
@@ -1554,6 +1564,9 @@ export const createMapView = ({
         COUNTY_SECONDARY_LAYER_ID,
         COUNTY_SECONDARY_HOVER_LAYER_ID,
       }, boundaryMode, secondaryStatId, scopedStatDataByBoundary, primaryZipScope, new Set(), hovered || null, null);
+      // Keep base secondary dots in sync during hover transitions in case a
+      // zoom/scope update landed between scheduled visual refreshes.
+      updateSecondaryStatOverlay();
     }
   };
 
@@ -1627,6 +1640,9 @@ export const createMapView = ({
         COUNTY_SECONDARY_LAYER_ID,
         COUNTY_SECONDARY_HOVER_LAYER_ID,
       }, boundaryMode, secondaryStatId, scopedStatDataByBoundary, new Set(), primaryCountyScope, null, hovered || null);
+      // Keep base secondary dots in sync during hover transitions in case a
+      // zoom/scope update landed between scheduled visual refreshes.
+      updateSecondaryStatOverlay();
     }
   };
 

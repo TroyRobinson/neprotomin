@@ -1,6 +1,7 @@
 import type maplibregl from "maplibre-gl";
 import { formatStatValueCompact } from "../../../lib/format";
 import { getZipCentroidsMap } from "../../../lib/zipCentroids";
+import { getZctaCentroid } from "../../../lib/zctaLoader";
 import { CHOROPLETH_COLORS, TEAL_COLORS, getClassIndex } from "../../../lib/choropleth";
 
 interface ZipLabelsOptions {
@@ -21,6 +22,7 @@ export interface ZipLabelsController {
 }
 
 const defaultCentroids = (): Map<string, [number, number]> => getZipCentroidsMap();
+const ZCTA_STATE = "ok" as const;
 
 const formatStatValue = (value: number, type: string = "count"): string => {
   return formatStatValueCompact(value, type);
@@ -47,7 +49,11 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
   const computeShouldShowStackedStats = (): boolean => map.getZoom() >= stackedStatsMinZoom;
 
   const createLabelElement = (zip: string, isSelected: boolean, isPinned: boolean, isHovered: boolean): HTMLElement | null => {
-    const centroid = resolveCentroids().get(zip);
+    let centroid = resolveCentroids().get(zip);
+    if (!centroid && /^\d{5}$/.test(zip)) {
+      // Defensive fallback for transient centroid-cache lag on ZIP hover.
+      centroid = getZctaCentroid(ZCTA_STATE, zip) ?? undefined;
+    }
     if (!centroid) return null;
 
     const [lng, lat] = centroid;
