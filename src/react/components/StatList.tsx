@@ -132,7 +132,7 @@ const ChildStatDropdown = ({
 
   return (
     <div className="flex items-center gap-2">
-      <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 whitespace-nowrap">
+      <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-400 whitespace-nowrap">
         {attributeName}
       </label>
       <CustomSelect
@@ -148,8 +148,8 @@ const ChildStatDropdown = ({
         compact={true}
         buttonClassName={`!text-[9px] !font-normal !uppercase !tracking-wide ${
           hasSelectedChild
-            ? "!border-brand-300 !bg-brand-50 !text-brand-700 !shadow-none dark:!border-brand-400/60 dark:!bg-brand-400/10 dark:!text-brand-200"
-            : "!bg-slate-50 !text-slate-500 !shadow-none dark:!text-slate-400"
+            ? "!border-brand-200 !bg-brand-50 !text-brand-700 !shadow-none dark:!border-brand-400/60 dark:!bg-brand-400/10 dark:!text-brand-200"
+            : "!border-slate-200 !bg-slate-50 !text-slate-500 hover:!bg-slate-100 hover:!border-slate-300 !shadow-none dark:!border-slate-600 dark:!bg-slate-700 dark:!text-slate-400 dark:hover:!bg-slate-600 dark:hover:!border-slate-500"
         }`}
       />
     </div>
@@ -986,10 +986,10 @@ const StatListItem = ({
                   disabled={!toggle.isAvailable}
                   className={`px-1.5 py-0.5 text-[9px] font-normal uppercase tracking-wide rounded border transition-colors ${
                     toggle.isActive && toggle.isAvailable
-                      ? "border-brand-300 bg-brand-50 text-brand-700 font-medium dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
+                      ? "border-brand-200 bg-brand-50 text-brand-700 font-medium dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
                       : toggle.isAvailable
-                      ? "border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:border-slate-500"
-                      : "border-slate-200 bg-slate-100/50 text-slate-400 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-600"
+                      ? "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:border-slate-500"
+                      : "border-slate-200/80 bg-slate-100/50 text-slate-400 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-600"
                   }`}
                   title={toggle.isAvailable ? `Toggle ${toggle.attr} breakdown` : `${toggle.attr} not available for current selection`}
                 >
@@ -1002,7 +1002,7 @@ const StatListItem = ({
 
         {isHeader && grandchildToggles.length > 0 && (
           <div className="flex items-center gap-1 mt-2.5 mb-0">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 whitespace-nowrap mr-2">
+            <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-400 whitespace-nowrap mr-2">
               Options:
             </label>
             {grandchildToggles.map((toggle) => (
@@ -1018,10 +1018,10 @@ const StatListItem = ({
                 disabled={!toggle.isAvailable}
                 className={`px-1.5 py-0.5 text-[9px] font-normal uppercase tracking-wide rounded border transition-colors ${
                   toggle.isActive && toggle.isAvailable
-                    ? "border-brand-300 bg-brand-50 text-brand-700 font-medium dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
+                    ? "border-brand-200 bg-brand-50 text-brand-700 font-medium dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
                     : toggle.isAvailable
-                    ? "border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:border-slate-500"
-                    : "border-slate-200 bg-slate-100/50 text-slate-400 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-600"
+                    ? "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:border-slate-500"
+                    : "border-slate-200/80 bg-slate-100/50 text-slate-400 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-600"
                 }`}
                 title={toggle.isAvailable ? `Toggle ${toggle.attr} breakdown` : `${toggle.attr} not available for current selection`}
               >

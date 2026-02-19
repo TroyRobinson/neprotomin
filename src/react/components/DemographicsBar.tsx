@@ -594,13 +594,13 @@ export const DemographicsBar = ({
         </div>
         <div className="mt-3 flex items-center gap-4 overflow-x-auto whitespace-nowrap text-slate-400 dark:text-slate-500">
           <span>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Population:</span> {populationLabel}
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-400">Population:</span> {populationLabel}
           </span>
           <span>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Avg Age:</span> {avgAgeLabel}
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-400">Avg Age:</span> {avgAgeLabel}
           </span>
           <span>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Married:</span> {marriedLabel}
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-400">Married:</span> {marriedLabel}
           </span>
         </div>
       </div>

@@ -51,7 +51,7 @@ const CHECK_ICON = `
 `;
 
 const CATEGORY_CHIP_SELECTED_CLASSES =
-  "border-transparent bg-brand-500 text-white shadow-floating hover:bg-brand-500 dark:bg-brand-400 dark:text-white";
+  "border-transparent bg-brand-500 text-white shadow-floating hover:bg-brand-500 dark:bg-brand-900 dark:text-brand-200 dark:hover:bg-brand-800";
 
 // Selected stat chip uses a subtle brand fill in dark mode without glass blur.
 const STAT_CHIP_SELECTED_CLASSES =
