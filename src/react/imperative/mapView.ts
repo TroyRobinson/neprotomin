@@ -144,6 +144,12 @@ const BASEMAP_TEXT_OPACITY: Record<ThemeName, number> = {
   light: 0.34,
   dark: 0.46,
 };
+const STAT_EXTREME_GOOD_COLOR = "#6fc284";
+const STAT_EXTREME_BAD_COLOR = "#f15b41";
+const STAT_EXTREME_NEUTRAL_COLOR = "#f8d837";
+const STAT_EXTREME_GOOD_ICON_ID = "stat-extreme-triangle-good";
+const STAT_EXTREME_BAD_ICON_ID = "stat-extreme-triangle-bad";
+const STAT_EXTREME_NEUTRAL_ICON_ID = "stat-extreme-triangle-neutral";
 
 const getMapStyle = (theme: ThemeName): string =>
   theme === "dark" ? MAP_STYLE_DARK : MAP_STYLE_LIGHT;
@@ -181,6 +187,35 @@ const applyBasemapLabelTone = (map: maplibregl.Map, theme: ThemeName) => {
   }
 };
 
+const createStatExtremeArrowImage = (color: string): ImageData | null => {
+  if (typeof document === "undefined") return null;
+  const size = 20;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.clearRect(0, 0, size, size);
+  // Straight-corner triangle marker for min/max indicators.
+  ctx.beginPath();
+  ctx.moveTo(size / 2, 3);
+  ctx.lineTo(size - 3, size - 4);
+  ctx.lineTo(3, size - 4);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+
+  // White edge keeps markers readable over the choropleth.
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 1.6;
+  ctx.lineJoin = "miter";
+  ctx.lineCap = "butt";
+  ctx.stroke();
+
+  return ctx.getImageData(0, 0, size, size);
+};
+
 import {
   SOURCE_ID,
   LAYER_CLUSTERS_ID,
@@ -203,9 +238,13 @@ import {
   ZIP_CENTROIDS_SOURCE_ID,
   SECONDARY_STAT_LAYER_ID,
   SECONDARY_STAT_HOVER_LAYER_ID,
+  ZIP_STAT_EXTREME_HIGH_LAYER_ID,
+  ZIP_STAT_EXTREME_LOW_LAYER_ID,
   COUNTY_CENTROIDS_SOURCE_ID,
   COUNTY_SECONDARY_LAYER_ID,
   COUNTY_SECONDARY_HOVER_LAYER_ID,
+  COUNTY_STAT_EXTREME_HIGH_LAYER_ID,
+  COUNTY_STAT_EXTREME_LOW_LAYER_ID,
   COUNTY_BOUNDARY_SOURCE_ID,
   COUNTY_BOUNDARY_FILL_LAYER_ID,
   COUNTY_BOUNDARY_LINE_LAYER_ID,
@@ -345,6 +384,7 @@ export const createMapView = ({
       }
     },
     onStatChange: (statId) => {
+      hideStatExtremaArrows();
       selectedStatId = statId;
       secondaryStatId = null;
       categoryChips.setSecondaryStat(null);
@@ -474,6 +514,24 @@ export const createMapView = ({
     return entry?.[boundary];
   };
 
+  const getExtremeAreaIds = (
+    data: Record<string, number> | undefined,
+  ): { highestId: string | null; lowestId: string | null } => {
+    if (!data) return { highestId: null, lowestId: null };
+    const entries = Object.entries(data)
+      .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
+      .sort(([a], [b]) => a.localeCompare(b));
+    if (entries.length === 0) return { highestId: null, lowestId: null };
+
+    let highest = entries[0];
+    let lowest = entries[0];
+    for (const entry of entries) {
+      if (entry[1] > highest[1]) highest = entry;
+      if (entry[1] < lowest[1]) lowest = entry;
+    }
+    return { highestId: highest[0], lowestId: lowest[0] };
+  };
+
   // Keep map spinner active until all loading sources (tiles + selected stat data) settle.
   const applyCompositeLoading = () => {
     loadingIndicator.setLoading(isTileLoading || isStatDataLoading);
@@ -533,6 +591,7 @@ export const createMapView = ({
     updateChoroplethLegend();
     updateSecondaryStatOverlay();
     updateSecondaryChoroplethLegend();
+    updateStatExtremaArrows();
 
     const zipEntry = getStatEntryByBoundary(selectedStatId, "ZIP");
     zipLabels?.setStatOverlay(selectedStatId, zipEntry?.data || null, zipEntry?.type || "count");
@@ -1081,9 +1140,15 @@ export const createMapView = ({
   // Wire up momentary stat name display on legend tap/click
   // Maintain a lookup of stat id -> name from the stats store
   const statNameById = new Map<string, string>();
+  const statGoodIfUpById = new Map<string, boolean | null>();
   const unsubscribeStats = statsStore.subscribe((stats) => {
     statNameById.clear();
-    for (const s of stats) statNameById.set(s.id, s.label || s.name);
+    statGoodIfUpById.clear();
+    for (const s of stats) {
+      statNameById.set(s.id, s.label || s.name);
+      statGoodIfUpById.set(s.id, typeof s.goodIfUp === "boolean" ? s.goodIfUp : null);
+    }
+    refreshStatVisuals();
   });
   destroyFns.push(() => {
     try { unsubscribeStats?.(); } catch {}
@@ -1197,6 +1262,7 @@ export const createMapView = ({
 
   // Create clear callbacks for mobile legend close buttons
   const clearPrimaryStat = () => {
+    hideStatExtremaArrows();
     selectedStatId = null;
     categoryChips.setSelectedStat(null);
     secondaryStatId = null;
@@ -1723,6 +1789,7 @@ export const createMapView = ({
     if (!didChange) return;
     applyLabelVisibility();
     if (zipGeometryHiddenDueToZoom) {
+      hideStatExtremaArrows();
       zipFloatingTitle?.hide();
     }
     refreshStatVisuals(); // Already deferred via coalescing
@@ -1863,6 +1930,176 @@ export const createMapView = ({
     source.setData(data);
   };
 
+  function hideStatExtremaArrows() {
+    const hideLayer = (layerId: string, featureKey: "zip" | "county") => {
+      if (!map.getLayer(layerId)) return;
+      try { map.setFilter(layerId, ["==", ["get", featureKey], "__none__"] as any); } catch {}
+      try { map.setPaintProperty(layerId, "icon-opacity", 0); } catch {}
+      try { map.setLayoutProperty(layerId, "visibility", "none"); } catch {}
+    };
+    hideLayer(ZIP_STAT_EXTREME_HIGH_LAYER_ID, "zip");
+    hideLayer(ZIP_STAT_EXTREME_LOW_LAYER_ID, "zip");
+    hideLayer(COUNTY_STAT_EXTREME_HIGH_LAYER_ID, "county");
+    hideLayer(COUNTY_STAT_EXTREME_LOW_LAYER_ID, "county");
+  }
+
+  // Keep extrema indicators as MapLibre symbol layers so they stay centered during zoom/pan/style swaps.
+  const ensureStatExtremaLayers = () => {
+    const ensureImages = () => {
+      const addArrowIcon = (id: string, color: string) => {
+        if (map.hasImage(id)) return;
+        const image = createStatExtremeArrowImage(color);
+        if (!image) return;
+        try {
+          map.addImage(id, image, { pixelRatio: 2 });
+        } catch {}
+      };
+      addArrowIcon(STAT_EXTREME_GOOD_ICON_ID, STAT_EXTREME_GOOD_COLOR);
+      addArrowIcon(STAT_EXTREME_BAD_ICON_ID, STAT_EXTREME_BAD_COLOR);
+      addArrowIcon(STAT_EXTREME_NEUTRAL_ICON_ID, STAT_EXTREME_NEUTRAL_COLOR);
+    };
+    ensureImages();
+
+    const addExtremeLayer = (
+      layerId: string,
+      sourceId: string,
+      featureKey: "zip" | "county",
+      rotation: number,
+      visible: boolean,
+    ) => {
+      if (map.getLayer(layerId)) return;
+      const before = map.getLayer(LAYER_CLUSTERS_ID) ? LAYER_CLUSTERS_ID : undefined;
+      const layer: any = {
+        id: layerId,
+        type: "symbol",
+        source: sourceId,
+        filter: ["==", ["get", featureKey], "__none__"] as any,
+        layout: {
+          visibility: visible ? "visible" : "none",
+          "icon-image": STAT_EXTREME_GOOD_ICON_ID,
+          "icon-size": 0.9,
+          "icon-anchor": "center",
+          "icon-rotate": rotation,
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+        },
+        paint: {
+          "icon-opacity": 0,
+        },
+      };
+      if (before) map.addLayer(layer, before);
+      else map.addLayer(layer);
+    };
+
+    addExtremeLayer(
+      ZIP_STAT_EXTREME_HIGH_LAYER_ID,
+      ZIP_CENTROIDS_SOURCE_ID,
+      "zip",
+      0,
+      boundaryMode === "zips" && !zipGeometryHiddenDueToZoom,
+    );
+    addExtremeLayer(
+      ZIP_STAT_EXTREME_LOW_LAYER_ID,
+      ZIP_CENTROIDS_SOURCE_ID,
+      "zip",
+      180,
+      boundaryMode === "zips" && !zipGeometryHiddenDueToZoom,
+    );
+    addExtremeLayer(
+      COUNTY_STAT_EXTREME_HIGH_LAYER_ID,
+      COUNTY_CENTROIDS_SOURCE_ID,
+      "county",
+      0,
+      boundaryMode === "counties",
+    );
+    addExtremeLayer(
+      COUNTY_STAT_EXTREME_LOW_LAYER_ID,
+      COUNTY_CENTROIDS_SOURCE_ID,
+      "county",
+      180,
+      boundaryMode === "counties",
+    );
+  };
+
+  const updateStatExtremaArrows = () => {
+    if (!map.isStyleLoaded()) return;
+
+    const hideZip = boundaryMode === "zips" && map.getZoom() >= CHOROPLETH_HIDE_ZOOM;
+    const showZipLayers = boundaryMode === "zips" && !hideZip;
+    const showCountyLayers = boundaryMode === "counties";
+
+    const setLayerState = (
+      layerId: string,
+      featureKey: "zip" | "county",
+      targetId: string | null,
+      iconId: string,
+      visible: boolean,
+    ) => {
+      if (!map.getLayer(layerId)) return;
+      map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
+      map.setFilter(layerId, ["==", ["get", featureKey], targetId ?? "__none__"] as any);
+      map.setLayoutProperty(layerId, "icon-image", iconId);
+      map.setPaintProperty(layerId, "icon-opacity", visible && targetId ? 1 : 0);
+    };
+
+    if (!selectedStatId) {
+      setLayerState(ZIP_STAT_EXTREME_HIGH_LAYER_ID, "zip", null, STAT_EXTREME_GOOD_ICON_ID, false);
+      setLayerState(ZIP_STAT_EXTREME_LOW_LAYER_ID, "zip", null, STAT_EXTREME_BAD_ICON_ID, false);
+      setLayerState(COUNTY_STAT_EXTREME_HIGH_LAYER_ID, "county", null, STAT_EXTREME_GOOD_ICON_ID, false);
+      setLayerState(COUNTY_STAT_EXTREME_LOW_LAYER_ID, "county", null, STAT_EXTREME_BAD_ICON_ID, false);
+      return;
+    }
+
+    const entry = boundaryMode === "counties"
+      ? getStatEntryByBoundary(selectedStatId, "COUNTY")
+      : getStatEntryByBoundary(selectedStatId, "ZIP");
+    const { highestId, lowestId } = getExtremeAreaIds(entry?.data);
+    const distinctLowestId = lowestId && lowestId !== highestId ? lowestId : null;
+
+    const goodIfUp = statGoodIfUpById.get(selectedStatId);
+    const highIconId =
+      goodIfUp === true
+        ? STAT_EXTREME_GOOD_ICON_ID
+        : goodIfUp === false
+        ? STAT_EXTREME_BAD_ICON_ID
+        : STAT_EXTREME_NEUTRAL_ICON_ID;
+    const lowIconId =
+      goodIfUp === true
+        ? STAT_EXTREME_BAD_ICON_ID
+        : goodIfUp === false
+        ? STAT_EXTREME_GOOD_ICON_ID
+        : STAT_EXTREME_NEUTRAL_ICON_ID;
+
+    setLayerState(
+      ZIP_STAT_EXTREME_HIGH_LAYER_ID,
+      "zip",
+      showZipLayers ? highestId : null,
+      highIconId,
+      showZipLayers,
+    );
+    setLayerState(
+      ZIP_STAT_EXTREME_LOW_LAYER_ID,
+      "zip",
+      showZipLayers ? distinctLowestId : null,
+      lowIconId,
+      showZipLayers,
+    );
+    setLayerState(
+      COUNTY_STAT_EXTREME_HIGH_LAYER_ID,
+      "county",
+      showCountyLayers ? highestId : null,
+      highIconId,
+      showCountyLayers,
+    );
+    setLayerState(
+      COUNTY_STAT_EXTREME_LOW_LAYER_ID,
+      "county",
+      showCountyLayers ? distinctLowestId : null,
+      lowIconId,
+      showCountyLayers,
+    );
+  };
+
   const ensureSourcesAndLayers = () => {
     if (!map.isStyleLoaded()) return;
 
@@ -1911,6 +2148,7 @@ export const createMapView = ({
       COUNTY_BOUNDARY_PINNED_LINE_LAYER_ID,
       COUNTY_STATDATA_FILL_LAYER_ID,
     }, boundaryMode, currentTheme);
+    ensureStatExtremaLayers();
 
     const hasBoundarySource = Boolean(map.getSource(BOUNDARY_SOURCE_ID));
     if (!hasBoundarySource) {
@@ -1986,6 +2224,7 @@ export const createMapView = ({
     scheduleIdle(() => {
       updateStatDataChoropleth();
       updateSecondaryStatOverlay();
+      updateStatExtremaArrows();
     }, 100);
   };
 
@@ -2831,6 +3070,7 @@ export const createMapView = ({
   const setBoundaryMode = (mode: BoundaryMode) => {
     if (mode === boundaryMode) return;
     const previousMode = boundaryMode;
+    hideStatExtremaArrows();
     boundaryMode = mode;
     
     // Immediate: clear hover state (fast)
@@ -3251,6 +3491,7 @@ export const createMapView = ({
     setSelectedOrgIds,
     setCategoryFilter,
     setSelectedStat: (statId: string | null) => {
+      hideStatExtremaArrows();
       selectedStatId = statId;
       categoryChips.setSelectedStat(statId);
       secondaryStatId = null;
