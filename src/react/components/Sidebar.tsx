@@ -986,6 +986,8 @@ export const Sidebar = ({
   const categoryToolbarLabel = categoryFilter
     ? abbreviateCategoryFilterLabel(selectedCategoryLabel)
     : selectedCategoryLabel;
+  const countyZoomOrgNoun = `${categoryFilter ? `${selectedCategoryLabel} ` : ""}org`;
+  const missingZoomCategoryText = categoryFilter ? ` ${selectedCategoryLabel}` : "";
   const shouldShowContentTopFade =
     variant === "desktop" &&
     ((activeTab === "orgs" && !isOrgsScrollAtTop) || (activeTab === "stats" && !isStatsScrollAtTop));
@@ -1540,10 +1542,10 @@ export const Sidebar = ({
                         }}
                       >
                         {countyZoomContext
-                          ? `See all ${countyZoomContext.totalCount} ${countyZoomContext.countyLabel} org${
+                          ? `See all ${countyZoomContext.totalCount} ${countyZoomContext.countyLabel} ${countyZoomOrgNoun}${
                               countyZoomContext.totalCount === 1 ? "" : "s"
                             } (Zoom out)`
-                          : `${missingCount} more not visible (Zoom out)`}
+                          : `${missingCount} more${missingZoomCategoryText} not visible (Zoom out)`}
                       </button>
                     </li>
                   )}

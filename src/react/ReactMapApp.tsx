@@ -1770,15 +1770,20 @@ export const ReactMapApp = () => {
     },
     [activeOrganizations, timeSelection],
   );
+  const categoryScopedOrganizations = useMemo(() => {
+    if (!categoryFilter) return availableOrganizations;
+    return availableOrganizations.filter((org) => org.category === categoryFilter);
+  }, [availableOrganizations, categoryFilter]);
+
   const orgCountsByCounty = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const org of availableOrganizations) {
+    for (const org of categoryScopedOrganizations) {
       const county = orgCountyById.get(org.id);
       if (!county) continue;
       counts.set(county, (counts.get(county) ?? 0) + 1);
     }
     return counts;
-  }, [availableOrganizations, orgCountyById]);
+  }, [categoryScopedOrganizations, orgCountyById]);
 
   // Derive viewport county org count from zipScope (viewport-dominance based, not center-point)
   const zipScopeCountyCode = useMemo(() => {
