@@ -116,6 +116,7 @@ interface SidebarProps {
   variant?: "desktop" | "mobile";
   showInsights?: boolean;
   showAdvanced?: boolean;
+  onAdvancedToggle?: (show: boolean) => void;
   /** Visibility + expansion state for Insights sections (persisted in URL). */
   insightsState?: {
     demographicsVisible: boolean;
@@ -212,6 +213,7 @@ export const Sidebar = ({
   variant = "desktop",
   showInsights = true,
   showAdvanced = false,
+  onAdvancedToggle,
   insightsState,
   onInsightsStateChange,
   className = "",
@@ -1037,6 +1039,11 @@ export const Sidebar = ({
     setKeepOrgsOnMap((prev) => !prev);
   };
 
+  const handleToggleAdvanced = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
+    onAdvancedToggle?.(!showAdvanced);
+  };
+
   const handleTabChange = (tab: TabType) => {
     setActiveTabWithSync(tab);
   };
@@ -1261,6 +1268,33 @@ export const Sidebar = ({
             }}
           >
             <span>Stats</span>
+            {variant === "desktop" && (
+              <span
+                role="switch"
+                aria-checked={showAdvanced}
+                aria-label="Advanced areas data"
+                title="Advanced areas data"
+                tabIndex={0}
+                className={`relative inline-flex h-3 w-6 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+                  showAdvanced ? "bg-brand-500" : "bg-slate-300 dark:bg-slate-500"
+                }`}
+                onClick={handleToggleAdvanced}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleToggleAdvanced(e);
+                  }
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+              >
+                <span
+                  className="inline-block h-2 w-2 transform rounded-full bg-white shadow transition"
+                  style={{ transform: showAdvanced ? "translateX(14px)" : "translateX(2px)" }}
+                />
+              </span>
+            )}
           </button>
 
         {/* Category Filter + Collapse (desktop only) */}

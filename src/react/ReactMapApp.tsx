@@ -3446,8 +3446,6 @@ export const ReactMapApp = () => {
         onMobileLocationSearch={handleMobileLocationSearch}
         onAddOrganization={handleOpenAddOrganization}
         expandMobileSearch={expandMobileSearch}
-        showAdvanced={showAdvanced}
-        onAdvancedToggle={setShowAdvanced}
       />
       <div className="relative flex flex-1 flex-col overflow-hidden">
         <main className="relative flex flex-1 flex-col overflow-hidden md:flex-row">
@@ -3520,6 +3518,7 @@ export const ReactMapApp = () => {
                 selectionLabelOverride={searchSelectionLabel}
                 selectionStyleVariant={selectionStyleVariant}
                 showAdvanced={showAdvanced}
+                onAdvancedToggle={setShowAdvanced}
                 insightsState={sidebarInsightsState}
                 onInsightsStateChange={(patch) =>
                   setSidebarInsightsState((prev) => ({
@@ -3775,6 +3774,7 @@ export const ReactMapApp = () => {
                   variant="mobile"
                   showInsights={true}
                   showAdvanced={showAdvanced}
+                  onAdvancedToggle={setShowAdvanced}
                   insightsState={sidebarInsightsState}
                   onInsightsStateChange={(patch) =>
                     setSidebarInsightsState((prev) => ({
