@@ -783,9 +783,9 @@ export const StatList = ({
           {/* Embedded StatViz chart - only shown in advanced mode; min-h reserves
              space so the stat list doesn't jump when the chart loads in */}
           {showAdvanced && (
-            <div className="min-h-[124px]">
+            <div className="min-h-[146px] flex items-center justify-center">
               {areaEntries.length === 0 ? (
-                <div className="mt-3 mb-1 text-[10px] text-slate-400 dark:text-slate-500 italic text-center">
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 italic text-center">
                   Shift+click an area(s) to see charts
                 </div>
               ) : (
