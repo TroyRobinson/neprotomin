@@ -436,6 +436,22 @@ export const createMapView = ({
     return Object.keys(entry.data ?? {}).length > 0;
   };
 
+  const isSecondaryLegendLoading = (): boolean => {
+    const secId = secondaryStatId;
+    if (!secId) return false;
+    const requiredBoundaries = getRequiredBoundariesForLoading();
+    if (requiredBoundaries.length === 0) return false;
+    const secondaryMissing = requiredBoundaries.some(
+      (boundary) => !hasStatDataForBoundary(secId, boundary),
+    );
+    const primaryId = selectedStatId;
+    const primaryMissing = primaryId
+      ? requiredBoundaries.some((boundary) => !hasStatDataForBoundary(primaryId, boundary))
+      : false;
+    const statStoreBusy = statDataStoreState.isRefreshing || statDataStoreState.hasPendingRefresh;
+    return statStoreBusy && (secondaryMissing || primaryMissing);
+  };
+
   const recomputeStatDataLoading = () => {
     const requiredBoundaries = getRequiredBoundariesForLoading();
     const selectedStatIds = [selectedStatId, secondaryStatId].filter(
@@ -2699,8 +2715,17 @@ export const createMapView = ({
   }
 
   function updateSecondaryChoroplethLegend() {
-    if (!secondaryStatId) { secondaryChoroplethLegend.setVisible(false); return; }
+    if (!secondaryStatId) {
+      secondaryChoroplethLegend.setLoading(false);
+      secondaryChoroplethLegend.setVisible(false);
+      return;
+    }
     extUpdateSecondaryLegend(secondaryChoroplethLegend, secondaryStatId, boundaryMode, scopedStatDataByBoundary);
+    const showLoading = isSecondaryLegendLoading();
+    secondaryChoroplethLegend.setLoading(showLoading);
+    if (showLoading) {
+      secondaryChoroplethLegend.setVisible(true);
+    }
   }
 
   function updateSecondaryStatOverlay() {

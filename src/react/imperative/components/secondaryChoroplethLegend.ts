@@ -4,6 +4,7 @@ export interface SecondaryChoroplethLegendController {
   element: HTMLElement;
   pill: HTMLElement;
   setVisible: (visible: boolean) => void;
+  setLoading: (loading: boolean) => void;
   setRange: (min: number, max: number, type?: string) => void;
   setColors: (lowHex: string, highHex: string) => void;
   destroy: () => void;
@@ -42,6 +43,7 @@ export const createSecondaryChoroplethLegend = (isMobile?: boolean): SecondaryCh
   minDot.className = "h-2.5 w-2.5 rounded-full ring-1 ring-black/5 dark:ring-white/10";
   const minLabel = document.createElement("span");
   minLabel.className = "tabular-nums";
+  minLabel.textContent = "—";
   minGroup.appendChild(minDot);
   minGroup.appendChild(minLabel);
 
@@ -55,16 +57,30 @@ export const createSecondaryChoroplethLegend = (isMobile?: boolean): SecondaryCh
   maxDot.className = "h-2.5 w-2.5 rounded-full ring-1 ring-black/5 dark:ring-white/10";
   const maxLabel = document.createElement("span");
   maxLabel.className = "tabular-nums";
+  maxLabel.textContent = "—";
   maxGroup.appendChild(maxDot);
   maxGroup.appendChild(maxLabel);
+
+  const spinnerWrap = document.createElement("span");
+  spinnerWrap.className = "ml-0.5 hidden items-center justify-center text-teal-600 dark:text-teal-400";
+  spinnerWrap.setAttribute("aria-hidden", "true");
+  const spinner = document.createElement("span");
+  spinner.className = "h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent";
+  spinnerWrap.appendChild(spinner);
 
   pill.appendChild(minGroup);
   pill.appendChild(sep);
   pill.appendChild(maxGroup);
+  pill.appendChild(spinnerWrap);
   wrapper.appendChild(pill);
 
   const setVisible = (visible: boolean) => {
     wrapper.classList.toggle("hidden", !visible);
+  };
+
+  const setLoading = (loading: boolean) => {
+    spinnerWrap.classList.toggle("hidden", !loading);
+    spinnerWrap.classList.toggle("inline-flex", loading);
   };
 
   const setRange = (min: number, max: number, type?: string) => {
@@ -83,5 +99,5 @@ export const createSecondaryChoroplethLegend = (isMobile?: boolean): SecondaryCh
 
   setVisible(false);
 
-  return { element: wrapper, pill, setVisible, setRange, setColors, destroy };
+  return { element: wrapper, pill, setVisible, setLoading, setRange, setColors, destroy };
 };
