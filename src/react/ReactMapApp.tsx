@@ -2344,6 +2344,23 @@ export const ReactMapApp = () => {
     [areaSelections, handleUpdateAreaSelection],
   );
 
+  const handleAddAreas = useCallback(
+    (kind: "ZIP" | "COUNTY", ids: string[]) => {
+      if (ids.length < 1) return;
+      const current = areaSelections[kind];
+      const merged = [...current.selected];
+      const seen = new Set(merged);
+      for (const id of ids) {
+        if (seen.has(id)) continue;
+        merged.push(id);
+        seen.add(id);
+      }
+      const nextPinned = current.pinned.filter((id) => seen.has(id));
+      handleUpdateAreaSelection(kind, { selected: merged, pinned: nextPinned });
+    },
+    [areaSelections, handleUpdateAreaSelection],
+  );
+
   const handleAreaSelectionChange = (change: { kind: AreaKind; selected: string[]; pinned: string[]; transient: string[] }) => {
     setSidebarFollowMode("map");
     const current = areaSelections[change.kind];
@@ -3481,6 +3498,7 @@ export const ReactMapApp = () => {
                 initialOrgPinsVisible={initialMapState.orgPinsVisible}
                 onClearAreas={handleClearAreas}
                 onRemoveArea={handleRemoveArea}
+                onAddAreas={handleAddAreas}
                 forceHideOrgsNonce={forceHideOrgsNonce}
                 forceShowOrgsNonce={forceShowOrgsNonce}
                 timeSelection={timeSelection}
@@ -3745,6 +3763,7 @@ export const ReactMapApp = () => {
                     initialOrgPinsVisible={initialMapState.orgPinsVisible}
                     onClearAreas={handleClearAreas}
                     onRemoveArea={handleRemoveArea}
+                    onAddAreas={handleAddAreas}
                     forceHideOrgsNonce={forceHideOrgsNonce}
                     forceShowOrgsNonce={forceShowOrgsNonce}
                     timeSelection={timeSelection}

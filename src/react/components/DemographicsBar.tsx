@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { CombinedDemographicsSnapshot, BreakdownGroup } from "../hooks/useDemographics";
+import { getCountyIdByName } from "../../lib/countyCentroids";
 
 type SupportedAreaKind = "ZIP" | "COUNTY";
 
@@ -8,6 +9,7 @@ interface SelectedAreaEntry {
   kind: SupportedAreaKind;
   id: string;
   label: string;
+  color?: string;
 }
 
 interface DemographicsBarProps {
@@ -19,6 +21,8 @@ interface DemographicsBarProps {
   activeAreaKind?: SupportedAreaKind | null;
   areaNameLookup?: (kind: SupportedAreaKind, code: string) => string;
   onRemoveArea?: (area: { kind: SupportedAreaKind; id: string }) => void;
+  onAddAreas?: (kind: SupportedAreaKind, ids: string[]) => void;
+  lineColorByAreaKey?: Map<string, string> | null;
 }
 
 interface BreakdownSegmentDisplay {
@@ -48,6 +52,8 @@ const formatNumber = (value: number | undefined): string =>
 
 const formatPercent = (value: number | undefined): string =>
   Number.isFinite(value || NaN) ? `${Math.round(value as number)}%` : "—%";
+
+const areaKey = (kind: SupportedAreaKind, id: string): string => `${kind}:${id}`;
 
 interface SegmentBarProps {
   segments: BreakdownSegmentDisplay[];
@@ -142,11 +148,17 @@ export const DemographicsBar = ({
   activeAreaKind = null,
   areaNameLookup,
   onRemoveArea,
+  onAddAreas,
+  lineColorByAreaKey = null,
 }: DemographicsBarProps) => {
   const isControlled = typeof expanded === "boolean";
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [showSelectedAreasTooltip, setShowSelectedAreasTooltip] = useState(false);
+  const [addInputOpen, setAddInputOpen] = useState(false);
+  const [addInputValue, setAddInputValue] = useState("");
+  const closeSelectedAreasTooltipTimeoutRef = useRef<number | null>(null);
+  const addInputRef = useRef<HTMLInputElement>(null);
   const isExpanded = isControlled ? (expanded as boolean) : uncontrolledExpanded;
 
   const setIsExpanded = useCallback(
@@ -195,39 +207,159 @@ export const DemographicsBar = ({
   const showFullLabelTooltip = fullLabel !== headerLabel && !showSelectedPill;
   const selectedZips = selectedAreas.ZIP ?? [];
   const selectedCounties = selectedAreas.COUNTY ?? [];
+  const hasAnySelectedAreas = selectedZips.length > 0 || selectedCounties.length > 0;
   const mixedKinds = !activeAreaKind && selectedZips.length > 0 && selectedCounties.length > 0;
+  const addKind: SupportedAreaKind | null = activeAreaKind
+    ?? (selectedCounties.length > 0 ? "COUNTY" : selectedZips.length > 0 ? "ZIP" : null);
+  const showAddAreaTrigger = Boolean(onAddAreas && (addKind === "COUNTY" || addKind === "ZIP") && !showSelectedPill);
+  const addAreaTriggerLabel = !hasAnySelectedAreas
+    ? addKind === "ZIP"
+      ? "focus to ZIP"
+      : "focus to county"
+    : addKind === "ZIP"
+    ? "add ZIPs"
+    : "add counties";
+
+  const clearSelectedAreasTooltipClose = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (closeSelectedAreasTooltipTimeoutRef.current === null) return;
+    window.clearTimeout(closeSelectedAreasTooltipTimeoutRef.current);
+    closeSelectedAreasTooltipTimeoutRef.current = null;
+  }, []);
+
+  const scheduleSelectedAreasTooltipClose = useCallback(() => {
+    if (typeof window === "undefined") {
+      setShowSelectedAreasTooltip(false);
+      return;
+    }
+    clearSelectedAreasTooltipClose();
+    closeSelectedAreasTooltipTimeoutRef.current = window.setTimeout(() => {
+      setShowSelectedAreasTooltip(false);
+      closeSelectedAreasTooltipTimeoutRef.current = null;
+    }, 500);
+  }, [clearSelectedAreasTooltipClose]);
+
+  const openSelectedAreasAddInput = useCallback(() => {
+    clearSelectedAreasTooltipClose();
+    setShowSelectedAreasTooltip(true);
+    setAddInputOpen(true);
+  }, [clearSelectedAreasTooltipClose]);
   // Keep tooltip list anchored to the active area kind; otherwise show all selected kinds.
   const selectedAreaEntries: SelectedAreaEntry[] = activeAreaKind
     ? (selectedAreas[activeAreaKind] ?? []).map((id) => {
         const label = areaNameLookup?.(activeAreaKind, id) || id;
-        return { kind: activeAreaKind, id, label };
+        const color = lineColorByAreaKey?.get(areaKey(activeAreaKind, id));
+        return { kind: activeAreaKind, id, label, color };
       })
     : [
         ...selectedZips.map((id) => {
           const label = areaNameLookup?.("ZIP", id) || id;
+          const color = lineColorByAreaKey?.get(areaKey("ZIP", id));
           return {
             kind: "ZIP" as const,
             id,
             label: mixedKinds ? `ZIP ${label}` : label,
+            color,
           };
         }),
         ...selectedCounties.map((id) => {
           const label = areaNameLookup?.("COUNTY", id) || id;
+          const color = lineColorByAreaKey?.get(areaKey("COUNTY", id));
           return {
             kind: "COUNTY" as const,
             id,
             label: mixedKinds ? `County ${label}` : label,
+            color,
           };
         }),
       ];
 
   useEffect(() => {
-    if (selectedAreaEntries.length === 0) {
+    if (selectedAreaEntries.length === 0 && !showAddAreaTrigger) {
       setShowSelectedAreasTooltip(false);
     }
-  }, [selectedAreaEntries.length]);
+  }, [selectedAreaEntries.length, showAddAreaTrigger]);
+
+  useEffect(() => {
+    if (!showSelectedAreasTooltip) {
+      setAddInputOpen(false);
+      setAddInputValue("");
+    }
+  }, [showSelectedAreasTooltip]);
+
+  useEffect(() => {
+    return () => {
+      clearSelectedAreasTooltipClose();
+    };
+  }, [clearSelectedAreasTooltipClose]);
+
+  useEffect(() => {
+    if (!showSelectedAreasTooltip || !addInputOpen) return;
+    const rafId = requestAnimationFrame(() => {
+      addInputRef.current?.focus();
+      addInputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [addInputOpen, showSelectedAreasTooltip]);
+
+  const parseZips = useCallback((raw: string): string[] => {
+    const matches = raw.match(/\b\d{5}\b/g) || [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const value of matches) {
+      if (seen.has(value)) continue;
+      seen.add(value);
+      out.push(value);
+    }
+    return out;
+  }, []);
+
+  const parseCounties = useCallback((raw: string): string[] => {
+    const parts = raw
+      .split(/[,;\n]+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const seen = new Set<string>();
+    const out: string[] = [];
+
+    for (const part of parts) {
+      let countyId: string | undefined;
+      if (/^\d{5}$/.test(part)) {
+        countyId = part;
+      } else {
+        const cleanName = part.replace(/\s+county$/i, "").trim();
+        countyId = getCountyIdByName(cleanName);
+      }
+      if (!countyId || seen.has(countyId)) continue;
+      seen.add(countyId);
+      out.push(countyId);
+    }
+
+    return out;
+  }, []);
+
+  const submitAddAreas = useCallback(() => {
+    if (!onAddAreas || !addKind) return;
+    const ids = addKind === "ZIP" ? parseZips(addInputValue) : parseCounties(addInputValue);
+    if (ids.length < 1) return;
+    onAddAreas(addKind, ids);
+    setAddInputOpen(false);
+    setAddInputValue("");
+  }, [addInputValue, addKind, onAddAreas, parseCounties, parseZips]);
 
   const handleHeaderKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    const isTypingTarget =
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      Boolean(target?.isContentEditable);
+    const isInteractiveChild =
+      !!target &&
+      target !== event.currentTarget &&
+      !!target.closest("button, a, input, textarea, select, [role='button']");
+    if (isInteractiveChild) return;
+    if (isTypingTarget) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     toggleExpanded();
@@ -253,52 +385,135 @@ export const DemographicsBar = ({
             >
               {headerLabel}
             </span>
-            {showSelectedPill && (
+            {(showSelectedPill || showAddAreaTrigger) && (
               <div
                 className="relative inline-flex"
                 onMouseEnter={() => {
-                  if (selectedAreaEntries.length > 0) setShowSelectedAreasTooltip(true);
+                  clearSelectedAreasTooltipClose();
+                  if (selectedAreaEntries.length > 0 || showAddAreaTrigger) setShowSelectedAreasTooltip(true);
                 }}
-                onMouseLeave={() => setShowSelectedAreasTooltip(false)}
+                onMouseLeave={scheduleSelectedAreasTooltipClose}
               >
-                <span className="inline-flex items-center gap-1 rounded-full border border-brand-600 bg-brand-500 pl-2 pr-1 py-[2px] text-[10px] font-medium text-white shadow-sm dark:border-brand-400">
-                  <span>{selectedCount} selected</span>
-                  {onClearAreas && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onClearAreas();
-                      }}
-                      className="inline-flex items-center justify-center rounded-full p-0.5 transition-colors hover:bg-brand-600 dark:hover:bg-brand-400/30"
-                      aria-label="Clear all selections"
-                      title="Clear all selections"
-                    >
-                      <svg
-                        viewBox="0 0 16 16"
-                        fill="currentColor"
-                        className="h-3 w-3"
-                        aria-hidden="true"
-                      >
-                        <path d="M4.28 3.22a.75.75 0 00-1.06 1.06L6.94 8l-3.72 3.72a.75.75 0 101.06 1.06L8 9.06l3.72 3.72a.75.75 0 101.06-1.06L9.06 8l3.72-3.72a.75.75 0 00-1.06-1.06L8 6.94 4.28 3.22z" />
-                      </svg>
-                    </button>
+                <div className="inline-flex items-center gap-1">
+                  {showSelectedPill && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-brand-600 bg-brand-500 pl-2 pr-1 py-[2px] text-[10px] font-medium text-white shadow-sm dark:border-brand-400">
+                      <span>{selectedCount} selected</span>
+                      {onClearAreas && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onClearAreas();
+                          }}
+                          className="inline-flex items-center justify-center rounded-full p-0.5 transition-colors hover:bg-brand-600 dark:hover:bg-brand-400/30"
+                          aria-label="Clear all selections"
+                          title="Clear all selections"
+                        >
+                          <svg
+                            viewBox="0 0 16 16"
+                            fill="currentColor"
+                            className="h-3 w-3"
+                            aria-hidden="true"
+                          >
+                            <path d="M4.28 3.22a.75.75 0 00-1.06 1.06L6.94 8l-3.72 3.72a.75.75 0 101.06 1.06L8 9.06l3.72 3.72a.75.75 0 101.06-1.06L9.06 8l3.72-3.72a.75.75 0 00-1.06-1.06L8 6.94 4.28 3.22z" />
+                          </svg>
+                        </button>
+                      )}
+                    </span>
                   )}
-                </span>
-                {showSelectedAreasTooltip && selectedAreaEntries.length > 0 && (
+                  {showAddAreaTrigger && (
+                    <span
+                      className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                      onMouseEnter={openSelectedAreasAddInput}
+                    >
+                      {addAreaTriggerLabel}
+                    </span>
+                  )}
+                </div>
+                {showSelectedAreasTooltip && (selectedAreaEntries.length > 0 || showAddAreaTrigger) && (
                   <div
                     className="absolute left-0 top-6 z-20 min-w-44 max-w-80 rounded-lg border border-slate-300 bg-white p-2 shadow-lg dark:border-slate-700 dark:bg-slate-900"
                     onClick={(event) => event.stopPropagation()}
                   >
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      Selected Areas
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Selected Areas
+                      </div>
+                      {onAddAreas && addKind && (
+                        <button
+                          type="button"
+                          onClick={() => openSelectedAreasAddInput()}
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 bg-white/70 text-slate-500 transition-colors hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400"
+                          title={`Add ${addKind === "ZIP" ? "ZIPs" : "Counties"}`}
+                          aria-label={`Add ${addKind === "ZIP" ? "ZIPs" : "Counties"}`}
+                        >
+                          <svg
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                            className="h-3.5 w-3.5"
+                            aria-hidden="true"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M9 3.5a5.5 5.5 0 013.894 9.394l3.703 3.703a.75.75 0 11-1.06 1.06l-3.703-3.703A5.5 5.5 0 119 3.5zm0 1.5a4 4 0 100 8 4 4 0 000-8z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </button>
+                      )}
                     </div>
+                    {onAddAreas && addKind && addInputOpen && (
+                      <div className="mb-2">
+                        <input
+                          ref={addInputRef}
+                          type="text"
+                          value={addInputValue}
+                          onChange={(event) => setAddInputValue(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              submitAddAreas();
+                            } else if (event.key === "Escape") {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setAddInputOpen(false);
+                              setAddInputValue("");
+                            }
+                          }}
+                          placeholder={
+                            addKind === "ZIP"
+                              ? "Add ZIPs (comma/space)"
+                              : "Add counties (name or FIPS)"
+                          }
+                          className="h-7 w-full rounded border border-slate-300 bg-white px-2 text-[11px] text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
+                        />
+                        {!hasAnySelectedAreas && (
+                          <div className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">
+                            or shift+click areas on map
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-1.5">
                       {selectedAreaEntries.map((area) => (
                         <button
                           key={`${area.kind}:${area.id}`}
                           type="button"
-                          className="group inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/80 px-2 py-0.5 text-[10px] font-medium text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300"
+                          className={`group inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                            area.color
+                              ? "hover:brightness-95 dark:hover:brightness-110"
+                              : "border-slate-300 bg-white/80 text-slate-600 hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300"
+                          }`}
+                          style={
+                            area.color
+                              ? {
+                                  borderColor: area.color,
+                                  color: area.color,
+                                  backgroundColor: `${area.color}1a`,
+                                }
+                              : undefined
+                          }
                           onClick={(event) => {
                             event.stopPropagation();
                             onRemoveArea?.({ kind: area.kind, id: area.id });

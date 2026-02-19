@@ -29,6 +29,9 @@ import { db } from "../../lib/reactDb";
 // ============================================================================
 const ENABLE_DEMOGRAPHICS_SECTION = true;
 const CATEGORY_FILTER_LABEL_MAX_CHARS = 6;
+const LINE_COLORS_ZIP = ["#3a519d", "#784578", "#1e98ac"];
+const LINE_COLORS_COUNTY = ["#3a519d", "#784578", "#1e98ac"];
+const MAX_LINE_AREA_SERIES = 6;
 
 const abbreviateCategoryFilterLabel = (label: string): string => {
   const trimmed = label.trim();
@@ -108,6 +111,7 @@ interface SidebarProps {
   initialOrgPinsVisible?: boolean;
   onClearAreas?: () => void;
   onRemoveArea?: (area: { kind: SupportedAreaKind; id: string }) => void;
+  onAddAreas?: (kind: SupportedAreaKind, ids: string[]) => void;
   variant?: "desktop" | "mobile";
   showInsights?: boolean;
   showAdvanced?: boolean;
@@ -156,6 +160,8 @@ interface SidebarProps {
 
 type TabType = "stats" | "orgs";
 
+const areaKey = (kind: SupportedAreaKind, id: string): string => `${kind}:${id}`;
+
 export const Sidebar = ({
   organizations = { inSelection: [], all: [], totalSourceCount: 0 },
   searchOrganizations = [],
@@ -200,6 +206,7 @@ export const Sidebar = ({
   initialOrgPinsVisible = true,
   onClearAreas,
   onRemoveArea,
+  onAddAreas,
   variant = "desktop",
   showInsights = true,
   showAdvanced = false,
@@ -394,6 +401,60 @@ export const Sidebar = ({
   const selectedZips = selectedAreas?.ZIP ?? [];
   const selectedCounties = selectedAreas?.COUNTY ?? [];
   const totalSelectedCount = selectedZips.length + selectedCounties.length;
+  const selectedAreaEntriesForStatViz = useMemo(
+    () => [
+      ...selectedZips.map((id) => ({ kind: "ZIP" as const, id, key: areaKey("ZIP", id) })),
+      ...selectedCounties.map((id) => ({ kind: "COUNTY" as const, id, key: areaKey("COUNTY", id) })),
+    ],
+    [selectedCounties, selectedZips],
+  );
+  const activeStatVizStatId = useMemo(() => {
+    if (selectedStatId) return selectedStatId;
+    for (const stat of statsById.values()) {
+      if (stat.name.toLowerCase() === "population") return stat.id;
+    }
+    return null;
+  }, [selectedStatId, statsById]);
+  const hasMultiYearSeriesForActiveStat = useMemo(() => {
+    if (!activeStatVizStatId) return false;
+    const byKind = seriesByStatIdByKind.get(activeStatVizStatId);
+    if (!byKind || byKind.size === 0) return false;
+    for (const entries of byKind.values()) {
+      if (!entries || entries.length === 0) continue;
+      const uniqueDates = new Set<string>();
+      for (const entry of entries) {
+        if (!entry?.date) continue;
+        uniqueDates.add(entry.date);
+        if (uniqueDates.size > 1) return true;
+      }
+    }
+    return false;
+  }, [activeStatVizStatId, seriesByStatIdByKind]);
+  const isStatVizLineModeVisible = useMemo(
+    () =>
+      Boolean(
+        showAdvanced &&
+          selectedStatId &&
+          selectedAreaEntriesForStatViz.length > 0 &&
+          selectedAreaEntriesForStatViz.length < 4 &&
+          hasMultiYearSeriesForActiveStat,
+      ),
+    [
+      hasMultiYearSeriesForActiveStat,
+      selectedAreaEntriesForStatViz.length,
+      selectedStatId,
+      showAdvanced,
+    ],
+  );
+  const statVizLineColorByAreaKey = useMemo(() => {
+    if (!isStatVizLineModeVisible) return null;
+    const map = new Map<string, string>();
+    selectedAreaEntriesForStatViz.slice(0, MAX_LINE_AREA_SERIES).forEach((entry, index) => {
+      const palette = entry.kind === "ZIP" ? LINE_COLORS_ZIP : LINE_COLORS_COUNTY;
+      map.set(entry.key, palette[index % palette.length]);
+    });
+    return map;
+  }, [isStatVizLineModeVisible, selectedAreaEntriesForStatViz]);
 
   const {
     inSelection: rawInSelection = [],
@@ -1300,6 +1361,8 @@ export const Sidebar = ({
                 activeAreaKind={activeAreaKind}
                 areaNameLookup={areaNameLookup}
                 onRemoveArea={onRemoveArea}
+                onAddAreas={onAddAreas}
+                lineColorByAreaKey={statVizLineColorByAreaKey}
               />
             )}
             <StatList
