@@ -55,7 +55,11 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
     element.className = "absolute z-0 flex flex-col items-center";
     const baseTransform = "translate(-50%, -50%)";
     const isSelectedOrPinned = isSelected || isPinned;
-    const canShowStatStacks = shouldShowStackedStats;
+    const hasPrimaryData = Boolean(currentStatId && currentStatData && zip in currentStatData);
+    const hasSecondaryData = Boolean(currentSecondaryStatId && currentSecondaryData && (zip in currentSecondaryData));
+    // Hovered area always gets the full stat stack; selected/pinned areas stay zoom-gated.
+    const shouldShowPrimaryStat = hasPrimaryData && (isHovered || (shouldShowStackedStats && isSelectedOrPinned));
+    const shouldShowSecondary = hasSecondaryData && (isHovered || (shouldShowStackedStats && isSelectedOrPinned));
 
     const pillLabel = document.createElement("div");
     const hasStatOverlay = Boolean(currentStatId);
@@ -79,22 +83,10 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
     let pillClassName: string;
     let backgroundColor: string | null;
     let textColor: string | null;
-    let borderColorOverride: string | null = null;
-    if (hasStatOverlay && currentStatData && zip in currentStatData) {
-      const isHoverOnlyPrimaryValue = canShowStatStacks && isHovered && !isSelectedOrPinned;
-      const hasSecondaryStat = Boolean(currentSecondaryStatId);
-      // Selected areas keep the dark/light inverted label style; hover-only value pills use white/black.
-      backgroundColor = isHoverOnlyPrimaryValue
-        ? (currentTheme === "light" ? "#ffffff" : "#111827")
-        : (currentTheme === "light" ? "#111827" : "#ffffff");
-      textColor = isHoverOnlyPrimaryValue
-        ? (currentTheme === "light" ? "#111827" : "#ffffff")
-        : (currentTheme === "light" ? "#ffffff" : "#111827");
-      // When secondary stat is active, add a thin primary-color border on hover-only value pills.
-      borderColorOverride = isHoverOnlyPrimaryValue && hasSecondaryStat && primaryPalette ? primaryPalette.bg : null;
-      const borderClass = isHoverOnlyPrimaryValue
-        ? "border"
-        : (currentTheme === "light" ? "border border-slate-900/80" : "border border-slate-300/90");
+    if (hasPrimaryData) {
+      backgroundColor = currentTheme === "light" ? "#111827" : "#ffffff";
+      textColor = currentTheme === "light" ? "#ffffff" : "#111827";
+      const borderClass = currentTheme === "light" ? "border border-slate-900/80" : "border border-slate-300/90";
       pillClassName = `
         ${selectedHeight} px-2 rounded-full font-medium text-xs flex items-center justify-center
         shadow-lg backdrop-blur-sm ${borderClass}
@@ -113,26 +105,12 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
     pillLabel.className = pillClassName;
     if (backgroundColor) pillLabel.style.backgroundColor = backgroundColor as any;
     if (textColor) pillLabel.style.color = textColor as any;
-    if (borderColorOverride) pillLabel.style.borderColor = borderColorOverride;
 
     const displayLabel = idToLabel(zip);
 
-    if (hasStatOverlay && currentStatData && zip in currentStatData) {
-      const statValue = currentStatData[zip];
-      if (isSelectedOrPinned || !canShowStatStacks) {
-        pillLabel.textContent = displayLabel;
-        element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
-      } else {
-        pillLabel.textContent = formatStatValue(statValue, currentStatType);
-        element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
-      }
-    } else {
-      pillLabel.textContent = displayLabel;
-      element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
-    }
+    pillLabel.textContent = displayLabel;
+    element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
 
-    const hasPrimaryData = Boolean(currentStatId && currentStatData && zip in currentStatData);
-    const shouldShowPrimaryStat = canShowStatStacks && hasPrimaryData && (isSelected || isPinned);
     let primaryPill: HTMLDivElement | null = null;
     if (shouldShowPrimaryStat && primaryPalette) {
       primaryPill = document.createElement("div");
@@ -144,8 +122,6 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
       primaryPill.textContent = formatStatValue(primaryPalette.value, currentStatType);
     }
 
-    const hasSecondaryData = Boolean(currentSecondaryStatId && currentSecondaryData && (zip in currentSecondaryData));
-    const shouldShowSecondary = canShowStatStacks && hasSecondaryData && (isHovered || isSelected || isPinned);
     let secondaryPill: HTMLDivElement | null = null;
     if (shouldShowSecondary) {
       const secondaryVal = currentSecondaryData![zip];
