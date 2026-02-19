@@ -192,7 +192,7 @@ export const DemographicsBar = ({
 
   if (!snapshot) {
     return (
-      <div className="border-t-2 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
+      <div className="border-t-[0.5px] border-b-[0.5px] border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
         Loading demographics…
       </div>
     );
@@ -389,7 +389,7 @@ export const DemographicsBar = ({
   };
 
   return (
-    <div className="border-t-2 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
+    <div className="border-t-[0.5px] border-b-[0.5px] border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
       <div
         role="button"
         tabIndex={0}
@@ -446,7 +446,7 @@ export const DemographicsBar = ({
                   )}
                   {showAddAreaTrigger && (
                     <span
-                      className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                      className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[2px] text-[9px] font-normal uppercase tracking-wide text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
                       onMouseEnter={openSelectedAreasAddInput}
                     >
                       {addAreaTriggerLabel}

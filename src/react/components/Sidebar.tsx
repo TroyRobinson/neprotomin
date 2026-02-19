@@ -1271,16 +1271,16 @@ export const Sidebar = ({
                 <button
                   type="button"
                   onClick={() => setCategoryDropdownOpen((prev) => !prev)}
-                  className={`flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-semibold border transition ${
+                  className={`flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-normal border transition ${
                     categoryFilter
-                      ? "bg-brand-100 text-brand-700 border-brand-200 hover:bg-brand-200 dark:bg-brand-900/40 dark:text-brand-200 dark:border-brand-700/60 dark:hover:bg-brand-900/55"
-                      : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-700"
+                      ? "bg-brand-50 text-brand-700 border-brand-300 hover:bg-brand-100 dark:bg-brand-400/10 dark:text-brand-200 dark:border-brand-400/60 dark:hover:bg-brand-400/20"
+                      : "bg-slate-50 text-slate-500 border-slate-300 hover:bg-slate-100 dark:bg-slate-700 dark:text-slate-400 dark:border-slate-600 dark:hover:bg-slate-600"
                   }`}
                   title={`Change category filter (${selectedCategoryLabel})`}
                 >
                   <span className="whitespace-nowrap">{categoryToolbarLabel}</span>
                   <svg
-                    className={`h-3 w-3 ${categoryFilter ? "text-brand-700 dark:text-brand-200" : "text-slate-600 dark:text-slate-200"}`}
+                    className={`h-3 w-3 ${categoryFilter ? "text-brand-700 dark:text-brand-200" : "text-slate-500 dark:text-slate-400"}`}
                     viewBox="0 0 20 20"
                     fill="currentColor"
                   >

@@ -149,7 +149,7 @@ const ChildStatDropdown = ({
         buttonClassName={`!text-[9px] !font-normal !uppercase !tracking-wide ${
           hasSelectedChild
             ? "!border-brand-300 !bg-brand-50 !text-brand-700 dark:!border-brand-400/60 dark:!bg-brand-400/10 dark:!text-brand-200"
-            : "!text-slate-500 dark:!text-slate-400"
+            : "!bg-slate-50 !text-slate-500 dark:!text-slate-400"
         }`}
       />
     </div>
@@ -789,9 +789,9 @@ export const StatList = ({
           {/* Embedded StatViz chart - only shown in advanced mode; min-h reserves
              space so the stat list doesn't jump when the chart loads in */}
           {showAdvanced && (
-            <div className="min-h-[146px] flex items-center justify-center">
+            <div className="mt-2 min-h-[146px] flex items-center justify-center">
               {areaEntries.length === 0 ? (
-                <div className="text-[10px] text-slate-400 dark:text-slate-500 italic text-center">
+                <div className="flex h-[130px] w-full items-center justify-center rounded-2xl border border-dashed border-slate-300 text-[10px] text-slate-400 italic text-center dark:border-slate-600 dark:text-slate-500">
                   Shift+click an area(s) to see charts
                 </div>
               ) : (
@@ -982,7 +982,7 @@ const StatListItem = ({
                     toggle.isActive && toggle.isAvailable
                       ? "border-brand-300 bg-brand-50 text-brand-700 font-medium shadow-sm dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
                       : toggle.isAvailable
-                      ? "border-slate-300 bg-white text-slate-500 hover:bg-slate-100 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:border-slate-500"
+                      ? "border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:border-slate-500"
                       : "border-slate-200 bg-slate-100/50 text-slate-400 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-600"
                   }`}
                   title={toggle.isAvailable ? `Toggle ${toggle.attr} breakdown` : `${toggle.attr} not available for current selection`}
@@ -1014,7 +1014,7 @@ const StatListItem = ({
                   toggle.isActive && toggle.isAvailable
                     ? "border-brand-300 bg-brand-50 text-brand-700 font-medium shadow-sm dark:border-brand-400/60 dark:bg-brand-400/10 dark:text-brand-200"
                     : toggle.isAvailable
-                    ? "border-slate-300 bg-white text-slate-500 hover:bg-slate-100 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:border-slate-500"
+                    ? "border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:border-slate-500"
                     : "border-slate-200 bg-slate-100/50 text-slate-400 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-600"
                 }`}
                 title={toggle.isAvailable ? `Toggle ${toggle.attr} breakdown` : `${toggle.attr} not available for current selection`}
