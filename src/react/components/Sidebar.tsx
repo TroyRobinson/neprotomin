@@ -826,6 +826,76 @@ export const Sidebar = ({
   const categoryFilteredCount = categoryFilter
     ? inSelection.length + all.length + recent.length
     : visibleCount;
+  const hasActiveTimeFilter = Boolean(timeSelection);
+  const renderTimeFilterBanner = () => (
+    <div
+      className={`mx-4 mt-3 rounded-lg px-3 py-2 ${
+        hasActiveTimeFilter
+          ? "border border-brand-200 bg-brand-50 dark:border-brand-800 dark:bg-brand-900/20"
+          : "bg-slate-100/40 dark:bg-slate-800/20"
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={onChangeTimeFilter}
+          disabled={!onChangeTimeFilter}
+          className={`-mx-2 -my-1 flex flex-1 items-center gap-2 rounded-md px-2 py-1 text-left disabled:cursor-default ${
+            hasActiveTimeFilter
+              ? "hover:bg-brand-100 dark:hover:bg-brand-800/50 disabled:hover:bg-transparent"
+              : "hover:bg-slate-200 dark:hover:bg-slate-700/70 disabled:hover:bg-transparent"
+          }`}
+          title={hasActiveTimeFilter ? "Change time filter" : "Filter by hours of operation"}
+        >
+          <svg
+            className={`h-4 w-4 ${
+              hasActiveTimeFilter ? "text-brand-600 dark:text-brand-400" : "text-slate-400 dark:text-slate-500"
+            }`}
+            viewBox="0 0 24 24"
+            fill="none"
+          >
+            <path
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <span
+            className={`text-sm font-medium ${
+              hasActiveTimeFilter ? "text-brand-900 dark:text-brand-100" : "text-slate-500 dark:text-slate-400"
+            }`}
+          >
+            {hasActiveTimeFilter
+              ? `Only orgs open at ${formatTimeSelection(timeSelection ?? null)}`
+              : "Filter by hours of operation"}
+          </span>
+        </button>
+        {hasActiveTimeFilter && onClearTimeFilter ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClearTimeFilter();
+            }}
+            className="flex h-6 w-6 items-center justify-center rounded-md text-brand-600 hover:bg-brand-200 hover:text-brand-800 dark:text-brand-400 dark:hover:bg-brand-800 dark:hover:text-brand-200"
+            title="Clear time filter"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none">
+              <path
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
   useEffect(() => {
     if (activeTab !== "orgs") return;
     const node = orgsScrollRef.current;
@@ -1437,43 +1507,11 @@ export const Sidebar = ({
             onScroll={handleOrgsScroll}
             className="flex min-h-0 flex-1 flex-col overflow-y-auto"
           >
-            {/* Time Filter Indicator */}
-            {timeSelection && (
-              <div className="mx-4 mt-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 dark:border-brand-800 dark:bg-brand-900/20">
-                <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={onChangeTimeFilter}
-                    className="flex items-center gap-2 text-left hover:bg-brand-100 dark:hover:bg-brand-800/50 rounded-md px-2 py-1 -mx-2 -my-1 flex-1"
-                    title="Change time filter"
-                  >
-                    <svg className="h-4 w-4 text-brand-600 dark:text-brand-400" viewBox="0 0 24 24" fill="none">
-                      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-sm font-medium text-brand-900 dark:text-brand-100">
-                      Only orgs open at {formatTimeSelection(timeSelection)}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onClearTimeFilter?.();
-                    }}
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-brand-600 hover:bg-brand-200 hover:text-brand-800 dark:text-brand-400 dark:hover:bg-brand-800 dark:hover:text-brand-200"
-                    title="Clear time filter"
-                  >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none">
-                      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            )}
-            
             {categoryFilteredCount === 0 && !searchPinnedOrg ? (
               categoryFilter ? (
-                <div className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
+                <div className="pb-6">
+                  {renderTimeFilterBanner()}
+                  <div className="px-4 pt-3 text-sm text-slate-500 dark:text-slate-400">
                   <p className="mb-2">No organizations yet for this category.</p>
                   <button
                     type="button"
@@ -1482,27 +1520,34 @@ export const Sidebar = ({
                   >
                     Clear category
                   </button>
+                  </div>
                 </div>
               ) : (
-                <p className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
-                  No organizations found. Add one to get started.
-                </p>
+                <div className="pb-6">
+                  {renderTimeFilterBanner()}
+                  <p className="px-4 pt-3 text-sm text-slate-500 dark:text-slate-400">
+                    No organizations found. Add one to get started.
+                  </p>
+                </div>
               )
             ) : timeSelection &&
               visibleInSelection.length === 0 &&
               allSectionOrgs.length === 0 &&
               visibleRecent.length === 0 &&
               !searchPinnedOrg ? (
-              <p className="px-4 pt-3 pb-6 text-sm text-slate-500 dark:text-slate-400">
-                No organizations are open at the selected time.
-              </p>
+              <div className="pb-6">
+                {renderTimeFilterBanner()}
+                <p className="px-4 pt-3 text-sm text-slate-500 dark:text-slate-400">
+                  No organizations are open at the selected time.
+                </p>
+              </div>
             ) : (
                 <div className="flex-1">
 
                 {/* Search-selected org pinned to top for stronger orientation after selection. */}
                 {showSelectedSection && searchPinnedOrg && (
                   <>
-                    <h3 className="px-8 pt-1 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    <h3 className="px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                       SELECTED
                     </h3>
                     <ul className="space-y-2 px-4">
@@ -1564,9 +1609,7 @@ export const Sidebar = ({
                 {/* In Selection Section */}
                 {showInSelectionSection && (
                   <>
-                    <h3
-                      className={`px-8 ${inSelectionLabel === "SELECTED" ? "pt-1" : "pt-3"} pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500`}
-                    >
+                    <h3 className="px-8 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                       {inSelectionLabel}
                     </h3>
                     <ul className="space-y-2 px-4">
@@ -1594,6 +1637,8 @@ export const Sidebar = ({
                     </ul>
                   </>
                 )}
+
+                {renderTimeFilterBanner()}
 
                 {/* All Section */}
                 {showAllSectionHeading && (
@@ -1952,7 +1997,7 @@ const OrganizationListItem = ({
   const selectedClass =
     selectionStyleVariant === "searchResults"
       ? "border-0 bg-brand-50/70 dark:bg-slate-800/60"
-      : "border border-brand-300 ring-2 ring-brand-200/80 bg-brand-50/70 dark:bg-slate-800";
+      : "border border-brand-200 bg-brand-50/70 dark:border-brand-500/60 dark:bg-slate-800";
   const cardStateClass = isSelected
     ? selectedClass
     : isHighlighted

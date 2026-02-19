@@ -618,8 +618,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     const showOrganizations = orgsChipVisible && !searchExpanded;
     orgsChipBtn.style.display = showOrganizations ? "" : "none";
 
-    const showTime = orgsChipVisible && timeFilterAvailable && !searchExpanded;
-    timeOpenChipBtn.style.display = showTime ? "" : "none";
+    // Desktop UX: keep the map chip row cleaner by hiding the time chip entirely.
+    timeOpenChipBtn.style.display = "none";
     const showAreas = !searchExpanded;
     areasChipContainer.style.display = showAreas ? "" : "none";
     if (!showAreas) closeAreasMenu();
