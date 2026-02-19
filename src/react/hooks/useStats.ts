@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { track } from "@vercel/analytics";
 import { db } from "../../lib/reactDb";
 import { useAuthSession } from "./useAuthSession";
 import {
@@ -27,6 +28,10 @@ type SupportedAreaKind = Extract<AreaKind, "ZIP" | "COUNTY">;
 const STAT_DATA_CACHE_TTL_MS = PERSISTED_STAT_CACHE_TTL_MS;
 const STAT_DATA_DERIVE_DEBOUNCE_MS = 250;
 const NAME_FOR_SORT = (stat: Stat) => (stat.label || stat.name || "").toLowerCase();
+const STAT_LOADING_DEBUG_URL_PARAM = "statsDebug";
+const STAT_LOADING_DEBUG_ANALYTICS_URL_PARAM = "statsDebugAnalytics";
+const STAT_LOADING_DEBUG_LOCAL_STORAGE_KEY = "ne.statsLoadingDebug";
+const STAT_LOADING_DEBUG_ANALYTICS_LOCAL_STORAGE_KEY = "ne.statsLoadingDebugAnalytics";
 
 export interface SeriesEntry {
   date: string;
@@ -49,6 +54,106 @@ const SUPPORTED_AREA_KINDS: SupportedAreaKind[] = ["ZIP", "COUNTY"];
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
+
+const parseBooleanFlag = (value: string | null | undefined): boolean | null => {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on", "debug", "verbose"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return null;
+};
+
+const readBooleanFlagFromStorage = (key: string): boolean | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    return parseBooleanFlag(window.localStorage.getItem(key));
+  } catch {
+    return null;
+  }
+};
+
+const resolveBooleanFlag = ({
+  urlValue,
+  storageValue,
+  fallback,
+}: {
+  urlValue: boolean | null;
+  storageValue: boolean | null;
+  fallback: boolean;
+}): boolean => {
+  if (urlValue !== null) return urlValue;
+  if (storageValue !== null) return storageValue;
+  return fallback;
+};
+
+const previewIds = (ids: string[], max = 6): string[] => ids.slice(0, max);
+
+type SelectedAreaResolution = {
+  selectedStatId: string;
+  total: number;
+  resolved: number;
+  unresolved: number;
+  selectedZipCount: number;
+  selectedCountyCount: number;
+};
+
+const computeSelectedAreaResolution = ({
+  rows,
+  selectedStatId,
+  selectedZipIds,
+  selectedCountyIds,
+}: {
+  rows: any[];
+  selectedStatId: string | null;
+  selectedZipIds: string[];
+  selectedCountyIds: string[];
+}): SelectedAreaResolution | null => {
+  if (!selectedStatId) return null;
+  const normalizedZips = selectedZipIds.filter((id) => typeof id === "string" && id.length > 0);
+  const normalizedCounties = selectedCountyIds.filter((id) => typeof id === "string" && id.length > 0);
+  const total = normalizedZips.length + normalizedCounties.length;
+  if (total === 0) return null;
+
+  const zipTargets = new Set(normalizedZips);
+  const countyTargets = new Set(normalizedCounties);
+  const resolvedAreaKeys = new Set<string>();
+
+  for (const row of rows) {
+    if (typeof row?.statId !== "string" || row.statId !== selectedStatId) continue;
+    const boundaryType = typeof row?.boundaryType === "string" ? row.boundaryType.toUpperCase() : "";
+    const targets = boundaryType === "ZIP" ? zipTargets : boundaryType === "COUNTY" ? countyTargets : null;
+    if (!targets || targets.size === 0) continue;
+    const data = row?.data;
+    if (!data || typeof data !== "object") continue;
+    const record = data as Record<string, unknown>;
+    for (const areaId of targets) {
+      if (isFiniteNumber(record[areaId])) {
+        resolvedAreaKeys.add(`${boundaryType}:${areaId}`);
+      }
+    }
+  }
+
+  const resolved = resolvedAreaKeys.size;
+  return {
+    selectedStatId,
+    total,
+    resolved,
+    unresolved: Math.max(0, total - resolved),
+    selectedZipCount: normalizedZips.length,
+    selectedCountyCount: normalizedCounties.length,
+  };
+};
+
+type BatchRequestMeta = {
+  startedAtMs: number;
+  batchIds: string[];
+  priorityIds: string[];
+  queryContextKey: string;
+  loadedScopeKey: string;
+  selectedStatId: string | null;
+  selectedZipIds: string[];
+  selectedCountyIds: string[];
+};
 
 const getContextSet = (
   map: Map<string, Set<string>>,
@@ -184,6 +289,9 @@ interface UseStatsOptions {
   limitStatDataToScopes?: boolean;
   trickleDelayMs?: number;
   statDataBoundaryTypes?: SupportedAreaKind[];
+  selectedStatId?: string | null;
+  selectedZipIds?: string[];
+  selectedCountyIds?: string[];
   viewerId?: string | null;
   isAdmin?: boolean;
 }
@@ -204,6 +312,9 @@ export const useStats = ({
   trickleDelayMs = 0,
   limitStatDataToScopes = false,
   statDataBoundaryTypes,
+  selectedStatId = null,
+  selectedZipIds = [],
+  selectedCountyIds = [],
   viewerId = null,
   isAdmin = false,
 }: UseStatsOptions = {}) => {
@@ -211,6 +322,96 @@ export const useStats = ({
   const queryEnabled = authReady;
   const statMapsActive = statDataEnabled && statMapsEnabled;
   const timeSeriesEnabled = statMapsActive && enableTimeSeries;
+  // Verbose stat-loading diagnostics can be toggled by URL params
+  // (`statsDebug`, `statsDebugAnalytics`) or matching localStorage keys.
+  const statLoadingObservability = useMemo(() => {
+    const fallbackVerbose = isDevEnv();
+    if (typeof window === "undefined") {
+      return {
+        verboseEnabled: fallbackVerbose,
+        analyticsEnabled: false,
+      };
+    }
+    const params = new URLSearchParams(window.location.search);
+    const verboseUrl = parseBooleanFlag(params.get(STAT_LOADING_DEBUG_URL_PARAM));
+    const analyticsUrl = parseBooleanFlag(params.get(STAT_LOADING_DEBUG_ANALYTICS_URL_PARAM));
+    const verboseStorage = readBooleanFlagFromStorage(STAT_LOADING_DEBUG_LOCAL_STORAGE_KEY);
+    const analyticsStorage = readBooleanFlagFromStorage(
+      STAT_LOADING_DEBUG_ANALYTICS_LOCAL_STORAGE_KEY,
+    );
+    const verboseEnabled = resolveBooleanFlag({
+      urlValue: verboseUrl,
+      storageValue: verboseStorage,
+      fallback: fallbackVerbose,
+    });
+    const analyticsEnabled = resolveBooleanFlag({
+      urlValue: analyticsUrl,
+      storageValue: analyticsStorage,
+      fallback: false,
+    });
+    return {
+      verboseEnabled,
+      analyticsEnabled,
+      // When explicitly enabled by URL/localStorage, surface logs at info level
+      // so they remain visible in stricter console filters (Electron/DevTools).
+      explicitVerboseEnabled: verboseUrl === true || verboseStorage === true,
+      explicitAnalyticsEnabled: analyticsUrl === true || analyticsStorage === true,
+      verboseSource:
+        verboseUrl !== null ? "url" : verboseStorage !== null ? "localStorage" : "dev-default",
+      analyticsSource:
+        analyticsUrl !== null
+          ? "url"
+          : analyticsStorage !== null
+            ? "localStorage"
+            : "disabled-default",
+    };
+  }, []);
+
+  const logStatLoadingDiagnostics = useCallback(
+    (phase: string, payload: Record<string, unknown>) => {
+      if (!statLoadingObservability.verboseEnabled) return;
+      const message = `[useStats] stat loading ${phase}`;
+      if (statLoadingObservability.explicitVerboseEnabled) {
+        console.info(message, payload);
+        return;
+      }
+      console.debug(message, payload);
+    },
+    [statLoadingObservability.explicitVerboseEnabled, statLoadingObservability.verboseEnabled],
+  );
+
+  const trackStatLoadingDiagnostics = useCallback(
+    (eventName: string, payload: Record<string, string | number | boolean>) => {
+      if (!statLoadingObservability.analyticsEnabled) return;
+      try {
+        track(eventName, payload);
+      } catch {
+        // Telemetry is best-effort and should not affect stat loading.
+      }
+    },
+    [statLoadingObservability.analyticsEnabled],
+  );
+
+  useEffect(() => {
+    if (!statLoadingObservability.verboseEnabled) return;
+    const payload = {
+      verboseEnabled: statLoadingObservability.verboseEnabled,
+      analyticsEnabled: statLoadingObservability.analyticsEnabled,
+      verboseSource: statLoadingObservability.verboseSource,
+      analyticsSource: statLoadingObservability.analyticsSource,
+    };
+    if (statLoadingObservability.explicitVerboseEnabled) {
+      console.info("[useStats] stat loading diagnostics enabled", payload);
+      return;
+    }
+    console.debug("[useStats] stat loading diagnostics enabled", payload);
+  }, [
+    statLoadingObservability.analyticsEnabled,
+    statLoadingObservability.analyticsSource,
+    statLoadingObservability.explicitVerboseEnabled,
+    statLoadingObservability.verboseEnabled,
+    statLoadingObservability.verboseSource,
+  ]);
 
   // Persisted summaries: hydrate immediately from IndexedDB so sidebar values render on refresh/new tab.
   const persistedSummaryRowsRef = useRef<any[]>([]);
@@ -699,13 +900,68 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
   const lastRequestedBatchIdsRef = useRef<string[]>([]);
   const lastRequestedContextKeyRef = useRef<string>("");
   const lastRequestedLoadedScopeKeyRef = useRef<string>("");
+  const batchRequestMetaByKeyRef = useRef<Map<string, BatchRequestMeta>>(new Map());
   useEffect(() => {
     if (!queryEnabled || !canQueryStatData || batchIds.length === 0) return;
-    lastRequestedBatchKeyRef.current = `${batchGeneration}::${queryContextKey}::${batchIds.join("|")}`;
+    const batchKey = `${batchGeneration}::${queryContextKey}::${batchIds.join("|")}`;
+    lastRequestedBatchKeyRef.current = batchKey;
     lastRequestedBatchIdsRef.current = batchIds;
     lastRequestedContextKeyRef.current = queryContextKey;
     lastRequestedLoadedScopeKeyRef.current = loadedScopeKey;
-  }, [batchGeneration, batchIds, canQueryStatData, queryEnabled, queryContextKey, loadedScopeKey]);
+    if (batchRequestMetaByKeyRef.current.has(batchKey)) return;
+
+    const requestMeta: BatchRequestMeta = {
+      startedAtMs: Date.now(),
+      batchIds: [...batchIds],
+      priorityIds: [...priorityIds],
+      queryContextKey,
+      loadedScopeKey,
+      selectedStatId,
+      selectedZipIds: [...selectedZipIds],
+      selectedCountyIds: [...selectedCountyIds],
+    };
+    batchRequestMetaByKeyRef.current.set(batchKey, requestMeta);
+    if (batchRequestMetaByKeyRef.current.size > 30) {
+      const oldestKey = batchRequestMetaByKeyRef.current.keys().next().value;
+      if (typeof oldestKey === "string") batchRequestMetaByKeyRef.current.delete(oldestKey);
+    }
+
+    logStatLoadingDiagnostics("batch:start", {
+      batchGeneration,
+      queryContextKey,
+      loadedScopeKey,
+      requestedStatCount: batchIds.length,
+      requestedStatPreview: previewIds(batchIds),
+      priorityStatCount: priorityIds.length,
+      priorityStatPreview: previewIds(priorityIds),
+      selectedStatId,
+      selectedZipCount: selectedZipIds.length,
+      selectedCountyCount: selectedCountyIds.length,
+    });
+
+    trackStatLoadingDiagnostics("stat_data_batch_start", {
+      requestedStatCount: batchIds.length,
+      priorityStatCount: priorityIds.length,
+      selectedZipCount: selectedZipIds.length,
+      selectedCountyCount: selectedCountyIds.length,
+      hasSelectedStat: Boolean(selectedStatId),
+      modeSeries: timeSeriesEnabled,
+    });
+  }, [
+    batchGeneration,
+    batchIds,
+    canQueryStatData,
+    queryEnabled,
+    queryContextKey,
+    loadedScopeKey,
+    priorityIds,
+    selectedStatId,
+    selectedZipIds,
+    selectedCountyIds,
+    logStatLoadingDiagnostics,
+    trackStatLoadingDiagnostics,
+    timeSeriesEnabled,
+  ]);
 
   const processedBatchKeyRef = useRef<string>("");
   useEffect(() => {
@@ -715,6 +971,11 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     if (!batchKey) return;
     if (processedBatchKeyRef.current === batchKey) return;
     processedBatchKeyRef.current = batchKey;
+
+    const requestMeta = batchRequestMetaByKeyRef.current.get(batchKey);
+    if (requestMeta) {
+      batchRequestMetaByKeyRef.current.delete(batchKey);
+    }
 
     const rows = Array.isArray(statDataResp?.statData) ? (statDataResp.statData as any[]) : [];
     const requested = lastRequestedBatchIdsRef.current;
@@ -746,6 +1007,58 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     }
 
     const emptyRequestedIds = requested.filter((id) => !completedIds.has(id));
+    const selectedAreaResolution = computeSelectedAreaResolution({
+      rows,
+      selectedStatId: requestMeta?.selectedStatId ?? selectedStatId,
+      selectedZipIds: requestMeta?.selectedZipIds ?? selectedZipIds,
+      selectedCountyIds: requestMeta?.selectedCountyIds ?? selectedCountyIds,
+    });
+    const batchDurationMs = Math.max(
+      0,
+      now - (requestMeta?.startedAtMs ?? now),
+    );
+
+    const priorityIdsForBatch = requestMeta?.priorityIds ?? priorityIds;
+    const priorityCompletedCount = priorityIdsForBatch.filter((id) => completedIds.has(id)).length;
+    const priorityNoDataCount = priorityIdsForBatch.filter((id) => emptyRequestedIds.includes(id)).length;
+
+    logStatLoadingDiagnostics("batch:end", {
+      durationMs: batchDurationMs,
+      queryContextKey: requestMeta?.queryContextKey ?? contextKey,
+      loadedScopeKey: requestMeta?.loadedScopeKey ?? loadedScopeKeyForRequest,
+      requestedStatCount: requested.length,
+      requestedStatPreview: previewIds(requested),
+      rowsReturned: rows.length,
+      completedStatCount: completedIds.size,
+      noDataStatCount: emptyRequestedIds.length,
+      priorityStatCount: priorityIdsForBatch.length,
+      priorityCompletedCount,
+      priorityNoDataCount,
+      selectedStatId: selectedAreaResolution?.selectedStatId ?? null,
+      selectedAreaTotal: selectedAreaResolution?.total ?? 0,
+      selectedAreaResolved: selectedAreaResolution?.resolved ?? 0,
+      selectedAreaUnresolved: selectedAreaResolution?.unresolved ?? 0,
+      selectedZipCount: selectedAreaResolution?.selectedZipCount ?? 0,
+      selectedCountyCount: selectedAreaResolution?.selectedCountyCount ?? 0,
+      statDataError: statDataError ? (statDataError as any)?.message ?? "unknown" : null,
+    });
+
+    trackStatLoadingDiagnostics("stat_data_batch_end", {
+      durationMs: batchDurationMs,
+      requestedStatCount: requested.length,
+      rowsReturned: rows.length,
+      completedStatCount: completedIds.size,
+      noDataStatCount: emptyRequestedIds.length,
+      priorityStatCount: priorityIdsForBatch.length,
+      priorityCompletedCount,
+      priorityNoDataCount,
+      selectedAreaTotal: selectedAreaResolution?.total ?? 0,
+      selectedAreaResolved: selectedAreaResolution?.resolved ?? 0,
+      selectedAreaUnresolved: selectedAreaResolution?.unresolved ?? 0,
+      hasError: Boolean(statDataError),
+      modeSeries: timeSeriesEnabled,
+    });
+
     if (completedIds.size > 0) {
       setCompletedStatIdsByContext((prev) => addIdsToContext(prev, contextKey, completedIds));
     }
@@ -801,6 +1114,13 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
     trickleDelayMs,
     queryContextKey,
     loadedScopeKey,
+    selectedStatId,
+    selectedZipIds,
+    selectedCountyIds,
+    logStatLoadingDiagnostics,
+    trackStatLoadingDiagnostics,
+    statDataError,
+    timeSeriesEnabled,
   ]);
 
   const cachedStatDataRows = useMemo(
@@ -852,8 +1172,24 @@ const getEffectiveStatType = (statId: string, declaredType: string, statsById: M
       setStatDataCacheVersion((v) => v + 1);
       setStatDataRefreshRequested(true);
       setBatchGeneration((prev) => prev + 1);
+      logStatLoadingDiagnostics("retry", {
+        statId,
+        queryContextKey,
+        loadedScopeKey,
+      });
+      trackStatLoadingDiagnostics("stat_data_retry", {
+        hasSelectedStat: Boolean(selectedStatId),
+        retryIsSelectedStat: selectedStatId === statId,
+      });
     },
-    [statDataEnabled],
+    [
+      statDataEnabled,
+      logStatLoadingDiagnostics,
+      trackStatLoadingDiagnostics,
+      queryContextKey,
+      loadedScopeKey,
+      selectedStatId,
+    ],
   );
 
   const summaryParentAreas = useMemo(() => {

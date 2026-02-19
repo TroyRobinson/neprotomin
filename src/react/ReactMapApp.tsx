@@ -1243,6 +1243,9 @@ export const ReactMapApp = () => {
     maxCachedStatIds: statDataCacheLimit,
     limitStatDataToScopes,
     statDataBoundaryTypes: limitedStatBoundaryTypes,
+    selectedStatId,
+    selectedZipIds: selectedZips,
+    selectedCountyIds: selectedCounties,
     viewerId: user?.id ?? null,
     isAdmin,
   });

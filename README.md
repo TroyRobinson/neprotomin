@@ -33,3 +33,4 @@ To pull schema changes:
 ## Dev note
 
 - During hot reloads/tab lifecycle events you may see IndexedDB `InvalidStateError` messages about a closing connection (InstantDB local cache). These are expected and are filtered in `src/react/main.tsx`.
+- Stat-loading diagnostics: add `?statsDebug=1` (optional `&statsDebugAnalytics=1`) to the app URL.

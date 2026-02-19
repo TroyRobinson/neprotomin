@@ -90,6 +90,8 @@ Remember: Large data files are now managed outside Git. See `data/raw/README.md`
 
 - Dev ergonomics
   - Node: Vite expects >=20.19 or >=22.12. Use `npm run dev` for local, `npm run build` for CI checks.
+  - Stat loading diagnostics (Phase 4): use `?statsDebug=1` to enable verbose `useStats` batch timing logs (`batch:start`, `batch:end`, `retry`) with selected-area resolved/unresolved counts.
+  - Optional telemetry for diagnostics: add `?statsDebugAnalytics=1` (or set localStorage keys `ne.statsLoadingDebug`, `ne.statsLoadingDebugAnalytics` to `1`).
 
 
 --
