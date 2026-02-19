@@ -242,12 +242,14 @@ export const DemographicsBar = ({ snapshot, expanded, onExpandedChange, onClearA
           </div>
         </div>
         <span
-          className={`mt-[2px] text-base text-slate-400 transition-transform dark:text-slate-500 ${
+          className={`mt-[2px] flex-shrink-0 text-slate-400 transition-transform dark:text-slate-500 ${
             isExpanded ? "rotate-180" : ""
           }`}
           aria-hidden="true"
         >
-          ▾
+          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-4 w-4">
+            <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
+          </svg>
         </span>
       </div>
 
