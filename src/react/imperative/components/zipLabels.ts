@@ -150,12 +150,9 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
     const point = map.project([lng, lat]);
     element.style.left = `${point.x}px`;
     element.style.top = `${point.y}px`;
-    const stackCount = (secondaryPill ? 1 : 0) + (primaryPill ? 1 : 0);
-    if (stackCount > 0) {
-      element.style.transform = `${baseTransform} translateY(${stackCount * 6}px)`;
-    } else {
-      element.style.transform = baseTransform;
-    }
+    // Keep the entire pill stack centered on the centroid.
+    // `translate(-50%, -50%)` already centers the rendered stack box.
+    element.style.transform = baseTransform;
     map.getContainer().appendChild(element);
     return element;
   };
