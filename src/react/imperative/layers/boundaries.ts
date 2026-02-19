@@ -215,7 +215,7 @@ export const ensureBoundaryLayers = (
       layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
       paint: {
         "circle-radius": 5,
-        "circle-color": "#0f766e",
+        "circle-color": "#1e98ac",
         "circle-opacity": 0,
         "circle-stroke-color": "#ffffff",
         "circle-stroke-width": 1,
@@ -236,7 +236,7 @@ export const ensureBoundaryLayers = (
       layout: { visibility: boundaryMode === "zips" ? "visible" : "none" },
       paint: {
         "circle-radius": 7,
-        "circle-color": "#0f766e",
+        "circle-color": "#1e98ac",
         "circle-opacity": 0,
         "circle-stroke-color": "#ffffff",
         "circle-stroke-width": 2,
@@ -267,7 +267,7 @@ export const ensureBoundaryLayers = (
       layout: { visibility: boundaryMode === "counties" ? "visible" : "none" },
       paint: {
         "circle-radius": 6.5,
-        "circle-color": "#0f766e",
+        "circle-color": "#1e98ac",
         "circle-opacity": 0,
         "circle-stroke-color": "#ffffff",
         "circle-stroke-width": 1,
@@ -288,7 +288,7 @@ export const ensureBoundaryLayers = (
       layout: { visibility: boundaryMode === "counties" ? "visible" : "none" },
       paint: {
         "circle-radius": 8.5,
-        "circle-color": "#0f766e",
+        "circle-color": "#1e98ac",
         "circle-opacity": 0,
         "circle-stroke-color": "#ffffff",
         "circle-stroke-width": 2,

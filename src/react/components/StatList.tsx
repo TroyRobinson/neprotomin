@@ -940,10 +940,10 @@ const StatListItem = ({
   const className = isHeader
     ? "group relative flex items-center justify-between px-0 pt-2.5 pb-0 transition-colors cursor-pointer select-none"
     : isSelected
-    ? `${common} border-slate-300 bg-brand-50 dark:border-slate-600 dark:bg-brand-400/15`
+    ? `${common} border-brand-200 bg-brand-50 dark:border-brand-400/40 dark:bg-brand-400/15`
     : isSecondary
-    ? `${common} border-2 border-teal-500 bg-teal-50 dark:border-teal-400 dark:bg-teal-400/15`
-    : `${common} border-slate-200/70 bg-white/70 hover:border-brand-200 hover:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:hover:border-slate-600 dark:hover:bg-slate-800/70`;
+    ? `${common} border border-[#b8d9e2] bg-[#edf7fb] dark:border-[#5d8993] dark:bg-[#1e98ac]/20`
+    : `${common} border-slate-200/70 bg-white/70 hover:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:hover:bg-slate-800/70`;
 
   const hasData = typeof hasDataOverride === "boolean" ? hasDataOverride : row.hasData;
 

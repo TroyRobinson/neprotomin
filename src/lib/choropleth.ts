@@ -8,14 +8,15 @@ export const CHOROPLETH_COLORS = [
   "#737de6",
 ];
 
+// Secondary stat sequential scale: light -> dark from #bae5f2 to #1e98ac
 export const TEAL_COLORS = [
-  "#f9fffd",
-  "#e9fffb",
-  "#c9fbf2",
-  "#99f0e3",
-  "#63dfd0",
-  "#24c7b8",
-  "#0f766e",
+  "#bae5f2",
+  "#a0d8e6",
+  "#86cbdb",
+  "#6cbfcf",
+  "#52b2c3",
+  "#38a5b8",
+  "#1e98ac",
 ];
 
 // Diverging scale for percent change: plum (negative) -> neutral -> indigo (positive)

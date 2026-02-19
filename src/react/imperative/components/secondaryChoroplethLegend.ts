@@ -31,9 +31,9 @@ export const createSecondaryChoroplethLegend = (isMobile?: boolean): SecondaryCh
 
   const pill = document.createElement("div");
   pill.className = [
-    "pointer-events-auto inline-flex items-center gap-3 rounded-lg border px-3 py-1.5 text-xs font-medium cursor-pointer",
-    "bg-white/90 text-slate-600 border-teal-300 shadow-sm backdrop-blur-sm",
-    "dark:bg-slate-900/80 dark:text-slate-300 dark:border-teal-700",
+    "pointer-events-auto inline-flex items-center gap-3 rounded-lg px-3 py-1.5 text-xs font-medium cursor-pointer",
+    "bg-[#bae5f2]/78 text-slate-700 shadow-sm backdrop-blur-sm",
+    "dark:bg-[#1e98ac]/24 dark:text-slate-200",
     "sm:py-1.5 py-2.5", // More vertical padding on mobile
   ].join(" ");
 
@@ -62,7 +62,7 @@ export const createSecondaryChoroplethLegend = (isMobile?: boolean): SecondaryCh
   maxGroup.appendChild(maxLabel);
 
   const spinnerWrap = document.createElement("span");
-  spinnerWrap.className = "ml-0.5 hidden items-center justify-center text-teal-600 dark:text-teal-400";
+  spinnerWrap.className = "ml-0.5 hidden items-center justify-center text-[#1e98ac] dark:text-[#a6ddea]";
   spinnerWrap.setAttribute("aria-hidden", "true");
   const spinner = document.createElement("span");
   spinner.className = "h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent";

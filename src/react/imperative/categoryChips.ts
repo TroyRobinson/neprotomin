@@ -66,9 +66,12 @@ const MOBILE_STAT_CHIP_SELECTED_CLASSES =
 const MOBILE_STAT_CHIP_BASE_CLASSES =
   "inline-flex items-center gap-1.5 rounded-full border bg-white/90 text-brand-700 shadow-sm transition-all duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400";
 
-// Teal styling for secondary stat chip to match map overlay
+const SECONDARY_STAT_CHIP_BASE_CLASSES =
+  "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-300 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400";
+
+// Secondary-stat chip styling aligned with the secondary map palette
 const SECONDARY_STAT_CHIP_CLASSES =
-  "border-transparent bg-teal-100 text-teal-700 shadow-floating hover:bg-teal-100 dark:bg-teal-400/20 dark:text-teal-200";
+  "bg-[#e9f5fa] text-[#2b8698] hover:bg-[#f1f9fc] dark:bg-[#1e98ac]/24 dark:text-[#d8eef3]";
 
 const CLOSE_ICON = `
   <svg viewBox="0 0 12 12" aria-hidden="true" class="h-2.5 w-2.5">
@@ -998,7 +1001,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   const buildSecondaryStatChip = (stat: Stat) => {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = `${CATEGORY_CHIP_CLASSES} ${SECONDARY_STAT_CHIP_CLASSES}`;
+    btn.className = `${SECONDARY_STAT_CHIP_BASE_CLASSES} ${SECONDARY_STAT_CHIP_CLASSES}`;
     btn.setAttribute("data-secondary-stat-id", stat.id);
     const displayName = stat.label || stat.name;
     btn.setAttribute("title", `Secondary: ${displayName}`);
