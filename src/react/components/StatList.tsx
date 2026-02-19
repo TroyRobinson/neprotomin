@@ -780,31 +780,34 @@ export const StatList = ({
             </div>
           )}
 
-          {/* Embedded StatViz chart - only shown in advanced mode */}
+          {/* Embedded StatViz chart - only shown in advanced mode; min-h reserves
+             space so the stat list doesn't jump when the chart loads in */}
           {showAdvanced && (
-            areaEntries.length === 0 ? (
-              <div className="mt-3 mb-1 text-[10px] text-slate-400 dark:text-slate-500 italic text-center">
-                Shift+click an area(s) to see charts
-              </div>
-            ) : (
-              <StatViz
-                statsById={statsById}
-                seriesByStatIdByKind={seriesByStatIdByKind}
-                statDataById={statDataById}
-                selectedAreas={selectedAreas}
-                pinnedAreas={pinnedAreas}
-                selectedStatId={selectedStatId}
-                hoveredArea={hoveredArea}
-                onHoverArea={onHoverArea}
-                areaNameLookup={areaNameLookup}
-                activeAreaKind={activeAreaKind}
-                getZipParentCounty={getZipParentCounty}
-                zipScopeCountyName={zipScopeDisplayName}
-                stateAvg={selectedStatContextAvg?.value ?? null}
-                selectedStatLoading={selectedStatLoading}
-                embedded={true}
-              />
-            )
+            <div className="min-h-[124px]">
+              {areaEntries.length === 0 ? (
+                <div className="mt-3 mb-1 text-[10px] text-slate-400 dark:text-slate-500 italic text-center">
+                  Shift+click an area(s) to see charts
+                </div>
+              ) : (
+                <StatViz
+                  statsById={statsById}
+                  seriesByStatIdByKind={seriesByStatIdByKind}
+                  statDataById={statDataById}
+                  selectedAreas={selectedAreas}
+                  pinnedAreas={pinnedAreas}
+                  selectedStatId={selectedStatId}
+                  hoveredArea={hoveredArea}
+                  onHoverArea={onHoverArea}
+                  areaNameLookup={areaNameLookup}
+                  activeAreaKind={activeAreaKind}
+                  getZipParentCounty={getZipParentCounty}
+                  zipScopeCountyName={zipScopeDisplayName}
+                  stateAvg={selectedStatContextAvg?.value ?? null}
+                  selectedStatLoading={selectedStatLoading}
+                  embedded={true}
+                />
+              )}
+            </div>
           )}
         </div>
       )}
