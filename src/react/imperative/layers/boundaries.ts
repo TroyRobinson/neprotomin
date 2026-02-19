@@ -408,6 +408,23 @@ export const ensureBoundaryLayers = (
       paint: {},
     });
   }
+
+  // Keep secondary overlays above choropleth fills after initial load/style resets.
+  const placeSecondaryOverlayPair = (hoverLayerId: string, layerId: string) => {
+    if (!map.getLayer(layerId)) return;
+    try {
+      const before = map.getLayer(LAYER_CLUSTERS_ID) ? LAYER_CLUSTERS_ID : undefined;
+      if (before) map.moveLayer(layerId, before);
+      else map.moveLayer(layerId);
+    } catch {}
+    if (!map.getLayer(hoverLayerId)) return;
+    try {
+      map.moveLayer(hoverLayerId, layerId);
+    } catch {}
+  };
+
+  placeSecondaryOverlayPair(SECONDARY_STAT_HOVER_LAYER_ID, SECONDARY_STAT_LAYER_ID);
+  placeSecondaryOverlayPair(COUNTY_SECONDARY_HOVER_LAYER_ID, COUNTY_SECONDARY_LAYER_ID);
 };
 
 export const updateBoundaryPaint = (
