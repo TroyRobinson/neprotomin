@@ -107,6 +107,7 @@ interface SidebarProps {
   onHoverArea?: (area: AreaId | null) => void;
   onStatSelect?: (statId: string | null, meta?: { shiftKey?: boolean; clear?: boolean }) => void;
   onRetryStatData?: (statId: string) => void;
+  onExport?: () => void;
   onOrgPinsVisibleChange?: (visible: boolean) => void;
   initialOrgPinsVisible?: boolean;
   onClearAreas?: () => void;
@@ -202,6 +203,7 @@ export const Sidebar = ({
   onHoverArea,
   onStatSelect,
   onRetryStatData,
+  onExport,
   onOrgPinsVisibleChange,
   initialOrgPinsVisible = true,
   onClearAreas,
@@ -1356,6 +1358,7 @@ export const Sidebar = ({
                 snapshot={demographicsSnapshot ?? null}
                 expanded={demographicsExpanded}
                 onExpandedChange={(next) => onInsightsStateChange?.({ demographicsExpanded: next })}
+                onExport={onExport}
                 onClearAreas={onClearAreas}
                 selectedAreas={selectedAreas}
                 activeAreaKind={activeAreaKind}

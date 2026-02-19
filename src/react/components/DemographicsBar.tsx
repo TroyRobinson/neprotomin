@@ -16,6 +16,7 @@ interface DemographicsBarProps {
   snapshot: CombinedDemographicsSnapshot | null;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
+  onExport?: () => void;
   onClearAreas?: () => void;
   selectedAreas?: Partial<Record<SupportedAreaKind, string[]>>;
   activeAreaKind?: SupportedAreaKind | null;
@@ -143,6 +144,7 @@ export const DemographicsBar = ({
   snapshot,
   expanded,
   onExpandedChange,
+  onExport,
   onClearAreas,
   selectedAreas = {},
   activeAreaKind = null,
@@ -370,13 +372,13 @@ export const DemographicsBar = ({
       <div
         role="button"
         tabIndex={0}
-        className="flex w-full items-start justify-between gap-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+        className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         onClick={toggleExpanded}
         onKeyDown={handleHeaderKeyDown}
         aria-expanded={isExpanded}
       >
-        <div className="flex flex-col">
-          <div className="relative flex items-center gap-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="relative flex min-w-0 items-center gap-2">
             <span
               className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
               onMouseEnter={() => showFullLabelTooltip && setShowTooltip(true)}
@@ -535,28 +537,42 @@ export const DemographicsBar = ({
               </div>
             )}
           </div>
-          <div className="mt-1 flex flex-wrap gap-4 text-slate-600 dark:text-slate-300">
-            <span>
-              <span className="font-medium text-slate-400 dark:text-slate-500">Population:</span> {populationLabel}
-            </span>
-            <span>
-              <span className="font-medium text-slate-400 dark:text-slate-500">Avg Age:</span> {avgAgeLabel}
-            </span>
-            <span>
-              <span className="font-medium text-slate-400 dark:text-slate-500">Married:</span> {marriedLabel}
+          <div className="mt-[2px] flex flex-shrink-0 items-center gap-3">
+            {onExport && hasAnySelectedAreas && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onExport();
+                }}
+                className="inline-flex items-center whitespace-nowrap rounded bg-slate-200/70 px-2 py-0.5 text-[10px] font-medium text-slate-500 transition-colors hover:bg-slate-300/70 dark:bg-slate-800/70 dark:text-slate-400 dark:hover:bg-slate-700/70"
+              >
+                export csv
+              </button>
+            )}
+            <span
+              className={`text-slate-400 transition-transform dark:text-slate-500 ${
+                isExpanded ? "rotate-180" : ""
+              }`}
+              aria-hidden="true"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-4 w-4">
+                <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
+              </svg>
             </span>
           </div>
         </div>
-        <span
-          className={`mt-[2px] flex-shrink-0 text-slate-400 transition-transform dark:text-slate-500 ${
-            isExpanded ? "rotate-180" : ""
-          }`}
-          aria-hidden="true"
-        >
-          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-4 w-4">
-            <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
-          </svg>
-        </span>
+        <div className="mt-1 flex items-center gap-4 overflow-x-auto whitespace-nowrap text-slate-600 dark:text-slate-300">
+          <span>
+            <span className="font-medium text-slate-400 dark:text-slate-500">Population:</span> {populationLabel}
+          </span>
+          <span>
+            <span className="font-medium text-slate-400 dark:text-slate-500">Avg Age:</span> {avgAgeLabel}
+          </span>
+          <span>
+            <span className="font-medium text-slate-400 dark:text-slate-500">Married:</span> {marriedLabel}
+          </span>
+        </div>
       </div>
 
       {isExpanded && (

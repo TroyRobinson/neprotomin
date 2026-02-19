@@ -3494,6 +3494,7 @@ export const ReactMapApp = () => {
                 onLocationSearch={handleMobileLocationSearch}
                 onStatSelect={handleStatSelect}
                 onRetryStatData={retryStatData}
+                onExport={handleExport}
                 onOrgPinsVisibleChange={setOrgPinsVisible}
                 initialOrgPinsVisible={initialMapState.orgPinsVisible}
                 onClearAreas={handleClearAreas}
@@ -3759,6 +3760,7 @@ export const ReactMapApp = () => {
                     onRequestCollapseSheet={collapseSheet}
                     onStatSelect={handleStatSelect}
                     onRetryStatData={retryStatData}
+                    onExport={handleExport}
                     onOrgPinsVisibleChange={setOrgPinsVisible}
                     initialOrgPinsVisible={initialMapState.orgPinsVisible}
                     onClearAreas={handleClearAreas}
