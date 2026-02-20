@@ -174,6 +174,36 @@ Notes for future devs:
 - Active POI data currently exists for categories: `housing`, `education`, `economy`.
 - If map category filter is set to another category, no POIs is expected.
 
+### 0.9 Final First-Render Fix (2026-02-20)
+
+Issue observed:
+- POI extrema often did not appear on initial county/ZIP entry.
+- They appeared only after an additional zoom/pan event.
+
+Root cause:
+- POI/extrema refresh work was still coupled to style-ready timing in a way that could skip the first boundary transition render pass.
+- In logs, `boundary-mode-change` could fire without an immediate `extrema-refresh` on first ZIP entry, so POI source/layer state remained stale until a later camera event.
+
+Fix that resolved it:
+- Removed style-loaded gating from the POI/extrema refresh path so `updateStatExtremaArrows()` and follow-up visibility sync are allowed to run immediately during first transition.
+- Kept immediate extrema refresh calls on mode/layer ensure paths so POI state is synchronized without waiting for another interaction.
+- Retained repaint nudges and next-frame visibility reapply to avoid symbol-layer lag on first paint.
+
+Post-fix logging cleanup:
+- POI debug output was reduced to a minimal high-signal set:
+  - `enabled`
+  - `boundary-mode-change`
+  - `extrema-refresh`
+  - `poi-source-updated`
+  - `poi-layers-updated`
+  - `poi-zip-ensure-error`
+- `window.__poiDebugSnapshot()` remains available for deep diagnostics.
+
+Cleanup guidance:
+- No further rollback is recommended right now.
+- The retained safeguards (repaint nudges, next-frame visibility reapply, resilient refresh try/catch) are low-risk and help prevent similar first-frame regressions.
+- If desired later, simplify incrementally behind verification, starting with optional repaint nudges (not core logic).
+
 ## 1. Objective
 Implement a production-ready "Points of Interest" system for stat extrema so that:
 
