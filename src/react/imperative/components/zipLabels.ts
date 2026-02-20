@@ -75,6 +75,8 @@ export const createZipLabels = ({
   let shouldShowStackedStats = map.getZoom() >= stackedStatsMinZoom;
   const rowPillTransition = "opacity 120ms ease, transform 120ms ease, background-color 150ms ease, border-color 150ms ease";
   const rowPillExitMs = 120;
+  const hoveredTooltipBridgeMinWidthPx = 260;
+  const hoveredTooltipBridgeHeightPx = 24;
 
   const pillsEqual = (a: HoverStackPill[], b: HoverStackPill[]): boolean => {
     if (a.length !== b.length) return false;
@@ -355,9 +357,9 @@ export const createZipLabels = ({
     if (shouldUseHoveredDropdown) {
       const bridge = document.createElement("div");
       bridge.className = "absolute left-1/2 top-full -translate-x-1/2 pointer-events-auto";
-      bridge.style.marginTop = "-1px";
-      bridge.style.width = "max(100%, 112px)";
-      bridge.style.height = "10px";
+      bridge.style.marginTop = "-2px";
+      bridge.style.width = `max(100%, ${hoveredTooltipBridgeMinWidthPx}px)`;
+      bridge.style.height = `${hoveredTooltipBridgeHeightPx}px`;
       bridge.style.background = "transparent";
       bridge.style.zIndex = "1";
       bridge.dataset.extremaTooltip = "1";
