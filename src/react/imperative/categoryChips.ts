@@ -604,9 +604,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
       let shouldShow = false;
       if (selectedStatId) {
-        // If stat is selected with no active category filter, keep all category options visible.
+        // Any selected stat should narrow category context to the stat's category.
+        // If stats haven't loaded yet and we can't resolve category, keep categories visible.
         if (!selectedId) {
-          shouldShow = true;
+          shouldShow = selectedStatCategory ? isStatCategory : true;
         } else {
           // With a category filter, keep just the selected category and selected-stat category context.
           shouldShow = isStatCategory || isSelected;
