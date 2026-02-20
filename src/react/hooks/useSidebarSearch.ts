@@ -27,6 +27,8 @@ const MAX_ORG_RESULTS = 3;
 const MAX_STAT_RESULTS = 2;
 const MAX_CITY_RESULTS = 2;
 const ZIP_OR_PARTIAL_ZIP_PATTERN = /^\d{3,5}$/;
+const EXACT_MATCH_SCORE = 2;
+const ORGANIZATION_CONTAINS_SCORE = 1.05;
 
 type IndexedCandidate<T> = {
   item: T;
@@ -42,6 +44,9 @@ type IndexedOrganization = {
 const getBestScore = (normalizedQuery: string, normalizedValues: string[]): number => {
   let bestScore = 0;
   for (const value of normalizedValues) {
+    if (value === normalizedQuery) {
+      return EXACT_MATCH_SCORE;
+    }
     const score = computeSimilarityFromNormalized(normalizedQuery, value);
     if (score > bestScore) {
       bestScore = score;
@@ -55,14 +60,14 @@ const getOrganizationScore = (
   candidate: IndexedOrganization,
 ): number => {
   if (candidate.normalizedPrimary === normalizedQuery) {
-    return 1.2;
+    return EXACT_MATCH_SCORE;
   }
 
   if (
     candidate.normalizedPrimary.includes(normalizedQuery) ||
     normalizedQuery.includes(candidate.normalizedPrimary)
   ) {
-    return 1.05;
+    return ORGANIZATION_CONTAINS_SCORE;
   }
 
   let score = 0;
