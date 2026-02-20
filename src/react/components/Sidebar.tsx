@@ -2210,7 +2210,7 @@ const OrganizationListItem = ({
           {showZoomButton && (
             <button
               type="button"
-              className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-[2px] text-[10px] font-medium text-indigo-700 transition-colors group-hover:bg-indigo-200 group-hover:text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-300 dark:group-hover:bg-indigo-800/60 dark:group-hover:text-indigo-100"
+              className="inline-flex items-center rounded-full bg-brand-100 px-2 py-[2px] text-[10px] font-medium text-brand-700 transition-colors group-hover:bg-brand-200 group-hover:text-brand-900 dark:bg-brand-900/40 dark:text-brand-300 dark:group-hover:bg-brand-800/60 dark:group-hover:text-brand-100"
               onClick={(event) => {
                 event.stopPropagation();
                 onZoomClick?.(org.id);

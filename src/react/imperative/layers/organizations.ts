@@ -61,6 +61,7 @@ const desktopClusterHighlightRadiusExpression = [
   25,
   19,
 ] as ExpressionSpecification;
+const selectionHighlightStrokeWidth = 3;
 
 const mobileClusterHighlightRadiusExpression = [
   "step",
@@ -236,7 +237,7 @@ export const ensureOrganizationLayers = (
         "circle-radius": highlightRadius,
         "circle-color": "#f5c4ae",
         "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 2,
+        "circle-stroke-width": selectionHighlightStrokeWidth,
         "circle-opacity": 1,
       },
     });
@@ -245,6 +246,7 @@ export const ensureOrganizationLayers = (
     const highlightRadius = getHighlightRadius(isMobile);
     try {
       map.setPaintProperty(LAYER_HIGHLIGHT_ID, "circle-radius", highlightRadius);
+      map.setPaintProperty(LAYER_HIGHLIGHT_ID, "circle-stroke-width", selectionHighlightStrokeWidth);
     } catch {}
   }
 
@@ -264,7 +266,7 @@ export const ensureOrganizationLayers = (
         "circle-color": "#f5c4ae",
         "circle-opacity": 0.35,
         "circle-stroke-color": "#f5c4ae",
-        "circle-stroke-width": 2,
+        "circle-stroke-width": selectionHighlightStrokeWidth,
       },
     });
   } else {
@@ -272,6 +274,19 @@ export const ensureOrganizationLayers = (
     const clusterHighlightRadius = getClusterHighlightRadius(isMobile);
     try {
       map.setPaintProperty(LAYER_CLUSTER_HIGHLIGHT_ID, "circle-radius", clusterHighlightRadius);
+      map.setPaintProperty(LAYER_CLUSTER_HIGHLIGHT_ID, "circle-stroke-width", selectionHighlightStrokeWidth);
+    } catch {}
+  }
+
+  // Keep selection rings behind org glyphs/counts so labels remain readable.
+  if (map.getLayer(LAYER_HIGHLIGHT_ID) && map.getLayer(LAYER_POINTS_ID)) {
+    try {
+      map.moveLayer(LAYER_HIGHLIGHT_ID, LAYER_POINTS_ID);
+    } catch {}
+  }
+  if (map.getLayer(LAYER_CLUSTER_HIGHLIGHT_ID) && map.getLayer(LAYER_CLUSTERS_ID)) {
+    try {
+      map.moveLayer(LAYER_CLUSTER_HIGHLIGHT_ID, LAYER_CLUSTERS_ID);
     } catch {}
   }
 };
