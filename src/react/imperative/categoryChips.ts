@@ -8,13 +8,13 @@ const TIME_OPEN_CHIP_CLASSES =
   "border-[#f5c4ae]/60 bg-[#fdd6c3]/20 text-[#7a4030] hover:border-[#e8a990]/80 hover:bg-[#fdd6c3]/40 hover:text-[#6b3525] dark:border-[#7a4030]/40 dark:bg-[#7a4030]/15 dark:text-[#f5c4ae] dark:hover:border-[#e8a990]/60 dark:hover:text-[#fdd6c3]";
 
 const AREAS_CHIP_CLASSES =
-  "border-white/60 bg-white/18 text-slate-700 ring-1 ring-white/45 hover:border-brand-200/70 hover:bg-white/30 hover:text-brand-700 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-200 dark:ring-white/8 dark:hover:border-brand-400/50 dark:hover:bg-slate-900/38 dark:hover:text-white";
+  "border-[0.5px] border-white/60 bg-white/18 text-slate-700 ring-1 ring-white/45 hover:border-brand-200/70 hover:bg-white/30 hover:text-brand-700 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-200 dark:ring-white/8 dark:hover:border-brand-400/50 dark:hover:bg-slate-900/38 dark:hover:text-white";
 
 const ORGS_CHIP_ON_CLASSES =
-  "border-transparent bg-[#f7e2d6] text-[#7a4030] shadow-floating hover:bg-[#f1d3c3] dark:bg-[#7a4030]/22 dark:text-[#d79c84]";
+  "border-[0.5px] border-transparent bg-[#f7e2d6] text-[#7a4030] shadow-floating hover:bg-[#f1d3c3] dark:bg-[#7a4030]/22 dark:text-[#d79c84]";
 
 const ORGS_CHIP_OFF_CLASSES =
-  "border-white/60 bg-white/18 text-slate-500 ring-1 ring-white/45 hover:border-slate-300/70 hover:bg-white/30 hover:text-slate-600 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-400 dark:ring-white/8 dark:hover:border-slate-400/55 dark:hover:bg-slate-900/38 dark:hover:text-slate-300";
+  "border-[0.5px] border-white/60 bg-white/18 text-slate-500 ring-1 ring-white/45 hover:border-slate-300/70 hover:bg-white/30 hover:text-slate-600 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-400 dark:ring-white/8 dark:hover:border-slate-400/55 dark:hover:bg-slate-900/38 dark:hover:text-slate-300";
 
 const SEARCH_ICON = `
   <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px] text-brand-600 dark:text-brand-400">
@@ -61,13 +61,13 @@ const CATEGORY_CHIP_SELECTED_CLASSES =
 
 // Selected stat chip uses a subtle brand fill in dark mode without glass blur.
 const STAT_CHIP_SELECTED_CLASSES =
-  "border-transparent bg-brand-100 text-brand-700 shadow-floating hover:bg-brand-100 dark:bg-brand-400/24 dark:text-brand-600 dark:!backdrop-blur-none";
+  "border-[1.5px] border-brand-500 bg-brand-100 text-brand-700 font-semibold shadow-floating hover:border-brand-500 hover:bg-brand-100 dark:border-brand-400 dark:bg-brand-400/24 dark:text-brand-600 dark:hover:border-brand-300 dark:!backdrop-blur-none";
 
 const CATEGORY_CHIP_INACTIVE_FEATURED_CLASSES =
   "border-slate-300 bg-slate-200 text-slate-700 shadow-sm hover:bg-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200";
 
 const MOBILE_STAT_CHIP_SELECTED_CLASSES =
-  "border-transparent bg-brand-100 text-brand-700 shadow-floating hover:bg-brand-100 dark:bg-brand-400/80 dark:text-white px-3 py-1 text-xs";
+  "border-[1.5px] border-brand-500 bg-brand-100 text-brand-700 font-semibold shadow-floating hover:border-brand-500 hover:bg-brand-100 dark:border-brand-400 dark:bg-brand-400/80 dark:text-white dark:hover:border-brand-300 px-3 py-1 text-xs";
 
 const MOBILE_STAT_CHIP_BASE_CLASSES =
   "inline-flex items-center gap-1.5 rounded-full border bg-white/90 text-brand-700 shadow-sm transition-all duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400";
@@ -1259,7 +1259,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       if (isMobile) {
         const base = `${MOBILE_STAT_CHIP_BASE_CLASSES} border-slate-200`;
         btn.className = isSelected
-          ? `${MOBILE_STAT_CHIP_BASE_CLASSES} border-transparent ${MOBILE_STAT_CHIP_SELECTED_CLASSES}`
+          ? `${MOBILE_STAT_CHIP_BASE_CLASSES} ${MOBILE_STAT_CHIP_SELECTED_CLASSES}`
           : base;
         labelEl.textContent = displayName;
       } else {
