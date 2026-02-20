@@ -2166,22 +2166,79 @@ export const createMapView = ({
     return "neutral";
   };
 
+  const getSelectedStatZipPoiRowsForCurrentScope = () => {
+    if (!selectedStatId) return [];
+    const zipRows = getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", selectedCategory).filter(
+      (row) => row.scopeKey === "tulsa_area" || row.scopeKey === "okc_area",
+    );
+    return zipRows.filter((row) => row.statId === selectedStatId);
+  };
+
+  const getSelectedStatCountyPoiRowsForCurrentScope = () => {
+    if (!selectedStatId) return [];
+    const countyRowsAll = getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", selectedCategory);
+    const countyRows = boundaryMode === "counties"
+      ? countyRowsAll.filter((row) => row.scopeKey === "oklahoma")
+      : countyRowsAll;
+    return countyRows.filter((row) => row.statId === selectedStatId);
+  };
+
   const getZipPoiRowsForCurrentView = () => {
     const allRows = getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", selectedCategory);
     if (boundaryMode !== "zips") return [];
     // At ZIP level, always show city-scope extrema (Tulsa + OKC).
     // Statewide ZIP extrema remain hidden to reduce noise at city zoom.
-    return allRows.filter(
+    const zipRows = allRows.filter(
       (row) => row.scopeKey === "tulsa_area" || row.scopeKey === "okc_area",
     );
+    if (!selectedStatId) return zipRows;
+
+    // When a stat is selected and has POI rows, show only that stat's POIs at city scope.
+    const selectedRows = getSelectedStatZipPoiRowsForCurrentScope();
+    if (selectedRows.length > 0) return selectedRows;
+    return isPopulationLikeSelectedStat() || POI_VISIBLE_WITH_SELECTED_STAT_IDS.has(selectedStatId)
+      ? zipRows
+      : [];
+  };
+
+  const getCountyPoiRowsForCurrentView = () => {
+    const countyRowsAll = getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", selectedCategory);
+    const countyRows = boundaryMode === "counties"
+      ? countyRowsAll.filter((row) => row.scopeKey === "oklahoma")
+      : countyRowsAll;
+    if (!selectedStatId) return countyRows;
+
+    // Keep county POIs aligned with the selected-stat-only behavior when possible.
+    const selectedRows = getSelectedStatCountyPoiRowsForCurrentScope();
+    if (selectedRows.length > 0) return selectedRows;
+    return isPopulationLikeSelectedStat() || POI_VISIBLE_WITH_SELECTED_STAT_IDS.has(selectedStatId)
+      ? countyRows
+      : [];
+  };
+
+  const selectedStatHasPoiRows = () => {
+    if (!selectedStatId) return false;
+    const zipRows = getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", selectedCategory).filter(
+      (row) => row.scopeKey === "tulsa_area" || row.scopeKey === "okc_area",
+    );
+    if (zipRows.some((row) => row.statId === selectedStatId)) return true;
+
+    const countyRows = getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", selectedCategory);
+    return countyRows.some((row) => row.statId === selectedStatId);
+  };
+
+  const isPopulationLikeSelectedStat = () => {
+    if (!selectedStatId) return false;
+    const statName = statNameById.get(selectedStatId);
+    const normalized = typeof statName === "string" ? statName.trim().toLowerCase() : "";
+    return normalized.length > 0 && normalized.includes("population");
   };
 
   const shouldShowPoiWithSelectedStat = () => {
     if (!selectedStatId) return false;
+    if (selectedStatHasPoiRows()) return true;
     if (POI_VISIBLE_WITH_SELECTED_STAT_IDS.has(selectedStatId)) return true;
-    const statName = statNameById.get(selectedStatId);
-    const normalized = typeof statName === "string" ? statName.trim().toLowerCase() : "";
-    return normalized.length > 0 && normalized.includes("population");
+    return isPopulationLikeSelectedStat();
   };
 
   const shouldRenderPointsOfInterest = () => !selectedStatId || shouldShowPoiWithSelectedStat();
@@ -2256,10 +2313,7 @@ export const createMapView = ({
 
     if (shouldRenderPointsOfInterest()) {
       const zipRows = getZipPoiRowsForCurrentView();
-      const countyRowsAll = getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", selectedCategory);
-      const countyRows = boundaryMode === "counties"
-        ? countyRowsAll.filter((row) => row.scopeKey === "oklahoma")
-        : countyRowsAll;
+      const countyRows = getCountyPoiRowsForCurrentView();
       appendPoiRows(zipRows, "ZIP", zipByArea);
       appendPoiRows(countyRows, "COUNTY", countyByArea);
     }
@@ -2267,6 +2321,8 @@ export const createMapView = ({
     if (selectedStatId) {
       const selectedStatLabel = statNameById.get(selectedStatId) || "Stat";
       const selectedStatGoodIfUp = statGoodIfUpById.get(selectedStatId) ?? null;
+      const selectedZipPoiRows = getSelectedStatZipPoiRowsForCurrentScope();
+      const selectedCountyPoiRows = getSelectedStatCountyPoiRowsForCurrentScope();
       const zoom = map.getZoom();
       const hideZip = boundaryMode === "zips" && zoom >= CHOROPLETH_HIDE_ZOOM;
       const showZipStatExtrema = boundaryMode === "zips" && !hideZip;
@@ -2277,7 +2333,7 @@ export const createMapView = ({
       const zipExtremes = getExtremeAreaIds(zipEntry?.data);
       const countyExtremes = getExtremeAreaIds(countyEntry?.data);
 
-      if (showZipStatExtrema) {
+      if (showZipStatExtrema && selectedZipPoiRows.length === 0) {
         if (zipExtremes.highestId) {
           appendPill(zipExtremes.highestId, zipByArea, {
             key: `stat:${selectedStatId}:zip:high`,
@@ -2300,7 +2356,7 @@ export const createMapView = ({
         }
       }
 
-      if (showCountyStatExtrema) {
+      if (showCountyStatExtrema && selectedCountyPoiRows.length === 0) {
         if (countyExtremes.highestId) {
           appendPill(countyExtremes.highestId, countyByArea, {
             key: `stat:${selectedStatId}:county:high`,
@@ -2404,11 +2460,7 @@ export const createMapView = ({
     }
 
     const zipRows = getZipPoiRowsForCurrentView();
-    const countyRowsAll = getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", selectedCategory);
-    // At county/state view, only show statewide extrema to avoid Tulsa/OKC scope clutter.
-    const countyRows = boundaryMode === "counties"
-      ? countyRowsAll.filter((row) => row.scopeKey === "oklahoma")
-      : countyRowsAll;
+    const countyRows = getCountyPoiRowsForCurrentView();
     const countyCentroids = getCountyCentroidsMap();
     const features: PoiFeature[] = [];
     let zipFeatures = 0;
@@ -2833,6 +2885,10 @@ export const createMapView = ({
       : getStatEntryByBoundary(selectedStatId, "ZIP");
     const { highestId, lowestId } = getExtremeAreaIds(entry?.data);
     const distinctLowestId = lowestId && lowestId !== highestId ? lowestId : null;
+    const suppressZipStatExtrema = getSelectedStatZipPoiRowsForCurrentScope().length > 0;
+    const suppressCountyStatExtrema = getSelectedStatCountyPoiRowsForCurrentScope().length > 0;
+    const showZipStatLayers = showZipLayers && !suppressZipStatExtrema;
+    const showCountyStatLayers = showCountyLayers && !suppressCountyStatExtrema;
 
     const goodIfUp = statGoodIfUpById.get(selectedStatId);
     const highIconId =
@@ -2851,30 +2907,30 @@ export const createMapView = ({
     setLayerState(
       ZIP_STAT_EXTREME_HIGH_LAYER_ID,
       "zip",
-      showZipLayers ? highestId : null,
+      showZipStatLayers ? highestId : null,
       highIconId,
-      showZipLayers,
+      showZipStatLayers,
     );
     setLayerState(
       ZIP_STAT_EXTREME_LOW_LAYER_ID,
       "zip",
-      showZipLayers ? distinctLowestId : null,
+      showZipStatLayers ? distinctLowestId : null,
       lowIconId,
-      showZipLayers,
+      showZipStatLayers,
     );
     setLayerState(
       COUNTY_STAT_EXTREME_HIGH_LAYER_ID,
       "county",
-      showCountyLayers ? highestId : null,
+      showCountyStatLayers ? highestId : null,
       highIconId,
-      showCountyLayers,
+      showCountyStatLayers,
     );
     setLayerState(
       COUNTY_STAT_EXTREME_LOW_LAYER_ID,
       "county",
-      showCountyLayers ? distinctLowestId : null,
+      showCountyStatLayers ? distinctLowestId : null,
       lowIconId,
-      showCountyLayers,
+      showCountyStatLayers,
     );
   };
 
