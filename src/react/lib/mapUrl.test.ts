@@ -369,6 +369,141 @@ describe("mapUrl selection persistence", () => {
     expect((globalThis as any).window.location.search).toContain("tab=stats");
   });
 
+  it("uses domain defaults for org pin visibility when URL has no pins param", () => {
+    const w: WindowLike = {
+      location: { href: "http://example.test/", search: "", hostname: "example.test" },
+      history: {
+        replaceState: vi.fn((_data, _unused, url) => {
+          setWindowUrl(url);
+        }),
+      },
+    };
+    (globalThis as any).window = w;
+
+    setWindowUrl("http://example.test/");
+    expect(getMapStateFromUrl().orgPinsVisible).toBe(false);
+
+    setWindowUrl("http://okfoodmap.com/");
+    expect(getMapStateFromUrl().orgPinsVisible).toBe(true);
+
+    setWindowUrl("http://map.neighborhoodexplorer.org/");
+    expect(getMapStateFromUrl().orgPinsVisible).toBe(false);
+
+    setWindowUrl("http://map.neighborhoodexplorer.org/?pins=true");
+    expect(getMapStateFromUrl().orgPinsVisible).toBe(true);
+  });
+
+  it("persists pins query only when org pin visibility differs from domain default", () => {
+    const w: WindowLike = {
+      location: { href: "http://example.test/", search: "", hostname: "example.test" },
+      history: {
+        replaceState: vi.fn((_data, _unused, url) => {
+          setWindowUrl(url);
+        }),
+      },
+    };
+    (globalThis as any).window = w;
+
+    setWindowUrl("http://example.test/");
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      null,
+      [],
+      false,
+      false,
+      "auto",
+      [],
+      [],
+      "stats",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+    );
+    expect((globalThis as any).window.location.search).not.toContain("pins=");
+
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      null,
+      [],
+      false,
+      true,
+      "auto",
+      [],
+      [],
+      "stats",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+    );
+    expect((globalThis as any).window.location.search).toContain("pins=true");
+
+    setWindowUrl("http://okfoodmap.com/");
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      null,
+      [],
+      false,
+      true,
+      "auto",
+      [],
+      [],
+      "orgs",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+    );
+    expect((globalThis as any).window.location.search).not.toContain("pins=");
+
+    setWindowUrl("http://map.neighborhoodexplorer.org/");
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      null,
+      [],
+      false,
+      false,
+      "auto",
+      [],
+      [],
+      "stats",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+    );
+    expect((globalThis as any).window.location.search).not.toContain("pins=");
+  });
+
   it("parses sidebar collapsed state from URL and defaults to collapsed", () => {
     const w: WindowLike = {
       location: { href: "http://example.test/", search: "", hostname: "example.test" },

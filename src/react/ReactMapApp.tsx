@@ -2002,8 +2002,13 @@ export const ReactMapApp = () => {
     setCategoryFilter(null);
     setSelectedOrgIds([]);
     setShowAdvanced(false);
-    setOrgPinsVisible(true);
-    setForceShowOrgsNonce((n) => n + 1); // reset sidebar's keepOrgsOnMap + switch to orgs tab
+    if (domainDefaults.defaultOrgPinsVisible) {
+      setOrgPinsVisible(true);
+      setForceShowOrgsNonce((n) => n + 1); // keep org pins on for food-map domain reset
+    } else {
+      setOrgPinsVisible(false);
+      setForceHideOrgsNonce((n) => n + 1); // keep org pins off after brand reset
+    }
     setBoundaryMode("zips");
     setBoundaryControlMode("auto");
     applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
@@ -3541,8 +3546,15 @@ export const ReactMapApp = () => {
               zoomOutRequestNonce={zoomOutNonce}
               clearMapCategoryNonce={clearMapCategoryNonce}
               onRequestHideOrgs={() => {
-                setOrgPinsVisible(false);
-                setForceHideOrgsNonce((n) => n + 1);
+                setOrgPinsVisible((prev) => {
+                  const next = !prev;
+                  if (next) {
+                    setForceShowOrgsNonce((n) => n + 1);
+                  } else {
+                    setForceHideOrgsNonce((n) => n + 1);
+                  }
+                  return next;
+                });
               }}
               boundaryMode={boundaryMode}
               areasMode={areasMode}

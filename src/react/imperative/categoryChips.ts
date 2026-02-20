@@ -10,6 +10,12 @@ const TIME_OPEN_CHIP_CLASSES =
 const AREAS_CHIP_CLASSES =
   "border-slate-200/80 bg-white/55 text-slate-700 hover:border-brand-200 hover:bg-white/75 hover:text-brand-700 dark:border-slate-600/70 dark:bg-slate-900/55 dark:text-slate-200 dark:hover:border-brand-400/70 dark:hover:bg-slate-900/75 dark:hover:text-white";
 
+const ORGS_CHIP_ON_CLASSES =
+  "border-transparent bg-[#f7e2d6] text-[#7a4030] shadow-floating hover:bg-[#f1d3c3] dark:bg-[#7a4030]/22 dark:text-[#d79c84]";
+
+const ORGS_CHIP_OFF_CLASSES =
+  "border-slate-200/80 bg-white/55 text-slate-500 hover:border-slate-300 hover:bg-white/70 hover:text-slate-600 dark:border-slate-600/70 dark:bg-slate-900/55 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:bg-slate-900/75 dark:hover:text-slate-300";
+
 const SEARCH_ICON = `
   <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px] text-brand-600 dark:text-brand-400">
     <path
@@ -207,16 +213,25 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   // When no category selected, it appears at the end of category chips
   const orgsChipBtn = document.createElement("button");
   orgsChipBtn.type = "button";
-  // Match org cluster color: peach accent family
-  orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} border-transparent bg-[#f7e2d6] text-[#7a4030] shadow-floating hover:bg-[#f1d3c3] dark:bg-[#7a4030]/22 dark:text-[#d79c84]`;
+  // Match org cluster color: peach accent family when on, subdued neutral when off.
+  orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${ORGS_CHIP_ON_CLASSES}`;
   const orgsLabel = document.createElement("span");
   orgsLabel.textContent = "Organizations";
   orgsLabel.className = "whitespace-nowrap";
   const orgsClose = document.createElement("span");
   orgsClose.innerHTML = CLOSE_ICON;
   orgsClose.className = "-mr-1 flex items-center";
+  const updateOrgsChipState = () => {
+    const isOn = orgsChipVisible;
+    orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${isOn ? ORGS_CHIP_ON_CLASSES : ORGS_CHIP_OFF_CLASSES}`;
+    orgsLabel.textContent = "Organizations";
+    orgsChipBtn.setAttribute("aria-pressed", `${isOn}`);
+    orgsChipBtn.title = isOn ? "Hide organizations" : "Show organizations";
+    toggleCloseIcon(orgsClose, isOn);
+  };
   orgsChipBtn.appendChild(orgsLabel);
   orgsChipBtn.appendChild(orgsClose);
+  updateOrgsChipState();
   orgsChipBtn.style.display = "none"; // hidden by default
   orgsChipBtn.addEventListener("click", () => {
     options.onOrgsChipClose?.();
@@ -618,7 +633,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       closeAreasMenu();
       return;
     }
-    const showOrganizations = orgsChipVisible && !searchExpanded;
+    updateOrgsChipState();
+    const showOrganizations = !searchExpanded;
     orgsChipBtn.style.display = showOrganizations ? "" : "none";
 
     // Desktop UX: keep the map chip row cleaner by hiding the time chip entirely.

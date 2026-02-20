@@ -11,6 +11,8 @@ export const isFoodMapDomain = (): boolean => {
 export type DomainDefaults = {
   /** Which sidebar tab should be active when no URL override exists */
   defaultSidebarTab: "orgs" | "stats";
+  /** Whether organization pins should be visible by default for this domain */
+  defaultOrgPinsVisible: boolean;
   /** Preferred stat IDs to preselect for this domain (in priority order) */
   defaultStatIds: string[];
   /** Preferred stat names/labels to match if IDs are missing */
@@ -21,6 +23,7 @@ export const getDomainDefaults = (): DomainDefaults => {
   if (isFoodMapDomain()) {
     return {
       defaultSidebarTab: "orgs",
+      defaultOrgPinsVisible: true,
       defaultStatIds: [DEFAULT_PRIMARY_STAT_ID],
       defaultStatNames: [],
     };
@@ -28,6 +31,7 @@ export const getDomainDefaults = (): DomainDefaults => {
 
   return {
     defaultSidebarTab: "stats",
+    defaultOrgPinsVisible: false,
     defaultStatIds: [DEFAULT_POPULATION_STAT_ID],
     defaultStatNames: ["Population (Change)"],
   };

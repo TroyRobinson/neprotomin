@@ -212,13 +212,14 @@ export function getShowAdvancedFromUrl(): boolean {
   return params.get("advanced") === "true";
 }
 
-// Get orgPinsVisible from URL (defaults to true if not present)
+// Get orgPinsVisible from URL (defaults based on domain if not present)
 export function getOrgPinsVisibleFromUrl(): boolean {
-  if (typeof window === "undefined") return true;
+  const defaultPinsVisible = getDomainDefaults().defaultOrgPinsVisible;
+  if (typeof window === "undefined") return defaultPinsVisible;
   const params = new URLSearchParams(window.location.search);
   const value = params.get("pins");
-  // If not specified, default to true
-  if (value === null) return true;
+  // If not specified, use domain default.
+  if (value === null) return defaultPinsVisible;
   return value === "true";
 }
 
@@ -353,9 +354,10 @@ export function updateUrlWithMapState(
     url.searchParams.delete("advanced");
   }
 
-  // Update orgPinsVisible (only if false, since true is the default)
-  if (!orgPinsVisible) {
-    url.searchParams.set("pins", "false");
+  const defaultOrgPinsVisible = getDomainDefaults().defaultOrgPinsVisible;
+  // Persist orgPinsVisible only when it differs from this domain's default.
+  if (orgPinsVisible !== defaultOrgPinsVisible) {
+    url.searchParams.set("pins", orgPinsVisible ? "true" : "false");
   } else {
     url.searchParams.delete("pins");
   }

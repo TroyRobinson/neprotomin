@@ -19,7 +19,7 @@ interface MapLibreMapProps {
   zoomOutRequestNonce?: number;
   // When incremented, explicitly clear the map's category chips
   clearMapCategoryNonce?: number;
-  // Request from map to hide orgs and switch sidebar to stats
+  // Request from map chip to toggle organization pin visibility.
   onRequestHideOrgs?: () => void;
   onTimeChipClick?: () => void;
   boundaryMode?: BoundaryMode;
