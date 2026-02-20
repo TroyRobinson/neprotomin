@@ -92,6 +92,7 @@ interface SidebarProps {
   /** County FIPS code for the current ZIP scope (used for zoom-to-county) */
   zipScopeCountyCode?: string | null;
   selectedStatId?: string | null;
+  suppressAutoDefaultStatSearchLabel?: boolean;
   secondaryStatId?: string | null;
   selectedStatLoading?: boolean;
   categoryFilter?: string | null;
@@ -102,6 +103,7 @@ interface SidebarProps {
   onZoomToCounty?: (countyCode: string) => void;
   onRequestCollapseSheet?: () => void;
   onLocationSearch?: (query: string) => void;
+  onSearchCleared?: () => void;
   onCategoryClick?: (categoryId: string) => void;
   onCategoryChange?: (categoryId: string | null) => void;
   onHoverArea?: (area: AreaId | null) => void;
@@ -189,6 +191,7 @@ export const Sidebar = ({
   viewportCountyVisibleCount = null,
   zipScopeCountyCode = null,
   selectedStatId = null,
+  suppressAutoDefaultStatSearchLabel = false,
   secondaryStatId = null,
   selectedStatLoading = false,
   categoryFilter = null,
@@ -199,6 +202,7 @@ export const Sidebar = ({
   onZoomToCounty,
   onRequestCollapseSheet,
   onLocationSearch,
+  onSearchCleared,
   onCategoryClick,
   onCategoryChange,
   onHoverArea,
@@ -243,6 +247,9 @@ export const Sidebar = ({
   const [searchText, setSearchText] = useState("");
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
   const [highlightedSearchIndex, setHighlightedSearchIndex] = useState(-1);
+  const shouldSyncSelectionToSearchRef = useRef(false);
+  const previousSelectedOrgIdsKeyRef = useRef<string>("");
+  const previousSelectedStatIdRef = useRef<string | null>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const lastSidebarPointerDownRef = useRef(false);
   const desktopSearchInputRef = useRef<HTMLInputElement>(null);
@@ -701,6 +708,7 @@ export const Sidebar = ({
 
   const handleSearchResultSelect = useCallback(
     (result: SidebarSearchResult) => {
+      shouldSyncSelectionToSearchRef.current = true;
       // Auto-expand sidebar when selecting a search result while collapsed
       if (collapsed) onCollapse?.(false);
       if (categoryFilter) {
@@ -716,6 +724,8 @@ export const Sidebar = ({
         }
       }
       if (result.type === "org") {
+        // Searching for an org should always reveal org pins on the map.
+        setKeepOrgsOnMap(true);
         setActiveTabWithSync("orgs");
         onOrganizationClick?.(result.id);
         setExpandedOrgId(result.id);
@@ -756,6 +766,72 @@ export const Sidebar = ({
       statsById,
     ],
   );
+
+  useEffect(() => {
+    if (variant !== "desktop") return;
+    const selectedOrgIdsKey = selectedOrgIds.join("|");
+    const nextSelectedStatId = selectedStatId ?? null;
+    const orgChanged = previousSelectedOrgIdsKeyRef.current !== selectedOrgIdsKey;
+    const statChanged = previousSelectedStatIdRef.current !== nextSelectedStatId;
+
+    previousSelectedOrgIdsKeyRef.current = selectedOrgIdsKey;
+    previousSelectedStatIdRef.current = nextSelectedStatId;
+
+    if (!orgChanged && !statChanged) return;
+
+    let nextSearchLabel: string | null = null;
+
+    // Prioritize whichever selection type changed most recently.
+    if (statChanged && nextSelectedStatId && !suppressAutoDefaultStatSearchLabel) {
+      const selectedStat = statsById.get(nextSelectedStatId);
+      if (selectedStat) {
+        nextSearchLabel = selectedStat.label || selectedStat.name;
+      }
+    }
+
+    if (!nextSearchLabel && selectedOrgIds.length === 1) {
+      const selectedOrgId = selectedOrgIds[0];
+      const selectedOrg =
+        searchSourceOrganizations.find((org) => org.id === selectedOrgId) ??
+        rawInSelection.find((org) => org.id === selectedOrgId) ??
+        rawAll.find((org) => org.id === selectedOrgId) ??
+        rawRecent.find((org) => org.id === selectedOrgId);
+      if (selectedOrg?.name) {
+        nextSearchLabel = selectedOrg.name;
+      }
+    }
+
+    if (!nextSearchLabel && nextSelectedStatId && !suppressAutoDefaultStatSearchLabel) {
+      const selectedStat = statsById.get(nextSelectedStatId);
+      if (selectedStat) {
+        nextSearchLabel = selectedStat.label || selectedStat.name;
+      }
+    }
+
+    if (!nextSearchLabel) {
+      if (shouldSyncSelectionToSearchRef.current) {
+        setSearchText("");
+        setIsSearchDropdownOpen(false);
+        setHighlightedSearchIndex(-1);
+      }
+      return;
+    }
+    shouldSyncSelectionToSearchRef.current = true;
+    setSearchText((current) => (current === nextSearchLabel ? current : nextSearchLabel));
+    selectAllSearchTextOnNextFocusRef.current = true;
+    setIsSearchDropdownOpen(false);
+    setHighlightedSearchIndex(-1);
+  }, [
+    rawAll,
+    rawInSelection,
+    rawRecent,
+    searchSourceOrganizations,
+    selectedOrgIds,
+    selectedStatId,
+    suppressAutoDefaultStatSearchLabel,
+    statsById,
+    variant,
+  ]);
 
   useEffect(() => {
     if (!searchPinnedOrgId) return;
@@ -1120,6 +1196,14 @@ export const Sidebar = ({
     setActiveTabWithSync(tab);
   };
 
+  const handleSidebarOrgRowClick = useCallback(
+    (organizationId: string) => {
+      setKeepOrgsOnMap(true);
+      onOrganizationClick?.(organizationId);
+    },
+    [onOrganizationClick],
+  );
+
   const tabClasses = (isActive: boolean) =>
     `justify-center px-4 h-8 -mb-[5px] text-[11px] leading-none font-semibold uppercase tracking-wide border-b-2 inline-flex items-center gap-2 rounded-t-md rounded-b-none transition-colors ${
       isActive
@@ -1192,6 +1276,20 @@ export const Sidebar = ({
               value={searchText}
               onChange={(event) => {
                 const next = event.target.value;
+                const nextTrimmedLength = next.trim().length;
+                const previousTrimmedLength = searchText.trim().length;
+                if (
+                  nextTrimmedLength === 0 &&
+                  previousTrimmedLength > 0 &&
+                  shouldSyncSelectionToSearchRef.current
+                ) {
+                  shouldSyncSelectionToSearchRef.current = false;
+                  onSearchCleared?.();
+                } else if (nextTrimmedLength > 0) {
+                  // User is actively typing a new query, so stop selection-sync
+                  // until they pick another search result.
+                  shouldSyncSelectionToSearchRef.current = false;
+                }
                 selectAllSearchTextOnNextFocusRef.current = false;
                 setSearchText(next);
                 setIsSearchDropdownOpen(next.trim().length >= 2);
@@ -1572,7 +1670,7 @@ export const Sidebar = ({
                         isExpanded={expandedOrgId === searchPinnedOrg.id}
                         onHover={onHover}
                         onCategoryClick={onCategoryClick}
-                        onOrganizationClick={onOrganizationClick}
+                        onOrganizationClick={handleSidebarOrgRowClick}
                         onToggleExpand={(id) =>
                           setExpandedOrgId((prev) => (prev === id ? null : id))
                         }
@@ -1603,7 +1701,7 @@ export const Sidebar = ({
                           isExpanded={expandedOrgId === org.id}
                           onHover={onHover}
                           onCategoryClick={onCategoryClick}
-                          onOrganizationClick={onOrganizationClick}
+                          onOrganizationClick={handleSidebarOrgRowClick}
                           onToggleExpand={(id) =>
                             setExpandedOrgId((prev) => (prev === id ? null : id))
                           }
@@ -1635,7 +1733,7 @@ export const Sidebar = ({
                           isExpanded={expandedOrgId === org.id}
                           onHover={onHover}
                           onCategoryClick={onCategoryClick}
-                          onOrganizationClick={onOrganizationClick}
+                          onOrganizationClick={handleSidebarOrgRowClick}
                           onToggleExpand={(id) =>
                             setExpandedOrgId((prev) => (prev === id ? null : id))
                           }
@@ -1668,7 +1766,7 @@ export const Sidebar = ({
                       isHighlighted={highlightedIds.has(org.id)}
                       onHover={onHover}
                       onCategoryClick={onCategoryClick}
-                      onOrganizationClick={onOrganizationClick}
+                      onOrganizationClick={handleSidebarOrgRowClick}
                       isExpanded={expandedOrgId === org.id}
                       onToggleExpand={(id) =>
                         setExpandedOrgId((prev) => (prev === id ? null : id))

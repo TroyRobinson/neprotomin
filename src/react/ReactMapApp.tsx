@@ -215,6 +215,7 @@ export const ReactMapApp = () => {
   // Track whether the direct org selection originated from the map (vs sidebar click)
   const [selectedOrgIdsFromMap, setSelectedOrgIdsFromMap] = useState<boolean>(false);
   const [selectedStatId, setSelectedStatId] = useState<string | null>(() => initialMapState.statId);
+  const [isDefaultStatAutoSelected, setIsDefaultStatAutoSelected] = useState(false);
   const [secondaryStatId, setSecondaryStatId] = useState<string | null>(() => initialMapState.secondaryStatId);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(() => initialMapState.category);
   const categoryFilterRef = useRef<string | null>(initialMapState.category);
@@ -1386,6 +1387,7 @@ export const ReactMapApp = () => {
 
     // If a category is actively cleared while no stat is selected, restore Population.
     if (previousCategoryFilter && !categoryFilter && !selectedStatId && preferredPopulationStatId) {
+      setIsDefaultStatAutoSelected(true);
       setSelectedStatId(preferredPopulationStatId);
     }
   }, [categoryFilter, selectedStatId, preferredPopulationStatId]);
@@ -1393,6 +1395,7 @@ export const ReactMapApp = () => {
   useEffect(() => {
     if (areStatsLoading) return;
     if (!selectedStatId || statsById.has(selectedStatId)) return;
+    setIsDefaultStatAutoSelected(false);
     setSelectedStatId(null);
   }, [areStatsLoading, selectedStatId, statsById]);
 
@@ -2006,6 +2009,7 @@ export const ReactMapApp = () => {
     // If stat was already set from URL, skip applying defaults
     if (selectedStatId) {
       setHasAppliedDefaultStat(true);
+      setIsDefaultStatAutoSelected(false);
       return;
     }
     const allStats = Array.from(statsById.values());
@@ -2041,6 +2045,7 @@ export const ReactMapApp = () => {
     if (isFoodDomain) {
       const configuredStatId = pickConfiguredStat();
       if (configuredStatId) {
+        setIsDefaultStatAutoSelected(true);
         setSelectedStatId(configuredStatId);
         setHasAppliedDefaultStat(true);
         return;
@@ -2049,6 +2054,7 @@ export const ReactMapApp = () => {
       // Fallback on okfoodmap.com: use a homeFeatured stat if configured
       const homeDefault = pickHomeFeatured();
       if (homeDefault) {
+        setIsDefaultStatAutoSelected(true);
         setSelectedStatId(homeDefault.id);
         setHasAppliedDefaultStat(true);
         return;
@@ -2063,6 +2069,7 @@ export const ReactMapApp = () => {
     // Non-okfood domains: prefer explicit configured IDs first (Population), then name fallback.
     const configuredStatId = pickConfiguredStat();
     if (configuredStatId) {
+      setIsDefaultStatAutoSelected(true);
       setSelectedStatId(configuredStatId);
       setHasAppliedDefaultStat(true);
       return;
@@ -2070,6 +2077,7 @@ export const ReactMapApp = () => {
 
     const homeDefault = pickHomeFeatured();
     if (homeDefault) {
+      setIsDefaultStatAutoSelected(true);
       setSelectedStatId(homeDefault.id);
       setHasAppliedDefaultStat(true);
       return;
@@ -2113,6 +2121,7 @@ export const ReactMapApp = () => {
 
   const handleBrandClick = () => {
     // Reset all URL-driven state to defaults
+    setIsDefaultStatAutoSelected(false);
     setSelectedStatId(null);
     setHasAppliedDefaultStat(false); // allow default stat to re-apply
     setSecondaryStatId(null);
@@ -2338,6 +2347,17 @@ export const ReactMapApp = () => {
     [selectOrganization, selectedOrgIds, selectedOrgIdsFromMap],
   );
 
+  const handleSidebarSearchCleared = useCallback(() => {
+    setSearchSelectionMeta(null);
+    setActiveOrganizationId(null);
+    setHighlightedOrganizationIds(null);
+    setSelectedOrgIds([]);
+    setSelectedOrgIdsFromMap(false);
+    setIsDefaultStatAutoSelected(false);
+    setSelectedStatId(null);
+    setSecondaryStatId(null);
+  }, [setSearchSelectionMeta]);
+
   const handleZoomToOrg = useCallback(
     (id: string) => {
       const preserveMapSelection = selectedOrgIdsFromMap && selectedOrgIds.includes(id);
@@ -2506,16 +2526,18 @@ export const ReactMapApp = () => {
       pinned: change.pinned,
       transient: change.transient,
     });
-    // ZIP map picks should open stats context so users immediately see area insights.
-    if (change.kind === "ZIP" && isNonEmpty && hasChanged) {
-      setSidebarCollapsed(false);
+    // Mobile area tap-selects should open the drawer and enable advanced
+    // only when org pins are currently hidden.
+    if (
+      isMobile &&
+      !orgPinsVisible &&
+      (change.kind === "ZIP" || change.kind === "COUNTY") &&
+      isNonEmpty &&
+      hasChanged
+    ) {
       setShowAdvanced(true);
-      if (isMobile && sheetState !== "expanded") {
-        // Use expanded mode so the mobile drawer stays open for ZIP selections.
+      if (sheetState !== "expanded") {
         expandSheet();
-      }
-      if (!selectedStatId) {
-        setSelectedStatId(DEFAULT_POPULATION_STAT_ID);
       }
     }
     if (hasChanged) {
@@ -2912,10 +2934,6 @@ export const ReactMapApp = () => {
       }
 
       setBoundaryMode(targetKind === "ZIP" ? "zips" : "counties");
-      // Desktop ZIP searches should immediately surface advanced stats.
-      if (!isMobile && targetKind === "ZIP") {
-        setShowAdvanced(true);
-      }
       setActiveScreen("map");
       if (isMobile && sheetState !== "peek") {
         collapseSheet();
@@ -2941,7 +2959,6 @@ export const ReactMapApp = () => {
       setActiveScreen,
       setHighlightedOrganizationIds,
       setOrgPinsVisible,
-      setShowAdvanced,
       setSelectedOrgIds,
       setSelectedOrgIdsFromMap,
       setUserLocation,
@@ -3250,6 +3267,7 @@ export const ReactMapApp = () => {
     meta?: { shiftKey?: boolean; clear?: boolean }
   ) => {
     if (statId === null) {
+      setIsDefaultStatAutoSelected(false);
       const currentSelectedStatId = selectedStatId;
       const isPopulationSelection =
         typeof currentSelectedStatId === "string" &&
@@ -3273,6 +3291,7 @@ export const ReactMapApp = () => {
       return;
     }
 
+    setIsDefaultStatAutoSelected(false);
     // If a stat is selected and there are orgs selected from the map, deselect them
     if (selectedOrgIdsFromMap && selectedOrgIds.length > 0) {
       setSelectedOrgIds([]);
@@ -3654,11 +3673,13 @@ export const ReactMapApp = () => {
                 onZoomToCounty={handleZoomToCounty}
                 onRequestCollapseSheet={isMobile ? collapseSheet : undefined}
                 onLocationSearch={handleMobileLocationSearch}
+                onSearchCleared={handleSidebarSearchCleared}
                 onStatSelect={handleStatSelect}
+                suppressAutoDefaultStatSearchLabel={isDefaultStatAutoSelected}
                 onRetryStatData={retryStatData}
                 onExport={handleExport}
                 onOrgPinsVisibleChange={setOrgPinsVisible}
-                initialOrgPinsVisible={initialMapState.orgPinsVisible}
+                initialOrgPinsVisible={orgPinsVisible}
                 onClearAreas={handleClearAreas}
                 onRemoveArea={handleRemoveArea}
                 onAddAreas={handleAddAreas}
@@ -3731,6 +3752,7 @@ export const ReactMapApp = () => {
                   handleStatSelect(null, { clear: true });
                   return;
                 }
+                setIsDefaultStatAutoSelected(false);
                 setSelectedStatId(nextStatId);
               }}
               onSecondaryStatChange={setSecondaryStatId}
@@ -3923,11 +3945,13 @@ export const ReactMapApp = () => {
                     onZoomOutAll={handleZoomOutAll}
                     onZoomToCounty={handleZoomToCounty}
                     onRequestCollapseSheet={collapseSheet}
+                    onSearchCleared={handleSidebarSearchCleared}
                     onStatSelect={handleStatSelect}
+                    suppressAutoDefaultStatSearchLabel={isDefaultStatAutoSelected}
                     onRetryStatData={retryStatData}
                     onExport={handleExport}
                     onOrgPinsVisibleChange={setOrgPinsVisible}
-                    initialOrgPinsVisible={initialMapState.orgPinsVisible}
+                    initialOrgPinsVisible={orgPinsVisible}
                     onClearAreas={handleClearAreas}
                     onRemoveArea={handleRemoveArea}
                     onAddAreas={handleAddAreas}
