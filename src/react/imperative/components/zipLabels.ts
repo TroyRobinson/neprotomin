@@ -73,6 +73,8 @@ export const createZipLabels = ({
   let hoveredPillKey: string | null = null;
   let visible = true;
   let shouldShowStackedStats = map.getZoom() >= stackedStatsMinZoom;
+  const rowPillTransition = "opacity 120ms ease, transform 120ms ease, background-color 150ms ease, border-color 150ms ease";
+  const rowPillExitMs = 120;
 
   const pillsEqual = (a: HoverStackPill[], b: HoverStackPill[]): boolean => {
     if (a.length !== b.length) return false;
@@ -105,6 +107,28 @@ export const createZipLabels = ({
   };
 
   const computeShouldShowStackedStats = (): boolean => map.getZoom() >= stackedStatsMinZoom;
+  const removeLabelWithRowTransition = (element: HTMLElement) => {
+    if (element.dataset.extremaAnimateRows !== "1") {
+      element.remove();
+      return;
+    }
+    if (element.dataset.extremaExit === "1") return;
+    const rowPills = Array.from(element.querySelectorAll<HTMLElement>("[data-extrema-pill='1']"));
+    if (rowPills.length === 0) {
+      element.remove();
+      return;
+    }
+    element.dataset.extremaExit = "1";
+    for (const rowPill of rowPills) {
+      rowPill.style.pointerEvents = "none";
+      rowPill.style.transition = rowPillTransition;
+      rowPill.style.opacity = "0";
+      rowPill.style.transform = "translateY(-2px)";
+    }
+    window.setTimeout(() => {
+      element.remove();
+    }, rowPillExitMs);
+  };
   const emitHoveredPill = (areaId: string | null, pill: HoverStackPill | null) => {
     if (clearHoveredPillTimer !== null) {
       clearTimeout(clearHoveredPillTimer);
@@ -208,6 +232,8 @@ export const createZipLabels = ({
     const [lng, lat] = centroid;
     const element = document.createElement("div");
     element.className = "absolute z-0 flex flex-col items-center";
+    const shouldAnimateRowTransitions = !opts.isDirectHovered && !opts.showBaseStack;
+    element.dataset.extremaAnimateRows = shouldAnimateRowTransitions ? "1" : "0";
     const baseTransform = "translate(-50%, -50%)";
     const isSelectedOrPinned = isSelected || isPinned;
     const hasPrimaryData = Boolean(currentStatId && currentStatData && zip in currentStatData);
@@ -309,9 +335,9 @@ export const createZipLabels = ({
         ? "bg-slate-100 border-slate-400 dark:bg-slate-800 dark:border-slate-400"
         : "";
       rowPill.className = [
-        "h-5 px-2 rounded-full border border-slate-300/80 bg-white/50 whitespace-nowrap",
+        "h-5 px-2 rounded-full border border-slate-300/80 bg-white/70 whitespace-nowrap",
         "font-medium text-xs flex items-center gap-1.5 justify-center shadow-md",
-        "text-slate-700 dark:border-slate-600/80 dark:bg-slate-900/50 dark:text-slate-200",
+        "text-slate-700 dark:border-slate-600/80 dark:bg-slate-900/70 dark:text-slate-200",
         interactiveClass,
         activeClass,
       ].join(" ");
@@ -329,6 +355,11 @@ export const createZipLabels = ({
       rowPill.style.overflowWrap = "normal";
       rowPill.style.wordBreak = "keep-all";
       rowPill.style.flexShrink = "0";
+      if (shouldAnimateRowTransitions) {
+        rowPill.style.transition = rowPillTransition;
+        rowPill.style.opacity = "0";
+        rowPill.style.transform = "translateY(-2px)";
+      }
       rowPill.dataset.extremaPill = "1";
       rowPill.dataset.extremaAreaId = zip;
       rowPill.dataset.extremaPillKey = row.key;
@@ -358,6 +389,12 @@ export const createZipLabels = ({
         rowPill.appendChild(closeIcon);
       }
       element.appendChild(rowPill);
+      if (shouldAnimateRowTransitions) {
+        requestAnimationFrame(() => {
+          rowPill.style.opacity = "1";
+          rowPill.style.transform = "translateY(0)";
+        });
+      }
     }
 
     const point = map.project([lng, lat]);
@@ -391,7 +428,7 @@ export const createZipLabels = ({
     if (!visible) return;
     shouldShowStackedStats = computeShouldShowStackedStats();
     for (const [_zip, element] of labelElements) {
-      element.remove();
+      removeLabelWithRowTransition(element);
     }
     labelElements.clear();
     const zipsToLabel = new Set([...currentSelectedZips, ...currentPinnedZips]);
