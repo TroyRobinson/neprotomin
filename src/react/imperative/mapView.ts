@@ -454,6 +454,10 @@ export const createMapView = ({
       secondaryStatId = null;
       categoryChips.setSecondaryStat(null);
       syncStatDataStoreFocus();
+      if (!selectedStatId) {
+        try { updateStatDataChoropleth(); } catch {}
+        try { map.triggerRepaint(); } catch {}
+      }
       refreshStatVisuals();
       if (typeof onStatSelectionChange === 'function') {
         onStatSelectionChange(selectedStatId);
@@ -1403,6 +1407,8 @@ export const createMapView = ({
     secondaryStatId = null;
     categoryChips.setSecondaryStat(null);
     syncStatDataStoreFocus();
+    try { updateStatDataChoropleth(); } catch {}
+    try { map.triggerRepaint(); } catch {}
     refreshStatVisuals();
     if (typeof onStatSelectionChange === 'function') {
       onStatSelectionChange(null);
@@ -3739,7 +3745,6 @@ export const createMapView = ({
   };
 
   function updateStatDataChoropleth() {
-    if (!map.isStyleLoaded()) return;
     extUpdatePrimaryChoropleth(map, {
       BOUNDARY_STATDATA_FILL_LAYER_ID,
       COUNTY_STATDATA_FILL_LAYER_ID,
@@ -3748,6 +3753,9 @@ export const createMapView = ({
       SECONDARY_STAT_HOVER_LAYER_ID,
       COUNTY_SECONDARY_HOVER_LAYER_ID,
     }, currentTheme, boundaryMode, selectedStatId, scopedStatDataByBoundary, map.getZoom());
+    if (!selectedStatId) {
+      try { map.triggerRepaint(); } catch {}
+    }
   }
 
   const applyData = () => {
@@ -4077,6 +4085,10 @@ export const createMapView = ({
       secondaryStatId = null;
       categoryChips.setSecondaryStat(null);
       syncStatDataStoreFocus();
+      if (!selectedStatId) {
+        try { updateStatDataChoropleth(); } catch {}
+        try { map.triggerRepaint(); } catch {}
+      }
       refreshStatVisuals();
       if (typeof onStatSelectionChange === 'function') {
         onStatSelectionChange(selectedStatId);
