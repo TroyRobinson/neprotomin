@@ -2028,7 +2028,7 @@ const OrganizationListItem = ({
         )}
       </div>
       {shortAddress && (
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-xs font-light text-slate-400 dark:text-slate-500">
           {(() => {
             const mapsUrl = buildMapsUrl(org);
 
@@ -2050,8 +2050,8 @@ const OrganizationListItem = ({
         </p>
       )}
       {org.phone && (
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          <span className="font-medium text-slate-600 dark:text-slate-300">Phone:</span>{" "}
+        <p className="mt-1 text-xs font-light text-slate-400 dark:text-slate-500">
+          <span className="font-medium text-slate-400 dark:text-slate-500">Phone:</span>{" "}
           <a
             href={`tel:${org.phone}`}
             className="hover:underline"
@@ -2082,7 +2082,7 @@ const OrganizationListItem = ({
             <span
               role="button"
               tabIndex={0}
-              className="inline-flex items-center rounded-full bg-slate-50 px-2 py-[2px] text-[10px] font-medium text-slate-600 dark:bg-slate-800/70 dark:text-slate-300 cursor-pointer"
+              className="inline-flex items-center rounded-full bg-slate-50 px-2 py-[2px] text-[10px] font-normal text-slate-500 dark:bg-slate-800/70 dark:text-slate-400 cursor-pointer"
               onClick={(event) => handleCategoryClick(event)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
@@ -2111,7 +2111,7 @@ const OrganizationListItem = ({
           )}
           <button
             type="button"
-            className="inline-flex items-center rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-500 transition-colors group-hover:bg-red-100 group-hover:text-brand-900 dark:bg-slate-800/60 dark:text-slate-300 dark:group-hover:bg-red-900/30 dark:group-hover:text-slate-100"
+            className="inline-flex items-center rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-normal text-slate-400 transition-colors group-hover:bg-red-100 group-hover:text-brand-900 dark:bg-slate-800/60 dark:text-slate-400 dark:group-hover:bg-red-900/30 dark:group-hover:text-slate-100"
             onClick={(event) => {
               event.stopPropagation();
               onIssueClick?.(org);
@@ -2122,7 +2122,7 @@ const OrganizationListItem = ({
           {formatHoursLines(org.hours).length > 0 ? (
             <button
               type="button"
-              className="inline-flex items-center rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-medium text-slate-500 transition-colors group-hover:bg-brand-100 group-hover:text-brand-900 dark:bg-slate-800/60 dark:text-slate-300 dark:group-hover:bg-slate-700 dark:group-hover:text-slate-100"
+              className="inline-flex items-center rounded-full bg-slate-100 px-2 py-[2px] text-[10px] font-normal text-slate-400 transition-colors group-hover:bg-brand-100 group-hover:text-brand-900 dark:bg-slate-800/60 dark:text-slate-400 dark:group-hover:bg-slate-700 dark:group-hover:text-slate-100"
               onClick={(event) => {
                 event.stopPropagation();
                 handleToggleExpandOnly();
