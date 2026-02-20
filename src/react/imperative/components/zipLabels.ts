@@ -8,6 +8,8 @@ interface ZipLabelsOptions {
   getCentroidsMap?: () => Map<string, [number, number]>;
   labelForId?: (id: string) => string;
   stackedStatsMinZoom?: number;
+  onHoverPillChange?: (payload: { areaId: string | null; pill: HoverStackPill | null }) => void;
+  onPillClick?: (payload: { areaId: string; pill: HoverStackPill }) => void;
 }
 
 export type HoverPillTone = "good" | "bad" | "neutral";
@@ -18,12 +20,14 @@ export interface HoverStackPill {
   label: string;
   tone: HoverPillTone;
   direction: HoverPillDirection;
+  statId?: string;
+  pairKey?: string;
 }
 
 export interface ZipLabelsController {
   setSelectedZips: (zips: string[], pinnedZips: string[]) => void;
   setHoveredZip: (zip: string | null) => void;
-  setLinkedHoveredAreas: (areas: string[]) => void;
+  setLinkedHoverPillsByArea: (rowsByArea: Map<string, HoverStackPill[]>) => void;
   setHoverPillsByArea: (rowsByArea: Map<string, HoverStackPill[]>) => void;
   setStatOverlay: (statId: string | null, statData: Record<string, number> | null, statType?: string) => void;
   setSecondaryStatOverlay: (statId: string | null, statData: Record<string, number> | null, statType?: string) => void;
@@ -38,7 +42,14 @@ const formatStatValue = (value: number, type: string = "count"): string => {
   return formatStatValueCompact(value, type);
 };
 
-export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStatsMinZoom = 0 }: ZipLabelsOptions): ZipLabelsController => {
+export const createZipLabels = ({
+  map,
+  getCentroidsMap,
+  labelForId,
+  stackedStatsMinZoom = 0,
+  onHoverPillChange,
+  onPillClick,
+}: ZipLabelsOptions): ZipLabelsController => {
   const resolveCentroids = getCentroidsMap ?? defaultCentroids;
   const idToLabel = labelForId || ((id: string) => id);
   const labelElements = new Map<string, HTMLElement>();
@@ -52,15 +63,40 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
   let currentSecondaryData: Record<string, number> | null = null;
   let currentSecondaryStatType: string = "count";
   let currentHoverPillsByArea = new Map<string, HoverStackPill[]>();
-  let currentLinkedHoveredAreas = new Set<string>();
+  let currentLinkedHoverPillsByArea = new Map<string, HoverStackPill[]>();
   let currentTheme: "light" | "dark" = "light";
   let updatePositionHandler: (() => void) | null = null;
+  let clearHoveredPillTimer: ReturnType<typeof setTimeout> | null = null;
   let visible = true;
   let shouldShowStackedStats = map.getZoom() >= stackedStatsMinZoom;
 
   const computeShouldShowStackedStats = (): boolean => map.getZoom() >= stackedStatsMinZoom;
+  const emitHoveredPill = (areaId: string | null, pill: HoverStackPill | null) => {
+    if (clearHoveredPillTimer !== null) {
+      clearTimeout(clearHoveredPillTimer);
+      clearHoveredPillTimer = null;
+    }
+    onHoverPillChange?.({ areaId, pill });
+  };
+  const scheduleClearHoveredPill = () => {
+    if (clearHoveredPillTimer !== null) clearTimeout(clearHoveredPillTimer);
+    // Prevent flicker when moving between nearby pills in the same stack.
+    clearHoveredPillTimer = setTimeout(() => {
+      clearHoveredPillTimer = null;
+      onHoverPillChange?.({ areaId: null, pill: null });
+    }, 35);
+  };
 
-  const createLabelElement = (zip: string, isSelected: boolean, isPinned: boolean, isHovered: boolean): HTMLElement | null => {
+  const createLabelElement = (
+    zip: string,
+    isSelected: boolean,
+    isPinned: boolean,
+    opts: {
+      isDirectHovered: boolean;
+      showBaseStack: boolean;
+      hoverRows: HoverStackPill[];
+    },
+  ): HTMLElement | null => {
     const centroid = resolveCentroids().get(zip);
     if (!centroid) return null;
 
@@ -71,9 +107,11 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
     const isSelectedOrPinned = isSelected || isPinned;
     const hasPrimaryData = Boolean(currentStatId && currentStatData && zip in currentStatData);
     const hasSecondaryData = Boolean(currentSecondaryStatId && currentSecondaryData && (zip in currentSecondaryData));
-    // Hovered area always gets the full stat stack; selected/pinned areas stay zoom-gated.
-    const shouldShowPrimaryStat = hasPrimaryData && (isHovered || (shouldShowStackedStats && isSelectedOrPinned));
-    const shouldShowSecondary = hasSecondaryData && (isHovered || (shouldShowStackedStats && isSelectedOrPinned));
+    // Directly hovered area gets the full stat stack; selected/pinned areas stay zoom-gated.
+    const shouldShowPrimaryStat =
+      opts.showBaseStack && hasPrimaryData && (opts.isDirectHovered || (shouldShowStackedStats && isSelectedOrPinned));
+    const shouldShowSecondary =
+      opts.showBaseStack && hasSecondaryData && (opts.isDirectHovered || (shouldShowStackedStats && isSelectedOrPinned));
 
     const pillLabel = document.createElement("div");
     const hasStatOverlay = Boolean(currentStatId);
@@ -156,35 +194,53 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
       secondaryPill.style.zIndex = "0";
       secondaryPill.textContent = formatStatValue(secondaryVal, currentSecondaryStatType);
     }
-    // Keep stacked stat chips behind the area label for quick visual comparison.
-    if (secondaryPill) element.appendChild(secondaryPill);
-    if (primaryPill) element.appendChild(primaryPill);
-    element.appendChild(pillLabel);
+    if (opts.showBaseStack) {
+      // Keep stacked stat chips behind the area label for quick visual comparison.
+      if (secondaryPill) element.appendChild(secondaryPill);
+      if (primaryPill) element.appendChild(primaryPill);
+      element.appendChild(pillLabel);
+    }
 
-    if (isHovered) {
-      const hoverRows = currentHoverPillsByArea.get(zip) ?? [];
-      for (const row of hoverRows) {
-        const rowPill = document.createElement("div");
-        rowPill.className = [
-          "h-5 px-2 rounded-full border border-slate-300/80 bg-white/95",
-          "font-medium text-xs flex items-center gap-1.5 justify-center shadow-md",
-          "text-slate-700 dark:border-slate-600/80 dark:bg-slate-900/95 dark:text-slate-200",
-        ].join(" ");
-        rowPill.style.marginTop = "-2px";
+    for (const row of opts.hoverRows) {
+      const rowPill = document.createElement("div");
+      const interactiveClass = row.statId
+        ? "transition-colors duration-150 hover:bg-slate-100 hover:border-slate-400 dark:hover:bg-slate-800 dark:hover:border-slate-400"
+        : "";
+      rowPill.className = [
+        "h-5 px-2 rounded-full border border-slate-300/80 bg-white/95",
+        "font-medium text-xs flex items-center gap-1.5 justify-center shadow-md",
+        "text-slate-700 dark:border-slate-600/80 dark:bg-slate-900/95 dark:text-slate-200",
+        interactiveClass,
+      ].join(" ");
+      rowPill.style.marginTop = opts.showBaseStack ? "-2px" : "0";
+      // Allow direct hover on extrema rows while keeping the rest of the stack passthrough.
+      rowPill.style.pointerEvents = "auto";
+      rowPill.style.cursor = row.statId ? "pointer" : "default";
+      rowPill.addEventListener("mouseenter", () => {
+        emitHoveredPill(zip, row);
+      });
+      rowPill.addEventListener("mouseleave", () => {
+        scheduleClearHoveredPill();
+      });
+      rowPill.addEventListener("pointerdown", (event) => {
+        if (!row.statId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onPillClick?.({ areaId: zip, pill: row });
+      });
 
-        const arrow = document.createElement("span");
-        arrow.textContent = row.direction === "up" ? "▲" : "▼";
-        arrow.style.fontWeight = "700";
-        arrow.style.color =
-          row.tone === "good" ? "#6fc284" : row.tone === "bad" ? "#f15b41" : "#f8d837";
+      const arrow = document.createElement("span");
+      arrow.textContent = row.direction === "up" ? "▲" : "▼";
+      arrow.style.fontWeight = "700";
+      arrow.style.color =
+        row.tone === "good" ? "#6fc284" : row.tone === "bad" ? "#f15b41" : "#f8d837";
 
-        const text = document.createElement("span");
-        text.textContent = row.label;
+      const text = document.createElement("span");
+      text.textContent = row.label;
 
-        rowPill.appendChild(arrow);
-        rowPill.appendChild(text);
-        element.appendChild(rowPill);
-      }
+      rowPill.appendChild(arrow);
+      rowPill.appendChild(text);
+      element.appendChild(rowPill);
     }
 
     const point = map.project([lng, lat]);
@@ -225,14 +281,21 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
     if (currentHoveredZip && !zipsToLabel.has(currentHoveredZip)) {
       zipsToLabel.add(currentHoveredZip);
     }
-    for (const area of currentLinkedHoveredAreas) {
+    for (const area of currentLinkedHoverPillsByArea.keys()) {
       if (!zipsToLabel.has(area)) zipsToLabel.add(area);
     }
     for (const zip of zipsToLabel) {
       const isSelected = currentSelectedZips.has(zip);
       const isPinned = currentPinnedZips.has(zip);
-      const isHovered = currentHoveredZip === zip || currentLinkedHoveredAreas.has(zip);
-      const element = createLabelElement(zip, isSelected, isPinned, isHovered);
+      const isDirectHovered = currentHoveredZip === zip;
+      const linkedRows = currentLinkedHoverPillsByArea.get(zip) ?? [];
+      const hasLinkedOnlyRows = linkedRows.length > 0 && !isDirectHovered;
+      const hoverRows = isDirectHovered ? (currentHoverPillsByArea.get(zip) ?? []) : linkedRows;
+      const element = createLabelElement(zip, isSelected, isPinned, {
+        isDirectHovered,
+        showBaseStack: !hasLinkedOnlyRows,
+        hoverRows,
+      });
       if (element) {
         labelElements.set(zip, element);
       }
@@ -272,15 +335,8 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
     if (visible) updateLabels();
   };
 
-  const setLinkedHoveredAreas = (areas: string[]) => {
-    const next = new Set(areas.filter((area) => typeof area === "string" && area.length > 0));
-    if (
-      next.size === currentLinkedHoveredAreas.size &&
-      [...next].every((area) => currentLinkedHoveredAreas.has(area))
-    ) {
-      return;
-    }
-    currentLinkedHoveredAreas = next;
+  const setLinkedHoverPillsByArea = (rowsByArea: Map<string, HoverStackPill[]>) => {
+    currentLinkedHoverPillsByArea = rowsByArea;
     if (visible) updateLabels();
   };
 
@@ -327,6 +383,10 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
   };
 
   const destroy = () => {
+    if (clearHoveredPillTimer !== null) {
+      clearTimeout(clearHoveredPillTimer);
+      clearHoveredPillTimer = null;
+    }
     if (updatePositionHandler) {
       map.off("move", updatePositionHandler);
       map.off("zoom", updatePositionHandler);
@@ -340,7 +400,7 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
   return {
     setSelectedZips,
     setHoveredZip,
-    setLinkedHoveredAreas,
+    setLinkedHoverPillsByArea,
     setHoverPillsByArea,
     setStatOverlay,
     setSecondaryStatOverlay,
