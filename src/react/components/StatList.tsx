@@ -795,24 +795,29 @@ export const StatList = ({
                   Shift+click an area(s) to see charts
                 </div>
               ) : (
-                <StatViz
-                  statsById={statsById}
-                  seriesByStatIdByKind={seriesByStatIdByKind}
-                  statDataById={statDataById}
-                  selectedAreas={selectedAreas}
-                  pinnedAreas={pinnedAreas}
-                  selectedStatId={selectedStatId}
-                  hoveredArea={hoveredArea}
-                  onHoverArea={onHoverArea}
-                  areaNameLookup={areaNameLookup}
-                  activeAreaKind={activeAreaKind}
-                  getZipParentCounty={getZipParentCounty}
-                  zipScopeCountyName={zipScopeDisplayName}
-                  stateAvg={selectedStatContextAvg?.value ?? null}
-                  selectedStatLoading={selectedStatLoading}
-                  onRetryStatData={onRetryStatData}
-                  embedded={true}
-                />
+                <div className="w-full">
+                  <StatViz
+                    statsById={statsById}
+                    seriesByStatIdByKind={seriesByStatIdByKind}
+                    statDataById={statDataById}
+                    selectedAreas={selectedAreas}
+                    pinnedAreas={pinnedAreas}
+                    selectedStatId={selectedStatId}
+                    hoveredArea={hoveredArea}
+                    onHoverArea={onHoverArea}
+                    areaNameLookup={areaNameLookup}
+                    activeAreaKind={activeAreaKind}
+                    getZipParentCounty={getZipParentCounty}
+                    zipScopeCountyName={zipScopeDisplayName}
+                    stateAvg={selectedStatContextAvg?.value ?? null}
+                    selectedStatLoading={selectedStatLoading}
+                    onRetryStatData={onRetryStatData}
+                    embedded={true}
+                  />
+                  <p className="mt-2.5 mb-1 text-center text-[10px] font-light text-slate-300 dark:text-slate-600">
+                    Shift+click areas on map to select additional
+                  </p>
+                </div>
               )}
             </div>
           )}
