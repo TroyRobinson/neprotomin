@@ -138,7 +138,7 @@ export const createZipLabels = ({
     if (hoveredPillAreaId === areaId && hoveredPillKey === nextPillKey) return;
     hoveredPillAreaId = areaId;
     hoveredPillKey = nextPillKey;
-    hasActiveHoveredPill = Boolean(areaId && pill);
+    hasActiveHoveredPill = Boolean(areaId);
     onHoverPillChange?.({ areaId, pill });
   };
   const scheduleClearHoveredPill = () => {
@@ -162,9 +162,23 @@ export const createZipLabels = ({
     if (!pill) return null;
     return { areaId, pill };
   };
+  const resolveTooltipAreaFromElement = (target: Element | null): string | null => {
+    const tooltip = target?.closest<HTMLElement>("[data-extrema-tooltip='1']");
+    const areaId = tooltip?.dataset.extremaAreaId ?? null;
+    return areaId;
+  };
   const onContainerPointerOver = (event: PointerEvent) => {
     const nextHovered = resolvePillFromElement(event.target as Element | null);
-    if (!nextHovered) return;
+    if (!nextHovered) {
+      const tooltipArea = resolveTooltipAreaFromElement(event.target as Element | null);
+      if (!tooltipArea) return;
+      if (clearHoveredPillTimer !== null) {
+        clearTimeout(clearHoveredPillTimer);
+        clearHoveredPillTimer = null;
+      }
+      emitHoveredPill(tooltipArea, null);
+      return;
+    }
     if (clearHoveredPillTimer !== null) {
       clearTimeout(clearHoveredPillTimer);
       clearHoveredPillTimer = null;
@@ -172,16 +186,28 @@ export const createZipLabels = ({
     emitHoveredPill(nextHovered.areaId, nextHovered.pill);
   };
   const onContainerPointerOut = (event: PointerEvent) => {
-    const fromHovered = resolvePillFromElement(event.target as Element | null);
-    if (!fromHovered) return;
-    const toHovered = resolvePillFromElement((event.relatedTarget as Element | null) ?? null);
+    const target = event.target as Element | null;
+    const relatedTarget = (event.relatedTarget as Element | null) ?? null;
+    const fromHovered = resolvePillFromElement(target);
+    const fromTooltipArea = resolveTooltipAreaFromElement(target);
+    const activeAreaId = fromHovered?.areaId ?? fromTooltipArea;
+    if (!activeAreaId) return;
+    const toHovered = resolvePillFromElement(relatedTarget);
     if (toHovered) {
-      if (toHovered.areaId === fromHovered.areaId && toHovered.pill.key === fromHovered.pill.key) return;
+      if (fromHovered && toHovered.areaId === fromHovered.areaId && toHovered.pill.key === fromHovered.pill.key) return;
       if (clearHoveredPillTimer !== null) {
         clearTimeout(clearHoveredPillTimer);
         clearHoveredPillTimer = null;
       }
       emitHoveredPill(toHovered.areaId, toHovered.pill);
+      return;
+    }
+    const toTooltipArea = resolveTooltipAreaFromElement(relatedTarget);
+    if (toTooltipArea && toTooltipArea === activeAreaId) {
+      if (clearHoveredPillTimer !== null) {
+        clearTimeout(clearHoveredPillTimer);
+        clearHoveredPillTimer = null;
+      }
       return;
     }
     // If the row under the pointer was recreated, relatedTarget can be null briefly.
@@ -196,6 +222,8 @@ export const createZipLabels = ({
       emitHoveredPill(fromPointHovered.areaId, fromPointHovered.pill);
       return;
     }
+    const fromPointTooltipArea = resolveTooltipAreaFromElement(fromPointTarget);
+    if (fromPointTooltipArea && fromPointTooltipArea === activeAreaId) return;
     if (!hasActiveHoveredPill) return;
     scheduleClearHoveredPill();
   };
@@ -278,6 +306,10 @@ export const createZipLabels = ({
 
     pillLabel.textContent = displayLabel;
     element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
+    if (opts.isDirectHovered) {
+      // Keep the active area's tooltip above neighboring extrema labels.
+      element.style.zIndex = "30";
+    }
 
     let primaryPill: HTMLDivElement | null = null;
     if (shouldShowPrimaryStat && primaryPalette) {
@@ -316,6 +348,38 @@ export const createZipLabels = ({
       if (primaryPill) element.appendChild(primaryPill);
       element.appendChild(pillLabel);
     }
+    // Direct-hovered areas render extrema in a tooltip list so pointer travel doesn't leak to map areas below.
+    const shouldUseHoveredDropdown = opts.isDirectHovered && opts.showBaseStack && opts.hoverRows.length > 0;
+    const shouldUseLinkedCircle = !opts.showBaseStack && !opts.isDirectHovered;
+    let hoverRowsContainer: HTMLElement = element;
+    if (shouldUseHoveredDropdown) {
+      const bridge = document.createElement("div");
+      bridge.className = "absolute left-1/2 top-full -translate-x-1/2 pointer-events-auto";
+      bridge.style.marginTop = "-1px";
+      bridge.style.width = "max(100%, 112px)";
+      bridge.style.height = "10px";
+      bridge.style.background = "transparent";
+      bridge.style.zIndex = "1";
+      bridge.dataset.extremaTooltip = "1";
+      bridge.dataset.extremaAreaId = zip;
+      element.appendChild(bridge);
+
+      const dropdown = document.createElement("div");
+      dropdown.className = [
+        "absolute left-1/2 top-full -translate-x-1/2 pointer-events-auto",
+        "overflow-hidden rounded-md border border-slate-300/85 bg-white/95 shadow-md backdrop-blur-sm",
+        "dark:border-slate-600/85 dark:bg-slate-900/95",
+      ].join(" ");
+      dropdown.style.marginTop = "8px";
+      dropdown.style.zIndex = "2";
+      dropdown.dataset.extremaTooltip = "1";
+      dropdown.dataset.extremaAreaId = zip;
+      const dropdownList = document.createElement("div");
+      dropdownList.className = "flex flex-col items-stretch";
+      dropdown.appendChild(dropdownList);
+      element.appendChild(dropdown);
+      hoverRowsContainer = dropdownList;
+    }
 
     for (const [index, row] of opts.hoverRows.entries()) {
       const rowPill = document.createElement("div");
@@ -328,33 +392,78 @@ export const createZipLabels = ({
       const canSelectDifferentStat = Boolean(row.statId && row.statId !== currentStatId);
       const isInteractive = canSelectDifferentStat || canCloseToPopulation;
       const isActiveHover = hoveredPillAreaId === zip && hoveredPillKey === row.key;
-      const interactiveClass = isInteractive
-        ? "transition-colors duration-150 hover:bg-slate-100 hover:border-slate-400 dark:hover:bg-slate-800 dark:hover:border-slate-400"
-        : "";
-      const activeClass = isInteractive && isActiveHover
-        ? "bg-slate-100 border-slate-400 dark:bg-slate-800 dark:border-slate-400"
-        : "";
-      rowPill.className = [
-        "h-5 px-2 rounded-full border border-slate-300/80 bg-white/70 whitespace-nowrap",
-        "font-medium text-xs flex items-center gap-1.5 justify-center shadow-md",
-        "text-slate-700 dark:border-slate-600/80 dark:bg-slate-900/70 dark:text-slate-200",
-        interactiveClass,
-        activeClass,
-      ].join(" ");
+      if (shouldUseHoveredDropdown) {
+        const interactiveClass = isInteractive
+          ? "transition-colors duration-150 hover:bg-slate-100/95 dark:hover:bg-slate-800/95"
+          : "";
+        const activeClass = isInteractive && isActiveHover
+          ? "bg-slate-100/95 dark:bg-slate-800/95"
+          : "";
+        rowPill.className = [
+          "h-6 px-2 whitespace-nowrap",
+          "font-medium text-[11px] leading-none flex items-center gap-1 justify-start",
+          "text-slate-700 dark:text-slate-200",
+          interactiveClass,
+          activeClass,
+        ].join(" ");
+      } else if (shouldUseLinkedCircle) {
+        const interactiveClass = isInteractive
+          ? "transition-colors duration-150 hover:bg-slate-100 hover:border-slate-400 dark:hover:bg-slate-800 dark:hover:border-slate-400"
+          : "";
+        const activeClass = isInteractive && isActiveHover
+          ? "bg-slate-100 border-slate-400 dark:bg-slate-800 dark:border-slate-400"
+          : "";
+        rowPill.className = [
+          "h-6 w-6 rounded-full border border-slate-300/85 bg-white dark:border-slate-600/85 dark:bg-slate-900",
+          "font-medium text-xs leading-none flex items-center justify-center shadow-md",
+          interactiveClass,
+          activeClass,
+        ].join(" ");
+      } else {
+        const interactiveClass = isInteractive
+          ? "transition-colors duration-150 hover:bg-slate-100 hover:border-slate-400 dark:hover:bg-slate-800 dark:hover:border-slate-400"
+          : "";
+        const activeClass = isInteractive && isActiveHover
+          ? "bg-slate-100 border-slate-400 dark:bg-slate-800 dark:border-slate-400"
+          : "";
+        rowPill.className = [
+          "h-5 px-2 rounded-full border border-slate-300/80 bg-white/70 whitespace-nowrap",
+          "font-medium text-xs flex items-center gap-1.5 justify-center shadow-md",
+          "text-slate-700 dark:border-slate-600/80 dark:bg-slate-900/70 dark:text-slate-200",
+          interactiveClass,
+          activeClass,
+        ].join(" ");
+      }
       // Keep rows stacked cleanly below one another (no overlap flicker/jitter).
-      if (!opts.showBaseStack) {
+      if (shouldUseHoveredDropdown) {
+        rowPill.style.marginTop = "0";
+        if (index > 0) {
+          rowPill.style.borderTop =
+            currentTheme === "light"
+              ? "1px solid rgba(148, 163, 184, 0.45)"
+              : "1px solid rgba(100, 116, 139, 0.55)";
+        }
+      } else if (shouldUseLinkedCircle) {
+        rowPill.style.marginTop = index === 0 ? "0" : "2px";
+      } else if (!opts.showBaseStack) {
         rowPill.style.marginTop = index === 0 ? "0" : "2px";
       } else {
         rowPill.style.marginTop = index === 0 ? "4px" : "2px";
       }
       // Allow direct hover on extrema rows while keeping the rest of the stack passthrough.
       rowPill.style.pointerEvents = "auto";
-      rowPill.style.cursor = row.statId ? "pointer" : "default";
+      rowPill.style.cursor = isInteractive ? "pointer" : "default";
       rowPill.style.width = "max-content";
       rowPill.style.maxWidth = "none";
       rowPill.style.overflowWrap = "normal";
       rowPill.style.wordBreak = "keep-all";
       rowPill.style.flexShrink = "0";
+      if (shouldUseHoveredDropdown) {
+        rowPill.style.width = "100%";
+      } else if (shouldUseLinkedCircle) {
+        rowPill.style.width = "24px";
+        rowPill.style.maxWidth = "24px";
+      }
       if (shouldAnimateRowTransitions) {
         rowPill.style.transition = rowPillTransition;
         rowPill.style.opacity = "0";
@@ -368,27 +477,32 @@ export const createZipLabels = ({
       arrow.textContent = row.direction === "up" ? "▲" : "▼";
       arrow.style.fontWeight = "700";
       arrow.style.flexShrink = "0";
+      arrow.style.fontSize = shouldUseLinkedCircle ? "11px" : "";
       arrow.style.color =
         row.tone === "good" ? "#6fc284" : row.tone === "bad" ? "#f15b41" : "#f8d837";
 
-      const text = document.createElement("span");
-      text.textContent = row.label;
-      text.style.whiteSpace = "nowrap";
-      text.style.wordBreak = "keep-all";
-      text.style.overflowWrap = "normal";
-      text.style.flexShrink = "0";
-
       rowPill.appendChild(arrow);
-      rowPill.appendChild(text);
-      if (canCloseToPopulation) {
-        const closeIcon = document.createElement("span");
-        closeIcon.textContent = "×";
-        closeIcon.style.fontWeight = "700";
-        closeIcon.style.opacity = "0.7";
-        closeIcon.style.flexShrink = "0";
-        rowPill.appendChild(closeIcon);
+      if (!shouldUseLinkedCircle) {
+        const text = document.createElement("span");
+        text.textContent = row.label;
+        text.style.whiteSpace = "nowrap";
+        text.style.wordBreak = "keep-all";
+        text.style.overflowWrap = "normal";
+        text.style.flexShrink = "0";
+        rowPill.appendChild(text);
+        if (canCloseToPopulation) {
+          const closeIcon = document.createElement("span");
+          closeIcon.textContent = "×";
+          closeIcon.style.fontWeight = "700";
+          closeIcon.style.opacity = "0.7";
+          closeIcon.style.flexShrink = "0";
+          if (shouldUseHoveredDropdown) {
+            closeIcon.style.marginLeft = "auto";
+          }
+          rowPill.appendChild(closeIcon);
+        }
       }
-      element.appendChild(rowPill);
+      hoverRowsContainer.appendChild(rowPill);
       if (shouldAnimateRowTransitions) {
         requestAnimationFrame(() => {
           rowPill.style.opacity = "1";
