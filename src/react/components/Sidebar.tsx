@@ -246,6 +246,7 @@ export const Sidebar = ({
   const sidebarRef = useRef<HTMLElement>(null);
   const lastSidebarPointerDownRef = useRef(false);
   const desktopSearchInputRef = useRef<HTMLInputElement>(null);
+  const selectAllSearchTextOnNextFocusRef = useRef(false);
   const hasAppliedInitialSearchFocusRef = useRef(false);
   const [isOrgsScrollAtTop, setIsOrgsScrollAtTop] = useState(true);
   const [isStatsScrollAtTop, setIsStatsScrollAtTop] = useState(true);
@@ -736,7 +737,8 @@ export const Sidebar = ({
       } else {
         onLocationSearch?.(result.id);
       }
-      setSearchText("");
+      setSearchText(result.label);
+      selectAllSearchTextOnNextFocusRef.current = true;
       setIsSearchDropdownOpen(false);
       setHighlightedSearchIndex(-1);
     },
@@ -1190,13 +1192,24 @@ export const Sidebar = ({
               value={searchText}
               onChange={(event) => {
                 const next = event.target.value;
+                selectAllSearchTextOnNextFocusRef.current = false;
                 setSearchText(next);
                 setIsSearchDropdownOpen(next.trim().length >= 2);
                 setHighlightedSearchIndex(-1);
               }}
-              onFocus={() => {
+              onFocus={(event) => {
+                if (selectAllSearchTextOnNextFocusRef.current && event.currentTarget.value) {
+                  requestAnimationFrame(() => {
+                    event.currentTarget.select();
+                  });
+                }
                 if (hasSearchText && searchResults.length > 0) {
                   setIsSearchDropdownOpen(true);
+                }
+              }}
+              onClick={(event) => {
+                if (selectAllSearchTextOnNextFocusRef.current && event.currentTarget.value) {
+                  event.currentTarget.select();
                 }
               }}
               onKeyDown={(event) => {
