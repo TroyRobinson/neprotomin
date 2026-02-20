@@ -17,6 +17,12 @@ import { createZipLabels, type ZipLabelsController } from "./components/zipLabel
 import { createChoroplethLegend, type ChoroplethLegendController } from "./components/choroplethLegend";
 import { createSecondaryChoroplethLegend, type SecondaryChoroplethLegendController } from "./components/secondaryChoroplethLegend";
 import { statsStore } from "../../state/stats";
+import {
+  emptyPointsOfInterestSnapshot,
+  getPointsOfInterestRows,
+  pointsOfInterestStore,
+  type PointsOfInterestSnapshot,
+} from "../../state/pointsOfInterest";
 import { createOrgLegend, type OrgLegendController } from "./components/orgLegend";
 import { createMapLoadingIndicator } from "./components/mapLoadingIndicator";
 import { getCountyCentroidsMap, getCountyName } from "../../lib/countyCentroids";
@@ -42,6 +48,7 @@ import {
   ensureZctasForViewport,
   ensureZctaChunks,
   getZctaFeatureCollection,
+  getZctaCentroid,
   pruneZctaChunks,
   getZctaChunkIdForZip,
   getNeighborCountyIds,
@@ -159,6 +166,7 @@ const CUSTOM_SOURCE_IDS = new Set<string>([
   USER_LOCATION_SOURCE_ID,
   BOUNDARY_SOURCE_ID,
   ZIP_CENTROIDS_SOURCE_ID,
+  POINTS_OF_INTEREST_SOURCE_ID,
   COUNTY_CENTROIDS_SOURCE_ID,
   COUNTY_BOUNDARY_SOURCE_ID,
 ]);
@@ -240,11 +248,16 @@ import {
   SECONDARY_STAT_HOVER_LAYER_ID,
   ZIP_STAT_EXTREME_HIGH_LAYER_ID,
   ZIP_STAT_EXTREME_LOW_LAYER_ID,
+  POINTS_OF_INTEREST_SOURCE_ID,
+  ZIP_POI_EXTREME_HIGH_LAYER_ID,
+  ZIP_POI_EXTREME_LOW_LAYER_ID,
   COUNTY_CENTROIDS_SOURCE_ID,
   COUNTY_SECONDARY_LAYER_ID,
   COUNTY_SECONDARY_HOVER_LAYER_ID,
   COUNTY_STAT_EXTREME_HIGH_LAYER_ID,
   COUNTY_STAT_EXTREME_LOW_LAYER_ID,
+  COUNTY_POI_EXTREME_HIGH_LAYER_ID,
+  COUNTY_POI_EXTREME_LOW_LAYER_ID,
   COUNTY_BOUNDARY_SOURCE_ID,
   COUNTY_BOUNDARY_FILL_LAYER_ID,
   COUNTY_BOUNDARY_LINE_LAYER_ID,
@@ -265,9 +278,22 @@ type FC = GeoJSON.FeatureCollection<
 >;
 
 type BoundaryTypeKey = "ZIP" | "COUNTY";
+type ExtremaKind = "high" | "low";
 type StatDataEntry = { type: string; data: Record<string, number>; min: number; max: number };
 type StatDataEntryByBoundary = Partial<Record<BoundaryTypeKey, StatDataEntry>>;
 type StatDataStoreMap = Map<string, StatDataByParentArea>;
+type PoiFeature = GeoJSON.Feature<
+  GeoJSON.Point,
+  {
+    poiKey: string;
+    boundaryType: BoundaryTypeKey;
+    extremaKind: ExtremaKind;
+    areaCode: string;
+    statCategory: string;
+    iconId: string;
+  }
+>;
+type PoiFeatureCollection = GeoJSON.FeatureCollection<GeoJSON.Point, PoiFeature["properties"]>;
 
 const FALLBACK_ZIP_PARENT_AREA =
   normalizeScopeLabel(DEFAULT_PARENT_AREA_BY_KIND.ZIP ?? "Oklahoma") ?? "Oklahoma";
@@ -293,6 +319,7 @@ const intersectionArea = (a: BoundsArray, b: BoundsArray): number => {
 };
 
 const emptyFC = (): FC => ({ type: "FeatureCollection", features: [] });
+const emptyPoiFC = (): PoiFeatureCollection => ({ type: "FeatureCollection", features: [] });
 
 const COUNTY_MODE_ENABLE_ZOOM = 9;
 const COUNTY_MODE_DISABLE_ZOOM = 9.6;
@@ -377,8 +404,10 @@ export const createMapView = ({
   const categoryChips = createCategoryChips({
     isMobile,
     onChange: (categoryId) => {
+      hideStatExtremaArrows();
       selectedCategory = categoryId;
       applyData();
+      refreshStatVisuals();
       if (typeof onCategorySelectionChange === 'function') {
         onCategorySelectionChange(selectedCategory);
       }
@@ -495,6 +524,8 @@ export const createMapView = ({
   let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
   let unsubscribeStatData: (() => void) | null = null;
   let unsubscribeStatDataState: (() => void) | null = null;
+  let pointsOfInterestSnapshot: PointsOfInterestSnapshot = emptyPointsOfInterestSnapshot();
+  let unsubscribePointsOfInterest: (() => void) | null = null;
   let statDataStoreState: Pick<StatDataStoreState, "isRefreshing" | "hasPendingRefresh"> = {
     isRefreshing: false,
     hasPendingRefresh: false,
@@ -950,6 +981,10 @@ export const createMapView = ({
   let boundarySourceReady = false;
   let pendingZctaEnsure = false;
   let pendingZctaEnsureForce = false;
+  let lastEnsuredPoiZipChunkKey = "";
+  // Cache ZIP->chunk mappings learned while chunks are loaded so POI ZIP chunks
+  // can be re-requested after prune/unload cycles.
+  const poiZipChunkHints = new Map<string, string>();
   
   // Track map motion state to suppress React hover callbacks during drag/zoom
   let mapInMotion = false;
@@ -1104,6 +1139,8 @@ export const createMapView = ({
       });
     }
     syncZctaSource();
+    // Rebuild ZIP-dependent overlays (including no-stat POI extrema) once new chunks land.
+    refreshStatVisuals();
     if (legendRangeMode === "dynamic" && !pendingVisibleZipRefresh) {
       pendingVisibleZipRefresh = true;
       map.once("idle", () => {
@@ -1930,6 +1967,113 @@ export const createMapView = ({
     source.setData(data);
   };
 
+  const poiIconForRow = (goodIfUp: boolean | null, extremaKind: ExtremaKind): string => {
+    if (goodIfUp === true) {
+      return extremaKind === "high" ? STAT_EXTREME_GOOD_ICON_ID : STAT_EXTREME_BAD_ICON_ID;
+    }
+    if (goodIfUp === false) {
+      return extremaKind === "high" ? STAT_EXTREME_BAD_ICON_ID : STAT_EXTREME_GOOD_ICON_ID;
+    }
+    return STAT_EXTREME_NEUTRAL_ICON_ID;
+  };
+
+  const setPoiLayerState = (layerId: string, visible: boolean) => {
+    if (!map.getLayer(layerId)) return;
+    map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
+    map.setPaintProperty(layerId, "icon-opacity", visible ? 1 : 0);
+  };
+
+  const buildPointsOfInterestSourceData = (): PoiFeatureCollection => {
+    if (selectedStatId) return emptyPoiFC();
+
+    const zipRows = getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", selectedCategory);
+    const countyRowsAll = getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", selectedCategory);
+    // At county/state view, only show statewide extrema to avoid Tulsa/OKC scope clutter.
+    const countyRows = boundaryMode === "counties"
+      ? countyRowsAll.filter((row) => row.scopeKey === "oklahoma")
+      : countyRowsAll;
+    const countyCentroids = getCountyCentroidsMap();
+    const features: PoiFeature[] = [];
+
+    const append = (rows: typeof zipRows, boundaryType: BoundaryTypeKey) => {
+      for (const row of rows) {
+        // ZIP centroids are chunk-loaded; skip rows whose centroids are not ready yet.
+        const centroid =
+          boundaryType === "ZIP"
+            ? getZctaCentroid(ZCTA_STATE, row.areaCode)
+            : countyCentroids.get(row.areaCode);
+        if (!centroid) continue;
+        features.push({
+          type: "Feature",
+          properties: {
+            poiKey: row.poiKey,
+            boundaryType,
+            extremaKind: row.extremaKind,
+            areaCode: row.areaCode,
+            statCategory: row.statCategory,
+            iconId: poiIconForRow(row.goodIfUp, row.extremaKind),
+          },
+          geometry: {
+            type: "Point",
+            coordinates: centroid,
+          },
+        });
+      }
+    };
+
+    append(zipRows, "ZIP");
+    append(countyRows, "COUNTY");
+    return { type: "FeatureCollection", features };
+  };
+
+  const updatePointsOfInterestSource = () => {
+    const source = map.getSource(POINTS_OF_INTEREST_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (!source) return;
+    source.setData(buildPointsOfInterestSourceData());
+  };
+
+  const ensurePoiZipCentroidsLoaded = () => {
+    if (selectedStatId) return;
+    const rows = getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", selectedCategory);
+    if (rows.length === 0) return;
+
+    const chunkIdsSet = new Set<string>();
+    let missingCentroid = false;
+
+    for (const row of rows) {
+      const liveChunkId = getZctaChunkIdForZip(ZCTA_STATE, row.areaCode);
+      if (liveChunkId) {
+        poiZipChunkHints.set(row.areaCode, liveChunkId);
+        chunkIdsSet.add(liveChunkId);
+      } else {
+        const hintedChunkId = poiZipChunkHints.get(row.areaCode);
+        if (hintedChunkId) {
+          chunkIdsSet.add(hintedChunkId);
+        }
+      }
+      if (!getZctaCentroid(ZCTA_STATE, row.areaCode)) {
+        missingCentroid = true;
+      }
+    }
+
+    const chunkIds = Array.from(chunkIdsSet).sort();
+    if (chunkIds.length === 0) return;
+
+    const key = chunkIds.join("|");
+    // Re-ensure if centroids are missing, even if the chunk key is unchanged.
+    if (key === lastEnsuredPoiZipChunkKey && !missingCentroid) return;
+    lastEnsuredPoiZipChunkKey = key;
+
+    void ensureZctaChunks(ZCTA_STATE, chunkIds)
+      .then(() => {
+        syncZctaSource();
+        refreshStatVisuals();
+      })
+      .catch((error) => {
+        console.warn("Failed to ensure ZIP chunks for POIs", error);
+      });
+  };
+
   function hideStatExtremaArrows() {
     const hideLayer = (layerId: string, featureKey: "zip" | "county") => {
       if (!map.getLayer(layerId)) return;
@@ -1941,6 +2085,10 @@ export const createMapView = ({
     hideLayer(ZIP_STAT_EXTREME_LOW_LAYER_ID, "zip");
     hideLayer(COUNTY_STAT_EXTREME_HIGH_LAYER_ID, "county");
     hideLayer(COUNTY_STAT_EXTREME_LOW_LAYER_ID, "county");
+    setPoiLayerState(ZIP_POI_EXTREME_HIGH_LAYER_ID, false);
+    setPoiLayerState(ZIP_POI_EXTREME_LOW_LAYER_ID, false);
+    setPoiLayerState(COUNTY_POI_EXTREME_HIGH_LAYER_ID, false);
+    setPoiLayerState(COUNTY_POI_EXTREME_LOW_LAYER_ID, false);
   }
 
   // Keep extrema indicators as MapLibre symbol layers so they stay centered during zoom/pan/style swaps.
@@ -2021,12 +2169,88 @@ export const createMapView = ({
     );
   };
 
+  const ensurePointsOfInterestLayers = () => {
+    if (!map.getSource(POINTS_OF_INTEREST_SOURCE_ID)) {
+      map.addSource(POINTS_OF_INTEREST_SOURCE_ID, {
+        type: "geojson",
+        data: emptyPoiFC(),
+      });
+    }
+
+    const addPoiLayer = (
+      layerId: string,
+      boundaryType: BoundaryTypeKey,
+      extremaKind: ExtremaKind,
+      rotation: number,
+      visible: boolean,
+    ) => {
+      if (map.getLayer(layerId)) return;
+      const before = map.getLayer(LAYER_CLUSTERS_ID) ? LAYER_CLUSTERS_ID : undefined;
+      const layer: any = {
+        id: layerId,
+        type: "symbol",
+        source: POINTS_OF_INTEREST_SOURCE_ID,
+        filter: [
+          "all",
+          ["==", ["get", "boundaryType"], boundaryType],
+          ["==", ["get", "extremaKind"], extremaKind],
+        ],
+        layout: {
+          visibility: visible ? "visible" : "none",
+          "icon-image": ["coalesce", ["get", "iconId"], STAT_EXTREME_NEUTRAL_ICON_ID],
+          "icon-size": 0.9,
+          "icon-anchor": "center",
+          "icon-rotate": rotation,
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+        },
+        paint: {
+          "icon-opacity": 0,
+        },
+      };
+      if (before) map.addLayer(layer, before);
+      else map.addLayer(layer);
+    };
+
+    addPoiLayer(
+      ZIP_POI_EXTREME_HIGH_LAYER_ID,
+      "ZIP",
+      "high",
+      0,
+      boundaryMode === "zips" && !zipGeometryHiddenDueToZoom,
+    );
+    addPoiLayer(
+      ZIP_POI_EXTREME_LOW_LAYER_ID,
+      "ZIP",
+      "low",
+      180,
+      boundaryMode === "zips" && !zipGeometryHiddenDueToZoom,
+    );
+    addPoiLayer(
+      COUNTY_POI_EXTREME_HIGH_LAYER_ID,
+      "COUNTY",
+      "high",
+      0,
+      boundaryMode === "counties",
+    );
+    addPoiLayer(
+      COUNTY_POI_EXTREME_LOW_LAYER_ID,
+      "COUNTY",
+      "low",
+      180,
+      boundaryMode === "counties",
+    );
+  };
+
   const updateStatExtremaArrows = () => {
     if (!map.isStyleLoaded()) return;
 
-    const hideZip = boundaryMode === "zips" && map.getZoom() >= CHOROPLETH_HIDE_ZOOM;
+    const zoom = map.getZoom();
+    const hideZip = boundaryMode === "zips" && zoom >= CHOROPLETH_HIDE_ZOOM;
     const showZipLayers = boundaryMode === "zips" && !hideZip;
-    const showCountyLayers = boundaryMode === "counties";
+    // Keep ZIP POI extrema available at city zoom even if boundary mode is manually pinned to counties.
+    const showZipPoiLayers = boundaryMode === "zips" || zoom >= COUNTY_MODE_DISABLE_ZOOM;
+    const showCountyLayers = boundaryMode === "counties" && zoom < COUNTY_MODE_DISABLE_ZOOM;
 
     const setLayerState = (
       layerId: string,
@@ -2043,12 +2267,24 @@ export const createMapView = ({
     };
 
     if (!selectedStatId) {
+      ensurePoiZipCentroidsLoaded();
       setLayerState(ZIP_STAT_EXTREME_HIGH_LAYER_ID, "zip", null, STAT_EXTREME_GOOD_ICON_ID, false);
       setLayerState(ZIP_STAT_EXTREME_LOW_LAYER_ID, "zip", null, STAT_EXTREME_BAD_ICON_ID, false);
       setLayerState(COUNTY_STAT_EXTREME_HIGH_LAYER_ID, "county", null, STAT_EXTREME_GOOD_ICON_ID, false);
       setLayerState(COUNTY_STAT_EXTREME_LOW_LAYER_ID, "county", null, STAT_EXTREME_BAD_ICON_ID, false);
+
+      updatePointsOfInterestSource();
+      setPoiLayerState(ZIP_POI_EXTREME_HIGH_LAYER_ID, showZipPoiLayers);
+      setPoiLayerState(ZIP_POI_EXTREME_LOW_LAYER_ID, showZipPoiLayers);
+      setPoiLayerState(COUNTY_POI_EXTREME_HIGH_LAYER_ID, showCountyLayers);
+      setPoiLayerState(COUNTY_POI_EXTREME_LOW_LAYER_ID, showCountyLayers);
       return;
     }
+
+    setPoiLayerState(ZIP_POI_EXTREME_HIGH_LAYER_ID, false);
+    setPoiLayerState(ZIP_POI_EXTREME_LOW_LAYER_ID, false);
+    setPoiLayerState(COUNTY_POI_EXTREME_HIGH_LAYER_ID, false);
+    setPoiLayerState(COUNTY_POI_EXTREME_LOW_LAYER_ID, false);
 
     const entry = boundaryMode === "counties"
       ? getStatEntryByBoundary(selectedStatId, "COUNTY")
@@ -2149,6 +2385,7 @@ export const createMapView = ({
       COUNTY_STATDATA_FILL_LAYER_ID,
     }, boundaryMode, currentTheme);
     ensureStatExtremaLayers();
+    ensurePointsOfInterestLayers();
 
     const hasBoundarySource = Boolean(map.getSource(BOUNDARY_SOURCE_ID));
     if (!hasBoundarySource) {
@@ -2894,6 +3131,10 @@ export const createMapView = ({
     };
     recomputeStatDataLoading();
   });
+  unsubscribePointsOfInterest = pointsOfInterestStore.subscribe((snapshot) => {
+    pointsOfInterestSnapshot = snapshot;
+    refreshStatVisuals();
+  });
 
   function updateHighlight() {
     if (!map.getLayer(LAYER_HIGHLIGHT_ID)) return;
@@ -3393,9 +3634,11 @@ export const createMapView = ({
     // Always sync the chips UI, even if our internal filter hasn't changed.
     // This ensures cases where a stat selection temporarily selects a category
     // (without changing the filter) can be cleared from external callers.
+    hideStatExtremaArrows();
     selectedCategory = categoryId;
     categoryChips.setSelected(selectedCategory);
     applyData();
+    refreshStatVisuals();
   };
 
   const fitAllOrganizations = () => {
@@ -3635,6 +3878,7 @@ export const createMapView = ({
       categoryChips.destroy();
       if (unsubscribeStatData) unsubscribeStatData();
       if (unsubscribeStatDataState) unsubscribeStatDataState();
+      if (unsubscribePointsOfInterest) unsubscribePointsOfInterest();
       zipFloatingTitle?.destroy();
       zipLabels?.destroy();
       choroplethLegend?.destroy();

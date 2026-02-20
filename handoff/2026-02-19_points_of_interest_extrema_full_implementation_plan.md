@@ -4,7 +4,9 @@
 
 Status summary:
 - Slice 1 is complete (schema/perms + backend recompute/deactivate + admin toggle/status).
-- Slice 2 (map no-stat POI rendering) is not started yet.
+- Slice 2 (map no-stat POI rendering) is now complete as of 2026-02-20 with regression fixes.
+- Section 0.7 captures earlier debugging notes from the failed attempt.
+- Section 0.8 captures the final merged Slice 2 behavior and fixes.
 
 ### 0.1 Completed in code
 
@@ -89,6 +91,88 @@ Current imports are serverless-safe for the POI endpoint.
 - Project type/build check passed (`npm run build`).
 - Admin toggle now triggers recompute/deactivate endpoint calls.
 - Endpoint module loads successfully in local runtime after import fixes.
+
+### 0.7 Slice 2 Debugging Findings (2026-02-20)
+
+This section captures what was learned while debugging no-stat POI rendering, so the next dev can avoid repeating dead ends.
+These are insights only; prior slice-2 code edits from this debugging session were intentionally cleared by the user.
+
+What actually blocked POI visibility:
+- Main blocker was stale live Instant config, not MapLibre rendering.
+- Local `instant.perms.ts`/`src/instant.schema.ts` had POI rules/entity, but the app environment had not been pushed.
+- Result in browser: POI subscription appeared empty (`storeRows=0`) even though admin table had rows.
+- After `npx instant-cli push`, POIs became readable in client and markers appeared.
+
+Important verification commands/patterns:
+- Use guest impersonation to validate real client visibility:
+  - `db.asUser({ guest: true }).debugQuery({ pointsOfInterest: { $: { where: { isActive: true }, limit: ... } } })`
+- In debug output, check:
+  - `program.code` and `check` for POI rows (should be `true`).
+  - `result.pointsOfInterest` row count.
+- Note: admin SDK responses can differ by call path; rows may be top-level (`resp.pointsOfInterest`) rather than always nested in `resp.data.pointsOfInterest`.
+
+Data-shape findings that can look like rendering bugs:
+- Existing active POI categories observed during debugging were only:
+  - `housing`, `education`, `economy`.
+- If user selects `food` or `health`, no markers is expected unless POI rows exist for those categories.
+
+Query-shape finding:
+- Avoid adding `order: { computedAt: "desc" }` to the client POI subscription for slice 2 v1.
+- During debugging this caused query validation failures in environments where schema/index state was not fully synced.
+- Safe v1 query: `where: { isActive: true }` + `limit`.
+
+Implementation caution that caused map-load regression:
+- Do not call map-dependent extrema refresh functions from chip callbacks before the MapLibre instance exists.
+- `createCategoryChips(...)` callbacks are wired before `const map = new maplibregl.Map(...)`.
+- Any eager callback path touching `map.*` before init can break map load.
+- Safer approach:
+  - Let the existing scheduled visual refresh path drive extrema updates after map init, or
+  - Gate early refresh hooks behind a no-op ref that is assigned only after map/layers are ready.
+
+Recommended re-implementation order for slice 2:
+1. Implement POI store + map layer wiring per Section 16.
+2. Confirm `instant-cli push` has been run in the target environment before UI debugging.
+3. Verify no-stat markers with no category filter first.
+4. Then verify category filtering and selected-stat hide/show transitions.
+5. Only after stable behavior, add any optional debug instrumentation.
+
+### 0.8 Slice 2 Completion Details (2026-02-20)
+
+Implemented files:
+- `src/state/pointsOfInterest.ts` (new):
+  - Imperative subscription store for `pointsOfInterest` where `isActive=true`.
+  - Normalizes and groups rows by boundary/category.
+  - Includes `scopeKey` parsing for county-level scope filtering.
+- `src/react/imperative/constants/map.ts`:
+  - Added POI source and layer IDs for ZIP/COUNTY high+low symbol layers.
+- `src/react/imperative/mapView.ts`:
+  - Added POI source/layer creation and lifecycle wiring.
+  - Added no-stat mode rendering path that uses POI rows.
+  - Added category filtering via `selectedCategory`.
+  - Added selected-stat override: when a stat is selected, POI layers are hidden and normal stat extrema behavior is used.
+  - Added style-resilient source/layer ensure flow integration.
+
+County/ZIP behavior now implemented:
+- County/state view:
+  - Only statewide county POIs render (`scopeKey === "oklahoma"`).
+  - Tulsa/OKC county POI scopes are intentionally hidden to reduce clutter.
+- ZIP/city view:
+  - ZIP POIs remain visible at higher city zoom levels.
+  - ZIP POIs are shown when zoom indicates ZIP context, including cases where boundary mode transitions lag.
+
+Critical regression fixes applied:
+- After ZCTA source sync, overlays are refreshed so POIs repopulate after chunk loads.
+- ZIP POI centroid lookup uses live `getZctaCentroid(...)` values.
+- Fixed zoom-out/zoom-in disappearance by:
+  - Caching ZIP->chunk hints while chunks are loaded.
+  - Re-ensuring POI ZIP chunks when centroids are missing, even if chunk key memo is unchanged.
+
+Verification:
+- `npm run build` passes after Slice 2 changes.
+
+Notes for future devs:
+- Active POI data currently exists for categories: `housing`, `education`, `economy`.
+- If map category filter is set to another category, no POIs is expected.
 
 ## 1. Objective
 Implement a production-ready "Points of Interest" system for stat extrema so that:
