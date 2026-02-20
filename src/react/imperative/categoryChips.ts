@@ -8,13 +8,13 @@ const TIME_OPEN_CHIP_CLASSES =
   "border-[#f5c4ae]/60 bg-[#fdd6c3]/20 text-[#7a4030] hover:border-[#e8a990]/80 hover:bg-[#fdd6c3]/40 hover:text-[#6b3525] dark:border-[#7a4030]/40 dark:bg-[#7a4030]/15 dark:text-[#f5c4ae] dark:hover:border-[#e8a990]/60 dark:hover:text-[#fdd6c3]";
 
 const AREAS_CHIP_CLASSES =
-  "border-slate-200/80 bg-white/55 text-slate-700 hover:border-brand-200 hover:bg-white/75 hover:text-brand-700 dark:border-slate-600/70 dark:bg-slate-900/55 dark:text-slate-200 dark:hover:border-brand-400/70 dark:hover:bg-slate-900/75 dark:hover:text-white";
+  "border-white/60 bg-white/18 text-slate-700 ring-1 ring-white/45 hover:border-brand-200/70 hover:bg-white/30 hover:text-brand-700 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-200 dark:ring-white/8 dark:hover:border-brand-400/50 dark:hover:bg-slate-900/38 dark:hover:text-white";
 
 const ORGS_CHIP_ON_CLASSES =
   "border-transparent bg-[#f7e2d6] text-[#7a4030] shadow-floating hover:bg-[#f1d3c3] dark:bg-[#7a4030]/22 dark:text-[#d79c84]";
 
 const ORGS_CHIP_OFF_CLASSES =
-  "border-slate-200/80 bg-white/55 text-slate-500 hover:border-slate-300 hover:bg-white/70 hover:text-slate-600 dark:border-slate-600/70 dark:bg-slate-900/55 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:bg-slate-900/75 dark:hover:text-slate-300";
+  "border-white/60 bg-white/18 text-slate-500 ring-1 ring-white/45 hover:border-slate-300/70 hover:bg-white/30 hover:text-slate-600 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-400 dark:ring-white/8 dark:hover:border-slate-400/55 dark:hover:bg-slate-900/38 dark:hover:text-slate-300";
 
 const SEARCH_ICON = `
   <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px] text-brand-600 dark:text-brand-400">
@@ -604,8 +604,13 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
       let shouldShow = false;
       if (selectedStatId) {
-        // If stat is selected, only show its category (if featured) or the active filter category
-        shouldShow = isStatCategory || isSelected;
+        // If stat is selected with no active category filter, keep all category options visible.
+        if (!selectedId) {
+          shouldShow = true;
+        } else {
+          // With a category filter, keep just the selected category and selected-stat category context.
+          shouldShow = isStatCategory || isSelected;
+        }
       } else if (selectedId) {
         // If filter is active but no stat, only show the filter category
         shouldShow = isSelected;
