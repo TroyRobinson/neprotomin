@@ -67,8 +67,41 @@ export const createZipLabels = ({
   let currentTheme: "light" | "dark" = "light";
   let updatePositionHandler: (() => void) | null = null;
   let clearHoveredPillTimer: ReturnType<typeof setTimeout> | null = null;
+  let hasActiveHoveredPill = false;
+  let hoveredPillAreaId: string | null = null;
+  let hoveredPillKey: string | null = null;
   let visible = true;
   let shouldShowStackedStats = map.getZoom() >= stackedStatsMinZoom;
+
+  const pillsEqual = (a: HoverStackPill[], b: HoverStackPill[]): boolean => {
+    if (a.length !== b.length) return false;
+    for (let index = 0; index < a.length; index += 1) {
+      const left = a[index];
+      const right = b[index];
+      if (
+        left.key !== right.key
+        || left.label !== right.label
+        || left.tone !== right.tone
+        || left.direction !== right.direction
+        || left.statId !== right.statId
+        || left.pairKey !== right.pairKey
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+  const pillMapsEqual = (
+    left: Map<string, HoverStackPill[]>,
+    right: Map<string, HoverStackPill[]>,
+  ): boolean => {
+    if (left.size !== right.size) return false;
+    for (const [area, leftRows] of left.entries()) {
+      const rightRows = right.get(area);
+      if (!rightRows || !pillsEqual(leftRows, rightRows)) return false;
+    }
+    return true;
+  };
 
   const computeShouldShowStackedStats = (): boolean => map.getZoom() >= stackedStatsMinZoom;
   const emitHoveredPill = (areaId: string | null, pill: HoverStackPill | null) => {
@@ -76,6 +109,11 @@ export const createZipLabels = ({
       clearTimeout(clearHoveredPillTimer);
       clearHoveredPillTimer = null;
     }
+    const nextPillKey = pill?.key ?? null;
+    if (hoveredPillAreaId === areaId && hoveredPillKey === nextPillKey) return;
+    hoveredPillAreaId = areaId;
+    hoveredPillKey = nextPillKey;
+    hasActiveHoveredPill = Boolean(areaId && pill);
     onHoverPillChange?.({ areaId, pill });
   };
   const scheduleClearHoveredPill = () => {
@@ -83,9 +121,74 @@ export const createZipLabels = ({
     // Prevent flicker when moving between nearby pills in the same stack.
     clearHoveredPillTimer = setTimeout(() => {
       clearHoveredPillTimer = null;
-      onHoverPillChange?.({ areaId: null, pill: null });
+      emitHoveredPill(null, null);
     }, 35);
   };
+  const resolvePillFromElement = (
+    target: Element | null,
+  ): { areaId: string; pill: HoverStackPill } | null => {
+    const rowPill = target?.closest<HTMLElement>("[data-extrema-pill='1']");
+    if (!rowPill) return null;
+    const areaId = rowPill.dataset.extremaAreaId ?? null;
+    const pillKey = rowPill.dataset.extremaPillKey ?? null;
+    if (!areaId || !pillKey) return null;
+    const rows = currentHoverPillsByArea.get(areaId) ?? currentLinkedHoverPillsByArea.get(areaId) ?? [];
+    const pill = rows.find((row) => row.key === pillKey) ?? null;
+    if (!pill) return null;
+    return { areaId, pill };
+  };
+  const onContainerPointerOver = (event: PointerEvent) => {
+    const nextHovered = resolvePillFromElement(event.target as Element | null);
+    if (!nextHovered) return;
+    if (clearHoveredPillTimer !== null) {
+      clearTimeout(clearHoveredPillTimer);
+      clearHoveredPillTimer = null;
+    }
+    emitHoveredPill(nextHovered.areaId, nextHovered.pill);
+  };
+  const onContainerPointerOut = (event: PointerEvent) => {
+    const fromHovered = resolvePillFromElement(event.target as Element | null);
+    if (!fromHovered) return;
+    const toHovered = resolvePillFromElement((event.relatedTarget as Element | null) ?? null);
+    if (toHovered) {
+      if (toHovered.areaId === fromHovered.areaId && toHovered.pill.key === fromHovered.pill.key) return;
+      if (clearHoveredPillTimer !== null) {
+        clearTimeout(clearHoveredPillTimer);
+        clearHoveredPillTimer = null;
+      }
+      emitHoveredPill(toHovered.areaId, toHovered.pill);
+      return;
+    }
+    // If the row under the pointer was recreated, relatedTarget can be null briefly.
+    // Resolve from the live element under the cursor before clearing hover.
+    const fromPointTarget = document.elementFromPoint(event.clientX, event.clientY);
+    const fromPointHovered = resolvePillFromElement(fromPointTarget);
+    if (fromPointHovered) {
+      if (clearHoveredPillTimer !== null) {
+        clearTimeout(clearHoveredPillTimer);
+        clearHoveredPillTimer = null;
+      }
+      emitHoveredPill(fromPointHovered.areaId, fromPointHovered.pill);
+      return;
+    }
+    if (!hasActiveHoveredPill) return;
+    scheduleClearHoveredPill();
+  };
+  const onContainerPointerLeave = () => {
+    if (!hasActiveHoveredPill) return;
+    emitHoveredPill(null, null);
+  };
+  const onContainerClick = (event: MouseEvent) => {
+    const hit = resolvePillFromElement(event.target as Element | null);
+    if (!hit?.pill.statId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onPillClick?.({ areaId: hit.areaId, pill: hit.pill });
+  };
+  map.getContainer().addEventListener("pointerover", onContainerPointerOver, { passive: true });
+  map.getContainer().addEventListener("pointerout", onContainerPointerOut, { passive: true });
+  map.getContainer().addEventListener("pointerleave", onContainerPointerLeave, { passive: true });
+  map.getContainer().addEventListener("click", onContainerClick);
 
   const createLabelElement = (
     zip: string,
@@ -132,28 +235,13 @@ export const createZipLabels = ({
       };
     })();
 
-    let pillClassName: string;
-    let backgroundColor: string | null;
-    let textColor: string | null;
-    if (hasPrimaryData) {
-      backgroundColor = currentTheme === "light" ? "#111827" : "#ffffff";
-      textColor = currentTheme === "light" ? "#ffffff" : "#111827";
-      const borderClass = currentTheme === "light" ? "border border-slate-900/80" : "border border-slate-300/90";
-      pillClassName = `
-        ${selectedHeight} px-2 rounded-full font-medium text-xs flex items-center justify-center
-        shadow-lg backdrop-blur-sm ${borderClass}
-      `;
-    } else {
-      const regularTextColor = currentTheme === "dark" ? "text-slate-200" : "text-slate-700";
-      const regularBgColor = currentTheme === "dark" ? "bg-slate-800/70" : "bg-white/70";
-      const regularBorderColor = currentTheme === "dark" ? "border-slate-600" : "border-slate-300";
-      pillClassName = `
-        ${selectedHeight} px-2 rounded-full border ${regularBorderColor} ${regularBgColor} ${regularTextColor}
-        font-medium text-xs flex items-center justify-center shadow-md
-      `;
-      backgroundColor = null;
-      textColor = null;
-    }
+    const borderClass = currentTheme === "light" ? "border border-slate-900/80" : "border border-slate-300/90";
+    const pillClassName = `
+      ${selectedHeight} px-2 rounded-full font-medium text-xs flex items-center justify-center
+      shadow-lg backdrop-blur-sm ${borderClass}
+    `;
+    const backgroundColor = currentTheme === "light" ? "#111827" : "#ffffff";
+    const textColor = currentTheme === "light" ? "#ffffff" : "#111827";
     pillLabel.className = pillClassName;
     if (backgroundColor) pillLabel.style.backgroundColor = backgroundColor as any;
     if (textColor) pillLabel.style.color = textColor as any;
@@ -203,14 +291,20 @@ export const createZipLabels = ({
 
     for (const [index, row] of opts.hoverRows.entries()) {
       const rowPill = document.createElement("div");
-      const interactiveClass = row.statId
+      const isInteractive = Boolean(row.statId);
+      const isActiveHover = hoveredPillAreaId === zip && hoveredPillKey === row.key;
+      const interactiveClass = isInteractive
         ? "transition-colors duration-150 hover:bg-slate-100 hover:border-slate-400 dark:hover:bg-slate-800 dark:hover:border-slate-400"
+        : "";
+      const activeClass = isInteractive && isActiveHover
+        ? "bg-slate-100 border-slate-400 dark:bg-slate-800 dark:border-slate-400"
         : "";
       rowPill.className = [
         "h-5 px-2 rounded-full border border-slate-300/80 bg-white/50",
         "font-medium text-xs flex items-center gap-1.5 justify-center shadow-md",
         "text-slate-700 dark:border-slate-600/80 dark:bg-slate-900/50 dark:text-slate-200",
         interactiveClass,
+        activeClass,
       ].join(" ");
       // Keep rows stacked cleanly below one another (no overlap flicker/jitter).
       if (!opts.showBaseStack) {
@@ -221,18 +315,9 @@ export const createZipLabels = ({
       // Allow direct hover on extrema rows while keeping the rest of the stack passthrough.
       rowPill.style.pointerEvents = "auto";
       rowPill.style.cursor = row.statId ? "pointer" : "default";
-      rowPill.addEventListener("mouseenter", () => {
-        emitHoveredPill(zip, row);
-      });
-      rowPill.addEventListener("mouseleave", () => {
-        scheduleClearHoveredPill();
-      });
-      rowPill.addEventListener("pointerdown", (event) => {
-        if (!row.statId) return;
-        event.preventDefault();
-        event.stopPropagation();
-        onPillClick?.({ areaId: zip, pill: row });
-      });
+      rowPill.dataset.extremaPill = "1";
+      rowPill.dataset.extremaAreaId = zip;
+      rowPill.dataset.extremaPillKey = row.key;
 
       const arrow = document.createElement("span");
       arrow.textContent = row.direction === "up" ? "▲" : "▼";
@@ -341,11 +426,13 @@ export const createZipLabels = ({
   };
 
   const setLinkedHoverPillsByArea = (rowsByArea: Map<string, HoverStackPill[]>) => {
+    if (pillMapsEqual(currentLinkedHoverPillsByArea, rowsByArea)) return;
     currentLinkedHoverPillsByArea = rowsByArea;
     if (visible) updateLabels();
   };
 
   const setHoverPillsByArea = (rowsByArea: Map<string, HoverStackPill[]>) => {
+    if (pillMapsEqual(currentHoverPillsByArea, rowsByArea)) return;
     currentHoverPillsByArea = rowsByArea;
     if (visible) updateLabels();
   };
@@ -392,6 +479,10 @@ export const createZipLabels = ({
       clearTimeout(clearHoveredPillTimer);
       clearHoveredPillTimer = null;
     }
+    map.getContainer().removeEventListener("pointerover", onContainerPointerOver);
+    map.getContainer().removeEventListener("pointerout", onContainerPointerOut);
+    map.getContainer().removeEventListener("pointerleave", onContainerPointerLeave);
+    map.getContainer().removeEventListener("click", onContainerClick);
     if (updatePositionHandler) {
       map.off("move", updatePositionHandler);
       map.off("zoom", updatePositionHandler);
