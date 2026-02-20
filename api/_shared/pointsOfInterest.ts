@@ -156,29 +156,17 @@ const SCOPE_DEFINITIONS: Record<
   { label: string; countyCodes: string[] | null }
 > = {
   oklahoma: { label: "Oklahoma", countyCodes: null },
+  // City scopes are intentionally single-county for tighter ZIP extrema.
   tulsa_area: {
     label: "Tulsa Area",
     countyCodes: [
       "40143", // Tulsa
-      "40037", // Creek
-      "40111", // Okmulgee
-      "40113", // Osage
-      "40117", // Pawnee
-      "40131", // Rogers
-      "40145", // Wagoner
-      "40147", // Washington
     ],
   },
   okc_area: {
     label: "Oklahoma City Area",
     countyCodes: [
       "40109", // Oklahoma
-      "40017", // Canadian
-      "40027", // Cleveland
-      "40073", // Kingfisher
-      "40081", // Lincoln
-      "40083", // Logan
-      "40125", // Pottawatomie
     ],
   },
 };
