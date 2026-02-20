@@ -201,18 +201,23 @@ export const createZipLabels = ({
       element.appendChild(pillLabel);
     }
 
-    for (const row of opts.hoverRows) {
+    for (const [index, row] of opts.hoverRows.entries()) {
       const rowPill = document.createElement("div");
       const interactiveClass = row.statId
         ? "transition-colors duration-150 hover:bg-slate-100 hover:border-slate-400 dark:hover:bg-slate-800 dark:hover:border-slate-400"
         : "";
       rowPill.className = [
-        "h-5 px-2 rounded-full border border-slate-300/80 bg-white/95",
+        "h-5 px-2 rounded-full border border-slate-300/80 bg-white/50",
         "font-medium text-xs flex items-center gap-1.5 justify-center shadow-md",
-        "text-slate-700 dark:border-slate-600/80 dark:bg-slate-900/95 dark:text-slate-200",
+        "text-slate-700 dark:border-slate-600/80 dark:bg-slate-900/50 dark:text-slate-200",
         interactiveClass,
       ].join(" ");
-      rowPill.style.marginTop = opts.showBaseStack ? "-2px" : "0";
+      // Keep rows stacked cleanly below one another (no overlap flicker/jitter).
+      if (!opts.showBaseStack) {
+        rowPill.style.marginTop = index === 0 ? "0" : "2px";
+      } else {
+        rowPill.style.marginTop = index === 0 ? "4px" : "2px";
+      }
       // Allow direct hover on extrema rows while keeping the rest of the stack passthrough.
       rowPill.style.pointerEvents = "auto";
       rowPill.style.cursor = row.statId ? "pointer" : "default";
