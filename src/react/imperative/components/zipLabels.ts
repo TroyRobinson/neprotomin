@@ -38,6 +38,9 @@ export interface ZipLabelsController {
 }
 
 const defaultCentroids = (): Map<string, [number, number]> => getZipCentroidsMap();
+// Keep hovered labels below top map controls (chips/menus use z-10) while
+// still floating above nearby label stacks in the map layer.
+const HOVERED_LABEL_Z_INDEX = 9;
 
 const formatStatValue = (value: number, type: string = "count"): string => {
   return formatStatValueCompact(value, type);
@@ -310,7 +313,7 @@ export const createZipLabels = ({
     element.className = "absolute z-0 flex flex-col items-center pointer-events-none";
     if (opts.isDirectHovered) {
       // Keep the active area's tooltip above neighboring extrema labels.
-      element.style.zIndex = "30";
+      element.style.zIndex = `${HOVERED_LABEL_Z_INDEX}`;
     }
 
     let primaryPill: HTMLDivElement | null = null;
