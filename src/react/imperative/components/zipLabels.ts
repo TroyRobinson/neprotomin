@@ -76,9 +76,12 @@ export const createZipLabels = ({
   let hoveredPillKey: string | null = null;
   let visible = true;
   let shouldShowStackedStats = map.getZoom() >= stackedStatsMinZoom;
-  const rowPillTransition = "opacity 120ms ease, transform 120ms ease, background-color 150ms ease, border-color 150ms ease";
-  const rowPillExitMs = 120;
+  const labelFadeMs = 85;
+  const labelFadeTransition = `opacity ${labelFadeMs}ms ease`;
+  const rowPillTransition = `opacity ${labelFadeMs}ms ease, transform ${labelFadeMs}ms ease, background-color 120ms ease, border-color 120ms ease`;
+  const rowPillExitMs = labelFadeMs;
   const hoveredTooltipBridgeMinWidthPx = 260;
+  const hoveredTooltipBridgeCompactMinWidthPx = 220;
   const hoveredTooltipBridgeHeightPx = 24;
 
   const pillsEqual = (a: HoverStackPill[], b: HoverStackPill[]): boolean => {
@@ -112,27 +115,42 @@ export const createZipLabels = ({
   };
 
   const computeShouldShowStackedStats = (): boolean => map.getZoom() >= stackedStatsMinZoom;
-  const removeLabelWithRowTransition = (element: HTMLElement) => {
-    if (element.dataset.extremaAnimateRows !== "1") {
-      element.remove();
-      return;
-    }
+  const removeLabelWithRowTransition = (
+    element: HTMLElement,
+    options?: { animateContainerFade?: boolean },
+  ) => {
+    const animateContainerFade = options?.animateContainerFade !== false;
+    const shouldAnimateRows = element.dataset.extremaAnimateRows === "1";
     if (element.dataset.extremaExit === "1") return;
-    const rowPills = Array.from(element.querySelectorAll<HTMLElement>("[data-extrema-pill='1']"));
-    if (rowPills.length === 0) {
+    if (!animateContainerFade && !shouldAnimateRows) {
       element.remove();
       return;
     }
+    const rowPills = Array.from(element.querySelectorAll<HTMLElement>("[data-extrema-pill='1']"));
     element.dataset.extremaExit = "1";
-    for (const rowPill of rowPills) {
-      rowPill.style.pointerEvents = "none";
-      rowPill.style.transition = rowPillTransition;
-      rowPill.style.opacity = "0";
-      rowPill.style.transform = "translateY(-2px)";
+    element.style.pointerEvents = "none";
+    if (animateContainerFade) {
+      element.style.transition = labelFadeTransition;
+      element.style.opacity = "0";
+    }
+    if (shouldAnimateRows && rowPills.length > 0) {
+      for (const rowPill of rowPills) {
+        rowPill.style.pointerEvents = "none";
+        rowPill.style.transition = rowPillTransition;
+        rowPill.style.opacity = "0";
+        rowPill.style.transform = "translateY(-2px)";
+      }
+    }
+    const removeDelayMs = shouldAnimateRows && rowPills.length > 0
+      ? Math.max(animateContainerFade ? labelFadeMs : 0, rowPillExitMs)
+      : (animateContainerFade ? labelFadeMs : 0);
+    if (removeDelayMs === 0) {
+      element.remove();
+      return;
     }
     window.setTimeout(() => {
       element.remove();
-    }, rowPillExitMs);
+    }, removeDelayMs);
   };
   const emitHoveredPill = (areaId: string | null, pill: HoverStackPill | null) => {
     if (clearHoveredPillTimer !== null) {
@@ -257,6 +275,7 @@ export const createZipLabels = ({
       isDirectHovered: boolean;
       showBaseStack: boolean;
       hoverRows: HoverStackPill[];
+      animateContainerFade?: boolean;
     },
   ): HTMLElement | null => {
     const centroid = resolveCentroids().get(zip);
@@ -265,6 +284,13 @@ export const createZipLabels = ({
     const [lng, lat] = centroid;
     const element = document.createElement("div");
     element.className = "absolute z-0 flex flex-col items-center";
+    const animateContainerFade = opts.animateContainerFade !== false;
+    if (animateContainerFade) {
+      element.style.transition = labelFadeTransition;
+      element.style.opacity = "0";
+    } else {
+      element.style.opacity = "1";
+    }
     const shouldAnimateRowTransitions = !opts.isDirectHovered && !opts.showBaseStack;
     element.dataset.extremaAnimateRows = shouldAnimateRowTransitions ? "1" : "0";
     const baseTransform = "translate(-50%, -50%)";
@@ -358,10 +384,16 @@ export const createZipLabels = ({
     const shouldUseLinkedCircle = !opts.showBaseStack && !opts.isDirectHovered;
     let hoverRowsContainer: HTMLElement = element;
     if (shouldUseHoveredDropdown) {
+      const hasSelectableRows = opts.hoverRows.some(
+        (row) => Boolean(row.statId && row.statId !== currentStatId),
+      );
+      const hoveredTooltipMinWidthPx = hasSelectableRows
+        ? hoveredTooltipBridgeMinWidthPx
+        : hoveredTooltipBridgeCompactMinWidthPx;
       const bridge = document.createElement("div");
       bridge.className = "absolute left-1/2 top-full -translate-x-1/2 pointer-events-auto";
       bridge.style.marginTop = "-2px";
-      bridge.style.width = `max(100%, ${hoveredTooltipBridgeMinWidthPx}px)`;
+      bridge.style.width = `max(100%, ${hoveredTooltipMinWidthPx}px)`;
       bridge.style.height = `${hoveredTooltipBridgeHeightPx}px`;
       bridge.style.background = "transparent";
       bridge.style.zIndex = "1";
@@ -414,6 +446,8 @@ export const createZipLabels = ({
       const canSelectDifferentStat = Boolean(row.statId && row.statId !== currentStatId);
       const isInteractive = canSelectDifferentStat || canCloseToPopulation;
       const isActiveHover = hoveredPillAreaId === zip && hoveredPillKey === row.key;
+      let dropdownActionMeta: HTMLSpanElement | null = null;
+      let dropdownActionLabel: HTMLSpanElement | null = null;
       if (shouldUseHoveredDropdown) {
         const interactiveClass = isInteractive
           ? "transition-colors duration-150 hover:bg-slate-100/95 dark:hover:bg-slate-800/95"
@@ -512,6 +546,19 @@ export const createZipLabels = ({
         text.style.overflowWrap = "normal";
         text.style.flexShrink = "0";
         rowPill.appendChild(text);
+        if (shouldUseHoveredDropdown && canSelectDifferentStat) {
+          dropdownActionMeta = document.createElement("span");
+          dropdownActionMeta.className = "ml-auto flex items-center gap-1.5 pl-2";
+          dropdownActionLabel = document.createElement("span");
+          dropdownActionLabel.textContent = "SELECT";
+          dropdownActionLabel.className = "text-[9px] font-normal tracking-[0.02em] text-slate-400 dark:text-slate-500";
+          dropdownActionLabel.style.whiteSpace = "nowrap";
+          dropdownActionLabel.style.pointerEvents = "none";
+          dropdownActionLabel.style.opacity = "0";
+          dropdownActionLabel.style.transition = "opacity 100ms ease";
+          dropdownActionMeta.appendChild(dropdownActionLabel);
+          rowPill.appendChild(dropdownActionMeta);
+        }
         if (canCloseToPopulation) {
           const closeIcon = document.createElement("span");
           closeIcon.textContent = "×";
@@ -519,10 +566,28 @@ export const createZipLabels = ({
           closeIcon.style.opacity = "0.7";
           closeIcon.style.flexShrink = "0";
           if (shouldUseHoveredDropdown) {
-            closeIcon.style.marginLeft = "auto";
+            if (dropdownActionMeta) {
+              dropdownActionMeta.prepend(closeIcon);
+            } else {
+              closeIcon.style.marginLeft = "auto";
+              rowPill.appendChild(closeIcon);
+            }
+          } else {
+            rowPill.appendChild(closeIcon);
           }
-          rowPill.appendChild(closeIcon);
         }
+      }
+      if (shouldUseHoveredDropdown && canSelectDifferentStat && dropdownActionLabel) {
+        const actionLabel = dropdownActionLabel;
+        rowPill.addEventListener("pointerenter", () => {
+          actionLabel.style.opacity = "1";
+        }, { passive: true });
+        rowPill.addEventListener("pointerleave", () => {
+          actionLabel.style.opacity = "0";
+        }, { passive: true });
+        rowPill.addEventListener("pointerdown", () => {
+          actionLabel.style.opacity = "1";
+        }, { passive: true });
       }
       hoverRowsContainer.appendChild(rowPill);
       if (shouldAnimateRowTransitions) {
@@ -540,6 +605,13 @@ export const createZipLabels = ({
     // `translate(-50%, -50%)` already centers the rendered stack box.
     element.style.transform = baseTransform;
     map.getContainer().appendChild(element);
+    if (animateContainerFade) {
+      requestAnimationFrame(() => {
+        if (element.dataset.extremaExit !== "1") {
+          element.style.opacity = "1";
+        }
+      });
+    }
     return element;
   };
 
@@ -560,11 +632,12 @@ export const createZipLabels = ({
     }
   };
 
-  const updateLabels = () => {
+  const updateLabels = (options?: { animateContainerFade?: boolean }) => {
     if (!visible) return;
+    const animateContainerFade = options?.animateContainerFade !== false;
     shouldShowStackedStats = computeShouldShowStackedStats();
     for (const [_zip, element] of labelElements) {
-      removeLabelWithRowTransition(element);
+      removeLabelWithRowTransition(element, { animateContainerFade });
     }
     labelElements.clear();
     const zipsToLabel = new Set([...currentSelectedZips, ...currentPinnedZips]);
@@ -585,6 +658,7 @@ export const createZipLabels = ({
         isDirectHovered,
         showBaseStack: !hasLinkedOnlyRows,
         hoverRows,
+        animateContainerFade,
       });
       if (element) {
         labelElements.set(zip, element);
@@ -628,7 +702,9 @@ export const createZipLabels = ({
   const setLinkedHoverPillsByArea = (rowsByArea: Map<string, HoverStackPill[]>) => {
     if (pillMapsEqual(currentLinkedHoverPillsByArea, rowsByArea)) return;
     currentLinkedHoverPillsByArea = rowsByArea;
-    if (visible) updateLabels();
+    // Linked extrema hover updates can fire rapidly while pointering rows;
+    // skip container fade here to avoid tooltip flicker.
+    if (visible) updateLabels({ animateContainerFade: false });
   };
 
   const setHoverPillsByArea = (rowsByArea: Map<string, HoverStackPill[]>) => {
