@@ -9,7 +9,7 @@ import type { Organization } from "../../types/organization";
 import { OKLAHOMA_CENTER, OKLAHOMA_DEFAULT_ZOOM } from "../../types/organization";
 import { themeController } from "./theme";
 // palettes/hover are used inside boundary layer helpers now
-import { createCategoryChips, type AreasChipMode } from "./categoryChips";
+import { createCategoryChips, type AreasChipMode, type SelectedStatChipOption } from "./categoryChips";
 import { setStatDataPrefetchStatIds, setStatDataPriorityStatIds, setStatDataScopeParentAreas, statDataStore } from "../../state/statData";
 import type { StatDataByParentArea, StatDataStoreState } from "../../state/statData";
 import { createZipFloatingTitle, type ZipFloatingTitleController } from "./components/zipFloatingTitle";
@@ -62,6 +62,7 @@ import {
 import { normalizeScopeLabel, formatCountyScopeLabel } from "../../lib/scopeLabels";
 import { isLowMemoryDevice } from "../../lib/device";
 import { PREFETCH_RECENT_STATS_KEY, REDUCED_DATA_LOADING_KEY, readBoolSetting } from "../../lib/settings";
+export type { SelectedStatChipOption } from "./categoryChips";
 
 interface AreaSelectionChange {
   kind: AreaKind;
@@ -113,6 +114,7 @@ export interface MapViewController {
   setSelectedOrgIds: (ids: string[]) => void;
   setCategoryFilter: (categoryId: string | null) => void;
   setSelectedStat: (statId: string | null) => void;
+  setSelectedStatOptions: (options: SelectedStatChipOption[]) => void;
   setSecondaryStat: (statId: string | null) => void;
   setVisibleStatIds: (ids: string[] | null) => void;
   setAreasMode: (mode: AreasChipMode) => void;
@@ -4355,6 +4357,9 @@ export const createMapView = ({
       if (typeof onStatSelectionChange === 'function') {
         onStatSelectionChange(selectedStatId);
       }
+    },
+    setSelectedStatOptions: (options: SelectedStatChipOption[]) => {
+      categoryChips.setSelectedStatOptions(options);
     },
     setSecondaryStat: (statId: string | null) => {
       secondaryStatId = statId;

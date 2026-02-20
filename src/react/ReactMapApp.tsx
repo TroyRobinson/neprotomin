@@ -38,7 +38,7 @@ import { MapSettingsModal } from "./components/MapSettingsModal";
 import { useCensusImportQueue } from "./hooks/useCensusImportQueue";
 import { getPerformanceTier } from "../lib/device";
 import { REDUCED_DATA_LOADING_KEY, readBoolSetting, writeBoolSetting } from "../lib/settings";
-import { getStatDisplayName } from "../types/stat";
+import { getStatDisplayName, UNDEFINED_STAT_ATTRIBUTE } from "../types/stat";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type ScreenName = "map" | "report" | "roadmap" | "data" | "queue" | "addOrg" | "admin";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
@@ -1280,6 +1280,52 @@ export const ReactMapApp = () => {
   }, [selectedStatId, statRelationsByParent]);
 
   const visibleStatIds = useMemo(() => Array.from(statsById.keys()), [statsById]);
+
+  const selectedStatMapChipOptions = useMemo(() => {
+    if (!selectedStatId) return [];
+    if (!statsById.has(selectedStatId)) return [];
+
+    let rootStatId = selectedStatId;
+    let currentId = selectedStatId;
+    const visitedAncestors = new Set<string>([selectedStatId]);
+    while (true) {
+      const parentRelations = statRelationsByChild.get(currentId);
+      const parentId = parentRelations?.[0]?.parentStatId;
+      if (!parentId || visitedAncestors.has(parentId) || !statsById.has(parentId)) break;
+      visitedAncestors.add(parentId);
+      rootStatId = parentId;
+      currentId = parentId;
+    }
+
+    const optionIds: string[] = [rootStatId];
+    const seenOptionIds = new Set<string>([rootStatId]);
+    const rootChildrenByAttribute = statRelationsByParent.get(rootStatId);
+    if (rootChildrenByAttribute) {
+      for (const [attribute, relations] of rootChildrenByAttribute) {
+        if (attribute === UNDEFINED_STAT_ATTRIBUTE) continue;
+        const validRelations = relations.filter((relation) => statsById.has(relation.childStatId));
+        // Only include direct children whose root-level statAttribute is unique.
+        if (validRelations.length !== 1) continue;
+        const childId = validRelations[0].childStatId;
+        if (seenOptionIds.has(childId)) continue;
+        seenOptionIds.add(childId);
+        optionIds.push(childId);
+      }
+    }
+
+    if (!seenOptionIds.has(selectedStatId)) {
+      optionIds.push(selectedStatId);
+    }
+
+    if (optionIds.length <= 1) return [];
+    return optionIds
+      .map((id) => {
+        const stat = statsById.get(id);
+        if (!stat) return null;
+        return { id, label: getStatDisplayName(stat) };
+      })
+      .filter((option): option is { id: string; label: string } => option !== null);
+  }, [selectedStatId, statRelationsByChild, statRelationsByParent, statsById]);
 
   useEffect(() => {
     if (areStatsLoading) return;
@@ -3571,6 +3617,7 @@ export const ReactMapApp = () => {
               onOrganizationClick={handleOrganizationClick}
               onClusterClick={handleClusterClick}
               selectedStatId={selectedStatId}
+              selectedStatOptions={selectedStatMapChipOptions}
               secondaryStatId={secondaryStatId}
               categoryFilter={categoryFilter}
               onAreaSelectionChange={handleAreaSelectionChange}

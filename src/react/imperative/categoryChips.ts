@@ -115,6 +115,7 @@ export interface CategoryChipsController {
   element: HTMLElement;
   setSelected: (categoryId: string | null) => void;
   setSelectedStat: (statId: string | null) => void;
+  setSelectedStatOptions: (options: SelectedStatChipOption[]) => void;
   setSecondaryStat: (statId: string | null) => void;
   setVisibleStatIds: (ids: string[] | null) => void;
   setAreasMode: (mode: AreasChipMode) => void;
@@ -140,14 +141,21 @@ interface CategoryChipsOptions {
   onSidebarExpand?: () => void;
 }
 
+export interface SelectedStatChipOption {
+  id: string;
+  label: string;
+}
+
 // Type for chip entry elements with their handlers
 interface ChipEntry {
   btn: HTMLButtonElement;
-  handleClick: () => void;
+  handleClick?: (event: MouseEvent) => void;
+  destroy?: () => void;
+  isDropdown?: boolean;
   id: string;
   displayName: string;
   labelEl: HTMLSpanElement;
-  closeIcon: HTMLSpanElement;
+  closeIcon: HTMLSpanElement | null;
 }
 
 // Helper: Apply visibility styles to a chip button
@@ -446,6 +454,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   let selectedId: string | null = null;
   let selectedStatId: string | null = null;
+  let selectedStatOptions: SelectedStatChipOption[] = [];
   let secondaryStatId: string | null = null;
 
   // Secondary stat button will be appended directly to list (no wrapper needed)
@@ -880,10 +889,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     btn.appendChild(label);
     btn.appendChild(closeIcon);
 
-    const handleClick = () => {
+    const handleClick = (_event: MouseEvent) => {
       const next = selectedStatId === stat.id ? null : stat.id;
       selectedStatId = next;
-      updateStatSelectionStyles();
+      update();
       if (options.onStatChange) options.onStatChange(selectedStatId);
     };
     btn.addEventListener("click", handleClick);
@@ -891,6 +900,244 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   };
 
   let statEntries: ChipEntry[] = [];
+
+  const cleanupStatEntries = () => {
+    statEntries.forEach((entry) => {
+      if (entry.handleClick) {
+        entry.btn.removeEventListener("click", entry.handleClick);
+      }
+      entry.destroy?.();
+    });
+    statEntries = [];
+  };
+
+  // Normalize externally-provided option rows and keep only map-visible stats.
+  const getSelectedStatDropdownOptions = (): SelectedStatChipOption[] => {
+    if (!selectedStatId) return [];
+    const statById = new Map(allStats.map((stat) => [stat.id, stat]));
+    const deduped = new Map<string, SelectedStatChipOption>();
+    for (const option of selectedStatOptions) {
+      if (!option || typeof option.id !== "string") continue;
+      const id = option.id.trim();
+      if (!id) continue;
+      const stat = statById.get(id);
+      if (stat && !isStatVisible(stat)) continue;
+      const fallbackLabel = stat ? stat.label || stat.name : id;
+      const label =
+        typeof option.label === "string" && option.label.trim().length > 0
+          ? option.label.trim()
+          : fallbackLabel;
+      deduped.set(id, { id, label });
+    }
+    if (!deduped.has(selectedStatId)) {
+      const selectedStat = statById.get(selectedStatId);
+      if (selectedStat && isStatVisible(selectedStat)) {
+        deduped.set(selectedStatId, {
+          id: selectedStatId,
+          label: selectedStat.label || selectedStat.name,
+        });
+      }
+    }
+    return Array.from(deduped.values());
+  };
+
+  // Selected stat chip can switch between related stat variants via an inline menu.
+  const buildSelectedStatDropdownChip = (
+    stat: Stat,
+    dropdownOptions: SelectedStatChipOption[],
+  ): ChipEntry & { container: HTMLDivElement } => {
+    const container = document.createElement("div");
+    container.className = "relative";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `${CATEGORY_CHIP_CLASSES} ${STAT_CHIP_SELECTED_CLASSES} pr-2`;
+    btn.setAttribute("data-stat-id", stat.id);
+    btn.setAttribute("aria-haspopup", "listbox");
+    btn.setAttribute("aria-expanded", "false");
+    btn.setAttribute("aria-label", "Select stat option");
+
+    const label = document.createElement("span");
+    label.textContent = stat.label || stat.name;
+    label.className = "whitespace-nowrap";
+
+    const actions = document.createElement("span");
+    actions.className = "ml-1 flex items-center gap-1";
+
+    const chevron = document.createElement("span");
+    chevron.className = "flex items-center text-brand-500 dark:text-brand-300";
+    chevron.innerHTML = CHEVRON_DOWN_ICON;
+
+    const inlineClear = document.createElement("span");
+    inlineClear.className =
+      "flex h-4 w-4 items-center justify-center rounded-full text-brand-500/80 transition hover:bg-brand-200/70 hover:text-brand-700 dark:text-brand-300 dark:hover:bg-brand-700/30 dark:hover:text-brand-100";
+    inlineClear.innerHTML = CLOSE_ICON;
+    inlineClear.setAttribute("aria-hidden", "true");
+    inlineClear.title = "Deselect stat";
+
+    actions.appendChild(chevron);
+    actions.appendChild(inlineClear);
+
+    btn.appendChild(label);
+    btn.appendChild(actions);
+
+    const menu = document.createElement("div");
+    menu.className =
+      "absolute left-0 top-full z-20 mt-1 hidden min-w-[14rem] rounded-xl border border-slate-200/80 bg-white/95 p-1.5 shadow-lg backdrop-blur-md dark:border-slate-700/80 dark:bg-slate-900/95";
+    menu.setAttribute("role", "listbox");
+    menu.setAttribute("aria-label", "Stat options");
+
+    const optionButtons: Array<{
+      id: string;
+      button: HTMLButtonElement;
+      checkSlot: HTMLSpanElement;
+      handleClick: () => void;
+    }> = [];
+
+    const closeMenu = () => {
+      if (menu.classList.contains("hidden")) return;
+      menu.classList.add("hidden");
+      btn.setAttribute("aria-expanded", "false");
+      chevron.firstElementChild?.classList.remove("rotate-180");
+      if (removeOutsideHandler) {
+        removeOutsideHandler();
+        removeOutsideHandler = null;
+      }
+    };
+
+    const syncMenuState = () => {
+      optionButtons.forEach((entry) => {
+        const isActive = selectedStatId === entry.id;
+        entry.button.className = isActive
+          ? "flex w-full items-center justify-between rounded-lg bg-brand-50 px-2.5 py-1.5 text-left text-xs text-brand-700 transition dark:bg-brand-400/15 dark:text-brand-300"
+          : "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800";
+        entry.button.setAttribute("aria-selected", isActive ? "true" : "false");
+        entry.checkSlot.innerHTML = isActive
+          ? `<span class="text-brand-500 dark:text-brand-300">${CHECK_ICON}</span>`
+          : `<span class="h-3.5 w-3.5"></span>`;
+      });
+    };
+
+    const commitSelection = (next: string | null) => {
+      selectedStatId = next;
+      closeMenu();
+      update();
+      options.onStatChange?.(selectedStatId);
+    };
+
+    for (const option of dropdownOptions) {
+      const optionBtn = document.createElement("button");
+      optionBtn.type = "button";
+      optionBtn.setAttribute("role", "option");
+
+      const labelSpan = document.createElement("span");
+      labelSpan.textContent = option.label;
+      labelSpan.className = "truncate pr-2";
+
+      const checkSlot = document.createElement("span");
+      optionBtn.appendChild(labelSpan);
+      optionBtn.appendChild(checkSlot);
+
+      const handleOptionClick = () => {
+        if (selectedStatId === option.id) {
+          closeMenu();
+          return;
+        }
+        commitSelection(option.id);
+      };
+      optionBtn.addEventListener("click", handleOptionClick);
+      optionButtons.push({ id: option.id, button: optionBtn, checkSlot, handleClick: handleOptionClick });
+      menu.appendChild(optionBtn);
+    }
+
+    const divider = document.createElement("div");
+    divider.className = "my-1 h-px bg-slate-200/80 dark:bg-slate-700/80";
+    menu.appendChild(divider);
+
+    const deselectBtn = document.createElement("button");
+    deselectBtn.type = "button";
+    deselectBtn.className =
+      "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-600 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100";
+    const deselectIcon = document.createElement("span");
+    deselectIcon.className = "flex h-3.5 w-3.5 items-center justify-center";
+    deselectIcon.innerHTML = CLOSE_ICON;
+    const deselectLabel = document.createElement("span");
+    deselectLabel.textContent = "Deselect stat";
+    deselectBtn.appendChild(deselectIcon);
+    deselectBtn.appendChild(deselectLabel);
+    const handleDeselectClick = () => {
+      commitSelection(null);
+    };
+    deselectBtn.addEventListener("click", handleDeselectClick);
+    menu.appendChild(deselectBtn);
+
+    let removeOutsideHandler: (() => void) | null = null;
+    const openMenu = () => {
+      if (!menu.classList.contains("hidden")) return;
+      syncMenuState();
+      menu.classList.remove("hidden");
+      btn.setAttribute("aria-expanded", "true");
+      chevron.firstElementChild?.classList.add("rotate-180");
+      const handlePointerDown = (event: PointerEvent) => {
+        const target = event.target as Node | null;
+        if (target && container.contains(target)) return;
+        closeMenu();
+      };
+      document.addEventListener("pointerdown", handlePointerDown, true);
+      removeOutsideHandler = () => {
+        document.removeEventListener("pointerdown", handlePointerDown, true);
+      };
+    };
+
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && inlineClear.contains(target)) {
+        event.preventDefault();
+        event.stopPropagation();
+        commitSelection(null);
+        return;
+      }
+      if (menu.classList.contains("hidden")) {
+        openMenu();
+      } else {
+        closeMenu();
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenu();
+        btn.blur();
+      }
+    };
+
+    btn.addEventListener("click", handleClick);
+    btn.addEventListener("keydown", handleKeyDown);
+
+    container.appendChild(btn);
+    container.appendChild(menu);
+    syncMenuState();
+
+    return {
+      container,
+      btn,
+      handleClick,
+      destroy: () => {
+        closeMenu();
+        btn.removeEventListener("keydown", handleKeyDown);
+        optionButtons.forEach((entry) => {
+          entry.button.removeEventListener("click", entry.handleClick);
+        });
+        deselectBtn.removeEventListener("click", handleDeselectClick);
+      },
+      isDropdown: true,
+      id: stat.id,
+      displayName: stat.label || stat.name,
+      labelEl: label,
+      closeIcon: null,
+    };
+  };
 
   const applyMobileLabelWidths = () => {
     if (!isMobile) return;
@@ -915,9 +1162,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     if (isMobile) {
       statWrapper.classList.add("hidden");
       // Clean up any previously-added entries just in case
-      statEntries.forEach((e) => e.btn.removeEventListener("click", e.handleClick));
+      cleanupStatEntries();
       statWrapper.replaceChildren();
-      statEntries = [];
       return;
     }
     // When search is expanded, keep the stat chip visible if a stat is already selected
@@ -931,9 +1177,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     if (!selectedId && !selectedStatId) {
       statWrapper.classList.add("hidden");
       // Clean up existing
-      statEntries.forEach((e) => e.btn.removeEventListener("click", e.handleClick));
+      cleanupStatEntries();
       statWrapper.replaceChildren();
-      statEntries = [];
       return;
     }
     statWrapper.classList.remove("hidden");
@@ -961,9 +1206,19 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     }
 
     // Rebuild if set changed (simple rebuild for clarity)
-    statEntries.forEach((e) => e.btn.removeEventListener("click", e.handleClick));
+    cleanupStatEntries();
     statWrapper.replaceChildren();
+    const dropdownOptions = getSelectedStatDropdownOptions();
     statEntries = stats.map((s) => {
+      const shouldRenderDropdown =
+        !isMobile &&
+        selectedStatId === s.id &&
+        dropdownOptions.length > 1;
+      if (shouldRenderDropdown) {
+        const chip = buildSelectedStatDropdownChip(s, dropdownOptions);
+        statWrapper.appendChild(chip.container);
+        return chip;
+      }
       const { btn, handleClick, labelEl, closeIcon } = buildStatButton(s);
       statWrapper.appendChild(btn);
       return { btn, handleClick, id: s.id, displayName: s.label || s.name, labelEl, closeIcon };
@@ -990,8 +1245,12 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       return;
     }
     // Stat chips maintain their original order - no reordering on selection
-    statEntries.forEach(({ btn, id, displayName, labelEl, closeIcon }) => {
+    statEntries.forEach(({ btn, id, displayName, labelEl, closeIcon, isDropdown }) => {
       const isSelected = selectedStatId === id;
+      if (isDropdown) {
+        applyChipVisibility(btn, isSelected);
+        return;
+      }
       if (isMobile) {
         const base = `${MOBILE_STAT_CHIP_BASE_CLASSES} border-slate-200`;
         btn.className = isSelected
@@ -1006,7 +1265,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
         labelEl.textContent = isSelected ? displayName : formatStatChipLabel(displayName);
       }
       // Show close icon only when stat is selected
-      toggleCloseIcon(closeIcon, isSelected);
+      if (closeIcon) toggleCloseIcon(closeIcon, isSelected);
       // Hide unselected stats when another stat is selected (desktop) or whenever not selected (mobile)
       const shouldShow = isMobile ? isSelected : !selectedStatId || selectedStatId === id;
       applyChipVisibility(btn, shouldShow);
@@ -1082,7 +1341,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     entries.forEach(({ button, handleClick }) => {
       button.removeEventListener("click", handleClick);
     });
-    statEntries.forEach(({ btn, handleClick }) => btn.removeEventListener("click", handleClick));
+    cleanupStatEntries();
     if (secondaryChipEntry) {
       secondaryChipEntry.btn.removeEventListener("click", secondaryChipEntry.handleClick);
     }
@@ -1148,10 +1407,16 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     renderSecondaryStatChip();
   };
 
+  const setSelectedStatOptions = (nextOptions: SelectedStatChipOption[]) => {
+    selectedStatOptions = Array.isArray(nextOptions) ? nextOptions : [];
+    update();
+  };
+
   return {
     element: wrapper,
     setSelected,
     setSelectedStat,
+    setSelectedStatOptions,
     setSecondaryStat,
     setVisibleStatIds,
     setAreasMode: (mode: AreasChipMode) => {

@@ -3,7 +3,7 @@ import type { BoundaryMode } from "../../types/boundaries";
 import type { Organization } from "../../types/organization";
 import type { AreaId, AreaKind } from "../../types/areas";
 import type { AreasMode } from "../lib/mapUrl";
-import { createMapView, type MapViewController } from "../imperative/mapView";
+import { createMapView, type MapViewController, type SelectedStatChipOption } from "../imperative/mapView";
 
 interface AreaSelectionChange {
   kind: AreaKind;
@@ -34,6 +34,7 @@ interface MapLibreMapProps {
   categoryFilter?: string | null;
   areasMode?: AreasMode;
   selectedStatId?: string | null;
+  selectedStatOptions?: SelectedStatChipOption[];
   secondaryStatId?: string | null;
   onHover?: (idOrIds: string | string[] | null) => void;
   onOrganizationClick?: (organizationId: string, meta?: { source: "point" | "centroid" }) => void;
@@ -97,6 +98,7 @@ export const MapLibreMap = ({
   categoryFilter = null,
   areasMode = "auto",
   selectedStatId = null,
+  selectedStatOptions = [],
   secondaryStatId = null,
   onHover,
   onVisibleIdsChange,
@@ -280,6 +282,7 @@ export const MapLibreMap = ({
     containerRef.current.appendChild(mapController.element);
     mapControllerRef.current = mapController;
     mapController.setVisibleStatIds(visibleStatIdsRef.current);
+    mapController.setSelectedStatOptions(selectedStatOptions);
     setLegendInsetRef.current = mapController.setLegendInset;
     if (typeof legendInset === "number") {
       mapController.setLegendInset(legendInset);
@@ -425,6 +428,12 @@ export const MapLibreMap = ({
       mapControllerRef.current.setSelectedStat(selectedStatId);
     }
   }, [selectedStatId]);
+
+  useEffect(() => {
+    if (mapControllerRef.current) {
+      mapControllerRef.current.setSelectedStatOptions(selectedStatOptions);
+    }
+  }, [selectedStatOptions]);
 
   // Update secondary stat
   useEffect(() => {
