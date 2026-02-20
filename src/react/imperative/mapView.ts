@@ -161,6 +161,7 @@ const STAT_EXTREME_NEUTRAL_COLOR = "#f8d837";
 const STAT_EXTREME_GOOD_ICON_ID = "stat-extreme-triangle-good";
 const STAT_EXTREME_BAD_ICON_ID = "stat-extreme-triangle-bad";
 const STAT_EXTREME_NEUTRAL_ICON_ID = "stat-extreme-triangle-neutral";
+const STAT_EXTREME_ICON_SIZE = 1.08;
 
 const getMapStyle = (theme: ThemeName): string =>
   theme === "dark" ? MAP_STYLE_DARK : MAP_STYLE_LIGHT;
@@ -2702,7 +2703,7 @@ export const createMapView = ({
         layout: {
           visibility: visible ? "visible" : "none",
           "icon-image": STAT_EXTREME_GOOD_ICON_ID,
-          "icon-size": 0.9,
+          "icon-size": STAT_EXTREME_ICON_SIZE,
           "icon-anchor": "center",
           "icon-rotate": rotation,
           "icon-allow-overlap": true,
@@ -2777,7 +2778,7 @@ export const createMapView = ({
         layout: {
           visibility: visible ? "visible" : "none",
           "icon-image": ["coalesce", ["get", "iconId"], STAT_EXTREME_NEUTRAL_ICON_ID],
-          "icon-size": 0.9,
+          "icon-size": STAT_EXTREME_ICON_SIZE,
           "icon-anchor": "center",
           "icon-rotate": rotation,
           "icon-allow-overlap": true,
@@ -3554,9 +3555,9 @@ export const createMapView = ({
       map.on("drag", handleMapDrag);
       map.on("dragend", handleMapDragEnd);
       map.on("moveend", handleMapMoveEnd);
-      // Dwell time for hover - only show overlay after mouse has been in area briefly
-      // This prevents trailing overlays when moving quickly across areas
-      const HOVER_DWELL_MS = 80; // ~4-5 frames - filters out fast traversal
+      // Debounced dwell time for hover - only show overlay after cursor settles briefly.
+      // This avoids lighting up every area crossed during fast traversal.
+      const HOVER_DWELL_MS = 120;
       let zipHoverDwellTimer: ReturnType<typeof setTimeout> | null = null;
       let zipHoverCandidate: string | null = null;
       let zipBoundaryLeaveClearTimer: ReturnType<typeof setTimeout> | null = null;
@@ -3630,13 +3631,21 @@ export const createMapView = ({
         const zip = features[0]?.properties?.[zipFeatureProperty] as string | undefined;
         if (!zip) return;
         
-        // If still in the same area (already committed or candidate), do nothing
-        if (zip === hoveredZipFromMap) return;
-        if (zip === zipHoverCandidate) return;
-        
-        // New area - cancel any pending dwell and start fresh
-        clearZipHoverDwell();
-        zipHoverCandidate = zip;
+        // Already committed for this area; no further work needed.
+        if (zip === hoveredZipFromMap) {
+          clearZipHoverDwell();
+          return;
+        }
+
+        // Keep candidate in sync with current feature under cursor.
+        if (zip !== zipHoverCandidate) {
+          zipHoverCandidate = zip;
+        }
+
+        // Debounce dwell by resetting the timer on each mouse move.
+        if (zipHoverDwellTimer !== null) {
+          clearTimeout(zipHoverDwellTimer);
+        }
         zipHoverDwellTimer = setTimeout(() => {
           zipHoverDwellTimer = null;
           if (zipHoverCandidate === zip) {
@@ -3728,13 +3737,21 @@ export const createMapView = ({
         const county = features[0]?.properties?.[countyFeatureProperty] as string | undefined;
         if (!county) return;
         
-        // If still in the same area (already committed or candidate), do nothing
-        if (county === hoveredCountyFromMap) return;
-        if (county === countyHoverCandidate) return;
-        
-        // New area - cancel any pending dwell and start fresh
-        clearCountyHoverDwell();
-        countyHoverCandidate = county;
+        // Already committed for this area; no further work needed.
+        if (county === hoveredCountyFromMap) {
+          clearCountyHoverDwell();
+          return;
+        }
+
+        // Keep candidate in sync with current feature under cursor.
+        if (county !== countyHoverCandidate) {
+          countyHoverCandidate = county;
+        }
+
+        // Debounce dwell by resetting the timer on each mouse move.
+        if (countyHoverDwellTimer !== null) {
+          clearTimeout(countyHoverDwellTimer);
+        }
         countyHoverDwellTimer = setTimeout(() => {
           countyHoverDwellTimer = null;
           if (countyHoverCandidate === county) {
