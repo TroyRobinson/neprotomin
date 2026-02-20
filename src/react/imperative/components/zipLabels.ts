@@ -2,6 +2,7 @@ import type maplibregl from "maplibre-gl";
 import { formatStatValueCompact } from "../../../lib/format";
 import { getZipCentroidsMap } from "../../../lib/zipCentroids";
 import { CHOROPLETH_COLORS, TEAL_COLORS, getClassIndex } from "../../../lib/choropleth";
+import { DEFAULT_POPULATION_STAT_ID } from "../../lib/domains";
 
 interface ZipLabelsOptions {
   map: maplibregl.Map;
@@ -181,6 +182,7 @@ export const createZipLabels = ({
   const onContainerClick = (event: MouseEvent) => {
     const hit = resolvePillFromElement(event.target as Element | null);
     if (!hit?.pill.statId) return;
+    if (hit.pill.statId === currentStatId && currentStatId === DEFAULT_POPULATION_STAT_ID) return;
     event.preventDefault();
     event.stopPropagation();
     onPillClick?.({ areaId: hit.areaId, pill: hit.pill });
@@ -291,7 +293,14 @@ export const createZipLabels = ({
 
     for (const [index, row] of opts.hoverRows.entries()) {
       const rowPill = document.createElement("div");
-      const isInteractive = Boolean(row.statId);
+      const canCloseToPopulation = Boolean(
+        row.statId
+        && currentStatId
+        && row.statId === currentStatId
+        && currentStatId !== DEFAULT_POPULATION_STAT_ID,
+      );
+      const canSelectDifferentStat = Boolean(row.statId && row.statId !== currentStatId);
+      const isInteractive = canSelectDifferentStat || canCloseToPopulation;
       const isActiveHover = hoveredPillAreaId === zip && hoveredPillKey === row.key;
       const interactiveClass = isInteractive
         ? "transition-colors duration-150 hover:bg-slate-100 hover:border-slate-400 dark:hover:bg-slate-800 dark:hover:border-slate-400"
@@ -300,7 +309,7 @@ export const createZipLabels = ({
         ? "bg-slate-100 border-slate-400 dark:bg-slate-800 dark:border-slate-400"
         : "";
       rowPill.className = [
-        "h-5 px-2 rounded-full border border-slate-300/80 bg-white/50",
+        "h-5 px-2 rounded-full border border-slate-300/80 bg-white/50 whitespace-nowrap",
         "font-medium text-xs flex items-center gap-1.5 justify-center shadow-md",
         "text-slate-700 dark:border-slate-600/80 dark:bg-slate-900/50 dark:text-slate-200",
         interactiveClass,
@@ -315,6 +324,11 @@ export const createZipLabels = ({
       // Allow direct hover on extrema rows while keeping the rest of the stack passthrough.
       rowPill.style.pointerEvents = "auto";
       rowPill.style.cursor = row.statId ? "pointer" : "default";
+      rowPill.style.width = "max-content";
+      rowPill.style.maxWidth = "none";
+      rowPill.style.overflowWrap = "normal";
+      rowPill.style.wordBreak = "keep-all";
+      rowPill.style.flexShrink = "0";
       rowPill.dataset.extremaPill = "1";
       rowPill.dataset.extremaAreaId = zip;
       rowPill.dataset.extremaPillKey = row.key;
@@ -322,14 +336,27 @@ export const createZipLabels = ({
       const arrow = document.createElement("span");
       arrow.textContent = row.direction === "up" ? "▲" : "▼";
       arrow.style.fontWeight = "700";
+      arrow.style.flexShrink = "0";
       arrow.style.color =
         row.tone === "good" ? "#6fc284" : row.tone === "bad" ? "#f15b41" : "#f8d837";
 
       const text = document.createElement("span");
       text.textContent = row.label;
+      text.style.whiteSpace = "nowrap";
+      text.style.wordBreak = "keep-all";
+      text.style.overflowWrap = "normal";
+      text.style.flexShrink = "0";
 
       rowPill.appendChild(arrow);
       rowPill.appendChild(text);
+      if (canCloseToPopulation) {
+        const closeIcon = document.createElement("span");
+        closeIcon.textContent = "×";
+        closeIcon.style.fontWeight = "700";
+        closeIcon.style.opacity = "0.7";
+        closeIcon.style.flexShrink = "0";
+        rowPill.appendChild(closeIcon);
+      }
       element.appendChild(rowPill);
     }
 

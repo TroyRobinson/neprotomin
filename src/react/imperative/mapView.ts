@@ -3034,6 +3034,20 @@ export const createMapView = ({
     }, 50);
 
     zipFloatingTitle = createZipFloatingTitle({ map });
+
+    const applyExtremaPillStatSelection = (pillStatId?: string) => {
+      if (!pillStatId) return;
+      const nextStatId = pillStatId === selectedStatId ? DEFAULT_POPULATION_STAT_ID : pillStatId;
+      if (!nextStatId || nextStatId === selectedStatId) return;
+      hideStatExtremaArrows();
+      selectedStatId = nextStatId;
+      categoryChips.setSelectedStat(selectedStatId);
+      secondaryStatId = null;
+      categoryChips.setSecondaryStat(null);
+      syncStatDataStoreFocus();
+      refreshStatVisuals();
+      onStatSelectionChange?.(selectedStatId);
+    };
     
     zipLabels = createZipLabels({
       map,
@@ -3053,15 +3067,7 @@ export const createMapView = ({
         }
       },
       onPillClick: ({ pill }) => {
-        if (!pill.statId || pill.statId === selectedStatId) return;
-        hideStatExtremaArrows();
-        selectedStatId = pill.statId;
-        categoryChips.setSelectedStat(selectedStatId);
-        secondaryStatId = null;
-        categoryChips.setSecondaryStat(null);
-        syncStatDataStoreFocus();
-        refreshStatVisuals();
-        onStatSelectionChange?.(selectedStatId);
+        applyExtremaPillStatSelection(pill.statId);
       },
     });
     countyLabels = createZipLabels({
@@ -3084,15 +3090,7 @@ export const createMapView = ({
         }
       },
       onPillClick: ({ pill }) => {
-        if (!pill.statId || pill.statId === selectedStatId) return;
-        hideStatExtremaArrows();
-        selectedStatId = pill.statId;
-        categoryChips.setSelectedStat(selectedStatId);
-        secondaryStatId = null;
-        categoryChips.setSecondaryStat(null);
-        syncStatDataStoreFocus();
-        refreshStatVisuals();
-        onStatSelectionChange?.(selectedStatId);
+        applyExtremaPillStatSelection(pill.statId);
       },
     });
     zipLabels.setTheme(currentTheme);
