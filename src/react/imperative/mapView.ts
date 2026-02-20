@@ -29,6 +29,7 @@ import { getCountyCentroidsMap, getCountyName } from "../../lib/countyCentroids"
 import type { AreaId, AreaKind } from "../../types/areas";
 import { DEFAULT_PARENT_AREA_BY_KIND } from "../../types/areas";
 import type { TimeSelection } from "../lib/timeFilters";
+import { DEFAULT_POPULATION_STAT_ID } from "../lib/domains";
 // choropleth helpers are used only inside overlays/stats now
 import { updateChoroplethLegend as extUpdateLegend, updateSecondaryChoroplethLegend as extUpdateSecondaryLegend, updateSecondaryStatOverlay as extUpdateSecondaryOverlay, updateSecondaryStatHoverOnly as extUpdateSecondaryStatHover, updateStatDataChoropleth as extUpdatePrimaryChoropleth, CHOROPLETH_HIDE_ZOOM } from "./overlays/stats";
 import {
@@ -355,6 +356,11 @@ const MOBILE_DRAG_COLLAPSE_DISTANCE_METERS = 8;
 const ZCTA_STATE: ZctaStateCode = "ok";
 const OKC_COUNTY_ID = "109";
 const TULSA_COUNTY_ID = "143";
+const POI_VISIBLE_WITH_SELECTED_STAT_IDS = new Set<string>([
+  DEFAULT_POPULATION_STAT_ID,
+  "8807bf0b-5a85-4a73-82f2-cd18c8140072",
+  "82edc133-f761-4db9-8159-d5d8de3ea047",
+]);
 const ZCTA_LOAD_MIN_ZOOM = 9;
 const ZCTA_LOAD_PADDING_DEGREES = 0.75;
 const ZIP_LABEL_STACK_MIN_ZOOM = 10.8;
@@ -2102,7 +2108,6 @@ export const createMapView = ({
 
   const getZipPoiRowsForCurrentView = () => {
     const allRows = getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", selectedCategory);
-    if (selectedStatId) return allRows;
     if (boundaryMode !== "zips") return [];
     // At ZIP level, always show city-scope extrema (Tulsa + OKC).
     // Statewide ZIP extrema remain hidden to reduce noise at city zoom.
@@ -2110,6 +2115,16 @@ export const createMapView = ({
       (row) => row.scopeKey === "tulsa_area" || row.scopeKey === "okc_area",
     );
   };
+
+  const shouldShowPoiWithSelectedStat = () => {
+    if (!selectedStatId) return false;
+    if (POI_VISIBLE_WITH_SELECTED_STAT_IDS.has(selectedStatId)) return true;
+    const statName = statNameById.get(selectedStatId);
+    const normalized = typeof statName === "string" ? statName.trim().toLowerCase() : "";
+    return normalized.length > 0 && normalized.includes("population");
+  };
+
+  const shouldRenderPointsOfInterest = () => !selectedStatId || shouldShowPoiWithSelectedStat();
 
   const setPoiLayerState = (layerId: string, visible: boolean) => {
     if (!map.getLayer(layerId)) return;
@@ -2141,7 +2156,7 @@ export const createMapView = ({
     }
     pendingPoiVisibilityRaf = requestAnimationFrame(() => {
       pendingPoiVisibilityRaf = null;
-      if (!selectedStatId) {
+      if (shouldRenderPointsOfInterest()) {
         const { showZipPoiLayers, showCountyPoiLayers } = getPoiVisibilityState();
         applyPoiLayerVisibility(showZipPoiLayers, showCountyPoiLayers);
       } else {
@@ -2177,7 +2192,7 @@ export const createMapView = ({
   };
 
   const buildPointsOfInterestSourceData = (): PoiFeatureCollection => {
-    if (selectedStatId) {
+    if (!shouldRenderPointsOfInterest()) {
       lastPoiBuildSummary = {
         zipRows: 0,
         countyRows: 0,
@@ -2275,7 +2290,7 @@ export const createMapView = ({
   };
 
   const ensurePoiZipCentroidsLoaded = () => {
-    if (selectedStatId) return;
+    if (!shouldRenderPointsOfInterest()) return;
     const rows = getZipPoiRowsForCurrentView();
     if (rows.length === 0) return;
 
@@ -2562,6 +2577,7 @@ export const createMapView = ({
     const hideZip = boundaryMode === "zips" && zoom >= CHOROPLETH_HIDE_ZOOM;
     const showZipLayers = boundaryMode === "zips" && !hideZip;
     const { showZipPoiLayers, showCountyPoiLayers } = getPoiVisibilityState();
+    const renderPoi = shouldRenderPointsOfInterest();
     const showCountyLayers = showCountyPoiLayers;
     poiDebugLog("extrema-refresh", {
       zoom: Number(zoom.toFixed(2)),
@@ -2590,13 +2606,8 @@ export const createMapView = ({
       map.setPaintProperty(layerId, "icon-opacity", visible && targetId ? 1 : 0);
     };
 
-    if (!selectedStatId) {
+    if (renderPoi) {
       ensurePoiZipCentroidsLoaded();
-      setLayerState(ZIP_STAT_EXTREME_HIGH_LAYER_ID, "zip", null, STAT_EXTREME_GOOD_ICON_ID, false);
-      setLayerState(ZIP_STAT_EXTREME_LOW_LAYER_ID, "zip", null, STAT_EXTREME_BAD_ICON_ID, false);
-      setLayerState(COUNTY_STAT_EXTREME_HIGH_LAYER_ID, "county", null, STAT_EXTREME_GOOD_ICON_ID, false);
-      setLayerState(COUNTY_STAT_EXTREME_LOW_LAYER_ID, "county", null, STAT_EXTREME_BAD_ICON_ID, false);
-
       updatePointsOfInterestSource();
       applyPoiLayerVisibility(showZipPoiLayers, showCountyPoiLayers);
       schedulePoiVisibilityReapply();
@@ -2604,11 +2615,18 @@ export const createMapView = ({
         zipVisible: showZipPoiLayers,
         countyVisible: showCountyPoiLayers,
       });
-      return;
+    } else {
+      applyPoiLayerVisibility(false, false);
+      schedulePoiVisibilityReapply();
     }
 
-    applyPoiLayerVisibility(false, false);
-    schedulePoiVisibilityReapply();
+    if (!selectedStatId) {
+      setLayerState(ZIP_STAT_EXTREME_HIGH_LAYER_ID, "zip", null, STAT_EXTREME_GOOD_ICON_ID, false);
+      setLayerState(ZIP_STAT_EXTREME_LOW_LAYER_ID, "zip", null, STAT_EXTREME_BAD_ICON_ID, false);
+      setLayerState(COUNTY_STAT_EXTREME_HIGH_LAYER_ID, "county", null, STAT_EXTREME_GOOD_ICON_ID, false);
+      setLayerState(COUNTY_STAT_EXTREME_LOW_LAYER_ID, "county", null, STAT_EXTREME_BAD_ICON_ID, false);
+      return;
+    }
 
     const entry = boundaryMode === "counties"
       ? getStatEntryByBoundary(selectedStatId, "COUNTY")
