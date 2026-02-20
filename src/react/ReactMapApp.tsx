@@ -92,6 +92,17 @@ const MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX_HEIGHT = 920; // Heights at or above
 const MOBILE_SHEET_DRAG_THRESHOLD = 72;
 const MOBILE_TAP_THRESHOLD = 10; // pixels - movement below this is considered a tap, not a drag
 const ORGANIZATION_MATCH_THRESHOLD = 0.55;
+const POPULATION_CANONICAL_STAT_ID = "8807bf0b-5a85-4a73-82f2-cd18c8140072";
+const POPULATION_ALIAS_STAT_IDS = [
+  "82edc133-f761-4db9-8159-d5d8de3ea047",
+  POPULATION_CANONICAL_STAT_ID,
+  "0a7081d7-1374-41a8-bd48-41bb3933957e",
+];
+const POPULATION_STAT_ID_SET = new Set<string>([
+  ...POPULATION_ALIAS_STAT_IDS,
+  DEFAULT_POPULATION_STAT_ID,
+]);
+const FOOD_CATEGORY_SLUG = "food";
 
 const HASH_TO_SCREEN: Record<string, ScreenName> = {
   "#roadmap": "roadmap",
@@ -206,6 +217,7 @@ export const ReactMapApp = () => {
   const [selectedStatId, setSelectedStatId] = useState<string | null>(() => initialMapState.statId);
   const [secondaryStatId, setSecondaryStatId] = useState<string | null>(() => initialMapState.secondaryStatId);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(() => initialMapState.category);
+  const categoryFilterRef = useRef<string | null>(initialMapState.category);
   const [sidebarTab, setSidebarTab] = useState<"orgs" | "stats">(() => initialMapState.sidebarTab);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => initialMapState.sidebarCollapsed);
   const [hasAppliedDefaultStat, setHasAppliedDefaultStat] = useState(false);
@@ -221,8 +233,13 @@ export const ReactMapApp = () => {
   const [hasInteractedWithMap, setHasInteractedWithMap] = useState(false);
   const [sidebarFollowsMap, setSidebarFollowsMap] = useState(true);
   const [orgPinsVisible, setOrgPinsVisible] = useState<boolean>(() => initialMapState.orgPinsVisible);
+  const orgPinsVisibleRef = useRef<boolean>(initialMapState.orgPinsVisible);
+  const foodAutoEnabledOrgsRef = useRef(false);
   const [orgsVisibleIds, setOrgsVisibleIds] = useState<string[]>([]);
   const [orgsAllSourceIds, setOrgsAllSourceIds] = useState<string[]>([]);
+  useEffect(() => {
+    orgPinsVisibleRef.current = orgPinsVisible;
+  }, [orgPinsVisible]);
   const latestVisibleIdsRef = useRef<{ visible: string[]; all: string[] }>({ visible: [], all: [] });
   const sidebarFollowsMapRef = useRef(sidebarFollowsMap);
   useEffect(() => {
@@ -310,6 +327,30 @@ export const ReactMapApp = () => {
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showZipSearchModal, setShowZipSearchModal] = useState(false);
   const [showTimeSelectorModal, setShowTimeSelectorModal] = useState(false);
+  const setCategoryFilterWithSync = useCallback((next: string | null) => {
+    const previous = categoryFilterRef.current;
+    categoryFilterRef.current = next;
+    setCategoryFilter(next);
+    // Choosing Food should re-enable org pins and remember that this handler did it.
+    if (next === FOOD_CATEGORY_SLUG && previous !== FOOD_CATEGORY_SLUG) {
+      if (!orgPinsVisibleRef.current) {
+        foodAutoEnabledOrgsRef.current = true;
+        setOrgPinsVisible(true);
+        setForceShowOrgsNonce((n) => n + 1);
+      } else {
+        foodAutoEnabledOrgsRef.current = false;
+      }
+      return;
+    }
+    // Leaving Food should only undo org pins if Food auto-enabled them.
+    if (previous === FOOD_CATEGORY_SLUG && next !== FOOD_CATEGORY_SLUG && foodAutoEnabledOrgsRef.current) {
+      foodAutoEnabledOrgsRef.current = false;
+      if (orgPinsVisibleRef.current) {
+        setOrgPinsVisible(false);
+        setForceHideOrgsNonce((n) => n + 1);
+      }
+    }
+  }, []);
   const [timeSelectionState, setTimeSelectionState] = useState<TimeSelection | null>(null);
   const timeSelection = useMemo(() => toTimeSelection(timeSelectionState), [timeSelectionState]);
   const setTimeSelection = useCallback((selection: TimeSelection | null) => {
@@ -1280,6 +1321,12 @@ export const ReactMapApp = () => {
   }, [selectedStatId, statRelationsByParent]);
 
   const visibleStatIds = useMemo(() => Array.from(statsById.keys()), [statsById]);
+  const preferredPopulationStatId = useMemo(() => {
+    if (statsById.has(POPULATION_CANONICAL_STAT_ID)) return POPULATION_CANONICAL_STAT_ID;
+    const aliasMatch = POPULATION_ALIAS_STAT_IDS.find((id) => statsById.has(id));
+    if (aliasMatch) return aliasMatch;
+    return statsById.has(DEFAULT_POPULATION_STAT_ID) ? DEFAULT_POPULATION_STAT_ID : null;
+  }, [statsById]);
 
   const selectedStatMapChipOptions = useMemo(() => {
     if (!selectedStatId) return [];
@@ -1326,6 +1373,22 @@ export const ReactMapApp = () => {
       })
       .filter((option): option is { id: string; label: string } => option !== null);
   }, [selectedStatId, statRelationsByChild, statRelationsByParent, statsById]);
+
+  useEffect(() => {
+    categoryFilterRef.current = categoryFilter;
+  }, [categoryFilter]);
+
+  const previousCategoryFilterRef = useRef<string | null>(categoryFilter);
+  useEffect(() => {
+    const previousCategoryFilter = previousCategoryFilterRef.current;
+    if (previousCategoryFilter === categoryFilter) return;
+    previousCategoryFilterRef.current = categoryFilter;
+
+    // If a category is actively cleared while no stat is selected, restore Population.
+    if (previousCategoryFilter && !categoryFilter && !selectedStatId && preferredPopulationStatId) {
+      setSelectedStatId(preferredPopulationStatId);
+    }
+  }, [categoryFilter, selectedStatId, preferredPopulationStatId]);
 
   useEffect(() => {
     if (areStatsLoading) return;
@@ -2053,7 +2116,7 @@ export const ReactMapApp = () => {
     setSelectedStatId(null);
     setHasAppliedDefaultStat(false); // allow default stat to re-apply
     setSecondaryStatId(null);
-    setCategoryFilter(null);
+    setCategoryFilterWithSync(null);
     setSelectedOrgIds([]);
     setShowAdvanced(false);
     if (domainDefaults.defaultOrgPinsVisible) {
@@ -3178,7 +3241,23 @@ export const ReactMapApp = () => {
     meta?: { shiftKey?: boolean; clear?: boolean }
   ) => {
     if (statId === null) {
-      setSelectedStatId(null);
+      const currentSelectedStatId = selectedStatId;
+      const isPopulationSelection =
+        typeof currentSelectedStatId === "string" &&
+        POPULATION_STAT_ID_SET.has(currentSelectedStatId);
+      const hasActiveCategoryFilter = Boolean(categoryFilterRef.current);
+
+      if (
+        !hasActiveCategoryFilter &&
+        currentSelectedStatId &&
+        !isPopulationSelection &&
+        preferredPopulationStatId &&
+        currentSelectedStatId !== preferredPopulationStatId
+      ) {
+        setSelectedStatId(preferredPopulationStatId);
+      } else {
+        setSelectedStatId(null);
+      }
       setSecondaryStatId(null);
       // Note: We intentionally do NOT clear categoryFilter here when deselecting a stat.
       // The category should remain selected so users can easily select another stat from the same category.
@@ -3558,7 +3637,7 @@ export const ReactMapApp = () => {
                 secondaryStatId={secondaryStatId}
                 selectedStatLoading={isSelectedStatLoading}
                 categoryFilter={categoryFilter}
-                onCategoryChange={setCategoryFilter}
+                onCategoryChange={setCategoryFilterWithSync}
                 onHover={handleHover}
                 onOrganizationClick={handleSidebarOrganizationClick}
                 onHoverArea={handleAreaHoverChange}
@@ -3638,9 +3717,15 @@ export const ReactMapApp = () => {
               categoryFilter={categoryFilter}
               onAreaSelectionChange={handleAreaSelectionChange}
               onAreaHoverChange={handleAreaHoverChange}
-              onStatSelectionChange={setSelectedStatId}
+              onStatSelectionChange={(nextStatId) => {
+                if (nextStatId === null) {
+                  handleStatSelect(null, { clear: true });
+                  return;
+                }
+                setSelectedStatId(nextStatId);
+              }}
               onSecondaryStatChange={setSecondaryStatId}
-              onCategorySelectionChange={setCategoryFilter}
+              onCategorySelectionChange={setCategoryFilterWithSync}
               onVisibleIdsChange={(ids, _totalInSource, allSourceIds) => {
                 applyMapVisibleIds(ids, allSourceIds);
               }}
@@ -3822,7 +3907,7 @@ export const ReactMapApp = () => {
                     secondaryStatId={secondaryStatId}
                     selectedStatLoading={isSelectedStatLoading}
                     categoryFilter={categoryFilter}
-                    onCategoryChange={setCategoryFilter}
+                    onCategoryChange={setCategoryFilterWithSync}
                     onHover={handleHover}
                     onOrganizationClick={handleSidebarOrganizationClick}
                     onHoverArea={handleAreaHoverChange}
