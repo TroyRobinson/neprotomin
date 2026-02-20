@@ -80,7 +80,7 @@ const SECONDARY_STAT_CHIP_CLASSES =
   "bg-[#e9f5fa] text-[#2b8698] hover:bg-[#f1f9fc] dark:bg-[#2a7685]/22 dark:text-[#7f9ea7]";
 
 const CLOSE_ICON = `
-  <svg viewBox="0 0 12 12" aria-hidden="true" class="h-2.5 w-2.5">
+  <svg viewBox="0 0 12 12" aria-hidden="true" class="block h-2.5 w-2.5">
     <path
       fill="currentColor"
       d="M9.53 2.47a.75.75 0 00-1.06-1.06L6 3.94 3.53 1.41A.75.75 0 002.47 2.47L4.94 5 2.47 7.53a.75.75 0 101.06 1.06L6 6.06l2.47 2.53a.75.75 0 001.06-1.06L7.06 5z"
@@ -975,8 +975,9 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
     const inlineClear = document.createElement("span");
     inlineClear.className =
-      "flex h-4 w-4 items-center justify-center rounded-full text-brand-500/80 transition hover:bg-brand-200/70 hover:text-brand-700 dark:text-brand-300 dark:hover:bg-brand-700/30 dark:hover:text-brand-100";
+      "flex h-4 w-4 items-center justify-center rounded-full leading-none text-brand-500/80 transition hover:bg-brand-200/70 hover:text-brand-700 dark:text-brand-300 dark:hover:bg-brand-700/30 dark:hover:text-brand-100";
     inlineClear.innerHTML = CLOSE_ICON;
+    inlineClear.querySelector("svg")?.classList.add("translate-y-px");
     inlineClear.setAttribute("aria-hidden", "true");
     inlineClear.title = "Deselect stat";
 
