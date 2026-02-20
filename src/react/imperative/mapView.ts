@@ -13,7 +13,7 @@ import { createCategoryChips, type AreasChipMode } from "./categoryChips";
 import { setStatDataPrefetchStatIds, setStatDataPriorityStatIds, setStatDataScopeParentAreas, statDataStore } from "../../state/statData";
 import type { StatDataByParentArea, StatDataStoreState } from "../../state/statData";
 import { createZipFloatingTitle, type ZipFloatingTitleController } from "./components/zipFloatingTitle";
-import { createZipLabels, type ZipLabelsController } from "./components/zipLabels";
+import { createZipLabels, type HoverStackPill, type ZipLabelsController } from "./components/zipLabels";
 import { createChoroplethLegend, type ChoroplethLegendController } from "./components/choroplethLegend";
 import { createSecondaryChoroplethLegend, type SecondaryChoroplethLegendController } from "./components/secondaryChoroplethLegend";
 import { statsStore } from "../../state/stats";
@@ -2106,6 +2106,12 @@ export const createMapView = ({
     return STAT_EXTREME_NEUTRAL_ICON_ID;
   };
 
+  const getPoiToneForRow = (goodIfUp: boolean | null, extremaKind: ExtremaKind): HoverStackPill["tone"] => {
+    if (goodIfUp === true) return extremaKind === "high" ? "good" : "bad";
+    if (goodIfUp === false) return extremaKind === "high" ? "bad" : "good";
+    return "neutral";
+  };
+
   const getZipPoiRowsForCurrentView = () => {
     const allRows = getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", selectedCategory);
     if (boundaryMode !== "zips") return [];
@@ -2146,6 +2152,78 @@ export const createMapView = ({
     setPoiLayerState(ZIP_POI_EXTREME_LOW_LAYER_ID, showZipPoiLayers);
     setPoiLayerState(COUNTY_POI_EXTREME_HIGH_LAYER_ID, showCountyPoiLayers);
     setPoiLayerState(COUNTY_POI_EXTREME_LOW_LAYER_ID, showCountyPoiLayers);
+  };
+
+  const buildPoiHoverPillsByArea = (): {
+    zipByArea: Map<string, HoverStackPill[]>;
+    countyByArea: Map<string, HoverStackPill[]>;
+  } => {
+    const zipByArea = new Map<string, HoverStackPill[]>();
+    const countyByArea = new Map<string, HoverStackPill[]>();
+    if (!shouldRenderPointsOfInterest()) {
+      return { zipByArea, countyByArea };
+    }
+
+    const countyCentroids = getCountyCentroidsMap();
+    const zipRows = getZipPoiRowsForCurrentView();
+    const countyRowsAll = getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", selectedCategory);
+    const countyRows = boundaryMode === "counties"
+      ? countyRowsAll.filter((row) => row.scopeKey === "oklahoma")
+      : countyRowsAll;
+
+    const append = (
+      rows: typeof zipRows,
+      boundaryType: "ZIP" | "COUNTY",
+      targetMap: Map<string, HoverStackPill[]>,
+    ) => {
+      const seenKeys = new Set<string>();
+      for (const row of rows) {
+        if (seenKeys.has(row.poiKey)) continue;
+        seenKeys.add(row.poiKey);
+
+        const hasCentroid = boundaryType === "ZIP"
+          ? Boolean(getZctaCentroid(ZCTA_STATE, row.areaCode))
+          : Boolean(countyCentroids.get(row.areaCode));
+        if (!hasCentroid) continue;
+
+        const label = row.statName || statNameById.get(row.statId) || row.statCategory || "Stat";
+        const list = targetMap.get(row.areaCode) ?? [];
+        list.push({
+          key: row.poiKey,
+          label,
+          tone: getPoiToneForRow(row.goodIfUp, row.extremaKind),
+          direction: row.extremaKind === "high" ? "up" : "down",
+        });
+        targetMap.set(row.areaCode, list);
+      }
+    };
+
+    append(zipRows, "ZIP", zipByArea);
+    append(countyRows, "COUNTY", countyByArea);
+
+    const sortRows = (rowsByArea: Map<string, HoverStackPill[]>) => {
+      for (const rows of rowsByArea.values()) {
+        rows.sort((a, b) => {
+          if (a.direction !== b.direction) return a.direction === "up" ? -1 : 1;
+          return a.label.localeCompare(b.label);
+        });
+      }
+    };
+    sortRows(zipByArea);
+    sortRows(countyByArea);
+    return { zipByArea, countyByArea };
+  };
+
+  const syncPoiHoverPillsForAreaHover = () => {
+    if (!zipLabels || !countyLabels) return;
+    if (!shouldRenderPointsOfInterest()) {
+      zipLabels.setHoverPillsByArea(new Map());
+      countyLabels.setHoverPillsByArea(new Map());
+      return;
+    }
+    const { zipByArea, countyByArea } = buildPoiHoverPillsByArea();
+    zipLabels.setHoverPillsByArea(zipByArea);
+    countyLabels.setHoverPillsByArea(countyByArea);
   };
 
   let pendingPoiVisibilityRaf: number | null = null;
@@ -2619,6 +2697,7 @@ export const createMapView = ({
       applyPoiLayerVisibility(false, false);
       schedulePoiVisibilityReapply();
     }
+    syncPoiHoverPillsForAreaHover();
 
     if (!selectedStatId) {
       setLayerState(ZIP_STAT_EXTREME_HIGH_LAYER_ID, "zip", null, STAT_EXTREME_GOOD_ICON_ID, false);
@@ -2844,6 +2923,7 @@ export const createMapView = ({
     });
     zipLabels.setTheme(currentTheme);
     countyLabels.setTheme(currentTheme);
+    syncPoiHoverPillsForAreaHover();
 
     const unwireCanvasDrag = (() => {
     let isDragging = false;

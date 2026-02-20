@@ -10,9 +10,20 @@ interface ZipLabelsOptions {
   stackedStatsMinZoom?: number;
 }
 
+export type HoverPillTone = "good" | "bad" | "neutral";
+export type HoverPillDirection = "up" | "down";
+
+export interface HoverStackPill {
+  key: string;
+  label: string;
+  tone: HoverPillTone;
+  direction: HoverPillDirection;
+}
+
 export interface ZipLabelsController {
   setSelectedZips: (zips: string[], pinnedZips: string[]) => void;
   setHoveredZip: (zip: string | null) => void;
+  setHoverPillsByArea: (rowsByArea: Map<string, HoverStackPill[]>) => void;
   setStatOverlay: (statId: string | null, statData: Record<string, number> | null, statType?: string) => void;
   setSecondaryStatOverlay: (statId: string | null, statData: Record<string, number> | null, statType?: string) => void;
   setTheme: (theme: "light" | "dark") => void;
@@ -39,6 +50,7 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
   let currentSecondaryStatId: string | null = null;
   let currentSecondaryData: Record<string, number> | null = null;
   let currentSecondaryStatType: string = "count";
+  let currentHoverPillsByArea = new Map<string, HoverStackPill[]>();
   let currentTheme: "light" | "dark" = "light";
   let updatePositionHandler: (() => void) | null = null;
   let visible = true;
@@ -147,6 +159,32 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
     if (primaryPill) element.appendChild(primaryPill);
     element.appendChild(pillLabel);
 
+    if (isHovered) {
+      const hoverRows = currentHoverPillsByArea.get(zip) ?? [];
+      for (const row of hoverRows) {
+        const rowPill = document.createElement("div");
+        rowPill.className = [
+          "h-5 px-2 rounded-full border border-slate-300/80 bg-white/95",
+          "font-medium text-xs flex items-center gap-1.5 justify-center shadow-md",
+          "text-slate-700 dark:border-slate-600/80 dark:bg-slate-900/95 dark:text-slate-200",
+        ].join(" ");
+        rowPill.style.marginTop = "-2px";
+
+        const arrow = document.createElement("span");
+        arrow.textContent = row.direction === "up" ? "▲" : "▼";
+        arrow.style.fontWeight = "700";
+        arrow.style.color =
+          row.tone === "good" ? "#6fc284" : row.tone === "bad" ? "#f15b41" : "#f8d837";
+
+        const text = document.createElement("span");
+        text.textContent = row.label;
+
+        rowPill.appendChild(arrow);
+        rowPill.appendChild(text);
+        element.appendChild(rowPill);
+      }
+    }
+
     const point = map.project([lng, lat]);
     element.style.left = `${point.x}px`;
     element.style.top = `${point.y}px`;
@@ -229,6 +267,11 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
     if (visible) updateLabels();
   };
 
+  const setHoverPillsByArea = (rowsByArea: Map<string, HoverStackPill[]>) => {
+    currentHoverPillsByArea = rowsByArea;
+    if (visible) updateLabels();
+  };
+
   const setStatOverlay = (statId: string | null, statData: Record<string, number> | null, statType?: string) => {
     currentStatId = statId;
     currentStatData = statData;
@@ -280,6 +323,7 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
   return {
     setSelectedZips,
     setHoveredZip,
+    setHoverPillsByArea,
     setStatOverlay,
     setSecondaryStatOverlay,
     setTheme,

@@ -9,6 +9,7 @@ export interface PointOfInterestRow {
   poiKey: string;
   statId: string;
   statCategory: string;
+  statName: string | null;
   boundaryType: PointOfInterestBoundaryType;
   extremaKind: PointOfInterestExtremaKind;
   scopeKey: PointOfInterestScopeKey | null;
@@ -90,6 +91,10 @@ const normalizeRows = (rawRows: any[]): PointsOfInterestSnapshot => {
     const poiKey = typeof raw.poiKey === "string" ? raw.poiKey : null;
     const statId = typeof raw.statId === "string" ? raw.statId : null;
     const statCategory = normalizeCategory(raw.statCategory);
+    const statName =
+      typeof raw.statName === "string" && raw.statName.trim().length > 0
+        ? raw.statName.trim()
+        : null;
     const boundaryType = normalizeBoundaryType(raw.boundaryType);
     const extremaKind = normalizeExtremaKind(raw.extremaKind);
     const scopeKey = normalizeScopeKey(raw.scopeKey);
@@ -115,6 +120,7 @@ const normalizeRows = (rawRows: any[]): PointsOfInterestSnapshot => {
       poiKey,
       statId,
       statCategory,
+      statName,
       boundaryType,
       extremaKind,
       scopeKey,
