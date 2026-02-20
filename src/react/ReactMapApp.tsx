@@ -31,7 +31,7 @@ import { findCitySearchTarget, DEFAULT_CITY_ZOOM } from "./lib/citySearchTargets
 import { parseFullAddress, geocodeAddress, looksLikeAddress } from "./lib/geocoding";
 import { normalizeForSearch, computeSimilarityFromNormalized } from "./lib/fuzzyMatch";
 import { getMapStateFromUrl, updateUrlWithMapState, type AreasMode } from "./lib/mapUrl";
-import { getDomainDefaults, isFoodMapDomain } from "./lib/domains";
+import { DEFAULT_POPULATION_STAT_ID, getDomainDefaults, isFoodMapDomain } from "./lib/domains";
 import { useAuthSession } from "./hooks/useAuthSession";
 import { setStatDataSubscriptionEnabled } from "../state/statData";
 import { MapSettingsModal } from "./components/MapSettingsModal";
@@ -1950,21 +1950,29 @@ export const ReactMapApp = () => {
     // Helper: first stat marked as homeFeatured + featured + active
     const pickHomeFeatured = () =>
       allStats.find((s) => s.homeFeatured === true && s.featured === true && s.visibility !== "inactive") ?? null;
-    const pickConfiguredStat = () => {
-      for (const id of domainDefaults.defaultStatIds) {
-        if (!id) continue;
-        const stat = statsById.get(id);
-        if (stat && stat.visibility !== "inactive") return stat.id;
-      }
-      for (const name of domainDefaults.defaultStatNames) {
-        const match = allStats.find(
-          (s) =>
-            (s.name === name || s.label === name) &&
-            s.visibility !== "inactive",
-        );
-        if (match?.id) return match.id;
-      }
-      return null;
+    const pickConfiguredStat = (preferNamesFirst = false) => {
+      const tryByName = () => {
+        for (const name of domainDefaults.defaultStatNames) {
+          const match = allStats.find(
+            (s) =>
+              (s.name === name || s.label === name) &&
+              s.visibility !== "inactive",
+          );
+          if (match?.id) return match.id;
+        }
+        return null;
+      };
+      const tryById = () => {
+        for (const id of domainDefaults.defaultStatIds) {
+          if (!id) continue;
+          const stat = statsById.get(id);
+          if (stat && stat.visibility !== "inactive") return stat.id;
+        }
+        return null;
+      };
+
+      if (preferNamesFirst) return tryByName() ?? tryById();
+      return tryById() ?? tryByName();
     };
 
     if (isFoodDomain) {
@@ -1989,7 +1997,7 @@ export const ReactMapApp = () => {
       return;
     }
 
-    // Non-okfood domains: prefer domain-configured stat, then homeFeatured if present
+    // Non-okfood domains: prefer explicit configured IDs first (Population), then name fallback.
     const configuredStatId = pickConfiguredStat();
     if (configuredStatId) {
       setSelectedStatId(configuredStatId);
@@ -2435,6 +2443,14 @@ export const ReactMapApp = () => {
       pinned: change.pinned,
       transient: change.transient,
     });
+    // ZIP map picks should open stats context so users immediately see area insights.
+    if (change.kind === "ZIP" && isNonEmpty && hasChanged) {
+      setSidebarCollapsed(false);
+      setShowAdvanced(true);
+      if (!selectedStatId) {
+        setSelectedStatId(DEFAULT_POPULATION_STAT_ID);
+      }
+    }
     if (hasChanged) {
       track("map_area_selected", {
         areaKind: change.kind,

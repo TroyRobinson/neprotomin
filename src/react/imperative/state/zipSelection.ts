@@ -19,6 +19,7 @@ export const computeToggle = (
 
   let nextPinned = new Set(pinned);
   let nextTransient = new Set(transient);
+  const selectedCount = new Set<string>([...pinned, ...transient]).size;
 
   if (additive) {
     if (isSelected) {
@@ -32,7 +33,11 @@ export const computeToggle = (
       nextTransient.add(zip);
     }
   } else {
-    if (isPinned) {
+    // Single-select click should deselect when this is the only selected area.
+    if (isSelected && selectedCount === 1) {
+      if (isPinned) nextPinned.delete(zip);
+      if (isTransient) nextTransient.delete(zip);
+    } else if (isPinned) {
       // Preserve pinned; clear any transient selection
       if (nextTransient.size > 0) nextTransient = new Set();
     } else if (isTransient) {
@@ -57,5 +62,3 @@ export const computeAddTransient = (
 export const computeClearTransient = (): Set<string> => {
   return new Set<string>();
 };
-
-

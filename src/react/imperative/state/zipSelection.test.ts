@@ -23,6 +23,18 @@ describe('zipSelection helpers', () => {
     expect(state.transient.size).toBe(0);
   });
 
+  it('computeToggle additive false deselects when clicked area is the only transient selection', () => {
+    const state = computeToggle('74103', false, S([]), S(['74103']));
+    expect(state.pinned.size).toBe(0);
+    expect(state.transient.size).toBe(0);
+  });
+
+  it('computeToggle additive false deselects when clicked area is the only pinned selection', () => {
+    const state = computeToggle('74103', false, S(['74103']), S([]));
+    expect(state.pinned.size).toBe(0);
+    expect(state.transient.size).toBe(0);
+  });
+
   it('computeAddTransient unions sets', () => {
     const next = computeAddTransient(['a', 'b'], S(['a']));
     expect([...next].sort()).toEqual(['a', 'b']);
@@ -37,5 +49,4 @@ describe('zipSelection helpers', () => {
     expect([...merged].sort()).toEqual(['a', 'b']);
   });
 });
-
 

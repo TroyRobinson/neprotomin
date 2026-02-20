@@ -1,6 +1,6 @@
 // Domain helpers and defaults shared across the React app.
 export const DEFAULT_PRIMARY_STAT_ID = "8383685c-2741-40a2-96ff-759c42ddd586";
-export const DEFAULT_POPULATION_STAT_ID = "0a7081d7-1374-41a8-bd48-41bb3933957e";
+export const DEFAULT_POPULATION_STAT_ID = "8807bf0b-5a85-4a73-82f2-cd18c8140072";
 
 export const isFoodMapDomain = (): boolean => {
   if (typeof window === "undefined") return false;
@@ -33,6 +33,6 @@ export const getDomainDefaults = (): DomainDefaults => {
     defaultSidebarTab: "stats",
     defaultOrgPinsVisible: false,
     defaultStatIds: [DEFAULT_POPULATION_STAT_ID],
-    defaultStatNames: ["Population (Change)"],
+    defaultStatNames: ["Population"],
   };
 };
