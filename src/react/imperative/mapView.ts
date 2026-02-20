@@ -150,7 +150,7 @@ type ThemeName = "light" | "dark";
 const MAP_STYLE_LIGHT = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 const MAP_STYLE_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 const DEFAULT_GLOW_COLOR = "#f5c4ae";
-const SELECTED_GLOW_COLOR = "#8a93ff"; // Tailwind brand-400 indigo
+const SELECTED_GLOW_COLOR = "#8e90c4"; // Tailwind brand-500
 const BASEMAP_TEXT_OPACITY: Record<ThemeName, number> = {
   light: 0.34,
   dark: 0.46,
@@ -550,6 +550,9 @@ export const createMapView = ({
   let transientZips = new Set<string>();
   let hoveredZipFromToolbar: string | null = null;
   let hoveredZipFromMap: string | null = null;
+  let hoveredZipPreviewFromMap: string | null = null;
+  let hoveredZipPreviewTrailFromMap: string | null = null;
+  let hoveredZipPreviewTrailTimer: ReturnType<typeof setTimeout> | null = null;
   let hoveredZipFromPill: string | null = null;
   let hoveredZipPillArea: string | null = null;
   let hoveredZipPillKey: string | null = null;
@@ -557,9 +560,13 @@ export const createMapView = ({
   let transientCounties = new Set<string>();
   let hoveredCountyFromToolbar: string | null = null;
   let hoveredCountyFromMap: string | null = null;
+  let hoveredCountyPreviewFromMap: string | null = null;
+  let hoveredCountyPreviewTrailFromMap: string | null = null;
+  let hoveredCountyPreviewTrailTimer: ReturnType<typeof setTimeout> | null = null;
   let hoveredCountyFromPill: string | null = null;
   let hoveredCountyPillArea: string | null = null;
   let hoveredCountyPillKey: string | null = null;
+  const HOVER_PREVIEW_TRAIL_MS = 120;
   let cancelZipBoundaryLeaveClear: (() => void) | null = null;
   let cancelCountyBoundaryLeaveClear: (() => void) | null = null;
   let userLocation: { lng: number; lat: number } | null = initialUserLocation;
@@ -1770,8 +1777,70 @@ export const createMapView = ({
     );
   };
 
+  const clearZipPreviewTrailTimer = () => {
+    if (hoveredZipPreviewTrailTimer !== null) {
+      clearTimeout(hoveredZipPreviewTrailTimer);
+      hoveredZipPreviewTrailTimer = null;
+    }
+  };
+
+  const clearCountyPreviewTrailTimer = () => {
+    if (hoveredCountyPreviewTrailTimer !== null) {
+      clearTimeout(hoveredCountyPreviewTrailTimer);
+      hoveredCountyPreviewTrailTimer = null;
+    }
+  };
+
+  const clearZipPreviewHover = () => {
+    clearZipPreviewTrailTimer();
+    hoveredZipPreviewFromMap = null;
+    hoveredZipPreviewTrailFromMap = null;
+  };
+
+  const clearCountyPreviewHover = () => {
+    clearCountyPreviewTrailTimer();
+    hoveredCountyPreviewFromMap = null;
+    hoveredCountyPreviewTrailFromMap = null;
+  };
+
+  const setZipPreviewHover = (zip: string): boolean => {
+    if (zip === hoveredZipPreviewFromMap) return false;
+    clearZipPreviewTrailTimer();
+    const previous = hoveredZipPreviewFromMap;
+    hoveredZipPreviewFromMap = zip;
+    hoveredZipPreviewTrailFromMap = null;
+    if (previous && previous !== zip) {
+      hoveredZipPreviewTrailFromMap = previous;
+      hoveredZipPreviewTrailTimer = setTimeout(() => {
+        hoveredZipPreviewTrailTimer = null;
+        hoveredZipPreviewTrailFromMap = null;
+        zipSelection.updateHover();
+      }, HOVER_PREVIEW_TRAIL_MS);
+    }
+    return true;
+  };
+
+  const setCountyPreviewHover = (county: string): boolean => {
+    if (county === hoveredCountyPreviewFromMap) return false;
+    clearCountyPreviewTrailTimer();
+    const previous = hoveredCountyPreviewFromMap;
+    hoveredCountyPreviewFromMap = county;
+    hoveredCountyPreviewTrailFromMap = null;
+    if (previous && previous !== county) {
+      hoveredCountyPreviewTrailFromMap = previous;
+      hoveredCountyPreviewTrailTimer = setTimeout(() => {
+        hoveredCountyPreviewTrailTimer = null;
+        hoveredCountyPreviewTrailFromMap = null;
+        countySelection.updateHover();
+      }, HOVER_PREVIEW_TRAIL_MS);
+    }
+    return true;
+  };
+
   const updateZipHoverOutline = () => {
     const hovered = hoveredZipFromToolbar || hoveredZipFromPill || hoveredZipFromMap;
+    const visualHovered = hovered || hoveredZipPreviewFromMap;
+    const previewOnly = !hovered && Boolean(visualHovered);
     if (!hovered || hoveredZipPillArea !== hovered) {
       hoveredZipPillArea = null;
       hoveredZipPillKey = null;
@@ -1803,7 +1872,10 @@ export const createMapView = ({
     COUNTY_BOUNDARY_PINNED_FILL_LAYER_ID,
     COUNTY_BOUNDARY_PINNED_LINE_LAYER_ID,
     COUNTY_STATDATA_FILL_LAYER_ID,
-  }, currentTheme, selectedStatId, pinnedZips, transientZips, hovered || null);
+  }, currentTheme, selectedStatId, pinnedZips, transientZips, visualHovered || null, {
+    previewOnly,
+    trailingZipId: previewOnly ? hoveredZipPreviewTrailFromMap : null,
+  });
     zipLabels?.setHoveredZip(hovered || null);
     syncLinkedExtremaHoverLabels();
     
@@ -1854,6 +1926,8 @@ export const createMapView = ({
 
   const updateCountyHoverOutline = () => {
     const hovered = hoveredCountyFromToolbar || hoveredCountyFromPill || hoveredCountyFromMap;
+    const visualHovered = hovered || hoveredCountyPreviewFromMap;
+    const previewOnly = !hovered && Boolean(visualHovered);
     if (!hovered || hoveredCountyPillArea !== hovered) {
       hoveredCountyPillArea = null;
       hoveredCountyPillKey = null;
@@ -1885,7 +1959,10 @@ export const createMapView = ({
       COUNTY_BOUNDARY_PINNED_FILL_LAYER_ID,
       COUNTY_BOUNDARY_PINNED_LINE_LAYER_ID,
     COUNTY_STATDATA_FILL_LAYER_ID,
-  }, currentTheme, selectedStatId, pinnedCounties, transientCounties, hovered);
+  }, currentTheme, selectedStatId, pinnedCounties, transientCounties, visualHovered, {
+    previewOnly,
+    trailingCountyId: previewOnly ? hoveredCountyPreviewTrailFromMap : null,
+  });
     syncLinkedExtremaHoverLabels();
     
     // Also update secondary stat hover layer immediately
@@ -3571,6 +3648,7 @@ export const createMapView = ({
       
       const commitZipHover = (zip: string) => {
         cancelZipBoundaryLeaveClearLocal();
+        clearZipPreviewHover();
         hoveredZipFromMap = zip;
         zipSelection.updateHover();
         if (mapInMotion) {
@@ -3591,6 +3669,7 @@ export const createMapView = ({
       };
       const clearZipHoverFromMap = () => {
         clearZipHoverDwell();
+        clearZipPreviewHover();
         hoveredZipFromMap = null;
         zipSelection.updateHover();
         if (mapInMotion) {
@@ -3630,10 +3709,37 @@ export const createMapView = ({
         const features = map.queryRenderedFeatures(e.point, { layers: zipLayerOrder });
         const zip = features[0]?.properties?.[zipFeatureProperty] as string | undefined;
         if (!zip) return;
-        
+        // Any map-layer hover means pointer is back on the map, so pill hover should
+        // no longer win precedence over traversal preview/detail hover.
+        let clearedZipPillHover = false;
+        if (hoveredZipFromPill) {
+          hoveredZipFromPill = null;
+          hoveredZipPillArea = null;
+          hoveredZipPillKey = null;
+          clearedZipPillHover = true;
+        }
+        // Once the cursor leaves a committed area, clear detail hover immediately.
+        // This lets lightweight preview hover continue while traversing to a new area.
+        if (hoveredZipFromMap && zip !== hoveredZipFromMap && !hoveredZipFromToolbar && !hoveredZipFromPill) {
+          hoveredZipFromMap = null;
+          if (mapInMotion) {
+            pendingZipHover = null;
+            pendingHoverArea = null;
+          } else {
+            onZipHoverChange?.(null);
+            onAreaHoverChange?.(null);
+          }
+        }
+        if (zip !== hoveredZipFromMap && setZipPreviewHover(zip)) {
+          zipSelection.updateHover();
+        }
+
         // Already committed for this area; no further work needed.
         if (zip === hoveredZipFromMap) {
           clearZipHoverDwell();
+          if (clearedZipPillHover) {
+            zipSelection.updateHover();
+          }
           return;
         }
 
@@ -3657,10 +3763,13 @@ export const createMapView = ({
       map.on("click", handleBoundaryClick);
       map.on("dblclick", handleBoundaryDoubleClick);
       map.on("mouseenter", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseEnter);
+      map.on("mouseenter", BOUNDARY_HOVER_FILL_LAYER_ID, onBoundaryMouseEnter);
       map.on("mouseenter", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseEnter);
       map.on("mouseleave", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseLeave);
+      map.on("mouseleave", BOUNDARY_HOVER_FILL_LAYER_ID, onBoundaryMouseLeave);
       map.on("mouseleave", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseLeave);
       map.on("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
+      map.on("mousemove", BOUNDARY_HOVER_FILL_LAYER_ID, onZipMouseMove);
       map.on("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
 
       // Dwell time for county hover (same pattern as ZIP)
@@ -3677,6 +3786,7 @@ export const createMapView = ({
       
       const commitCountyHover = (county: string) => {
         cancelCountyBoundaryLeaveClearLocal();
+        clearCountyPreviewHover();
         hoveredCountyFromMap = county;
         countySelection.updateHover();
         countyLabels?.setHoveredZip(county);
@@ -3698,6 +3808,7 @@ export const createMapView = ({
       };
       const clearCountyHoverFromMap = () => {
         clearCountyHoverDwell();
+        clearCountyPreviewHover();
         hoveredCountyFromMap = null;
         countySelection.updateHover();
         countyLabels?.setHoveredZip(null);
@@ -3736,10 +3847,37 @@ export const createMapView = ({
         const features = map.queryRenderedFeatures(e.point, { layers: countyLayerOrder });
         const county = features[0]?.properties?.[countyFeatureProperty] as string | undefined;
         if (!county) return;
-        
+        // Any map-layer hover means pointer is back on the map, so pill hover should
+        // no longer win precedence over traversal preview/detail hover.
+        let clearedCountyPillHover = false;
+        if (hoveredCountyFromPill) {
+          hoveredCountyFromPill = null;
+          hoveredCountyPillArea = null;
+          hoveredCountyPillKey = null;
+          clearedCountyPillHover = true;
+        }
+        // Once the cursor leaves a committed area, clear detail hover immediately.
+        // This lets lightweight preview hover continue while traversing to a new area.
+        if (hoveredCountyFromMap && county !== hoveredCountyFromMap && !hoveredCountyFromToolbar && !hoveredCountyFromPill) {
+          hoveredCountyFromMap = null;
+          if (mapInMotion) {
+            pendingCountyHover = null;
+            pendingHoverArea = null;
+          } else {
+            onCountyHoverChange?.(null);
+            onAreaHoverChange?.(null);
+          }
+        }
+        if (county !== hoveredCountyFromMap && setCountyPreviewHover(county)) {
+          countySelection.updateHover();
+        }
+
         // Already committed for this area; no further work needed.
         if (county === hoveredCountyFromMap) {
           clearCountyHoverDwell();
+          if (clearedCountyPillHover) {
+            countySelection.updateHover();
+          }
           return;
         }
 
@@ -3781,13 +3919,18 @@ export const createMapView = ({
         }
         clearZipHoverDwell();
         clearCountyHoverDwell();
+        clearZipPreviewHover();
+        clearCountyPreviewHover();
         map.off("click", handleBoundaryClick);
         map.off("dblclick", handleBoundaryDoubleClick);
         map.off("mouseenter", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseEnter);
+        map.off("mouseenter", BOUNDARY_HOVER_FILL_LAYER_ID, onBoundaryMouseEnter);
         map.off("mouseenter", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseEnter);
         map.off("mouseleave", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseLeave);
+        map.off("mouseleave", BOUNDARY_HOVER_FILL_LAYER_ID, onBoundaryMouseLeave);
         map.off("mouseleave", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseLeave);
         map.off("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
+        map.off("mousemove", BOUNDARY_HOVER_FILL_LAYER_ID, onZipMouseMove);
         map.off("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
         map.off("mouseenter", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseEnter);
         map.off("mouseenter", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseEnter);
@@ -3911,7 +4054,7 @@ export const createMapView = ({
         const opacityExpr: any = [
           "case",
           selectionMatchExpr,
-          0.35, // Semi-transparent for selected (glow effect)
+          0.45, // Semi-transparent for selected (glow effect)
           1     // Fully opaque for hover
         ];
         map.setPaintProperty(LAYER_HIGHLIGHT_ID, "circle-color", fillColorExpr);
@@ -4058,6 +4201,7 @@ export const createMapView = ({
     if (mode !== "zips") {
       hoveredZipFromToolbar = null;
       hoveredZipFromMap = null;
+      clearZipPreviewHover();
       hoveredZipFromPill = null;
       hoveredZipPillArea = null;
       hoveredZipPillKey = null;
@@ -4067,6 +4211,7 @@ export const createMapView = ({
     }
     if (mode !== "counties") {
       hoveredCountyFromMap = null;
+      clearCountyPreviewHover();
       hoveredCountyFromToolbar = null;
       hoveredCountyFromPill = null;
       hoveredCountyPillArea = null;
@@ -4522,6 +4667,7 @@ export const createMapView = ({
     },
     setHoveredZip: (zip: string | null) => {
       hoveredZipFromToolbar = zip;
+      if (zip) clearZipPreviewHover();
       zipSelection.updateHover();
       const finalHovered = zip || hoveredZipFromPill || hoveredZipFromMap;
       zipLabels?.setHoveredZip(finalHovered);
@@ -4535,6 +4681,7 @@ export const createMapView = ({
     },
     setHoveredCounty: (county: string | null) => {
       hoveredCountyFromToolbar = county;
+      if (county) clearCountyPreviewHover();
       countySelection.updateHover();
       const finalHovered = county || hoveredCountyFromPill || hoveredCountyFromMap;
       countyLabels?.setHoveredZip(finalHovered);
@@ -4627,6 +4774,8 @@ export const createMapView = ({
       map.resize();
     },
     destroy: () => {
+      clearZipPreviewHover();
+      clearCountyPreviewHover();
       if (poiDebugEnabled && typeof window !== "undefined") {
         try {
           if ((window as any).__poiDebugSnapshot) {

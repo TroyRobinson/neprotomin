@@ -21,6 +21,7 @@ const HOVER_OPACITY_TRANSITION = {
   delay: 0,
 } as const;
 const HOVER_OPACITY_SCALE = 0.9;
+const PREVIEW_HOVER_OPACITY_MULTIPLIER = 0.42;
 const ZIP_NONE_FILTER = ["==", ["get", "zip"], "__none__"] as const;
 const COUNTY_NONE_FILTER = ["==", ["get", "county"], "__none__"] as const;
 
@@ -85,6 +86,20 @@ const scheduleCountyHoverFilterClear = (
 
 const scaleHoverOpacity = (value: number): number =>
   Math.max(0, Math.min(1, value * HOVER_OPACITY_SCALE));
+
+const buildHoverFilter = (
+  featureKey: "zip" | "county",
+  primaryId: string,
+  trailingId?: string | null,
+) => {
+  const ids = new Set<string>([primaryId]);
+  if (trailingId) ids.add(trailingId);
+  const values = Array.from(ids);
+  if (values.length === 1) {
+    return ["==", ["get", featureKey], values[0]] as any;
+  }
+  return ["in", ["get", featureKey], ["literal", values]] as any;
+};
 
 export interface BoundaryLayerIds {
   BOUNDARY_SOURCE_ID: string;
@@ -731,6 +746,10 @@ export const updateZipHoverOutline = (
   pinnedZips: Set<string>,
   transientZips: Set<string>,
   hoveredZip: string | null,
+  options?: {
+    previewOnly?: boolean;
+    trailingZipId?: string | null;
+  },
 ) => {
   const { BOUNDARY_HOVER_LINE_LAYER_ID, BOUNDARY_HOVER_FILL_LAYER_ID } = ids;
   const lineLayer = map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID);
@@ -750,10 +769,11 @@ export const updateZipHoverOutline = (
   }
 
   cancelZipHoverFilterClear(map);
-  const hoverFilter = ["==", ["get", "zip"], hoveredZip] as any;
+  const hoverFilter = buildHoverFilter("zip", hoveredZip, options?.trailingZipId);
   if (lineLayer) map.setFilter(BOUNDARY_HOVER_LINE_LAYER_ID, hoverFilter);
   if (fillLayer) map.setFilter(BOUNDARY_HOVER_FILL_LAYER_ID, hoverFilter);
   map.triggerRepaint();
+  const opacityMultiplier = options?.previewOnly ? PREVIEW_HOVER_OPACITY_MULTIPLIER : 1;
   const isPinned = pinnedZips.has(hoveredZip);
   const isSelected = transientZips.has(hoveredZip);
   const hasStatOverlay = Boolean(selectedStatId);
@@ -762,23 +782,39 @@ export const updateZipHoverOutline = (
     if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
       const hoverLineColor = theme === "dark" ? "#ffffff" : "#000000";
       map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-color", hoverLineColor);
-      map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity", scaleHoverOpacity(0.95));
+      map.setPaintProperty(
+        BOUNDARY_HOVER_LINE_LAYER_ID,
+        "line-opacity",
+        scaleHoverOpacity(0.95) * opacityMultiplier,
+      );
       map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-width", 1.5);
     }
     if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
       const fillOpacity = theme === "dark" ? 0.32 : 0.26;
-      map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity", scaleHoverOpacity(fillOpacity));
+      map.setPaintProperty(
+        BOUNDARY_HOVER_FILL_LAYER_ID,
+        "fill-opacity",
+        scaleHoverOpacity(fillOpacity) * opacityMultiplier,
+      );
     }
     return;
   }
   if (map.getLayer(BOUNDARY_HOVER_LINE_LAYER_ID)) {
     map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-color", hoverPaint.line.color);
-    map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity", scaleHoverOpacity(hoverPaint.line.opacity));
+    map.setPaintProperty(
+      BOUNDARY_HOVER_LINE_LAYER_ID,
+      "line-opacity",
+      scaleHoverOpacity(hoverPaint.line.opacity) * opacityMultiplier,
+    );
     map.setPaintProperty(BOUNDARY_HOVER_LINE_LAYER_ID, "line-width", hoverPaint.line.width);
   }
   if (map.getLayer(BOUNDARY_HOVER_FILL_LAYER_ID)) {
     map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-color", hoverPaint.fill.color);
-    map.setPaintProperty(BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity", scaleHoverOpacity(hoverPaint.fill.opacity));
+    map.setPaintProperty(
+      BOUNDARY_HOVER_FILL_LAYER_ID,
+      "fill-opacity",
+      scaleHoverOpacity(hoverPaint.fill.opacity) * opacityMultiplier,
+    );
   }
 };
 
@@ -790,6 +826,10 @@ export const updateCountyHoverOutline = (
   pinnedCounties: Set<string>,
   transientCounties: Set<string>,
   countyId: string | null,
+  options?: {
+    previewOnly?: boolean;
+    trailingCountyId?: string | null;
+  },
 ) => {
   const { COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID } = ids;
   const fillLayer = map.getLayer(COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID);
@@ -809,10 +849,11 @@ export const updateCountyHoverOutline = (
   }
 
   cancelCountyHoverFilterClear(map);
-  const hoverFilter = ["==", ["get", "county"], countyId] as any;
+  const hoverFilter = buildHoverFilter("county", countyId, options?.trailingCountyId);
   if (fillLayer) map.setFilter(COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, hoverFilter);
   if (lineLayer) map.setFilter(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID, hoverFilter);
   map.triggerRepaint();
+  const opacityMultiplier = options?.previewOnly ? PREVIEW_HOVER_OPACITY_MULTIPLIER : 1;
   const isPinned = pinnedCounties.has(countyId);
   const isSelected = transientCounties.has(countyId);
   const hasStatOverlay = Boolean(selectedStatId);
@@ -821,14 +862,18 @@ export const updateCountyHoverOutline = (
     if (hasStatOverlay && (isPinned || isSelected)) {
       const hoverLineColor = theme === "dark" ? "#ffffff" : "#000000";
       map.setPaintProperty(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID, "line-color", hoverLineColor);
-      map.setPaintProperty(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID, "line-opacity", scaleHoverOpacity(0.95));
+      map.setPaintProperty(
+        COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
+        "line-opacity",
+        scaleHoverOpacity(0.95) * opacityMultiplier,
+      );
       map.setPaintProperty(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID, "line-width", 1.5);
     } else {
       map.setPaintProperty(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID, "line-color", hoverPaint.line.color);
       map.setPaintProperty(
         COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
         "line-opacity",
-        scaleHoverOpacity(hoverPaint.line.opacity),
+        scaleHoverOpacity(hoverPaint.line.opacity) * opacityMultiplier,
       );
       map.setPaintProperty(COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID, "line-width", hoverPaint.line.width);
     }
@@ -836,13 +881,17 @@ export const updateCountyHoverOutline = (
   if (map.getLayer(COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID)) {
     if (hasStatOverlay && (isPinned || isSelected)) {
       const fillOpacity = theme === "dark" ? 0.32 : 0.26;
-      map.setPaintProperty(COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, "fill-opacity", scaleHoverOpacity(fillOpacity));
+      map.setPaintProperty(
+        COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+        "fill-opacity",
+        scaleHoverOpacity(fillOpacity) * opacityMultiplier,
+      );
     } else {
       map.setPaintProperty(COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, "fill-color", hoverPaint.fill.color);
       map.setPaintProperty(
         COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
         "fill-opacity",
-        scaleHoverOpacity(hoverPaint.fill.opacity),
+        scaleHoverOpacity(hoverPaint.fill.opacity) * opacityMultiplier,
       );
     }
   }
