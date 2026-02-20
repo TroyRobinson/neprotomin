@@ -379,6 +379,23 @@ export const createZipLabels = ({
       dropdown.style.zIndex = "2";
       dropdown.dataset.extremaTooltip = "1";
       dropdown.dataset.extremaAreaId = zip;
+      // Summarize whether this hover stack contains highs, lows, or both.
+      const hasHighestRows = opts.hoverRows.some((row) => row.direction === "up");
+      const hasLowestRows = opts.hoverRows.some((row) => row.direction === "down");
+      const dropdownTitleText = hasHighestRows && hasLowestRows
+        ? "Highest/lowest"
+        : hasHighestRows
+          ? "Highest"
+          : "Lowest";
+      const dropdownTitle = document.createElement("div");
+      dropdownTitle.className = [
+        "px-2 py-1",
+        "text-[9px] font-medium uppercase tracking-[0.1em]",
+        "text-slate-300 dark:text-slate-600",
+      ].join(" ");
+      dropdownTitle.style.lineHeight = "1";
+      dropdownTitle.textContent = dropdownTitleText;
+      dropdown.appendChild(dropdownTitle);
       const dropdownList = document.createElement("div");
       dropdownList.className = "flex flex-col items-stretch";
       dropdown.appendChild(dropdownList);
