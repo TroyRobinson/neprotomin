@@ -962,9 +962,12 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     btn.setAttribute("aria-haspopup", "listbox");
     btn.setAttribute("aria-expanded", "false");
     btn.setAttribute("aria-label", "Select stat option");
+    const selectedOptionLabel =
+      dropdownOptions.find((option) => option.id === stat.id)?.label ?? (stat.label || stat.name);
+    btn.setAttribute("title", selectedOptionLabel);
 
     const label = document.createElement("span");
-    label.textContent = stat.label || stat.name;
+    label.textContent = selectedOptionLabel;
     label.className = "whitespace-nowrap";
 
     const actions = document.createElement("span");
@@ -1140,7 +1143,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       },
       isDropdown: true,
       id: stat.id,
-      displayName: stat.label || stat.name,
+      displayName: selectedOptionLabel,
       labelEl: label,
       closeIcon: null,
     };

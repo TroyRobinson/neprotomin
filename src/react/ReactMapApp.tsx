@@ -1345,32 +1345,46 @@ export const ReactMapApp = () => {
       currentId = parentId;
     }
 
-    const optionIds: string[] = [rootStatId];
+    const rootStat = statsById.get(rootStatId);
+    const rootLabel = rootStat ? getStatDisplayName(rootStat) : null;
+
+    const optionRows: Array<{ id: string; relationAttribute: string | null }> = [
+      { id: rootStatId, relationAttribute: null },
+    ];
     const seenOptionIds = new Set<string>([rootStatId]);
     const rootChildrenByAttribute = statRelationsByParent.get(rootStatId);
     if (rootChildrenByAttribute) {
-      for (const [attribute, relations] of rootChildrenByAttribute) {
-        if (attribute === UNDEFINED_STAT_ATTRIBUTE) continue;
+      for (const relations of rootChildrenByAttribute.values()) {
+        const relationAttribute = relations[0]?.statAttribute?.trim() ?? "";
+        if (!relationAttribute || relationAttribute === UNDEFINED_STAT_ATTRIBUTE) continue;
         const validRelations = relations.filter((relation) => statsById.has(relation.childStatId));
         // Only include direct children whose root-level statAttribute is unique.
         if (validRelations.length !== 1) continue;
-        const childId = validRelations[0].childStatId;
+        const relation = validRelations[0];
+        const childId = relation.childStatId;
+        const childParents = statRelationsByChild.get(childId);
+        // "Other stat options" should be children that belong to exactly one parent.
+        if (!childParents || childParents.length !== 1) continue;
+        if (childParents[0].parentStatId !== rootStatId) continue;
         if (seenOptionIds.has(childId)) continue;
         seenOptionIds.add(childId);
-        optionIds.push(childId);
+        optionRows.push({ id: childId, relationAttribute });
       }
     }
 
     if (!seenOptionIds.has(selectedStatId)) {
-      optionIds.push(selectedStatId);
+      optionRows.push({ id: selectedStatId, relationAttribute: null });
     }
 
-    if (optionIds.length <= 1) return [];
-    return optionIds
-      .map((id) => {
-        const stat = statsById.get(id);
+    if (optionRows.length <= 1) return [];
+    return optionRows
+      .map((row) => {
+        const stat = statsById.get(row.id);
         if (!stat) return null;
-        return { id, label: getStatDisplayName(stat) };
+        if (row.relationAttribute && rootLabel) {
+          return { id: row.id, label: `${rootLabel} (${row.relationAttribute})` };
+        }
+        return { id: row.id, label: getStatDisplayName(stat) };
       })
       .filter((option): option is { id: string; label: string } => option !== null);
   }, [selectedStatId, statRelationsByChild, statRelationsByParent, statsById]);
