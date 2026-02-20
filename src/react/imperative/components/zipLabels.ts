@@ -23,6 +23,7 @@ export interface HoverStackPill {
 export interface ZipLabelsController {
   setSelectedZips: (zips: string[], pinnedZips: string[]) => void;
   setHoveredZip: (zip: string | null) => void;
+  setLinkedHoveredAreas: (areas: string[]) => void;
   setHoverPillsByArea: (rowsByArea: Map<string, HoverStackPill[]>) => void;
   setStatOverlay: (statId: string | null, statData: Record<string, number> | null, statType?: string) => void;
   setSecondaryStatOverlay: (statId: string | null, statData: Record<string, number> | null, statType?: string) => void;
@@ -51,6 +52,7 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
   let currentSecondaryData: Record<string, number> | null = null;
   let currentSecondaryStatType: string = "count";
   let currentHoverPillsByArea = new Map<string, HoverStackPill[]>();
+  let currentLinkedHoveredAreas = new Set<string>();
   let currentTheme: "light" | "dark" = "light";
   let updatePositionHandler: (() => void) | null = null;
   let visible = true;
@@ -223,10 +225,13 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
     if (currentHoveredZip && !zipsToLabel.has(currentHoveredZip)) {
       zipsToLabel.add(currentHoveredZip);
     }
+    for (const area of currentLinkedHoveredAreas) {
+      if (!zipsToLabel.has(area)) zipsToLabel.add(area);
+    }
     for (const zip of zipsToLabel) {
       const isSelected = currentSelectedZips.has(zip);
       const isPinned = currentPinnedZips.has(zip);
-      const isHovered = currentHoveredZip === zip;
+      const isHovered = currentHoveredZip === zip || currentLinkedHoveredAreas.has(zip);
       const element = createLabelElement(zip, isSelected, isPinned, isHovered);
       if (element) {
         labelElements.set(zip, element);
@@ -264,6 +269,18 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
   const setHoveredZip = (zip: string | null) => {
     if (currentHoveredZip === zip) return;
     currentHoveredZip = zip;
+    if (visible) updateLabels();
+  };
+
+  const setLinkedHoveredAreas = (areas: string[]) => {
+    const next = new Set(areas.filter((area) => typeof area === "string" && area.length > 0));
+    if (
+      next.size === currentLinkedHoveredAreas.size &&
+      [...next].every((area) => currentLinkedHoveredAreas.has(area))
+    ) {
+      return;
+    }
+    currentLinkedHoveredAreas = next;
     if (visible) updateLabels();
   };
 
@@ -323,6 +340,7 @@ export const createZipLabels = ({ map, getCentroidsMap, labelForId, stackedStats
   return {
     setSelectedZips,
     setHoveredZip,
+    setLinkedHoveredAreas,
     setHoverPillsByArea,
     setStatOverlay,
     setSecondaryStatOverlay,

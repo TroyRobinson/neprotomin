@@ -1725,6 +1725,36 @@ export const createMapView = ({
     COUNTY_STATDATA_FILL_LAYER_ID,
   }, currentTheme, selectedStatId, pinnedZips, transientZips);
 
+  const getLinkedExtremaHoverAreas = (
+    boundary: "ZIP" | "COUNTY",
+    hoveredArea: string | null,
+  ): string[] => {
+    if (!selectedStatId || !hoveredArea) return [];
+
+    const zoom = map.getZoom();
+    const showZipStatExtrema = boundaryMode === "zips" && zoom < CHOROPLETH_HIDE_ZOOM;
+    const showCountyStatExtrema = boundaryMode === "counties" && zoom < COUNTY_MODE_DISABLE_ZOOM;
+    if (boundary === "ZIP" && !showZipStatExtrema) return [];
+    if (boundary === "COUNTY" && !showCountyStatExtrema) return [];
+
+    const entry = getStatEntryByBoundary(selectedStatId, boundary);
+    const { highestId, lowestId } = getExtremeAreaIds(entry?.data);
+    const distinctLowestId = lowestId && lowestId !== highestId ? lowestId : null;
+    if (!highestId || !distinctLowestId) return [];
+
+    if (hoveredArea === highestId) return [distinctLowestId];
+    if (hoveredArea === distinctLowestId) return [highestId];
+    return [];
+  };
+
+  const syncLinkedExtremaHoverLabels = () => {
+    if (!zipLabels || !countyLabels) return;
+    const hoveredZip = hoveredZipFromToolbar || hoveredZipFromMap || null;
+    const hoveredCounty = hoveredCountyFromToolbar || hoveredCountyFromMap || null;
+    zipLabels.setLinkedHoveredAreas(getLinkedExtremaHoverAreas("ZIP", hoveredZip));
+    countyLabels.setLinkedHoveredAreas(getLinkedExtremaHoverAreas("COUNTY", hoveredCounty));
+  };
+
   const updateZipHoverOutline = () => {
     const hovered = hoveredZipFromToolbar || hoveredZipFromMap;
     extUpdateZipHoverOutline(map, {
@@ -1756,6 +1786,7 @@ export const createMapView = ({
     COUNTY_STATDATA_FILL_LAYER_ID,
   }, currentTheme, selectedStatId, pinnedZips, transientZips, hovered || null);
     zipLabels?.setHoveredZip(hovered || null);
+    syncLinkedExtremaHoverLabels();
     
     // Also update secondary stat hover layer immediately
     if (secondaryStatId) {
@@ -1832,6 +1863,7 @@ export const createMapView = ({
       COUNTY_BOUNDARY_PINNED_LINE_LAYER_ID,
     COUNTY_STATDATA_FILL_LAYER_ID,
   }, currentTheme, selectedStatId, pinnedCounties, transientCounties, hovered);
+    syncLinkedExtremaHoverLabels();
     
     // Also update secondary stat hover layer immediately
     if (secondaryStatId) {
@@ -2154,25 +2186,27 @@ export const createMapView = ({
     setPoiLayerState(COUNTY_POI_EXTREME_LOW_LAYER_ID, showCountyPoiLayers);
   };
 
-  const buildPoiHoverPillsByArea = (): {
+  const buildHoverPillsByArea = (): {
     zipByArea: Map<string, HoverStackPill[]>;
     countyByArea: Map<string, HoverStackPill[]>;
   } => {
     const zipByArea = new Map<string, HoverStackPill[]>();
     const countyByArea = new Map<string, HoverStackPill[]>();
-    if (!shouldRenderPointsOfInterest()) {
-      return { zipByArea, countyByArea };
-    }
 
     const countyCentroids = getCountyCentroidsMap();
-    const zipRows = getZipPoiRowsForCurrentView();
-    const countyRowsAll = getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", selectedCategory);
-    const countyRows = boundaryMode === "counties"
-      ? countyRowsAll.filter((row) => row.scopeKey === "oklahoma")
-      : countyRowsAll;
+    const appendPill = (
+      areaCode: string,
+      targetMap: Map<string, HoverStackPill[]>,
+      pill: HoverStackPill,
+    ) => {
+      const rows = targetMap.get(areaCode) ?? [];
+      if (rows.some((row) => row.key === pill.key)) return;
+      rows.push(pill);
+      targetMap.set(areaCode, rows);
+    };
 
-    const append = (
-      rows: typeof zipRows,
+    const appendPoiRows = (
+      rows: ReturnType<typeof getZipPoiRowsForCurrentView>,
       boundaryType: "ZIP" | "COUNTY",
       targetMap: Map<string, HoverStackPill[]>,
     ) => {
@@ -2187,19 +2221,76 @@ export const createMapView = ({
         if (!hasCentroid) continue;
 
         const label = row.statName || statNameById.get(row.statId) || row.statCategory || "Stat";
-        const list = targetMap.get(row.areaCode) ?? [];
-        list.push({
+        appendPill(row.areaCode, targetMap, {
           key: row.poiKey,
           label,
           tone: getPoiToneForRow(row.goodIfUp, row.extremaKind),
           direction: row.extremaKind === "high" ? "up" : "down",
         });
-        targetMap.set(row.areaCode, list);
       }
     };
 
-    append(zipRows, "ZIP", zipByArea);
-    append(countyRows, "COUNTY", countyByArea);
+    if (shouldRenderPointsOfInterest()) {
+      const zipRows = getZipPoiRowsForCurrentView();
+      const countyRowsAll = getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", selectedCategory);
+      const countyRows = boundaryMode === "counties"
+        ? countyRowsAll.filter((row) => row.scopeKey === "oklahoma")
+        : countyRowsAll;
+      appendPoiRows(zipRows, "ZIP", zipByArea);
+      appendPoiRows(countyRows, "COUNTY", countyByArea);
+    }
+
+    if (selectedStatId) {
+      const selectedStatLabel = statNameById.get(selectedStatId) || "Stat";
+      const selectedStatGoodIfUp = statGoodIfUpById.get(selectedStatId) ?? null;
+      const zoom = map.getZoom();
+      const hideZip = boundaryMode === "zips" && zoom >= CHOROPLETH_HIDE_ZOOM;
+      const showZipStatExtrema = boundaryMode === "zips" && !hideZip;
+      const showCountyStatExtrema = boundaryMode === "counties" && zoom < COUNTY_MODE_DISABLE_ZOOM;
+
+      const zipEntry = getStatEntryByBoundary(selectedStatId, "ZIP");
+      const countyEntry = getStatEntryByBoundary(selectedStatId, "COUNTY");
+      const zipExtremes = getExtremeAreaIds(zipEntry?.data);
+      const countyExtremes = getExtremeAreaIds(countyEntry?.data);
+
+      if (showZipStatExtrema) {
+        if (zipExtremes.highestId) {
+          appendPill(zipExtremes.highestId, zipByArea, {
+            key: `stat:${selectedStatId}:zip:high`,
+            label: selectedStatLabel,
+            tone: getPoiToneForRow(selectedStatGoodIfUp, "high"),
+            direction: "up",
+          });
+        }
+        if (zipExtremes.lowestId && zipExtremes.lowestId !== zipExtremes.highestId) {
+          appendPill(zipExtremes.lowestId, zipByArea, {
+            key: `stat:${selectedStatId}:zip:low`,
+            label: selectedStatLabel,
+            tone: getPoiToneForRow(selectedStatGoodIfUp, "low"),
+            direction: "down",
+          });
+        }
+      }
+
+      if (showCountyStatExtrema) {
+        if (countyExtremes.highestId) {
+          appendPill(countyExtremes.highestId, countyByArea, {
+            key: `stat:${selectedStatId}:county:high`,
+            label: selectedStatLabel,
+            tone: getPoiToneForRow(selectedStatGoodIfUp, "high"),
+            direction: "up",
+          });
+        }
+        if (countyExtremes.lowestId && countyExtremes.lowestId !== countyExtremes.highestId) {
+          appendPill(countyExtremes.lowestId, countyByArea, {
+            key: `stat:${selectedStatId}:county:low`,
+            label: selectedStatLabel,
+            tone: getPoiToneForRow(selectedStatGoodIfUp, "low"),
+            direction: "down",
+          });
+        }
+      }
+    }
 
     const sortRows = (rowsByArea: Map<string, HoverStackPill[]>) => {
       for (const rows of rowsByArea.values()) {
@@ -2214,16 +2305,12 @@ export const createMapView = ({
     return { zipByArea, countyByArea };
   };
 
-  const syncPoiHoverPillsForAreaHover = () => {
+  const syncHoverPillsForAreaHover = () => {
     if (!zipLabels || !countyLabels) return;
-    if (!shouldRenderPointsOfInterest()) {
-      zipLabels.setHoverPillsByArea(new Map());
-      countyLabels.setHoverPillsByArea(new Map());
-      return;
-    }
-    const { zipByArea, countyByArea } = buildPoiHoverPillsByArea();
+    const { zipByArea, countyByArea } = buildHoverPillsByArea();
     zipLabels.setHoverPillsByArea(zipByArea);
     countyLabels.setHoverPillsByArea(countyByArea);
+    syncLinkedExtremaHoverLabels();
   };
 
   let pendingPoiVisibilityRaf: number | null = null;
@@ -2697,7 +2784,7 @@ export const createMapView = ({
       applyPoiLayerVisibility(false, false);
       schedulePoiVisibilityReapply();
     }
-    syncPoiHoverPillsForAreaHover();
+    syncHoverPillsForAreaHover();
 
     if (!selectedStatId) {
       setLayerState(ZIP_STAT_EXTREME_HIGH_LAYER_ID, "zip", null, STAT_EXTREME_GOOD_ICON_ID, false);
@@ -2923,7 +3010,7 @@ export const createMapView = ({
     });
     zipLabels.setTheme(currentTheme);
     countyLabels.setTheme(currentTheme);
-    syncPoiHoverPillsForAreaHover();
+    syncHoverPillsForAreaHover();
 
     const unwireCanvasDrag = (() => {
     let isDragging = false;
@@ -4214,6 +4301,7 @@ export const createMapView = ({
       zipSelection.updateHover();
       const finalHovered = zip || hoveredZipFromMap;
       zipLabels?.setHoveredZip(finalHovered);
+      syncLinkedExtremaHoverLabels();
       onZipHoverChange?.(finalHovered || null);
       onAreaHoverChange?.(finalHovered ? { kind: "ZIP", id: finalHovered } : null);
     },
@@ -4226,6 +4314,7 @@ export const createMapView = ({
       countySelection.updateHover();
       const finalHovered = county || hoveredCountyFromMap;
       countyLabels?.setHoveredZip(finalHovered);
+      syncLinkedExtremaHoverLabels();
       onCountyHoverChange?.(finalHovered || null);
       onAreaHoverChange?.(finalHovered ? { kind: "COUNTY", id: finalHovered } : null);
     },
