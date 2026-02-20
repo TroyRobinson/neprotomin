@@ -59,15 +59,15 @@ const CHECK_ICON = `
 const CATEGORY_CHIP_SELECTED_CLASSES =
   "border-transparent bg-brand-500 text-white shadow-floating hover:bg-brand-500 dark:bg-brand-900 dark:text-brand-200 dark:hover:bg-brand-800";
 
-// Selected stat chip uses a subtle brand fill in dark mode without glass blur.
+// Selected stat chip keeps a neutral fill while preserving brand border emphasis.
 const STAT_CHIP_SELECTED_CLASSES =
-  "border-[1.5px] border-brand-500 bg-brand-100 text-brand-700 font-semibold shadow-floating hover:border-brand-500 hover:bg-brand-100 dark:border-brand-400 dark:bg-brand-400/24 dark:text-brand-600 dark:hover:border-brand-300 dark:!backdrop-blur-none";
+  "border-[1.5px] border-brand-500 bg-white text-brand-700 font-semibold shadow-floating hover:border-brand-500 hover:bg-white dark:border-brand-400 dark:bg-black dark:text-brand-300 dark:hover:border-brand-300 dark:hover:bg-black dark:!backdrop-blur-none";
 
 const CATEGORY_CHIP_INACTIVE_FEATURED_CLASSES =
   "border-slate-300 bg-slate-200 text-slate-700 shadow-sm hover:bg-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200";
 
 const MOBILE_STAT_CHIP_SELECTED_CLASSES =
-  "border-[1.5px] border-brand-500 bg-brand-100 text-brand-700 font-semibold shadow-floating hover:border-brand-500 hover:bg-brand-100 dark:border-brand-400 dark:bg-brand-400/80 dark:text-white dark:hover:border-brand-300 px-3 py-1 text-xs";
+  "border-[1.5px] border-brand-500 bg-white text-brand-700 font-semibold shadow-floating hover:border-brand-500 hover:bg-white dark:border-brand-400 dark:bg-black dark:text-brand-300 dark:hover:border-brand-300 dark:hover:bg-black px-3 py-1 text-xs";
 
 const MOBILE_STAT_CHIP_BASE_CLASSES =
   "inline-flex items-center gap-1.5 rounded-full border bg-white/90 text-brand-700 shadow-sm transition-all duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400";
