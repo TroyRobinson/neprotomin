@@ -2510,6 +2510,10 @@ export const ReactMapApp = () => {
     if (change.kind === "ZIP" && isNonEmpty && hasChanged) {
       setSidebarCollapsed(false);
       setShowAdvanced(true);
+      if (isMobile && sheetState !== "expanded") {
+        // Use expanded mode so the mobile drawer stays open for ZIP selections.
+        expandSheet();
+      }
       if (!selectedStatId) {
         setSelectedStatId(DEFAULT_POPULATION_STAT_ID);
       }
@@ -2908,6 +2912,10 @@ export const ReactMapApp = () => {
       }
 
       setBoundaryMode(targetKind === "ZIP" ? "zips" : "counties");
+      // Desktop ZIP searches should immediately surface advanced stats.
+      if (!isMobile && targetKind === "ZIP") {
+        setShowAdvanced(true);
+      }
       setActiveScreen("map");
       if (isMobile && sheetState !== "peek") {
         collapseSheet();
@@ -2933,6 +2941,7 @@ export const ReactMapApp = () => {
       setActiveScreen,
       setHighlightedOrganizationIds,
       setOrgPinsVisible,
+      setShowAdvanced,
       setSelectedOrgIds,
       setSelectedOrgIdsFromMap,
       setUserLocation,
