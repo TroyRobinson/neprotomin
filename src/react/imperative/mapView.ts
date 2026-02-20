@@ -3093,9 +3093,16 @@ export const createMapView = ({
 
     const applyExtremaPillStatSelection = (pillStatId?: string) => {
       if (!pillStatId) return;
+      const isClosingActiveStat = pillStatId === selectedStatId && selectedStatId !== DEFAULT_POPULATION_STAT_ID;
       const nextStatId = pillStatId === selectedStatId ? DEFAULT_POPULATION_STAT_ID : pillStatId;
       if (!nextStatId || nextStatId === selectedStatId) return;
       hideStatExtremaArrows();
+      if (isClosingActiveStat && selectedCategory) {
+        selectedCategory = null;
+        categoryChips.setSelected(null);
+        applyData();
+        onCategorySelectionChange?.(null);
+      }
       selectedStatId = nextStatId;
       categoryChips.setSelectedStat(selectedStatId);
       secondaryStatId = null;
