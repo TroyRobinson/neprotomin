@@ -77,9 +77,12 @@ export const createZipLabels = ({
   let hoveredPillKey: string | null = null;
   let visible = true;
   let shouldShowStackedStats = map.getZoom() >= stackedStatsMinZoom;
-  const labelFadeMs = 85;
-  const labelFadeTransition = `opacity ${labelFadeMs}ms ease`;
-  const rowPillTransition = `opacity ${labelFadeMs}ms ease, transform ${labelFadeMs}ms ease, background-color 120ms ease, border-color 120ms ease`;
+  const labelFadeMs = 45;
+  const labelEnterTransformMs = 81;
+  const labelEnterOffsetPx = 3;
+  const labelEnterEase = "cubic-bezier(0.22, 1, 0.36, 1)";
+  const labelFadeTransition = `opacity ${labelFadeMs}ms ease-out, transform ${labelEnterTransformMs}ms ${labelEnterEase}`;
+  const rowPillTransition = `opacity ${labelFadeMs}ms ease-out, transform ${labelFadeMs}ms ease-out, background-color 120ms ease, border-color 120ms ease`;
   const rowPillExitMs = labelFadeMs;
   const hoveredTooltipBridgeMinWidthPx = 260;
   const hoveredTooltipBridgeCompactMinWidthPx = 220;
@@ -301,6 +304,13 @@ export const createZipLabels = ({
     const shouldAnimateRowTransitions = !opts.isDirectHovered && !opts.showBaseStack;
     element.dataset.extremaAnimateRows = shouldAnimateRowTransitions ? "1" : "0";
     const baseTransform = "translate(-50%, -50%)";
+    // Subtle fade-up entry for hover labels/dropdowns: start slightly lower and settle into centroid center.
+    if (animateContainerFade) {
+      element.style.transform = `${baseTransform} translateY(${labelEnterOffsetPx}px)`;
+      element.style.willChange = "opacity, transform";
+    } else {
+      element.style.transform = baseTransform;
+    }
     const isSelectedOrPinned = isSelected || isPinned;
     const hasPrimaryData = Boolean(currentStatId && currentStatData && zip in currentStatData);
     const hasSecondaryData = Boolean(currentSecondaryStatId && currentSecondaryData && (zip in currentSecondaryData));
@@ -418,6 +428,16 @@ export const createZipLabels = ({
       dropdown.style.zIndex = "2";
       dropdown.dataset.extremaTooltip = "1";
       dropdown.dataset.extremaAreaId = zip;
+      dropdown.dataset.extremaTooltipDropdown = "1";
+      if (animateContainerFade) {
+        dropdown.style.opacity = "0";
+        dropdown.style.transform = `translate(-50%, ${labelEnterOffsetPx + 1}px)`;
+        dropdown.style.transition = `opacity ${labelFadeMs}ms ease-out, transform ${labelEnterTransformMs}ms ${labelEnterEase}`;
+        dropdown.style.willChange = "opacity, transform";
+      } else {
+        dropdown.style.opacity = "1";
+        dropdown.style.transform = "translate(-50%, 0)";
+      }
       // Summarize whether this hover stack contains highs, lows, or both.
       const hasHighestRows = opts.hoverRows.some((row) => row.direction === "up");
       const hasLowestRows = opts.hoverRows.some((row) => row.direction === "down");
@@ -615,14 +635,17 @@ export const createZipLabels = ({
     const point = map.project([lng, lat]);
     element.style.left = `${point.x}px`;
     element.style.top = `${point.y}px`;
-    // Keep the entire pill stack centered on the centroid.
-    // `translate(-50%, -50%)` already centers the rendered stack box.
-    element.style.transform = baseTransform;
     map.getContainer().appendChild(element);
     if (animateContainerFade) {
       requestAnimationFrame(() => {
         if (element.dataset.extremaExit !== "1") {
           element.style.opacity = "1";
+          element.style.transform = baseTransform;
+          const tooltip = element.querySelector<HTMLElement>("[data-extrema-tooltip-dropdown='1']");
+          if (tooltip) {
+            tooltip.style.opacity = "1";
+            tooltip.style.transform = "translate(-50%, 0)";
+          }
         }
       });
     }
