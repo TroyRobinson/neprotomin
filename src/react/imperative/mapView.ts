@@ -21,6 +21,7 @@ import {
   emptyPointsOfInterestSnapshot,
   getPointsOfInterestRows,
   pointsOfInterestStore,
+  type PointOfInterestScopeKey,
   type PointsOfInterestSnapshot,
 } from "../../state/pointsOfInterest";
 import { createOrgLegend, type OrgLegendController } from "./components/orgLegend";
@@ -2303,6 +2304,21 @@ export const createMapView = ({
     return "neutral";
   };
 
+  const compactScopeLabel = (value: string | null | undefined): string | undefined => {
+    const normalized = normalizeScopeLabel(value);
+    if (!normalized) return undefined;
+    if (normalized === "Oklahoma") return "OK";
+    if (normalized === "Oklahoma City") return "OKC";
+    return normalized.replace(/\s+County$/i, "").trim();
+  };
+
+  const poiScopeLabel = (scopeKey: PointOfInterestScopeKey | null | undefined): string | undefined => {
+    if (scopeKey === "oklahoma") return "OK";
+    if (scopeKey === "okc_area") return "OKC";
+    if (scopeKey === "tulsa_area") return "Tulsa";
+    return undefined;
+  };
+
   // Derive the ExtremaTone ("good"|"bad"|"neutral") used for combined icon IDs.
   const poiExtremaTone = (goodIfUp: boolean | null, extremaKind: ExtremaKind): ExtremaTone => {
     if (goodIfUp === true) return extremaKind === "high" ? "good" : "bad";
@@ -2457,6 +2473,7 @@ export const createMapView = ({
           direction: row.extremaKind === "high" ? "up" : "down",
           statId: row.statId,
           pairKey: `poi:${boundaryType}:${row.statId}:${row.scopeKey ?? "none"}`,
+          scopeLabel: poiScopeLabel(row.scopeKey),
         });
       }
     };
@@ -2473,6 +2490,8 @@ export const createMapView = ({
       const selectedStatGoodIfUp = statGoodIfUpById.get(selectedStatId) ?? null;
       const selectedZipPoiRows = getSelectedStatZipPoiRowsForCurrentScope();
       const selectedCountyPoiRows = getSelectedStatCountyPoiRowsForCurrentScope();
+      const selectedZipScopeLabel = compactScopeLabel(activeZipParentArea) ?? "OK";
+      const selectedCountyScopeLabel = "OK";
       const zoom = map.getZoom();
       const hideZip = boundaryMode === "zips" && zoom >= CHOROPLETH_HIDE_ZOOM;
       const showZipStatExtrema = boundaryMode === "zips" && !hideZip;
@@ -2492,6 +2511,7 @@ export const createMapView = ({
             direction: "up",
             statId: selectedStatId,
             pairKey: `stat:${selectedStatId}:ZIP`,
+            scopeLabel: selectedZipScopeLabel,
           });
         }
         if (zipExtremes.lowestId && zipExtremes.lowestId !== zipExtremes.highestId) {
@@ -2502,6 +2522,7 @@ export const createMapView = ({
             direction: "down",
             statId: selectedStatId,
             pairKey: `stat:${selectedStatId}:ZIP`,
+            scopeLabel: selectedZipScopeLabel,
           });
         }
       }
@@ -2515,6 +2536,7 @@ export const createMapView = ({
             direction: "up",
             statId: selectedStatId,
             pairKey: `stat:${selectedStatId}:COUNTY`,
+            scopeLabel: selectedCountyScopeLabel,
           });
         }
         if (countyExtremes.lowestId && countyExtremes.lowestId !== countyExtremes.highestId) {
@@ -2525,6 +2547,7 @@ export const createMapView = ({
             direction: "down",
             statId: selectedStatId,
             pairKey: `stat:${selectedStatId}:COUNTY`,
+            scopeLabel: selectedCountyScopeLabel,
           });
         }
       }

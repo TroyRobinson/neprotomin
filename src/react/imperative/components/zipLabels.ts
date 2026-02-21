@@ -23,6 +23,7 @@ export interface HoverStackPill {
   direction: HoverPillDirection;
   statId?: string;
   pairKey?: string;
+  scopeLabel?: string;
 }
 
 export interface ZipLabelsController {
@@ -96,6 +97,7 @@ export const createZipLabels = ({
         || left.direction !== right.direction
         || left.statId !== right.statId
         || left.pairKey !== right.pairKey
+        || left.scopeLabel !== right.scopeLabel
       ) {
         return false;
       }
@@ -419,11 +421,18 @@ export const createZipLabels = ({
       // Summarize whether this hover stack contains highs, lows, or both.
       const hasHighestRows = opts.hoverRows.some((row) => row.direction === "up");
       const hasLowestRows = opts.hoverRows.some((row) => row.direction === "down");
-      const dropdownTitleText = hasHighestRows && hasLowestRows
-        ? "Highest/lowest"
+      const scopeLabels = new Set(
+        opts.hoverRows
+          .map((row) => (typeof row.scopeLabel === "string" ? row.scopeLabel.trim() : ""))
+          .filter((label): label is string => label.length > 0),
+      );
+      const dropdownTitleBaseText = hasHighestRows && hasLowestRows
+        ? "Highest/Lowest"
         : hasHighestRows
           ? "Highest"
           : "Lowest";
+      const dropdownTitleScopeText = scopeLabels.size === 1 ? ` in ${Array.from(scopeLabels)[0]}` : "";
+      const dropdownTitleText = `${dropdownTitleBaseText}${dropdownTitleScopeText}`;
       const dropdownTitle = document.createElement("div");
       dropdownTitle.className = [
         "px-2 py-1",
