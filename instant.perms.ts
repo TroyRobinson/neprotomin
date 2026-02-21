@@ -67,6 +67,15 @@ const rules = {
       "(!setsRestrictedStatus) || isAdmin",
     ],
   },
+  orgImports: {
+    allow: {
+      view: "isAdmin",
+      create: "isAdmin",
+      update: "isAdmin",
+      delete: "isAdmin",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
   comments: {
     allow: {
       view: "isAdmin",

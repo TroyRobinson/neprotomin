@@ -159,6 +159,14 @@ class OrganizationStore {
             typeof (org as any).issueCount === "number"
               ? ((org as any).issueCount as number)
               : null,
+          annualRevenue:
+            typeof (org as any).annualRevenue === "number"
+              ? ((org as any).annualRevenue as number)
+              : null,
+          annualRevenueTaxPeriod:
+            typeof (org as any).annualRevenueTaxPeriod === "number"
+              ? ((org as any).annualRevenueTaxPeriod as number)
+              : null,
           raw: rawValue,
         });
       }

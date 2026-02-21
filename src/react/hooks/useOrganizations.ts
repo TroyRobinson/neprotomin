@@ -44,6 +44,8 @@ export const useOrganizations = () => {
                 "submittedAt",
                 "queueSortKey",
                 "issueCount",
+                "annualRevenue",
+                "annualRevenueTaxPeriod",
               ],
               order: { name: "asc" as const },
             },
@@ -146,6 +148,14 @@ export const useOrganizations = () => {
           issueCount:
             typeof (row as any).issueCount === "number"
               ? ((row as any).issueCount as number)
+              : null,
+          annualRevenue:
+            typeof (row as any).annualRevenue === "number"
+              ? ((row as any).annualRevenue as number)
+              : null,
+          annualRevenueTaxPeriod:
+            typeof (row as any).annualRevenueTaxPeriod === "number"
+              ? ((row as any).annualRevenueTaxPeriod as number)
               : null,
         });
       }

@@ -71,6 +71,8 @@ const parseBatch = (row: any): OrgImportBatch | null => {
     status: (row.status as OrgImportBatch["status"]) ?? "running",
     requestedCount: typeof row.requestedCount === "number" ? row.requestedCount : null,
     importedCount: typeof row.importedCount === "number" ? row.importedCount : null,
+    skippedCount: typeof row.skippedCount === "number" ? row.skippedCount : null,
+    skipReasons: row.skipReasons && typeof row.skipReasons === "object" ? (row.skipReasons as Record<string, number>) : null,
     sampleOrgIds: Array.isArray(row.sampleOrgIds) ? (row.sampleOrgIds as string[]) : null,
     orgIds: Array.isArray(row.orgIds) ? (row.orgIds as string[]) : null,
     error: typeof row.error === "string" ? row.error : null,
@@ -150,6 +152,7 @@ const OrgImportModal = ({
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewItems, setPreviewItems] = useState<any[]>([]);
+  const [previewTotal, setPreviewTotal] = useState<number | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
   // Auto-map our category to ProPublica NTEE major group (1-10)
@@ -200,6 +203,7 @@ const OrgImportModal = ({
         throw new Error(message);
       }
       setPreviewItems(Array.isArray(payload.items) ? payload.items : []);
+      setPreviewTotal(typeof payload.total === "number" ? payload.total : null);
       if (payload.warning) {
         setError(payload.warning);
       }
@@ -207,6 +211,7 @@ const OrgImportModal = ({
       console.error("Org preview failed", err);
       setError(err?.message ?? "Preview failed");
       setPreviewItems([]);
+      setPreviewTotal(null);
     } finally {
       setIsPreviewing(false);
     }
@@ -418,9 +423,7 @@ const OrgImportModal = ({
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
               <div>
                 <div className="text-xs font-semibold">
-                  {typeof activeBatch.requestedCount === "number"
-                    ? `Processing org ${(activeBatch.importedCount ?? 0) + 1} of ${activeBatch.requestedCount}`
-                    : "Processing organizations…"}
+                  Processing organizations…
                 </div>
                 <div className="text-xs">
                   Saved {activeBatch.importedCount ?? 0}
@@ -439,10 +442,19 @@ const OrgImportModal = ({
               className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
               {isPreviewing && <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />}
-              Preview 10
+              Preview
             </button>
-            <span>Preview shows the first 10 matches with current filters (requires serverless /api running).</span>
+            <span>
+              Preview shows up to {Math.max(1, Math.min(50, Math.round(Number.isFinite(limit) ? limit : 10)))} matches from page 1 of ProPublica results (requires serverless /api running).
+            </span>
           </div>
+
+          {!isPreviewing && (
+            <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Showing {previewItems.length}
+              {typeof previewTotal === "number" ? ` of ${previewTotal}` : ""} preview matches.
+            </div>
+          )}
 
           <div className="mt-4 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/40">
             {previewItems.length === 0 ? (
@@ -517,7 +529,7 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
-  const [batchStatusFilter, setBatchStatusFilter] = useState<"all" | "success" | "running" | "error">("all");
+  const [batchStatusFilter, setBatchStatusFilter] = useState<"all" | "running" | "partial" | "success" | "error">("all");
   const [batchSearch, setBatchSearch] = useState<string>("");
   const [deletedBatchIds, setDeletedBatchIds] = useState<Set<string>>(new Set());
   const [hiddenBatchIds, setHiddenBatchIds] = useState<Set<string>>(new Set());
@@ -604,7 +616,7 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
   useEffect(() => {
     if (!activeImportBatchId) return;
     const match = activeBatchFromList;
-    if (match && match.status === "success") {
+    if (match && match.status !== "running") {
       setRecentlyFinishedBatchId(match.id);
       setActiveImportBatchId(null);
     }
@@ -648,6 +660,8 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
         status: "starting",
         importedCount: 0,
         requestedCount: null,
+        skippedCount: 0,
+        skipReasons: null,
         label: "Import starting…",
         source: null,
         filters: null,
@@ -667,16 +681,27 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
     const imported = bannerBatch.importedCount ?? 0;
     const requested =
       typeof bannerBatch.requestedCount === "number" ? bannerBatch.requestedCount : null;
+    const skipped =
+      typeof bannerBatch.skippedCount === "number"
+        ? bannerBatch.skippedCount
+        : requested && requested >= imported
+        ? requested - imported
+        : 0;
     const percent =
       requested && requested > 0 ? Math.min(100, Math.round((imported / requested) * 100)) : null;
-    return { imported, requested, percent };
+    return { imported, requested, skipped, percent };
   }, [bannerBatch]);
 
   const bannerStatus = useMemo(() => {
     if (!bannerBatch) return null;
     const imported = bannerBatch.importedCount ?? 0;
     const requested = typeof bannerBatch.requestedCount === "number" ? bannerBatch.requestedCount : null;
-    const inFlight = requested ? Math.min(requested, imported + 1) : imported + 1;
+    const skipped =
+      typeof bannerBatch.skippedCount === "number"
+        ? bannerBatch.skippedCount
+        : requested && requested >= imported
+        ? requested - imported
+        : 0;
 
     if (bannerBatch.status === "starting") {
       return {
@@ -687,8 +712,20 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
     if (bannerBatch.status === "running") {
       const progressText = requested ? `Saved ${imported} / ${requested}` : `Saved ${imported}`;
       return {
-        title: requested ? `Processing org ${inFlight} of ${requested}` : "Processing next organization",
+        title: "Processing organizations…",
         detail: `${progressText} · Fetching details -> geocoding -> saving to InstantDB`,
+      };
+    }
+    if (bannerBatch.status === "partial") {
+      return {
+        title: "Import complete (partial)",
+        detail: `Saved ${imported}${requested ? ` / ${requested}` : ""} orgs · Skipped ${skipped} (no geocode match)`,
+      };
+    }
+    if (bannerBatch.status === "error") {
+      return {
+        title: "Import failed",
+        detail: bannerBatch.error ?? `Saved ${imported}${requested ? ` / ${requested}` : ""} orgs`,
       };
     }
     return {
@@ -712,6 +749,8 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
           status: "success",
           requestedCount: null,
           importedCount: null,
+          skippedCount: null,
+          skipReasons: null,
           sampleOrgIds: null,
           orgIds: [],
           error: null,
@@ -1060,6 +1099,7 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                 options={[
                   { value: "all", label: "All statuses" },
                   { value: "running", label: "Running" },
+                  { value: "partial", label: "Partial" },
                   { value: "success", label: "Success" },
                   { value: "error", label: "Error" },
                 ]}
@@ -1098,12 +1138,24 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
             className={`flex items-center gap-3 rounded-xl border px-3 py-2 shadow-sm ${
               bannerBatch.status === "running" || bannerBatch.status === "starting"
                 ? "border-brand-200 bg-brand-50 text-brand-800 dark:border-brand-900/50 dark:bg-brand-900/30 dark:text-brand-100"
+                : bannerBatch.status === "partial"
+                ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/25 dark:text-amber-100"
+                : bannerBatch.status === "error"
+                ? "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/50 dark:bg-rose-900/20 dark:text-rose-100"
                 : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-900/25 dark:text-emerald-50"
             }`}
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 shadow-sm dark:bg-black/30">
               {bannerBatch.status === "running" || bannerBatch.status === "starting" ? (
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+              ) : bannerBatch.status === "partial" ? (
+                <svg className="h-5 w-5 text-amber-600 dark:text-amber-200" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v4m0 4h.01M12 3l9 16H3L12 3z" />
+                </svg>
+              ) : bannerBatch.status === "error" ? (
+                <svg className="h-5 w-5 text-rose-600 dark:text-rose-200" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               ) : (
                 <svg className="h-5 w-5 text-emerald-600 dark:text-emerald-200" viewBox="0 0 24 24" stroke="currentColor" fill="none">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1144,8 +1196,14 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                 {bannerCounts.percent}%
               </div>
             )}
-            {bannerBatch.status === "success" && bannerBatch.label && (
-              <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-200 dark:ring-emerald-800/60">
+            {(bannerBatch.status === "success" || bannerBatch.status === "partial") && bannerBatch.label && (
+              <span
+                className={`rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-medium ring-1 ${
+                  bannerBatch.status === "partial"
+                    ? "text-amber-700 ring-amber-200 dark:bg-amber-900/20 dark:text-amber-200 dark:ring-amber-800/60"
+                    : "text-emerald-700 ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-200 dark:ring-emerald-800/60"
+                }`}
+              >
                 {bannerBatch.label}
               </span>
             )}
@@ -1247,6 +1305,8 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                             {batch.status === "running" && "Running…"}
                             {batch.status === "success" &&
                               `${batch.importedCount ?? 0} / ${batch.requestedCount ?? batch.orgIds?.length ?? 0} imported`}
+                            {batch.status === "partial" &&
+                              `${batch.importedCount ?? 0} / ${batch.requestedCount ?? batch.orgIds?.length ?? 0} imported · ${batch.skippedCount ?? 0} skipped`}
                             {batch.status === "error" && `Error: ${batch.error ?? "Unknown"}`}
                           </p>
                         </div>
@@ -1254,6 +1314,8 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                           className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                             batch.status === "success"
                               ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
+                              : batch.status === "partial"
+                              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
                               : batch.status === "error"
                               ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200"
                               : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"

@@ -58,6 +58,8 @@ export const useRecentOrganizations = () => {
                 "submittedAt",
                 "queueSortKey",
                 "issueCount",
+                "annualRevenue",
+                "annualRevenueTaxPeriod",
               ],
               order: { moderationChangedAt: "desc" as const },
               limit: 100, // Fetch more than needed to account for filtering
@@ -177,6 +179,14 @@ export const useRecentOrganizations = () => {
           issueCount:
             typeof (row as any).issueCount === "number"
               ? ((row as any).issueCount as number)
+              : null,
+          annualRevenue:
+            typeof (row as any).annualRevenue === "number"
+              ? ((row as any).annualRevenue as number)
+              : null,
+          annualRevenueTaxPeriod:
+            typeof (row as any).annualRevenueTaxPeriod === "number"
+              ? ((row as any).annualRevenueTaxPeriod as number)
               : null,
         });
       }

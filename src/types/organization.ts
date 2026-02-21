@@ -53,6 +53,8 @@ export interface Organization {
   queueSortKey?: number | null;
   issueCount?: number | null;
   ein?: string | null;
+  annualRevenue?: number | null;
+  annualRevenueTaxPeriod?: number | null;
   importBatchId?: string | null;
   createdAt?: number | null;
   updatedAt?: number | null;
@@ -75,9 +77,11 @@ export interface OrgImportBatch {
   label: string;
   source?: string | null;
   filters?: Record<string, unknown> | null;
-  status: "starting" | "running" | "success" | "error";
+  status: "starting" | "running" | "partial" | "success" | "error";
   requestedCount?: number | null;
   importedCount?: number | null;
+  skippedCount?: number | null;
+  skipReasons?: Record<string, number> | null;
   sampleOrgIds?: string[] | null;
   orgIds?: string[] | null;
   error?: string | null;

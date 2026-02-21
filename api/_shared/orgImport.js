@@ -156,6 +156,8 @@ const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
   }
 };
 
+const GEOCODER_TIMEOUT_MS = 6_000;
+
 export const geocodeAddress = async (org) => {
   const attempts = [];
   const primary = buildAddressString(org);
@@ -166,7 +168,7 @@ export const geocodeAddress = async (org) => {
   for (const query of attempts) {
     for (const service of GEOCODER_SERVICES) {
       try {
-        const response = await fetchWithTimeout(service.buildUrl(query), {}, 10_000);
+        const response = await fetchWithTimeout(service.buildUrl(query), {}, GEOCODER_TIMEOUT_MS);
         if (!response.ok) continue;
         const data = await response.json();
         const parsed = service.parse(data);
@@ -214,6 +216,7 @@ export const fetchProPublicaOrgs = async ({
   params.set("page", String(Math.max(0, Number(page) || 0)));
 
   const url = `${PROPUBLICA_BASE}?${params.toString()}`;
+  const apiKey = process.env.PROPUBLICA_API_KEY || process.env.PROPUBLICA_NONPROFIT_API_KEY;
   const headers = buildProPublicaHeaders();
 
   let response;
@@ -265,6 +268,56 @@ const normalizeEin = (value) => {
   return null;
 };
 
+const parseNumericAmount = (value) => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const normalized = value.replace(/[$,\s]/g, "");
+    const parsed = Number(normalized);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+};
+
+const parseTaxPeriodYear = (value) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value > 10000000) {
+      return Math.floor(value / 10000);
+    }
+    return value >= 1900 && value <= 2500 ? value : null;
+  }
+  if (typeof value === "string") {
+    const match = value.match(/\b(19|20)\d{2}\b/);
+    if (match) return Number(match[0]);
+  }
+  return null;
+};
+
+const extractFinancialSnapshot = (detail) => {
+  const filings = Array.isArray(detail?.filings_with_data) ? detail.filings_with_data : [];
+  for (const filing of filings) {
+    const totalRevenue = parseNumericAmount(filing?.totrevenue);
+    if (typeof totalRevenue === "number" && totalRevenue > 0) {
+      return {
+        annualRevenue: totalRevenue,
+        annualRevenueTaxPeriod: parseTaxPeriodYear(filing?.tax_prd),
+      };
+    }
+  }
+
+  const topLevelRevenueCandidates = [detail?.revenue_amount, detail?.income_amount];
+  for (const candidate of topLevelRevenueCandidates) {
+    const parsed = parseNumericAmount(candidate);
+    if (typeof parsed === "number" && parsed > 0) {
+      return {
+        annualRevenue: parsed,
+        annualRevenueTaxPeriod: parseTaxPeriodYear(detail?.tax_period),
+      };
+    }
+  }
+
+  return { annualRevenue: null, annualRevenueTaxPeriod: null };
+};
+
 export const fetchProPublicaOrgDetail = async (ein) => {
   const normalizedEin = normalizeEin(ein);
   if (!normalizedEin) return null;
@@ -298,16 +351,9 @@ export const fetchProPublicaOrgDetail = async (ein) => {
     state: normalizeString(detail.state),
     postalCode: normalizeString(detail.zipcode) ?? normalizeString(detail.zip) ?? normalizeString(detail.zip_code),
     careOfName: normalizeString(detail.careofname),
+    ...extractFinancialSnapshot(detail),
     raw: detail,
   };
-};
-
-const shouldFetchDetail = (org) => {
-  const hasAddress = normalizeString(org.address);
-  const hasCity = normalizeString(org.city);
-  const hasState = normalizeString(org.state);
-  const hasPostal = normalizeString(org.postalCode);
-  return !(hasAddress && hasCity && hasState && hasPostal);
 };
 
 const mergeRaw = (searchRaw, detailRaw) => {
@@ -323,7 +369,8 @@ export const enrichProPublicaOrgsWithDetails = async (orgs, { concurrency = 4 } 
   const results = [...orgs];
   const targets = orgs
     .map((org, index) => ({ org, index, ein: normalizeEin(org.ein) }))
-    .filter((item) => item.ein && shouldFetchDetail(item.org));
+    // Pull detail for all EIN-backed orgs so financial fields are available for cards.
+    .filter((item) => item.ein);
 
   const batchSize = Math.max(1, Math.min(concurrency, targets.length || 1));
   for (let i = 0; i < targets.length; i += batchSize) {
@@ -343,6 +390,8 @@ export const enrichProPublicaOrgsWithDetails = async (orgs, { concurrency = 4 } 
         state: detail.state ?? org.state,
         postalCode: detail.postalCode ?? org.postalCode,
         careOfName: detail.careOfName ?? org.careOfName,
+        annualRevenue: detail.annualRevenue ?? org.annualRevenue ?? null,
+        annualRevenueTaxPeriod: detail.annualRevenueTaxPeriod ?? org.annualRevenueTaxPeriod ?? null,
         raw: mergeRaw(org.raw, detail.raw),
       };
     }
@@ -371,9 +420,9 @@ export const finalizeImportBatch = async (db, batchId, payload) => {
   await db.transact(tx.orgImports[batchId].update(payload));
 };
 
-export const buildOrgTx = (org, coords, category, importBatchId) => {
+export const buildOrgTx = (org, coords, category, importBatchId, orgId = id()) => {
   const now = Date.now();
-  return tx.organizations[id()].update({
+  return tx.organizations[orgId].update({
     name: org.name,
     latitude: coords.latitude,
     longitude: coords.longitude,
@@ -392,6 +441,11 @@ export const buildOrgTx = (org, coords, category, importBatchId) => {
     raw: org.raw ?? null,
     moderationStatus: "approved",
     ein: org.ein ?? null,
+    annualRevenue: typeof org.annualRevenue === "number" && Number.isFinite(org.annualRevenue) ? org.annualRevenue : null,
+    annualRevenueTaxPeriod:
+      typeof org.annualRevenueTaxPeriod === "number" && Number.isFinite(org.annualRevenueTaxPeriod)
+        ? org.annualRevenueTaxPeriod
+        : null,
     importBatchId: importBatchId ?? null,
   });
 };

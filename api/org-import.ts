@@ -9,6 +9,7 @@ import {
   filterOrgsByKeywords,
   enrichProPublicaOrgsWithDetails,
   geocodeAddress,
+  id as createId,
   mapNteeToCategory,
   tx,
 } from "./_shared/orgImport.js";
@@ -82,6 +83,9 @@ const parseBody = async (req: OrgImportRequest): Promise<OrgImportBody> => {
   const data = Buffer.concat(chunks).toString("utf8");
   return data ? (JSON.parse(data) as OrgImportBody) : {};
 };
+
+const GEOCODE_CONCURRENCY = 4;
+const WRITE_BATCH_SIZE = 10;
 
 const fetchAllOrgs = async (options: {
   query: string;
@@ -202,12 +206,13 @@ export default async function handler(req: OrgImportRequest, res: OrgImportRespo
       createdBy,
     });
     const requestedCount = enriched.length;
-    const setBatchProgress = async (importedCount: number) => {
+    const setBatchProgress = async (importedCount: number, skippedCount: number) => {
       try {
         await db.transact(
           tx.orgImports[batchId].update({
             requestedCount,
             importedCount,
+            skippedCount,
             updatedAt: Date.now(),
           }),
         );
@@ -215,54 +220,85 @@ export default async function handler(req: OrgImportRequest, res: OrgImportRespo
         console.warn("org-import progress update failed", progressError);
       }
     };
-    await setBatchProgress(0);
+    await setBatchProgress(0, 0);
 
     trace.step = "writeOrgs";
     const importedIds: string[] = [];
     const sampleOrgIds: string[] = [];
+    let skippedNoGeocode = 0;
     const txBuffer: any[] = [];
+    const txBufferOrgIds: string[] = [];
 
-    for (const org of enriched) {
-      const coords = await geocodeAddress(org);
-      if (!coords) {
-        continue;
+    const flushTxBuffer = async () => {
+      if (txBuffer.length === 0) return;
+      // Admin transact returns only tx metadata, so we track IDs before the write.
+      await db.transact(txBuffer);
+      importedIds.push(...txBufferOrgIds);
+      txBuffer.length = 0;
+      txBufferOrgIds.length = 0;
+      await setBatchProgress(importedIds.length, skippedNoGeocode);
+    };
+
+    // Geocode in bounded parallel chunks to avoid long sequential stalls on big imports.
+    for (let i = 0; i < enriched.length; i += GEOCODE_CONCURRENCY) {
+      const chunk = enriched.slice(i, i + GEOCODE_CONCURRENCY);
+      const chunkResults = await Promise.all(
+        chunk.map(async (org: any) => {
+          const coords = await geocodeAddress(org);
+          return { org, coords };
+        }),
+      );
+
+      for (const { org, coords } of chunkResults) {
+        if (!coords) {
+          skippedNoGeocode += 1;
+          continue;
+        }
+        const categorySlug = mapNteeToCategory(org.nteeCode, category);
+        const orgId = createId();
+        const txItem = buildOrgTx(org, coords, categorySlug, batchId, orgId);
+        txBuffer.push(txItem);
+        txBufferOrgIds.push(orgId);
+        sampleOrgIds.push(org.id);
+        if (txBuffer.length >= WRITE_BATCH_SIZE) {
+          await flushTxBuffer();
+        }
       }
-      const categorySlug = mapNteeToCategory(org.nteeCode, category);
-      const txItem = buildOrgTx(org, coords, categorySlug, batchId);
-      txBuffer.push(txItem);
-      sampleOrgIds.push(org.id);
-      if (txBuffer.length >= 20) {
-        const resp = await db.transact(txBuffer);
-        const ids = Object.keys(resp?.result ?? {});
-        importedIds.push(...ids);
-        txBuffer.length = 0;
-        await setBatchProgress(importedIds.length);
-      }
+
+      // Keep heartbeat fresh so UI can show the import is still active.
+      await setBatchProgress(importedIds.length, skippedNoGeocode);
     }
 
-    if (txBuffer.length) {
-      const resp = await db.transact(txBuffer);
-      importedIds.push(...Object.keys(resp?.result ?? {}));
-      await setBatchProgress(importedIds.length);
-    }
+    await flushTxBuffer();
+    const skippedCount = Math.max(0, requestedCount - importedIds.length);
+    const status = skippedCount > 0 ? "partial" : "success";
+    const warning =
+      skippedCount > 0
+        ? `Skipped ${skippedCount} orgs because geocoding did not return coordinates.`
+        : null;
 
     trace.step = "finalizeBatch";
     await finalizeImportBatch(db, batchId, {
-      status: "success",
+      status,
       requestedCount: enriched.length,
       importedCount: importedIds.length,
+      skippedCount,
+      skipReasons: skippedCount > 0 ? { geocodeNoMatch: skippedNoGeocode } : null,
       sampleOrgIds: sampleOrgIds.slice(0, 10),
       orgIds: importedIds,
-      error: null,
+      error: warning,
       updatedAt: Date.now(),
     });
 
     respond(res, 200, {
       ok: true,
       batchId,
+      status,
       requested: filtered.length,
       imported: importedIds.length,
+      skipped: skippedCount,
       sampleOrgIds: sampleOrgIds.slice(0, 10),
+      warning,
     });
   } catch (error: any) {
     console.error("org-import failed", { error, trace });

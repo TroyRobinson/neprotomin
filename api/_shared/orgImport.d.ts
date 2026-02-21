@@ -11,3 +11,4 @@ export const createImportBatch: any;
 export const finalizeImportBatch: any;
 export const buildOrgTx: any;
 export const tx: any;
+export const id: any;

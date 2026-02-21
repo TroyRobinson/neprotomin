@@ -1958,6 +1958,27 @@ const formatShortAddress = (org: Organization): string | null => {
   return city;
 };
 
+const COMPACT_CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+const formatAnnualRevenueLabel = (org: Organization): string | null => {
+  const amount = typeof org.annualRevenue === "number" ? org.annualRevenue : null;
+  if (!amount || !Number.isFinite(amount) || amount <= 0) return null;
+  const amountLabel = COMPACT_CURRENCY_FORMATTER.format(amount);
+  const year =
+    typeof org.annualRevenueTaxPeriod === "number" &&
+    Number.isFinite(org.annualRevenueTaxPeriod) &&
+    org.annualRevenueTaxPeriod >= 1900 &&
+    org.annualRevenueTaxPeriod <= 2500
+      ? org.annualRevenueTaxPeriod
+      : null;
+  return year ? `${amountLabel} (${year})` : amountLabel;
+};
+
 const formatHoursLines = (hours: OrganizationHours | null | undefined): string[] => {
   if (!hours) return [];
   if (Array.isArray(hours.weekdayText) && hours.weekdayText.length > 0) {
@@ -2115,6 +2136,7 @@ const OrganizationListItem = ({
     ? "border-0 bg-brand-50/70 dark:bg-slate-800/50"
     : "border-0 bg-slate-100/40 hover:bg-brand-50 dark:bg-slate-800/20 dark:hover:bg-slate-800/70";
   const shortAddress = formatShortAddress(org);
+  const annualRevenueLabel = formatAnnualRevenueLabel(org);
 
   return (
     <li
@@ -2130,11 +2152,21 @@ const OrganizationListItem = ({
       aria-expanded={isExpanded}
       onKeyDown={handleKeyDown}
     >
-      <div className="flex items-start gap-2">
-        <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{org.name}</p>
-        {org.status && org.status !== "active" && (
-          <span className="rounded-full bg-amber-100 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-400/20 dark:text-amber-200">
-            {org.status}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex items-start gap-2">
+          <p className="truncate text-sm font-medium text-slate-600 dark:text-slate-300">{org.name}</p>
+          {org.status && org.status !== "active" && (
+            <span className="rounded-full bg-amber-100 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-400/20 dark:text-amber-200">
+              {org.status}
+            </span>
+          )}
+        </div>
+        {annualRevenueLabel && (
+          <span
+            className="shrink-0 pt-0.5 text-[11px] font-light text-slate-400 dark:text-slate-500"
+            title="ProPublica reported annual revenue"
+          >
+            {annualRevenueLabel}
           </span>
         )}
       </div>
