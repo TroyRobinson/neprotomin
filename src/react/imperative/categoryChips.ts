@@ -272,7 +272,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   orgsLabel.className = "whitespace-nowrap";
   const orgsClose = document.createElement("span");
   orgsClose.innerHTML = CLOSE_ICON;
-  orgsClose.className = "-mr-0.5 mt-0.5 flex items-center";
+  orgsClose.className = "-mr-px mt-0.5 flex items-center";
   const updateOrgsChipState = () => {
     const isOn = orgsChipVisible;
     orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} w-full justify-between ${isOn ? ORGS_CHIP_ON_CLASSES : ORGS_CHIP_OFF_CLASSES}`;
