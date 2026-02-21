@@ -32,7 +32,19 @@ const mobileClusterTextSizeExpression = [
   12,
 ] as ExpressionSpecification;
 
-const desktopPointRadius = 3;
+const desktopPointRadiusExpression = [
+  "interpolate",
+  ["linear"],
+  ["zoom"],
+  8,
+  3,
+  10,
+  4.5,
+  12,
+  6,
+  14,
+  7.5,
+] as ExpressionSpecification;
 
 const mobilePointRadiusExpression = [
   "step",
@@ -42,7 +54,19 @@ const mobilePointRadiusExpression = [
   9,
 ] as ExpressionSpecification;
 
-const desktopHighlightRadius = 5;
+const desktopHighlightRadiusExpression = [
+  "interpolate",
+  ["linear"],
+  ["zoom"],
+  8,
+  5,
+  10,
+  6.5,
+  12,
+  8,
+  14,
+  9.5,
+] as ExpressionSpecification;
 
 const mobileHighlightRadiusExpression = [
   "step",
@@ -84,12 +108,12 @@ const getClusterTextSize = (
 const getPointRadius = (
   isMobile: boolean,
 ): DataDrivenPropertyValueSpecification<number> =>
-  (isMobile ? mobilePointRadiusExpression : desktopPointRadius);
+  (isMobile ? mobilePointRadiusExpression : desktopPointRadiusExpression);
 
 const getHighlightRadius = (
   isMobile: boolean,
 ): DataDrivenPropertyValueSpecification<number> =>
-  (isMobile ? mobileHighlightRadiusExpression : desktopHighlightRadius);
+  (isMobile ? mobileHighlightRadiusExpression : desktopHighlightRadiusExpression);
 
 const getClusterHighlightRadius = (
   isMobile: boolean,
@@ -210,7 +234,7 @@ export const ensureOrganizationLayers = (
     requestAnimationFrame(() => {
       if (!map.getLayer(LAYER_POINTS_ID)) return;
       // Keep individual points smaller while still readable/tappable on mobile.
-      // Desktop: 3, Mobile + zoom > 10: 9
+      // Desktop: 3 -> 7.5 as zoom increases, Mobile + zoom > 10: 9
       const pointRadius = getPointRadius(isMobile);
       map.setPaintProperty(LAYER_POINTS_ID, "circle-radius", pointRadius);
       map.setPaintProperty(LAYER_POINTS_ID, "circle-opacity", 1);
@@ -225,7 +249,7 @@ export const ensureOrganizationLayers = (
 
   if (!map.getLayer(LAYER_HIGHLIGHT_ID)) {
     // Keep highlight circles proportional to the reduced point sizes.
-    // Desktop: 5, Mobile + zoom > 10: 13
+    // Desktop: 5 -> 9.5 as zoom increases, Mobile + zoom > 10: 13
     const highlightRadius = getHighlightRadius(isMobile);
 
     map.addLayer({
