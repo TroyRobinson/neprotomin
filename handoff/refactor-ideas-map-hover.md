@@ -29,6 +29,31 @@ never back.
 **Files**: `MapLibreMap.tsx` (useEffect), `ReactMapApp.tsx` (prop wiring),
 `mapView.ts` (`setHoveredZip`/`setHoveredCounty`).
 
+### Stopgap implemented (Feb 21, 2026)
+
+To reduce regressions before the full refactor, `mapView.ts` now uses a
+per-area pending-echo queue for map-origin hovers (ZIP + county) instead of the
+single `lastMapCommitted*` slot.
+
+- `commitZipHover` / `commitCountyHover` enqueue the committed area id.
+- `setHoveredZip` / `setHoveredCounty` consume from the queue and ignore matching
+  React echo-backs.
+- Queue entries expire after a short window (`MAP_HOVER_ECHO_WINDOW_MS = 1500`)
+  to avoid stale false positives from coalesced/throttled React updates.
+- Queues are cleared on boundary-mode swaps.
+
+This is intentionally a stopgap. It lowers race risk but does not remove the
+underlying bidirectional hover feedback path.
+
+### Needed refinements after stopgap
+
+- Keep this queue logic temporary; remove it after source-split hover wiring is
+  in place (map-origin hover should not be echoed back).
+- Add lightweight debug counters (`queued`, `consumed`, `expired`) behind a
+  debug flag to verify behavior under rapid dwell/move loops.
+- Add a focused interaction test scenario for "fast dwell A -> dwell B with
+  delayed React effect" so this class of race is caught automatically.
+
 ---
 
 ## 2. Consolidate hover ownership into an explicit state machine

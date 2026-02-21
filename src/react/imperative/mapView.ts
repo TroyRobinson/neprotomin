@@ -623,12 +623,33 @@ export const createMapView = ({
   const HOVER_PREVIEW_TRAIL_MS = 120;
   let cancelZipBoundaryLeaveClear: (() => void) | null = null;
   let cancelCountyBoundaryLeaveClear: (() => void) | null = null;
-  // Track last map-committed hover to detect React echo-back in setHoveredZip/County.
-  // The map fires onZipHoverChange(A) → React stores it → useEffect echoes
-  // setHoveredZip(A) back, which would latch hoveredZipFromToolbar and block
-  // subsequent hover transitions. The tracker lets us skip the echo.
-  let lastMapCommittedZipHover: string | null = null;
-  let lastMapCommittedCountyHover: string | null = null;
+  // Stopgap for React hover echo races: queue map-origin hover commits by area id.
+  // This avoids single-slot overwrite when React effects arrive out of order.
+  type PendingMapHoverEcho = { count: number; lastQueuedAt: number };
+  const MAP_HOVER_ECHO_WINDOW_MS = 1500;
+  const pendingMapZipHoverEchoCounts = new Map<string, PendingMapHoverEcho>();
+  const pendingMapCountyHoverEchoCounts = new Map<string, PendingMapHoverEcho>();
+  const queuePendingMapHoverEcho = (pending: Map<string, PendingMapHoverEcho>, areaId: string) => {
+    const now = performance.now();
+    const current = pending.get(areaId);
+    if (!current) {
+      pending.set(areaId, { count: 1, lastQueuedAt: now });
+      return;
+    }
+    pending.set(areaId, { count: current.count + 1, lastQueuedAt: now });
+  };
+  const consumePendingMapHoverEcho = (pending: Map<string, PendingMapHoverEcho>, areaId: string | null): boolean => {
+    if (!areaId) return false;
+    const current = pending.get(areaId);
+    if (!current) return false;
+    if (performance.now() - current.lastQueuedAt > MAP_HOVER_ECHO_WINDOW_MS) {
+      pending.delete(areaId);
+      return false;
+    }
+    if (current.count <= 1) pending.delete(areaId);
+    else pending.set(areaId, { count: current.count - 1, lastQueuedAt: current.lastQueuedAt });
+    return true;
+  };
   let userLocation: { lng: number; lat: number } | null = initialUserLocation;
   let pendingUserLocationUpdate = Boolean(initialUserLocation);
   // Track pointer press state so quick taps zoom and sustained presses select.
@@ -3845,7 +3866,7 @@ export const createMapView = ({
         cancelZipBoundaryLeaveClearLocal();
         clearZipPreviewHover();
         hoveredZipFromMap = zip;
-        lastMapCommittedZipHover = zip;
+        queuePendingMapHoverEcho(pendingMapZipHoverEchoCounts, zip);
         zipSelection.updateHover();
         if (mapInMotion) {
           pendingZipHover = zip;
@@ -3985,7 +4006,7 @@ export const createMapView = ({
         cancelCountyBoundaryLeaveClearLocal();
         clearCountyPreviewHover();
         hoveredCountyFromMap = county;
-        lastMapCommittedCountyHover = county;
+        queuePendingMapHoverEcho(pendingMapCountyHoverEchoCounts, county);
         countySelection.updateHover();
         countyLabels?.setHoveredZip(county);
         if (mapInMotion) {
@@ -4389,6 +4410,7 @@ export const createMapView = ({
     
     // Immediate: clear hover state (fast)
     if (mode !== "zips") {
+      pendingMapZipHoverEchoCounts.clear();
       hoveredZipFromToolbar = null;
       hoveredZipFromMap = null;
       clearZipPreviewHover();
@@ -4400,6 +4422,7 @@ export const createMapView = ({
       zipLabels?.setSelectedZips([], []);
     }
     if (mode !== "counties") {
+      pendingMapCountyHoverEchoCounts.clear();
       hoveredCountyFromMap = null;
       clearCountyPreviewHover();
       hoveredCountyFromToolbar = null;
@@ -4857,14 +4880,9 @@ export const createMapView = ({
     },
     setHoveredZip: (zip: string | null) => {
       // Skip if this is React echoing back the map's own committed hover.
-      // The map fires onZipHoverChange(A) → React stores it → useEffect
-      // echoes setHoveredZip(A) back. Without this guard the echo latches
-      // hoveredZipFromToolbar, blocking subsequent map hover transitions.
-      // Use lastMapCommittedZipHover instead of hoveredZipFromMap because
-      // the map may have already cleared hoveredZipFromMap by the time
-      // the React render + useEffect fires.
-      const isMapEcho = zip != null && zip === lastMapCommittedZipHover;
-      lastMapCommittedZipHover = null;
+      // Match against queued map-origin commits so delayed/out-of-order React
+      // effects don't latch toolbar hover state.
+      const isMapEcho = consumePendingMapHoverEcho(pendingMapZipHoverEchoCounts, zip);
       if (isMapEcho) return;
       hoveredZipFromToolbar = zip;
       if (zip) clearZipPreviewHover();
@@ -4881,8 +4899,7 @@ export const createMapView = ({
     },
     setHoveredCounty: (county: string | null) => {
       // Same echo guard as zip (see comment in setHoveredZip).
-      const isMapEcho = county != null && county === lastMapCommittedCountyHover;
-      lastMapCommittedCountyHover = null;
+      const isMapEcho = consumePendingMapHoverEcho(pendingMapCountyHoverEchoCounts, county);
       if (isMapEcho) return;
       hoveredCountyFromToolbar = county;
       if (county) clearCountyPreviewHover();
