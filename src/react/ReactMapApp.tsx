@@ -2623,6 +2623,17 @@ export const ReactMapApp = () => {
     controller?.setSidebarExpandVisible(sidebarCollapsed);
   }, [sidebarCollapsed]);
 
+  const applyDomainSidebarModeForAreaSearch = useCallback(() => {
+    // ZIP/county searches should open the domain's preferred sidebar mode.
+    setSidebarTab(domainDefaults.defaultSidebarTab);
+    if (domainDefaults.defaultSidebarTab === "stats") {
+      setShowAdvanced(true);
+    }
+    if (!isMobile) {
+      setSidebarCollapsed(false);
+    }
+  }, [domainDefaults.defaultSidebarTab, isMobile]);
+
   // Show/hide sidebar expand button on map when sidebar collapses/expands
   useEffect(() => {
     mapControllerRef.current?.setSidebarExpandVisible(sidebarCollapsed);
@@ -2949,6 +2960,7 @@ export const ReactMapApp = () => {
 
       setBoundaryMode(targetKind === "ZIP" ? "zips" : "counties");
       setActiveScreen("map");
+      applyDomainSidebarModeForAreaSearch();
       if (isMobile && sheetState !== "peek") {
         collapseSheet();
       }
@@ -2966,6 +2978,7 @@ export const ReactMapApp = () => {
       expandSheet,
       findOrganizationMatches,
       applyAreaSelection,
+      applyDomainSidebarModeForAreaSearch,
       setBoundaryMode,
       setHasInteractedWithMap,
       setSidebarFollowMode,
