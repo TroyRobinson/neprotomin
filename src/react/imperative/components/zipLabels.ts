@@ -40,8 +40,8 @@ export interface ZipLabelsController {
 
 const defaultCentroids = (): Map<string, [number, number]> => getZipCentroidsMap();
 // Keep hovered labels below top map controls (chips/menus use z-10) while
-// still floating above nearby label stacks in the map layer.
-const HOVERED_LABEL_Z_INDEX = 9;
+// leaving room for org-hover tooltips to sit above area pills/details.
+const HOVERED_LABEL_Z_INDEX = 8;
 
 const formatStatValue = (value: number, type: string = "count"): string => {
   return formatStatValueCompact(value, type);

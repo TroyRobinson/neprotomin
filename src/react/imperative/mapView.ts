@@ -321,7 +321,14 @@ import {
 
 type FC = GeoJSON.FeatureCollection<
   GeoJSON.Point,
-  { id: string; name: string; website?: string | null; status?: string | null }
+  {
+    id: string;
+    name: string;
+    website?: string | null;
+    status?: string | null;
+    annualRevenue?: number | null;
+    annualRevenueTaxPeriod?: number | null;
+  }
 >;
 
 type BoundaryTypeKey = "ZIP" | "COUNTY";
@@ -410,6 +417,48 @@ const ZCTA_LOAD_MIN_ZOOM = 9;
 const ZCTA_LOAD_PADDING_DEGREES = 0.75;
 const ZIP_LABEL_STACK_MIN_ZOOM = 10.8;
 const COUNTY_LABEL_STACK_MIN_ZOOM = 8.6;
+const ORG_HOVER_TOOLTIP_FADE_MS = 45;
+const ORG_HOVER_TOOLTIP_ENTER_TRANSFORM_MS = 81;
+const ORG_HOVER_TOOLTIP_ENTER_OFFSET_PX = 3;
+const ORG_HOVER_TOOLTIP_Y_OFFSET_PX = 10;
+const ORG_HOVER_TOOLTIP_ENTER_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+const ORG_HOVER_TOOLTIP_MAX_WIDTH_CH = 30;
+const ORG_REVENUE_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+const formatOrgRevenueLine = (
+  annualRevenue: number | null | undefined,
+  annualRevenueTaxPeriod: number | null | undefined,
+): string | null => {
+  if (typeof annualRevenue !== "number" || !Number.isFinite(annualRevenue) || annualRevenue <= 0) return null;
+  const amountLabel = ORG_REVENUE_FORMATTER.format(annualRevenue);
+  const year =
+    typeof annualRevenueTaxPeriod === "number"
+      && Number.isFinite(annualRevenueTaxPeriod)
+      && annualRevenueTaxPeriod >= 1900
+      && annualRevenueTaxPeriod <= 2500
+      ? annualRevenueTaxPeriod
+      : null;
+  return year ? `Revenue ${amountLabel} (${year})` : `Revenue ${amountLabel}`;
+};
+const preventTrailingWordOrphan = (text: string): string => {
+  const normalized = text.trim().replace(/\s+/g, " ");
+  const words = normalized.split(" ");
+  if (words.length < 2) return normalized;
+  const lastWord = words[words.length - 1];
+  const shouldBindLastWord =
+    // Prevent common short business suffixes from dangling (e.g., "Inc", "LLC").
+    /^(inc|inc\.|llc|co|co\.|corp|corp\.|ltd|ltd\.|pllc|pc|lp|llp)$/i.test(lastWord)
+    || lastWord.length <= 4;
+  if (!shouldBindLastWord) return normalized;
+  const penultimateWord = words[words.length - 2];
+  words[words.length - 2] = `${penultimateWord}\u00A0${lastWord}`;
+  words.pop();
+  return words.join(" ");
+};
 
 const zipAreaEntry = getAreaRegistryEntry("ZIP");
 const countyAreaEntry = getAreaRegistryEntry("COUNTY");
@@ -1123,6 +1172,107 @@ export const createMapView = ({
   setTimeout(() => {
     try { map.resize(); } catch {}
   }, 100);
+
+  let orgHoverTooltipEl: HTMLDivElement | null = null;
+  let orgHoverTooltipRaf: number | null = null;
+  let orgHoverTooltipVisible = false;
+  const tooltipTransform = (offsetPx: number): string => `translate(-50%, calc(-100% - ${offsetPx}px))`;
+  const tooltipPrimaryColor = () => (currentTheme === "light" ? "#64748b" : "#cbd5e1");
+  const tooltipSecondaryColor = () => (currentTheme === "light" ? "#a4afbf" : "#94a3b8");
+  const getOrCreateOrgHoverTooltip = (): HTMLDivElement => {
+    if (orgHoverTooltipEl) return orgHoverTooltipEl;
+    const el = document.createElement("div");
+    // Keep this below map chips/dropdowns while still floating above map geometry.
+    el.className = "pointer-events-none absolute z-[9] rounded-2xl px-2.5 py-1 text-[11px] font-medium shadow-sm";
+    el.style.left = "0";
+    el.style.top = "0";
+    el.style.maxWidth = `${ORG_HOVER_TOOLTIP_MAX_WIDTH_CH}ch`;
+    el.style.whiteSpace = "normal";
+    el.style.overflowWrap = "break-word";
+    el.style.wordBreak = "normal";
+    el.style.textAlign = "center";
+    el.style.opacity = "0";
+    el.style.transform = tooltipTransform(ORG_HOVER_TOOLTIP_Y_OFFSET_PX - ORG_HOVER_TOOLTIP_ENTER_OFFSET_PX);
+    el.style.willChange = "opacity, transform";
+    el.style.transition = `opacity ${ORG_HOVER_TOOLTIP_FADE_MS}ms ease-out, transform ${ORG_HOVER_TOOLTIP_ENTER_TRANSFORM_MS}ms ${ORG_HOVER_TOOLTIP_ENTER_EASE}`;
+    map.getContainer().appendChild(el);
+    orgHoverTooltipEl = el;
+    return el;
+  };
+  const syncOrgHoverTooltipTheme = () => {
+    if (!orgHoverTooltipEl) return;
+    if (currentTheme === "light") {
+      orgHoverTooltipEl.style.backgroundColor = "rgba(255, 255, 255, 0.87)";
+      orgHoverTooltipEl.style.border = "1px solid rgba(203, 213, 225, 0.8)";
+      orgHoverTooltipEl.style.color = tooltipPrimaryColor();
+      return;
+    }
+    orgHoverTooltipEl.style.backgroundColor = "rgba(15, 23, 42, 0.86)";
+    orgHoverTooltipEl.style.border = "1px solid rgba(100, 116, 139, 0.55)";
+    orgHoverTooltipEl.style.color = tooltipPrimaryColor();
+  };
+  const hideOrgHoverTooltip = () => {
+    if (!orgHoverTooltipEl) return;
+    orgHoverTooltipVisible = false;
+    if (orgHoverTooltipRaf !== null) {
+      cancelAnimationFrame(orgHoverTooltipRaf);
+      orgHoverTooltipRaf = null;
+    }
+    orgHoverTooltipEl.style.opacity = "0";
+    orgHoverTooltipEl.style.transform = tooltipTransform(ORG_HOVER_TOOLTIP_Y_OFFSET_PX - ORG_HOVER_TOOLTIP_ENTER_OFFSET_PX);
+  };
+  const showOrgHoverTooltip = (
+    name: string,
+    x: number,
+    y: number,
+    annualRevenue?: number | null,
+    annualRevenueTaxPeriod?: number | null,
+  ): boolean => {
+    if (isMobile) return false;
+    const label = name.trim();
+    if (!label) return false;
+    const displayLabel = preventTrailingWordOrphan(label);
+    const tooltip = getOrCreateOrgHoverTooltip();
+    syncOrgHoverTooltipTheme();
+    tooltip.replaceChildren();
+    const nameLine = document.createElement("div");
+    nameLine.textContent = displayLabel;
+    nameLine.style.lineHeight = "1.2";
+    nameLine.style.color = tooltipPrimaryColor();
+    tooltip.appendChild(nameLine);
+    const revenueLine = formatOrgRevenueLine(annualRevenue, annualRevenueTaxPeriod);
+    if (revenueLine) {
+      const revenueEl = document.createElement("div");
+      revenueEl.textContent = revenueLine;
+      revenueEl.style.marginTop = "2px";
+      revenueEl.style.fontSize = "10px";
+      revenueEl.style.fontWeight = "500";
+      revenueEl.style.lineHeight = "1.2";
+      revenueEl.style.color = tooltipSecondaryColor();
+      tooltip.appendChild(revenueEl);
+    }
+    tooltip.title = label;
+    tooltip.style.left = `${x}px`;
+    tooltip.style.top = `${y}px`;
+    if (!orgHoverTooltipVisible) {
+      tooltip.style.opacity = "0";
+      tooltip.style.transform = tooltipTransform(ORG_HOVER_TOOLTIP_Y_OFFSET_PX - ORG_HOVER_TOOLTIP_ENTER_OFFSET_PX);
+      if (orgHoverTooltipRaf !== null) {
+        cancelAnimationFrame(orgHoverTooltipRaf);
+      }
+      orgHoverTooltipRaf = requestAnimationFrame(() => {
+        orgHoverTooltipRaf = null;
+        if (!orgHoverTooltipEl) return;
+        orgHoverTooltipEl.style.opacity = "1";
+        orgHoverTooltipEl.style.transform = tooltipTransform(ORG_HOVER_TOOLTIP_Y_OFFSET_PX);
+      });
+    } else {
+      tooltip.style.opacity = "1";
+      tooltip.style.transform = tooltipTransform(ORG_HOVER_TOOLTIP_Y_OFFSET_PX);
+    }
+    orgHoverTooltipVisible = true;
+    return true;
+  };
 
   const stopCountyPressTimer = () => {
     if (countyLongPressTimer !== null) {
@@ -3483,12 +3633,32 @@ export const createMapView = ({
       const onPointsMouseEnter = () => { map.getCanvas().style.cursor = "pointer"; };
       const onPointsMouseLeave = () => { 
         map.getCanvas().style.cursor = "pointer"; 
+        hideOrgHoverTooltip();
         // Clear hover - updateHighlight will restore selection if any
         onHover(null); 
       };
       const onPointsMouseMove = (e: any) => { 
         const f = e.features?.[0]; 
-        const id = f?.properties?.id as string | undefined; 
+        const id = f?.properties?.id as string | undefined;
+        const name = f?.properties?.name as string | undefined;
+        const annualRevenueRaw = f?.properties?.annualRevenue;
+        const annualRevenue =
+          typeof annualRevenueRaw === "number" && Number.isFinite(annualRevenueRaw)
+            ? annualRevenueRaw
+            : null;
+        const annualRevenuePeriodRaw = f?.properties?.annualRevenueTaxPeriod ?? f?.properties?.annualRevenuePeriod;
+        const annualRevenueTaxPeriod =
+          typeof annualRevenuePeriodRaw === "number" && Number.isFinite(annualRevenuePeriodRaw)
+            ? annualRevenuePeriodRaw
+            : null;
+        const x = e.point?.x;
+        const y = e.point?.y;
+        if (typeof id === "string" && typeof name === "string" && typeof x === "number" && typeof y === "number") {
+          const shown = showOrgHoverTooltip(name, x, y, annualRevenue, annualRevenueTaxPeriod);
+          if (!shown) hideOrgHoverTooltip();
+        } else {
+          hideOrgHoverTooltip();
+        }
         // Update hover - this will call updateHighlight which handles hover vs selection
         onHover(id || null); 
       };
@@ -3573,12 +3743,14 @@ export const createMapView = ({
       const onClustersMouseEnter = () => { map.getCanvas().style.cursor = "pointer"; };
       const onClustersMouseLeave = () => { 
         map.getCanvas().style.cursor = "pointer"; 
+        hideOrgHoverTooltip();
         // Clear hover - selection will persist
         hoverClusterId = null;
         onHover(null); 
         updateSelectedHighlights();
       };
       const onClustersMouseMove = async (e: any) => {
+        hideOrgHoverTooltip();
         const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS_ID] });
         const feature = features[0];
         const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
@@ -3794,6 +3966,7 @@ export const createMapView = ({
         dragStartCenter = map.getCenter();
         dragCollapseTriggered = false;
         mapInMotion = true;
+        hideOrgHoverTooltip();
       };
       const handleMapDrag = () => {
         if (!dragStartCenter || dragCollapseTriggered) return;
@@ -4545,6 +4718,14 @@ export const createMapView = ({
           name: o.name,
           website: o.website ?? null,
           status: o.status ?? null,
+          annualRevenue:
+            typeof o.annualRevenue === "number" && Number.isFinite(o.annualRevenue)
+              ? o.annualRevenue
+              : null,
+          annualRevenueTaxPeriod:
+            typeof o.annualRevenueTaxPeriod === "number" && Number.isFinite(o.annualRevenueTaxPeriod)
+              ? o.annualRevenueTaxPeriod
+              : null,
         },
         geometry: { type: "Point", coordinates: [o.longitude, o.latitude] },
       })),
@@ -4791,6 +4972,7 @@ export const createMapView = ({
     map.once("idle", () => ensureSourcesAndLayers());
     
     zipLabels?.setTheme(nextTheme);
+    syncOrgHoverTooltipTheme();
   });
 
   const unwireVisibleIds = wireVisibleIds(map, () => lastData, (ids, total, all) => {
@@ -4802,6 +4984,9 @@ export const createMapView = ({
 
   const updateOrganizationPinsVisibility = () => {
     const visibility = orgPinsVisible ? "visible" : "none";
+    if (!orgPinsVisible) {
+      hideOrgHoverTooltip();
+    }
     if (map.getLayer(LAYER_CLUSTERS_ID)) {
       map.setLayoutProperty(LAYER_CLUSTERS_ID, "visibility", visibility);
     }
@@ -5002,6 +5187,15 @@ export const createMapView = ({
     destroy: () => {
       clearZipPreviewHover();
       clearCountyPreviewHover();
+      hideOrgHoverTooltip();
+      if (orgHoverTooltipRaf !== null) {
+        cancelAnimationFrame(orgHoverTooltipRaf);
+        orgHoverTooltipRaf = null;
+      }
+      if (orgHoverTooltipEl) {
+        orgHoverTooltipEl.remove();
+        orgHoverTooltipEl = null;
+      }
       if (poiDebugEnabled && typeof window !== "undefined") {
         try {
           if ((window as any).__poiDebugSnapshot) {
