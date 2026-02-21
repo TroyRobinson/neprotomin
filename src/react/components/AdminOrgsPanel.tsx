@@ -17,6 +17,26 @@ type OrgRow = Organization & {
 };
 
 type ViewMode = "orgs" | "batches";
+const DEFAULT_IMPORT_LIMIT = 300;
+
+const formatCategoryLabelForImport = (category: string): string => {
+  const aliases: Record<string, string> = {
+    education: "Edu",
+    health: "Health",
+    economy: "Economy",
+    food: "Food",
+    housing: "Housing",
+    justice: "Justice",
+    demographics: "Demographics",
+  };
+  const direct = aliases[category];
+  if (direct) return direct;
+  if (!category) return "General";
+  return `${category.charAt(0).toUpperCase()}${category.slice(1)}`;
+};
+
+const buildDefaultImportLabel = (category: string): string =>
+  `ProPublica Import: ${formatCategoryLabelForImport(category)}`;
 
 const parseOrgRow = (row: any, allowedCategories: Set<string>): OrgRow | null => {
   if (!row || typeof row?.id !== "string" || typeof row?.name !== "string") return null;
@@ -143,11 +163,12 @@ const OrgImportModal = ({
   const [category, setCategory] = useState<string>(defaultCategory);
   const [state, setState] = useState<string>("OK");
   const [city, setCity] = useState<string>("");
-  const [includeKeywords, setIncludeKeywords] = useState<string>("food, pantry");
+  const [includeKeywords, setIncludeKeywords] = useState<string>("");
   const [excludeKeywords, setExcludeKeywords] = useState<string>("");
-  const [limit, setLimit] = useState<number>(10);
+  const [limit, setLimit] = useState<number>(DEFAULT_IMPORT_LIMIT);
   const [importAll, setImportAll] = useState<boolean>(false);
-  const [label, setLabel] = useState<string>("ProPublica import");
+  const [label, setLabel] = useState<string>(buildDefaultImportLabel(defaultCategory));
+  const [labelWasEdited, setLabelWasEdited] = useState<boolean>(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -172,6 +193,45 @@ const OrgImportModal = ({
         return "7";
     }
   }, [category]);
+
+  const suggestedLabel = useMemo(() => buildDefaultImportLabel(category), [category]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setCategory(defaultCategory);
+    setState("OK");
+    setCity("");
+    setIncludeKeywords("");
+    setExcludeKeywords("");
+    setLimit(DEFAULT_IMPORT_LIMIT);
+    setImportAll(false);
+    setLabelWasEdited(false);
+    setLabel(buildDefaultImportLabel(defaultCategory));
+    setPreviewItems([]);
+    setPreviewTotal(null);
+    setError(null);
+  }, [isOpen, defaultCategory]);
+
+  useEffect(() => {
+    if (!labelWasEdited) {
+      setLabel(suggestedLabel);
+    }
+  }, [labelWasEdited, suggestedLabel]);
+
+  const activeBatchCounts = useMemo(() => {
+    if (!activeBatch) return null;
+    const imported = activeBatch.importedCount ?? 0;
+    const requested =
+      typeof activeBatch.requestedCount === "number" ? activeBatch.requestedCount : null;
+    const skipped =
+      typeof activeBatch.skippedCount === "number"
+        ? activeBatch.skippedCount
+        : requested && requested >= imported
+        ? requested - imported
+        : 0;
+    const processed = imported + skipped;
+    return { imported, requested, skipped, processed };
+  }, [activeBatch]);
 
   const handlePreview = useCallback(async () => {
     setIsPreviewing(true);
@@ -233,7 +293,7 @@ const OrgImportModal = ({
           excludeKeywords,
           limit,
           importAll,
-          label: label || "ProPublica import",
+          label: label.trim() || suggestedLabel,
           createdBy: user?.email ?? null,
         }),
       });
@@ -271,6 +331,7 @@ const OrgImportModal = ({
     limit,
     importAll,
     label,
+    suggestedLabel,
     user?.email,
     onImported,
     onClose,
@@ -383,8 +444,12 @@ const OrgImportModal = ({
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Import batch label</label>
             <input
               value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="ProPublica import"
+              onChange={(e) => {
+                const next = e.target.value;
+                setLabel(next);
+                setLabelWasEdited(next.trim().length > 0 && next !== suggestedLabel);
+              }}
+              placeholder={suggestedLabel}
               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
@@ -396,7 +461,7 @@ const OrgImportModal = ({
                 value={limit}
                 onChange={(e) => setLimit(Number(e.target.value))}
                 min={1}
-                max={200}
+                max={DEFAULT_IMPORT_LIMIT}
                 className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
               />
             </div>
@@ -407,7 +472,7 @@ const OrgImportModal = ({
                 onChange={(e) => setImportAll(e.target.checked)}
                 className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-700 dark:bg-slate-800"
               />
-              Import all matches
+              Import all matches (up to limit)
             </label>
           </div>
         </div>
@@ -426,8 +491,13 @@ const OrgImportModal = ({
                   Processing organizations…
                 </div>
                 <div className="text-xs">
-                  Saved {activeBatch.importedCount ?? 0}
-                  {typeof activeBatch.requestedCount === "number" ? ` / ${activeBatch.requestedCount}` : ""} · Fetching details -&gt; geocoding -&gt; saving to InstantDB
+                  Processed {activeBatchCounts?.processed ?? 0}
+                  {typeof activeBatchCounts?.requested === "number" ? ` / ${activeBatchCounts.requested}` : ""}
+                  {` · Saved ${activeBatchCounts?.imported ?? 0}`}
+                  {activeBatchCounts && activeBatchCounts.skipped > 0
+                    ? ` · Skipped ${activeBatchCounts.skipped}`
+                    : ""}{" "}
+                  · Fetching details -&gt; geocoding -&gt; saving to InstantDB
                 </div>
               </div>
             </div>
@@ -445,7 +515,7 @@ const OrgImportModal = ({
               Preview
             </button>
             <span>
-              Preview shows up to {Math.max(1, Math.min(50, Math.round(Number.isFinite(limit) ? limit : 10)))} matches from page 1 of ProPublica results (requires serverless /api running).
+              Preview shows up to {Math.max(1, Math.min(50, Math.round(Number.isFinite(limit) ? limit : DEFAULT_IMPORT_LIMIT)))} matches from page 1 of ProPublica results (requires serverless /api running).
             </span>
           </div>
 
@@ -687,9 +757,10 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
         : requested && requested >= imported
         ? requested - imported
         : 0;
+    const processed = imported + skipped;
     const percent =
-      requested && requested > 0 ? Math.min(100, Math.round((imported / requested) * 100)) : null;
-    return { imported, requested, skipped, percent };
+      requested && requested > 0 ? Math.min(100, Math.round((processed / requested) * 100)) : null;
+    return { imported, requested, skipped, processed, percent };
   }, [bannerBatch]);
 
   const bannerStatus = useMemo(() => {
@@ -710,10 +781,13 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
       };
     }
     if (bannerBatch.status === "running") {
-      const progressText = requested ? `Saved ${imported} / ${requested}` : `Saved ${imported}`;
+      const processed = imported + skipped;
+      const progressText = requested ? `Processed ${processed} / ${requested}` : `Processed ${processed}`;
+      const breakdown =
+        skipped > 0 ? ` · Saved ${imported} · Skipped ${skipped}` : ` · Saved ${imported}`;
       return {
         title: "Processing organizations…",
-        detail: `${progressText} · Fetching details -> geocoding -> saving to InstantDB`,
+        detail: `${progressText}${breakdown} · Fetching details -> geocoding -> saving to InstantDB`,
       };
     }
     if (bannerBatch.status === "partial") {
@@ -1085,7 +1159,7 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
                 <button
                   type="button"
                   onClick={() => setIsImportModalOpen(true)}
-                  className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 sm:px-3 sm:py-1.5"
+                  className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-brand-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 sm:px-3 sm:py-1.5"
                 >
                   <span className="text-sm leading-none">+</span> Import Orgs
                 </button>
@@ -1123,7 +1197,7 @@ export const AdminOrgsPanel = ({ onSwitchTab, initialViewMode = "orgs" }: AdminO
               <button
                 type="button"
                 onClick={() => setIsImportModalOpen(true)}
-                className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 sm:px-3 sm:py-1.5"
+                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-brand-500 px-2 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900 sm:px-3 sm:py-1.5"
               >
                 <span className="text-sm leading-none">+</span> Import Orgs
               </button>

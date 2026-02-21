@@ -156,7 +156,40 @@ const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
   }
 };
 
-const GEOCODER_TIMEOUT_MS = 6_000;
+const GEOCODER_TIMEOUT_MS = 2_500;
+const GEOCODER_ORG_BUDGET_MS = 8_000;
+const GEOCODER_ABORT_THRESHOLD = 2;
+const GEOCODER_ABORT_COOLDOWN_MS = 2 * 60_000;
+const GEOCODER_MIN_REMAINING_BUDGET_MS = 400;
+
+const geocoderAbortCountByService = new Map();
+const geocoderDisabledUntilByService = new Map();
+
+const isAbortError = (error) => {
+  if (!error || typeof error !== "object") return false;
+  const name = error.name;
+  return name === "AbortError" || name === "TimeoutError";
+};
+
+const isServiceTemporarilyDisabled = (serviceName, now) => {
+  const until = geocoderDisabledUntilByService.get(serviceName);
+  return typeof until === "number" && now < until;
+};
+
+const noteServiceSuccess = (serviceName) => {
+  geocoderAbortCountByService.set(serviceName, 0);
+  geocoderDisabledUntilByService.delete(serviceName);
+};
+
+const noteServiceAbort = (serviceName, now) => {
+  const nextAbortCount = (geocoderAbortCountByService.get(serviceName) ?? 0) + 1;
+  if (nextAbortCount >= GEOCODER_ABORT_THRESHOLD) {
+    geocoderAbortCountByService.set(serviceName, 0);
+    geocoderDisabledUntilByService.set(serviceName, now + GEOCODER_ABORT_COOLDOWN_MS);
+    return;
+  }
+  geocoderAbortCountByService.set(serviceName, nextAbortCount);
+};
 
 export const geocodeAddress = async (org) => {
   const attempts = [];
@@ -164,17 +197,30 @@ export const geocodeAddress = async (org) => {
   if (primary) attempts.push(primary);
   const withoutPostal = buildAddressString({ ...org, zip: null, postalCode: null });
   if (withoutPostal && withoutPostal !== primary) attempts.push(withoutPostal);
+  const startedAt = Date.now();
 
   for (const query of attempts) {
     for (const service of GEOCODER_SERVICES) {
+      const now = Date.now();
+      if (isServiceTemporarilyDisabled(service.name, now)) continue;
+      const remainingBudgetMs = GEOCODER_ORG_BUDGET_MS - (now - startedAt);
+      if (remainingBudgetMs <= GEOCODER_MIN_REMAINING_BUDGET_MS) return null;
+      const timeoutMs = Math.min(GEOCODER_TIMEOUT_MS, remainingBudgetMs);
       try {
-        const response = await fetchWithTimeout(service.buildUrl(query), {}, GEOCODER_TIMEOUT_MS);
+        const response = await fetchWithTimeout(service.buildUrl(query), {}, timeoutMs);
         if (!response.ok) continue;
         const data = await response.json();
         const parsed = service.parse(data);
-        if (parsed) return { ...parsed, provider: service.name, query };
+        if (parsed) {
+          noteServiceSuccess(service.name);
+          return { ...parsed, provider: service.name, query };
+        }
       } catch (error) {
-        // Swallow and try next provider
+        if (isAbortError(error)) {
+          noteServiceAbort(service.name, Date.now());
+          continue;
+        }
+        // Swallow and try next provider.
         console.warn(`[org-import] geocoder ${service.name} failed`, error);
       }
     }
