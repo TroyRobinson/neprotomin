@@ -574,9 +574,12 @@ export const ReactMapApp = () => {
     pendingContentDragRef.current = null;
   }, [expandSheet, sheetPartialOffset]);
 
-  const buildBoundsAroundPoint = useCallback((lng: number, lat: number) => {
-    const lngDelta = isMobile ? 0.075 : 0.18;
-    const latDelta = isMobile ? 0.045 : 0.12;
+  type LocationFocusProfile = "default" | "addressSearch";
+
+  const buildBoundsAroundPoint = useCallback((lng: number, lat: number, profile: LocationFocusProfile = "default") => {
+    const isAddressSearch = profile === "addressSearch";
+    const lngDelta = isAddressSearch ? (isMobile ? 0.038 : 0.065) : (isMobile ? 0.075 : 0.18);
+    const latDelta = isAddressSearch ? (isMobile ? 0.026 : 0.045) : (isMobile ? 0.045 : 0.12);
     return [
       [lng - lngDelta, lat - latDelta] as [number, number],
       [lng + lngDelta, lat + latDelta] as [number, number],
@@ -584,7 +587,9 @@ export const ReactMapApp = () => {
   }, [isMobile]);
 
   const focusOnLocation = useCallback(
-    (location: { lng: number; lat: number }) => {
+    (location: { lng: number; lat: number }, options?: { profile?: LocationFocusProfile }) => {
+      const profile = options?.profile ?? "default";
+      const isAddressSearch = profile === "addressSearch";
       setActiveScreen("map");
 
       applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
@@ -602,10 +607,13 @@ export const ReactMapApp = () => {
 
       const controller = mapControllerRef.current;
       if (controller) {
-        const bounds = buildBoundsAroundPoint(location.lng, location.lat);
-        controller.fitBounds(bounds, { padding: isMobile ? 40 : 72, maxZoom: isMobile ? 13 : 11 });
+        const bounds = buildBoundsAroundPoint(location.lng, location.lat, profile);
+        controller.fitBounds(bounds, {
+          padding: isAddressSearch ? (isMobile ? 36 : 64) : (isMobile ? 40 : 72),
+          maxZoom: isAddressSearch ? (isMobile ? 14.6 : 12.2) : (isMobile ? 13 : 11),
+        });
       } else {
-        const targetZoom = isMobile ? 12.6 : 10.5;
+        const targetZoom = isAddressSearch ? (isMobile ? 14 : 11.2) : (isMobile ? 12.6 : 10.5);
         mapControllerRef.current?.setCamera(location.lng, location.lat, targetZoom);
       }
 
@@ -2846,7 +2854,7 @@ export const ReactMapApp = () => {
             setUserLocation(cachedLocation);
             setUserLocationSource("search");
             setUserLocationError(null);
-            focusOnLocation(cachedLocation);
+            focusOnLocation(cachedLocation, { profile: "addressSearch" });
             setHasInteractedWithMap(true);
             return;
           }

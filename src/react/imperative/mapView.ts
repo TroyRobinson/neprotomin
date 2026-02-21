@@ -3111,7 +3111,7 @@ export const createMapView = ({
           source: USER_LOCATION_SOURCE_ID,
           paint: {
             "circle-radius": 9,
-            "circle-color": "#d946ef",
+            "circle-color": "#bae5f2",
             "circle-stroke-width": 2,
             "circle-stroke-color": "#ffffff",
             "circle-opacity": 0.95,
