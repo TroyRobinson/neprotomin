@@ -736,7 +736,7 @@ export const TopBar = ({
                     // Detach opener to avoid tabnabbing while still allowing reliable popup detection.
                     opened.opener = null;
                   }
-                  window.location.assign("https://map.neighborhoodexplorer.org");
+                  window.location.assign("https://okfoodmap.com");
                   return;
                 }
                 // Switching to map home: navigate in this tab (server redirects to map).

@@ -13,6 +13,8 @@ export type DomainDefaults = {
   defaultSidebarTab: "orgs" | "stats";
   /** Whether organization pins should be visible by default for this domain */
   defaultOrgPinsVisible: boolean;
+  /** Whether extrema indicators should be visible by default for this domain */
+  defaultExtremasVisible: boolean;
   /** Preferred stat IDs to preselect for this domain (in priority order) */
   defaultStatIds: string[];
   /** Preferred stat names/labels to match if IDs are missing */
@@ -24,6 +26,7 @@ export const getDomainDefaults = (): DomainDefaults => {
     return {
       defaultSidebarTab: "orgs",
       defaultOrgPinsVisible: true,
+      defaultExtremasVisible: false,
       defaultStatIds: [DEFAULT_PRIMARY_STAT_ID],
       defaultStatNames: [],
     };
@@ -32,6 +35,7 @@ export const getDomainDefaults = (): DomainDefaults => {
   return {
     defaultSidebarTab: "stats",
     defaultOrgPinsVisible: false,
+    defaultExtremasVisible: true,
     defaultStatIds: [DEFAULT_POPULATION_STAT_ID],
     defaultStatNames: ["Population"],
   };

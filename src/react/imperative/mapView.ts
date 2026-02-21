@@ -30,7 +30,7 @@ import { getCountyCentroidsMap, getCountyName } from "../../lib/countyCentroids"
 import type { AreaId, AreaKind } from "../../types/areas";
 import { DEFAULT_PARENT_AREA_BY_KIND } from "../../types/areas";
 import type { TimeSelection } from "../lib/timeFilters";
-import { DEFAULT_POPULATION_STAT_ID } from "../lib/domains";
+import { DEFAULT_POPULATION_STAT_ID, getDomainDefaults } from "../lib/domains";
 // choropleth helpers are used only inside overlays/stats now
 import { updateChoroplethLegend as extUpdateLegend, updateSecondaryChoroplethLegend as extUpdateSecondaryLegend, updateSecondaryStatOverlay as extUpdateSecondaryOverlay, updateSecondaryStatHoverOnly as extUpdateSecondaryStatHover, updateStatDataChoropleth as extUpdatePrimaryChoropleth, CHOROPLETH_HIDE_ZOOM } from "./overlays/stats";
 import {
@@ -488,7 +488,7 @@ export const createMapView = ({
   container.appendChild(mapNode);
 
   let selectedCategory: string | null = null;
-  let extremasVisible = true;
+  let extremasVisible = getDomainDefaults().defaultExtremasVisible;
   const categoryChips = createCategoryChips({
     isMobile,
     onChange: (categoryId) => {
