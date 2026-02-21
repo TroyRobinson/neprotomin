@@ -134,6 +134,7 @@ type AiAdminPlanDraft = {
     neId?: string;
   }>;
   approvalBlocked?: boolean;
+  approvalBlockReason?: string | null;
 };
 
 type AiAdminRun = {
@@ -166,6 +167,15 @@ type ApiJsonResult<T> = {
 const DEFAULT_DATASET = "acs/acs5";
 const DEFAULT_YEAR = 2023;
 const RUNNING_STATUSES = new Set(["approved", "running"]);
+const DATASET_SCOPE_OPTIONS = [
+  { value: "auto", label: "Auto (ACS + fallbacks)" },
+  { value: "acs/acs5", label: "ACS Detailed (importable)" },
+  { value: "acs/acs5/profile", label: "ACS Profile (importable)" },
+  { value: "acs/acs5/subject", label: "ACS Subject (importable)" },
+  { value: "acs/acs5/cprofile", label: "ACS Comparison (importable)" },
+  { value: "cbp", label: "County Business Patterns (research)" },
+  { value: "abscb", label: "Annual Business Survey (research)" },
+] as const;
 
 const makeMessageId = () => `msg-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 
@@ -284,6 +294,70 @@ const mapMessagesForApi = (messages: ChatMessage[]): Array<{ role: ChatRole; con
     content: message.search ? `${message.content}\n\n${buildSearchEvidenceText(message.search)}` : message.content,
   }));
 
+type ChatArtifactsPayload = {
+  latestSearchSummary?: string;
+  latestPlanSummary?: string;
+  latestRunSummary?: string;
+};
+
+const buildPlanSummaryText = (plan: AiAdminPlanDraft | null): string | null => {
+  if (!plan) return null;
+  const stepLines = plan.steps.slice(0, 8).map((step, index) => {
+    const blockers = (step.blockers ?? []).slice(0, 2).join("; ");
+    return `${index + 1}. ${step.title} [${step.type}] · executableNow=${step.executableNow}${
+      blockers ? ` · blockers: ${blockers}` : ""
+    }`;
+  });
+  const actionLines = plan.executeRequestDraft.actions
+    .slice(0, 8)
+    .map((action, index) => `${index + 1}. ${action.type} (${action.id})`);
+  const conflictLines = (plan.preflightConflicts ?? [])
+    .slice(0, 4)
+    .map((conflict) => `${conflict.actionType}: ${conflict.detail}`);
+
+  return [
+    "[Plan Artifact]",
+    `Notes: ${plan.notes}`,
+    `Confidence: ${Math.round(plan.confidence * 100)}%`,
+    `Approval blocked: ${plan.approvalBlocked ? "yes" : "no"}${
+      plan.approvalBlockReason ? ` (${plan.approvalBlockReason})` : ""
+    }`,
+    stepLines.length > 0 ? "Steps:\n" + stepLines.join("\n") : null,
+    actionLines.length > 0 ? "Planned actions:\n" + actionLines.join("\n") : null,
+    conflictLines.length > 0 ? "Preflight conflicts:\n" + conflictLines.join("\n") : null,
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join("\n");
+};
+
+const buildRunSummaryText = (run: AiAdminRun | null): string | null => {
+  if (!run) return null;
+  const latestEvents = run.events.slice(-5).map((event) => `${event.type}: ${event.summary}`);
+  const latestSteps = run.steps.slice(-6).map((step) => `${step.actionType} -> ${step.status}`);
+  return [
+    "[Run Artifact]",
+    `Status: ${run.status}`,
+    `Next action index: ${run.nextActionIndex}`,
+    latestSteps.length > 0 ? "Recent step states:\n" + latestSteps.join("\n") : null,
+    latestEvents.length > 0 ? "Recent events:\n" + latestEvents.join("\n") : null,
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join("\n");
+};
+
+const buildArtifactsForApi = (
+  messages: ChatMessage[],
+  plan: AiAdminPlanDraft | null,
+  run: AiAdminRun | null,
+): ChatArtifactsPayload => {
+  const latestSearch = [...messages].reverse().find((message) => message.search)?.search ?? null;
+  return {
+    latestSearchSummary: latestSearch ? buildSearchEvidenceText(latestSearch) : undefined,
+    latestPlanSummary: buildPlanSummaryText(plan) ?? undefined,
+    latestRunSummary: buildRunSummaryText(run) ?? undefined,
+  };
+};
+
 const filterNonSearchWarnings = (allWarnings: string[] | undefined, searchWarnings: string[] | undefined): string[] => {
   const normalizedSearchWarnings = new Set((searchWarnings ?? []).map((warning) => warning.trim()));
   return (allWarnings ?? []).filter((warning) => !normalizedSearchWarnings.has(warning.trim()));
@@ -297,6 +371,7 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
   const [unreadCount, setUnreadCount] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [datasetScope, setDatasetScope] = useState<(typeof DATASET_SCOPE_OPTIONS)[number]["value"]>("auto");
   const [isSending, setIsSending] = useState(false);
   const [sendMode, setSendMode] = useState<"chat" | "plan" | "search" | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -474,12 +549,15 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
       warnings?: string[];
     }>;
     try {
+      const selectedDataset = datasetScope === "auto" ? DEFAULT_DATASET : datasetScope;
       response = await requestJson("/api/ai-admin-chat", {
         callerEmail: normalizedCallerEmail,
-        dataset: DEFAULT_DATASET,
+        dataset: selectedDataset,
         year: DEFAULT_YEAR,
         requestPlan: wantsPlan,
+        searchStrictDataset: datasetScope !== "auto",
         messages: mapMessagesForApi(nextMessages),
+        artifacts: buildArtifactsForApi(nextMessages, plan, run),
       });
     } catch (error) {
       setChatError(error instanceof Error ? error.message : "Failed to chat with AI admin.");
@@ -518,7 +596,7 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
         appendAssistantMessage("Draft plan ready. Review the plan card below and approve when ready.");
       }
     }
-  }, [appendAssistantMessage, input, isSending, messages, normalizedCallerEmail, requestJson]);
+  }, [appendAssistantMessage, datasetScope, input, isSending, messages, normalizedCallerEmail, plan, requestJson, run]);
 
   const sendPromptForPlan = useCallback(async () => {
     const latestUser = [...messages].reverse().find((message) => message.role === "user");
@@ -537,12 +615,14 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
       warnings?: string[];
     }>;
     try {
+      const selectedDataset = datasetScope === "auto" ? DEFAULT_DATASET : datasetScope;
       response = await requestJson("/api/ai-admin-chat", {
         callerEmail: normalizedCallerEmail,
-        dataset: DEFAULT_DATASET,
+        dataset: selectedDataset,
         year: DEFAULT_YEAR,
         requestPlan: true,
         messages: mapMessagesForApi(messages),
+        artifacts: buildArtifactsForApi(messages, plan, run),
       });
     } catch (error) {
       setChatError(error instanceof Error ? error.message : "Failed to draft plan.");
@@ -566,7 +646,7 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
     if (Array.isArray(response.data.warnings)) {
       setWarnings(response.data.warnings.filter((entry): entry is string => typeof entry === "string"));
     }
-  }, [appendAssistantMessage, messages, normalizedCallerEmail, requestJson]);
+  }, [appendAssistantMessage, datasetScope, messages, normalizedCallerEmail, plan, requestJson, run]);
 
   const sendPromptForSearch = useCallback(async () => {
     const latestUser = [...messages].reverse().find((message) => message.role === "user");
@@ -588,12 +668,15 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
       warnings?: string[];
     }>;
     try {
+      const selectedDataset = datasetScope === "auto" ? DEFAULT_DATASET : datasetScope;
       response = await requestJson("/api/ai-admin-chat", {
         callerEmail: normalizedCallerEmail,
-        dataset: DEFAULT_DATASET,
+        dataset: selectedDataset,
         year: DEFAULT_YEAR,
         requestSearch: true,
+        searchStrictDataset: datasetScope !== "auto",
         messages: mapMessagesForApi(messages),
+        artifacts: buildArtifactsForApi(messages, plan, run),
       });
     } catch (error) {
       setChatError(error instanceof Error ? error.message : "Failed to run grounded search.");
@@ -621,7 +704,7 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
       const typedWarnings = response.data.warnings.filter((entry): entry is string => typeof entry === "string");
       setWarnings(filterNonSearchWarnings(typedWarnings, response.data.search?.warnings));
     }
-  }, [appendAssistantMessage, messages, normalizedCallerEmail, requestJson]);
+  }, [appendAssistantMessage, datasetScope, messages, normalizedCallerEmail, plan, requestJson, run]);
 
   const handleApprovePlan = useCallback(async () => {
     if (!plan || isBusyRunControl) return;
@@ -796,6 +879,23 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
               </p>
             </div>
             <div className="flex items-center gap-1">
+              <label className="sr-only" htmlFor="ai-agent-dataset-scope">
+                Dataset scope
+              </label>
+              <select
+                id="ai-agent-dataset-scope"
+                value={datasetScope}
+                onChange={(event) =>
+                  setDatasetScope(event.target.value as (typeof DATASET_SCOPE_OPTIONS)[number]["value"])}
+                className="h-7 w-[11ch] max-w-[11ch] truncate overflow-hidden text-ellipsis whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-600 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                title="Filter chat/search to a specific dataset"
+              >
+                {DATASET_SCOPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 onClick={handleClearChat}
@@ -982,6 +1082,12 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
                           </li>
                         ))}
                       </ul>
+                    </div>
+                  )}
+
+                  {activeConflicts.length === 0 && plan.approvalBlocked && plan.approvalBlockReason && (
+                    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200">
+                      {plan.approvalBlockReason}
                     </div>
                   )}
 

@@ -131,6 +131,34 @@ describe("ai-admin-chat", () => {
     expect(modelSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("injects thread artifacts into model context", async () => {
+    const modelSpy = vi.fn(async () => ({ text: "Artifact-aware response." }));
+    const handler = createAiAdminChatHandler({
+      respondWithModel: modelSpy,
+    });
+    const { res, state } = createMockResponse();
+
+    await handler(
+      createMockRequest(
+        withApiKeyAuth({
+          callerEmail: "admin@example.com",
+          messages: [{ role: "user", content: "hello there" }],
+          artifacts: {
+            latestPlanSummary: "[Plan Artifact]\nNotes: Business draft",
+          },
+        }),
+      ) as any,
+      res as any,
+    );
+
+    expect(state.statusCode).toBe(200);
+    expect(modelSpy).toHaveBeenCalledTimes(1);
+    const firstCallArgs = modelSpy.mock.calls.at(0) as unknown as [Array<{ content?: string }>] | undefined;
+    const firstCallMessages = firstCallArgs?.[0] ?? [];
+    expect(firstCallMessages[0]?.content).toContain("[Thread Artifacts Context]");
+    expect(firstCallMessages[0]?.content).toContain("Latest plan artifact");
+  });
+
   it("drafts a plan when user gives explicit go-ahead", async () => {
     const draftPlanSpy = vi.fn(async () => ({
       statusCode: 200,
@@ -199,9 +227,46 @@ describe("ai-admin-chat", () => {
       "Context-aware plan.",
     );
     expect(draftPlanSpy).toHaveBeenCalledTimes(1);
-    const firstCallInput = draftPlanSpy.mock.calls[0]?.[0] as { prompt?: string };
+    const firstCallInput = draftPlanSpy.mock.calls[0]?.[0] as { prompt?: string; searchPrompt?: string };
     expect(firstCallInput.prompt).toContain("business count");
     expect(firstCallInput.prompt).toContain("yes create our plan");
+    expect(firstCallInput.searchPrompt).toContain("business count");
+  });
+
+  it("passes grounded search evidence into planning prompt context", async () => {
+    const draftPlanSpy = vi.fn(async ({ prompt }) => ({
+      statusCode: 200,
+      payload: { plan: { notes: String(prompt), steps: [] }, research: {} },
+    }));
+    const handler = createAiAdminChatHandler({
+      respondWithModel: async () => ({ text: "Drafting now." }),
+      draftPlan: draftPlanSpy,
+    });
+    const { res, state } = createMockResponse();
+
+    await handler(
+      createMockRequest(
+        withApiKeyAuth({
+          callerEmail: "admin@example.com",
+          messages: [
+            { role: "user", content: "count of businesses" },
+            {
+              role: "assistant",
+              content:
+                "Grounded Census variable search results:\n\n[Grounded Search Evidence]\nQuery: count of businesses\nSearched datasets: acs/acs5, cbp\nC24070: C24070_040E",
+            },
+            { role: "user", content: "make a plan" },
+          ],
+        }),
+      ) as any,
+      res as any,
+    );
+
+    expect(state.statusCode).toBe(200);
+    expect(draftPlanSpy).toHaveBeenCalledTimes(1);
+    const firstCallInput = draftPlanSpy.mock.calls[0]?.[0] as { prompt?: string };
+    expect(firstCallInput.prompt).toContain("Grounded search evidence");
+    expect(firstCallInput.prompt).toContain("C24070_040E");
   });
 
   it("returns grounded search results when requestSearch is true", async () => {
@@ -280,6 +345,53 @@ describe("ai-admin-chat", () => {
     expect(payload.searchReviewMessage?.content).toContain("Grounded Census search results are ready");
     expect(searchSpy).toHaveBeenCalledTimes(1);
     expect(draftPlanSpy).not.toHaveBeenCalled();
+  });
+
+  it("passes strict dataset mode to grounded search when dataset scope is explicit", async () => {
+    const searchSpy = vi.fn(async () => ({
+      query: "business count by size",
+      dataset: "cbp",
+      year: 2023,
+      datasetCapability: {
+        dataset: "cbp",
+        label: "County Business Patterns",
+        searchable: true,
+        importable: false,
+        supportTier: "research_only" as const,
+        supportedGeographies: ["COUNTY", "STATE", "US"],
+        notes: "Business coverage is strong, but import is not wired yet.",
+      },
+      knownDatasetCapabilities: [],
+      warnings: [],
+      groups: [],
+    }));
+    const handler = createAiAdminChatHandler({
+      respondWithModel: async () => ({ text: "searching..." }),
+      searchCensus: searchSpy,
+    });
+    const { res, state } = createMockResponse();
+
+    await handler(
+      createMockRequest(
+        withApiKeyAuth({
+          callerEmail: "admin@example.com",
+          dataset: "cbp",
+          searchStrictDataset: true,
+          requestSearch: true,
+          messages: [{ role: "user", content: "business count by size" }],
+        }),
+      ) as any,
+      res as any,
+    );
+
+    expect(state.statusCode).toBe(200);
+    expect(searchSpy).toHaveBeenCalledTimes(1);
+    expect(searchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dataset: "cbp",
+        strictDataset: true,
+      }),
+    );
   });
 
   it("auto-triggers grounded search for stat-intent messages", async () => {

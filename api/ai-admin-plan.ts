@@ -131,6 +131,17 @@ const MAX_DERIVED_CANDIDATES = 4;
 const MAX_FAMILY_CANDIDATES = 4;
 const MAX_VARIABLES_PER_IMPORT = 3;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const DEFAULT_OPENROUTER_MODEL = "anthropic/claude-3.5-sonnet";
+const RESEARCH_DATASETS = new Set(["cbp", "abscb"]);
+const RESEARCH_NON_MEASURE_VARIABLES = new Set(["NAME", "GEO_ID", "GEO_ID_F", "YEAR"]);
+const RESEARCH_LABEL_EXCLUDE_PATTERNS = [
+  /^flag for\b/i,
+  /\bmeaning of\b/i,
+  /\bstandard error\b/i,
+  /\brelative standard error\b/i,
+  /\bnoise range\b/i,
+  /\bindustry level\b/i,
+];
 
 const ALLOWED_FORMULAS = new Set<DerivedFormula>([
   "percent",
@@ -166,6 +177,33 @@ const parseYear = (value: unknown, fallback: number): number => {
 };
 
 const parsePrompt = (value: unknown): string | null => normalizeString(value);
+
+const stripHtmlTags = (value: string): string =>
+  value
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const summarizeImportError = (value: string): string => {
+  const text = value.trim();
+  const httpMatch = text.match(/^Census HTTP\s+(\d+)\s*:\s*([\s\S]*)$/i);
+  if (httpMatch) {
+    const status = httpMatch[1];
+    const detail = stripHtmlTags(httpMatch[2] ?? "");
+    if (status === "404") {
+      return "Census API returned HTTP 404 while validating this table/group. It is not available for the selected dataset/year.";
+    }
+    if (!detail) {
+      return `Census API returned HTTP ${status} while validating this table/group.`;
+    }
+    const clipped = detail.length > 160 ? `${detail.slice(0, 157)}...` : detail;
+    return `Census API returned HTTP ${status}: ${clipped}`;
+  }
+
+  const flattened = stripHtmlTags(text);
+  if (!flattened) return "Census metadata validation failed for this import candidate.";
+  return flattened.length > 180 ? `${flattened.slice(0, 177)}...` : flattened;
+};
 
 const parseBody = async (req: AiAdminPlanRequest): Promise<Record<string, unknown>> => {
   if (typeof req.body === "string") {
@@ -293,13 +331,19 @@ const normalizeGroupId = (value: unknown): string | null => {
   if (!cleaned) return null;
   if (!/^[A-Z0-9]+$/.test(cleaned)) return null;
   if (cleaned.length < 2 || cleaned.length > 12) return null;
+  if (!/\d/.test(cleaned)) return null;
   return cleaned;
 };
 
-const normalizeVariableId = (value: unknown): string | null => {
+const normalizeVariableId = (value: unknown, dataset = DEFAULT_DATASET): string | null => {
   const cleaned = normalizeString(value)?.toUpperCase();
   if (!cleaned) return null;
   if (!/^[A-Z0-9_]+$/.test(cleaned)) return null;
+  if (RESEARCH_DATASETS.has(dataset)) {
+    if (RESEARCH_NON_MEASURE_VARIABLES.has(cleaned)) return null;
+    if (cleaned.endsWith("_F") || cleaned.endsWith("_LABEL")) return null;
+    return cleaned;
+  }
   if (!/[EM]$/.test(cleaned)) return null;
   return cleaned;
 };
@@ -324,6 +368,55 @@ const inferDatasetForGroup = (dataset: string, group: string): string => {
   return normalizedDataset;
 };
 
+const isResearchDataset = (dataset: string): boolean => RESEARCH_DATASETS.has(dataset);
+
+const isResearchMeasureVariable = (
+  variableName: string,
+  variable: { label?: string; predicateType?: string } | undefined,
+): boolean => {
+  const name = normalizeString(variableName)?.toUpperCase() ?? "";
+  if (!name || RESEARCH_NON_MEASURE_VARIABLES.has(name)) return false;
+  if (name.endsWith("_F") || name.endsWith("_LABEL")) return false;
+  if (/_N($|_)/.test(name)) return false;
+  const label = normalizeString(variable?.label) ?? "";
+  if (RESEARCH_LABEL_EXCLUDE_PATTERNS.some((pattern) => pattern.test(label))) return false;
+
+  const predicate = normalizeString(variable?.predicateType)?.toLowerCase();
+  if (predicate === "int" || predicate === "integer" || predicate === "float" || predicate === "double") {
+    return true;
+  }
+  if (
+    predicate === "string" &&
+    (/\bnaics\b/i.test(label) || /\bemployment size\b/i.test(label) || /\bindustry\b/i.test(label))
+  ) {
+    return true;
+  }
+  return false;
+};
+
+const prioritizeResearchVariables = (variables: string[]): string[] => {
+  const priorityOrder = ["ESTAB", "EMP", "PAYANN", "FIRMPDEMP", "RCPPDEMP", "EMPSZES", "EMPSZFI", "SECTOR", "NAICS2017", "NAICS2022"];
+  const priorityRank = new Map(priorityOrder.map((entry, index) => [entry, index]));
+  return [...variables].sort((left, right) => {
+    const leftRank = priorityRank.get(left);
+    const rightRank = priorityRank.get(right);
+    if (leftRank == null && rightRank == null) return left.localeCompare(right);
+    if (leftRank == null) return 1;
+    if (rightRank == null) return -1;
+    return leftRank - rightRank;
+  });
+};
+
+const deriveResearchFallbackVariables = (
+  variables: Map<string, { label?: string; predicateType?: string }> | undefined,
+): string[] => {
+  if (!(variables instanceof Map)) return [];
+  const candidates = Array.from(variables.entries())
+    .filter(([name, variable]) => isResearchMeasureVariable(name, variable))
+    .map(([name]) => name);
+  return prioritizeResearchVariables(candidates);
+};
+
 const CENSUS_TABLE_DOC_URL = (year: number, dataset: string, group: string) =>
   `https://api.census.gov/data/${year}/${dataset}/groups/${group}.html`;
 
@@ -331,7 +424,7 @@ const defaultModelPlanning = async ({ prompt, dataset, year }: PlanFromModelInpu
   const apiKey = process.env.OPENROUTER ?? process.env.OPENROUTER_API_KEY;
   if (!apiKey) return null;
 
-  const planningPrompt = `You are planning create-only admin actions for a US Census stats app.\n\nGiven the user request, produce a strict JSON object with this exact shape:\n{\n  "confidence": 0.0,\n  "notes": "short note",\n  "imports": [\n    {\n      "dataset": "acs/acs5",\n      "year": 2023,\n      "group": "B01001",\n      "variables": ["B01001_001E"],\n      "reason": "why this import"\n    }\n  ],\n  "derived": [\n    {\n      "name": "Example Derived",\n      "formula": "percent",\n      "numeratorVariable": "B01001_002E",\n      "denominatorVariable": "B01001_001E",\n      "sumOperandVariables": [],\n      "reason": "why this derived"\n    }\n  ],\n  "families": [\n    {\n      "parentName": "Demographics",\n      "childNames": ["Example Derived"],\n      "statAttribute": "Total",\n      "reason": "why this family"\n    }\n  ]\n}\n\nRules:\n- Allowed formulas: percent, sum, difference, rate_per_1000, ratio, index, change_over_time\n- Use only create intents.\n- Keep imports <= 6 and variables per import <= 3.\n- Use dataset ${dataset} and year ${year} unless a different group prefix requires another ACS endpoint.\n- Return JSON only, no markdown, no explanations.\n\nUser request: \"${prompt}\"`;
+  const planningPrompt = `You are planning create-only admin actions for a US Census stats app.\n\nGiven the user request, produce a strict JSON object with this exact shape:\n{\n  "confidence": 0.0,\n  "notes": "short note",\n  "imports": [\n    {\n      "dataset": "acs/acs5",\n      "year": 2023,\n      "group": "B01001",\n      "variables": ["B01001_001E"],\n      "reason": "why this import"\n    }\n  ],\n  "derived": [\n    {\n      "name": "Example Derived",\n      "formula": "percent",\n      "numeratorVariable": "B01001_002E",\n      "denominatorVariable": "B01001_001E",\n      "sumOperandVariables": [],\n      "reason": "why this derived"\n    }\n  ],\n  "families": [\n    {\n      "parentName": "Demographics",\n      "childNames": ["Example Derived"],\n      "statAttribute": "Total",\n      "reason": "why this family"\n    }\n  ]\n}\n\nRules:\n- Allowed formulas: percent, sum, difference, rate_per_1000, ratio, index, change_over_time\n- Use only create intents.\n- Keep imports <= 6 and variables per import <= 3.\n- Use dataset ${dataset} and year ${year} unless a different group prefix requires another ACS endpoint.\n- For imports, \"group\" must be a real Census table group id (e.g., B01001, C24070, CB2300CBP), never a variable id.\n- If uncertain, leave imports empty instead of guessing.\n- Return JSON only, no markdown, no explanations.\n\nUser request: \"${prompt}\"`;
 
   const response = await fetch(OPENROUTER_URL, {
     method: "POST",
@@ -341,7 +434,7 @@ const defaultModelPlanning = async ({ prompt, dataset, year }: PlanFromModelInpu
       "HTTP-Referer": "https://neprotomin.app",
     },
     body: JSON.stringify({
-      model: "anthropic/claude-3.5-haiku",
+      model: DEFAULT_OPENROUTER_MODEL,
       messages: [{ role: "user", content: planningPrompt }],
       temperature: 0.2,
       max_tokens: 900,
@@ -373,7 +466,7 @@ const defaultModelPlanning = async ({ prompt, dataset, year }: PlanFromModelInpu
     const normalizedDataset = inferDatasetForGroup(normalizeString(raw.dataset) ?? dataset, group);
     const variables = Array.isArray(raw.variables)
       ? raw.variables
-          .map((entry) => normalizeVariableId(entry))
+          .map((entry) => normalizeVariableId(entry, normalizedDataset))
           .filter((entry): entry is string => Boolean(entry))
           .slice(0, MAX_VARIABLES_PER_IMPORT)
       : [];
@@ -510,9 +603,14 @@ const defaultInspectImportCandidate = async (candidate: ImportCandidate): Promis
   try {
     const groupMeta = await fetchGroupMetadata(options);
     const resolved = resolveVariables(options, groupMeta);
-    const estimates = Array.isArray(resolved.estimates)
+    let estimates = Array.isArray(resolved.estimates)
       ? resolved.estimates.filter((entry: unknown): entry is string => typeof entry === "string")
       : [];
+    if (estimates.length === 0 && isResearchDataset(dataset)) {
+      estimates = deriveResearchFallbackVariables(
+        groupMeta.variables as Map<string, { label?: string; predicateType?: string }>,
+      );
+    }
     const requested: string[] = candidate.variables.length > 0 ? candidate.variables : estimates.slice(0, 1);
     const availableSet = new Set<string>(estimates);
     const availableVariables = requested
@@ -550,6 +648,7 @@ const defaultInspectImportCandidate = async (candidate: ImportCandidate): Promis
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to inspect Census group.";
+    const summary = summarizeImportError(message);
     return {
       status: "error",
       dataset,
@@ -561,7 +660,7 @@ const defaultInspectImportCandidate = async (candidate: ImportCandidate): Promis
       reason: candidate.reason,
       variables: [],
       missingVariables: [...candidate.variables],
-      error: message,
+      error: summary,
     };
   }
 };
@@ -569,6 +668,26 @@ const defaultInspectImportCandidate = async (candidate: ImportCandidate): Promis
 const defaultDetectPreflightConflicts = async (actions: AiAdminAction[]) => {
   const db = createAiAdminDb();
   return findExistingStatConflicts(db, actions);
+};
+
+const sanitizeImportCandidate = (
+  candidate: ImportCandidate,
+  defaults: { dataset: string; year: number },
+): ImportCandidate | null => {
+  const group = normalizeGroupId(candidate.group);
+  if (!group) return null;
+  const normalizedDataset = inferDatasetForGroup(normalizeString(candidate.dataset) ?? defaults.dataset, group);
+  const normalizedVariables = (candidate.variables ?? [])
+    .map((entry) => normalizeVariableId(entry, normalizedDataset))
+    .filter((entry): entry is string => Boolean(entry))
+    .slice(0, MAX_VARIABLES_PER_IMPORT);
+  return {
+    dataset: normalizedDataset,
+    year: parseYear(candidate.year, defaults.year),
+    group,
+    variables: normalizedVariables,
+    reason: normalizeString(candidate.reason) ?? "Model-recommended Census import.",
+  };
 };
 
 const dedupeImportCandidates = (input: ImportCandidate[]): ImportCandidate[] => {
@@ -627,6 +746,7 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
       respond(res, 400, { error: "Missing required 'prompt'." });
       return;
     }
+    const searchPrompt = parsePrompt(rawBody.searchPrompt) ?? prompt;
 
     const dataset = normalizeString(rawBody.dataset) ?? DEFAULT_DATASET;
     const year = parseYear(rawBody.year, DEFAULT_YEAR);
@@ -638,7 +758,7 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
 
     const [intentResult, groupMatchesResult] = await Promise.allSettled([
       planFromModel({ prompt, dataset, year }),
-      searchGroups(dataset, year, prompt, MAX_GROUP_RESULTS),
+      searchGroups(dataset, year, searchPrompt, MAX_GROUP_RESULTS),
     ]);
 
     if (intentResult.status === "fulfilled") {
@@ -664,20 +784,27 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
 
     if (!intent || intent.imports.length === 0) {
       try {
-        aiSuggestFallback = await suggestCensusWithAI({ query: prompt, dataset, year });
+        aiSuggestFallback = await suggestCensusWithAI({ query: searchPrompt, dataset, year });
       } catch (error) {
         const message = error instanceof Error ? error.message : "AI suggestion fallback unavailable.";
         researchWarnings.push(`AI suggestion fallback: ${message}`);
       }
     }
 
-    const importCandidatesFromModel = intent?.imports ?? [];
+    const importCandidatesFromModel = (intent?.imports ?? [])
+      .map((candidate) =>
+        sanitizeImportCandidate(candidate, {
+          dataset,
+          year,
+        }),
+      )
+      .filter((candidate): candidate is ImportCandidate => candidate != null);
     const importCandidates: ImportCandidate[] = [...importCandidatesFromModel];
 
     if (aiSuggestFallback?.groupNumber) {
       const fallbackGroup = normalizeGroupId(aiSuggestFallback.groupNumber);
       const fallbackVariables = (aiSuggestFallback.statIds ?? [])
-        .map((entry) => normalizeVariableId(entry))
+        .map((entry) => normalizeVariableId(entry, dataset))
         .filter((entry): entry is string => Boolean(entry))
         .slice(0, MAX_VARIABLES_PER_IMPORT);
       if (fallbackGroup) {
@@ -691,13 +818,16 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
       }
     }
 
-    if (importCandidates.length === 0 && groupMatches[0]) {
+    if (groupMatches[0]) {
       importCandidates.push({
         dataset: inferDatasetForGroup(dataset, groupMatches[0].name),
         year,
         group: groupMatches[0].name,
         variables: [],
-        reason: "Top Census group search match from prompt.",
+        reason:
+          importCandidates.length === 0
+            ? "Top Census group search match from prompt."
+            : "Grounded Census group backup candidate from prompt context.",
       });
     }
 
@@ -778,7 +908,7 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
             group: evidence.group,
             year: evidence.year,
           },
-          blockers: [evidence.error ?? "Unknown Census error."],
+          blockers: [summarizeImportError(evidence.error ?? "Unknown Census error.")],
           evidence,
         });
         importStepIndex += 1;
@@ -834,7 +964,25 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
       }
     }
 
-    const derivedCandidates = intent?.derived ?? [];
+    const hasExecutableImportActions = executableActions.some((action) => action.type === "import_census_stat");
+    if (!hasExecutableImportActions) {
+      steps.push({
+        id: "step-feasibility-blocked-1",
+        type: "research_census",
+        title: "Plan is not yet feasible",
+        description: "No validated import candidates were found. Refine dataset scope, group, or variable selection and regenerate the plan.",
+        confidence: 0.3,
+        executableNow: false,
+        payload: {
+          reason: "no_validated_import_candidates",
+        },
+        blockers: [
+          "At least one import step must validate against Census metadata before derived or family actions can be approved.",
+        ],
+      });
+    }
+
+    const derivedCandidates = hasExecutableImportActions ? intent?.derived ?? [] : [];
     let derivedStepIndex = 0;
     for (const derived of derivedCandidates.slice(0, MAX_DERIVED_CANDIDATES)) {
       const stepId = `step-derived-${derivedStepIndex + 1}`;
@@ -902,7 +1050,7 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
       derivedStepIndex += 1;
     }
 
-    const familyCandidates = intent?.families ?? [];
+    const familyCandidates = hasExecutableImportActions ? intent?.families ?? [] : [];
     let familyStepIndex = 0;
     for (const family of familyCandidates.slice(0, MAX_FAMILY_CANDIDATES)) {
       const stepId = `step-family-${familyStepIndex + 1}`;
@@ -963,6 +1111,11 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
     const unresolvedSteps = steps.filter((step) => !step.executableNow);
     const overallConfidence = deriveOverallConfidence(intent?.confidence ?? 0.45, importEvidence);
 
+    const hasAnyWriteAction = draftValidation.plan.actions.some((action) => action.type !== "research_census");
+    const feasibilityBlockReason = hasAnyWriteAction
+      ? null
+      : "Approval blocked: no validated import candidates. Regenerate with a tighter dataset/group/variable scope.";
+
     respond(res, 200, {
       ok: true,
       mode: "plan",
@@ -977,7 +1130,9 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
         executeRequestDraft: draftValidation.plan,
         preflightCheck,
         preflightConflicts,
-        approvalBlocked: preflightCheck === "ok" && preflightConflicts.length > 0,
+        approvalBlocked:
+          Boolean(feasibilityBlockReason) || (preflightCheck === "ok" && preflightConflicts.length > 0),
+        approvalBlockReason: feasibilityBlockReason,
         unresolvedSteps: unresolvedSteps.map((step) => ({
           stepId: step.id,
           type: step.type,

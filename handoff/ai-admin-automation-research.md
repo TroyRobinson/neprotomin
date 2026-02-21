@@ -571,3 +571,40 @@ The "Planned in Slice 3 only" blocker text is expected with current backend shap
 2. Confirm that when research-only alternatives exist, they appear in both:
    *   review message summary
    *   search-card alternatives block
+
+## 21. Conversation/Plan Context Propagation Hardening (2026-02-21)
+
+### Problem addressed
+User-observed disconnect: chat recommendations were grounded in one direction, but later plan generation/search fallback could drift because only a compressed subset of conversation state was being used for planning/search.
+
+### Implemented
+*   `api/ai-admin-chat.ts`
+    *   Increased retained message window (`MAX_CONTEXT_MESSAGES`) from a narrow cap to a larger thread window.
+    *   Added request-level `artifacts` ingestion with normalized fields:
+        *   `latestSearchSummary`
+        *   `latestPlanSummary`
+        *   `latestRunSummary`
+    *   Added artifact context block injection (`[Thread Artifacts Context]`) into model-facing messages so chat/search brainstorming can incorporate latest plan/run/search state even when not represented as plain thread text.
+    *   Planning prompt construction now includes recent transcript lines with both roles, plus explicit artifact context for continuity.
+    *   Planner invocation now sends both:
+        *   `prompt` (rich, context-heavy planning prompt)
+        *   `searchPrompt` (intent-focused query for group search/suggestion fallbacks)
+*   `api/ai-admin-plan.ts`
+    *   Added optional `searchPrompt` handling.
+    *   Group search and AI suggest fallback now use `searchPrompt` instead of full planning transcript, reducing noisy term dilution.
+*   `src/react/components/AdminAiChatModal.tsx`
+    *   Added compact artifact serialization on every chat/search/plan request:
+        *   latest grounded search evidence summary
+        *   latest plan summary (notes/confidence/blockers/step overview)
+        *   latest run summary (status/recent steps/events)
+    *   This preserves non-message state as model context without polluting user-visible chat text.
+*   Tests
+    *   `api/ai-admin-chat.test.ts`
+        *   Added test for artifact context injection into model input.
+        *   Extended plan-phrase test to assert `searchPrompt` preserves user intent topic.
+
+### Verification
+1. Have a conversation, run grounded search, then generate a plan.
+2. Ask follow-up refinements and regenerate plan.
+3. Confirm follow-up model responses and new plan continue referencing prior search/plan state.
+4. Confirm plan endpoint behavior uses intent query for group search (less drift to unrelated groups when prompt transcript is long).

@@ -32,6 +32,12 @@ type ChatMessage = {
   content: string;
 };
 
+type ChatContextArtifacts = {
+  latestSearchSummary?: string;
+  latestPlanSummary?: string;
+  latestRunSummary?: string;
+};
+
 type ChatModelResult = {
   text: string;
   warning?: string;
@@ -102,12 +108,19 @@ type SearchIntentProfile = {
   business: boolean;
 };
 
+type GroupVariableMetaLike = {
+  label?: string;
+  concept?: string;
+  predicateType?: string;
+};
+
 type ChatHandlerDeps = {
   respondWithModel?: (messages: ChatMessage[], dataset: string, year: number) => Promise<ChatModelResult>;
   draftPlan?: (input: {
     req: AiAdminChatRequest;
     callerEmail: string | null;
     prompt: string;
+    searchPrompt: string;
     dataset: string;
     year: number;
     caps: unknown;
@@ -116,13 +129,17 @@ type ChatHandlerDeps = {
     query: string;
     dataset: string;
     year: number;
+    strictDataset?: boolean;
   }) => Promise<GroundedSearchResult>;
   now?: () => number;
 };
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const DEFAULT_OPENROUTER_MODEL = "anthropic/claude-3.5-sonnet";
 const DEFAULT_DATASET = "acs/acs5";
 const DEFAULT_YEAR = 2023;
+const MAX_CONTEXT_MESSAGES = 120;
+const MAX_ARTIFACT_TEXT_LENGTH = 9000;
 const MAX_GROUP_RESULTS = 4;
 const MAX_VARIABLE_RESULTS = 4;
 const MAX_REVIEW_GROUPS = 2;
@@ -142,8 +159,6 @@ const SEARCH_STOP_WORDS = new Set<string>([
   "an",
   "and",
   "by",
-  "count",
-  "counts",
   "data",
   "for",
   "include",
@@ -153,7 +168,6 @@ const SEARCH_STOP_WORDS = new Set<string>([
   "stats",
   "the",
   "to",
-  "total",
   "with",
   "ill",
   "help",
@@ -211,6 +225,15 @@ const BRAINSTORM_TERM_ALLOWLIST = new Set<string>([
   "poverty",
 ]);
 const BUSINESS_RESEARCH_FALLBACK_DATASETS = ["cbp", "abscb"];
+const NON_MEASURE_VARIABLE_NAMES = new Set(["NAME", "GEO_ID", "GEO_ID_F", "YEAR"]);
+const RESEARCH_LABEL_EXCLUDE_PATTERNS = [
+  /^flag for\b/i,
+  /\bmeaning of\b/i,
+  /\bstandard error\b/i,
+  /\brelative standard error\b/i,
+  /\bnoise range\b/i,
+  /\bindustry level\b/i,
+];
 
 const normalizeString = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -367,7 +390,43 @@ const normalizeMessages = (input: unknown): ChatMessage[] => {
     if (role !== "user" && role !== "assistant") continue;
     out.push({ role, content });
   }
-  return out.slice(-20);
+  return out.slice(-MAX_CONTEXT_MESSAGES);
+};
+
+const normalizeArtifactText = (value: unknown): string | null => {
+  const text = normalizeString(value);
+  if (!text) return null;
+  return text.length > MAX_ARTIFACT_TEXT_LENGTH ? `${text.slice(0, MAX_ARTIFACT_TEXT_LENGTH)}...` : text;
+};
+
+const normalizeContextArtifacts = (input: unknown): ChatContextArtifacts => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const raw = input as Record<string, unknown>;
+  return {
+    latestSearchSummary: normalizeArtifactText(raw.latestSearchSummary) ?? undefined,
+    latestPlanSummary: normalizeArtifactText(raw.latestPlanSummary) ?? undefined,
+    latestRunSummary: normalizeArtifactText(raw.latestRunSummary) ?? undefined,
+  };
+};
+
+const buildArtifactsContextBlock = (artifacts: ChatContextArtifacts): string | null => {
+  const sections: string[] = [];
+  if (artifacts.latestSearchSummary) {
+    sections.push(["Latest grounded search artifact:", artifacts.latestSearchSummary].join("\n"));
+  }
+  if (artifacts.latestPlanSummary) {
+    sections.push(["Latest plan artifact:", artifacts.latestPlanSummary].join("\n"));
+  }
+  if (artifacts.latestRunSummary) {
+    sections.push(["Latest execution artifact:", artifacts.latestRunSummary].join("\n"));
+  }
+  if (sections.length === 0) return null;
+  return ["[Thread Artifacts Context]", ...sections].join("\n\n");
+};
+
+const prependArtifactsContext = (messages: ChatMessage[], artifactsContext: string | null): ChatMessage[] => {
+  if (!artifactsContext) return messages;
+  return [{ role: "assistant", content: artifactsContext }, ...messages];
 };
 
 const shouldDraftPlan = (latestUserMessage: string, requestPlan: boolean): boolean => {
@@ -492,7 +551,8 @@ const buildSearchReviewMessage = (search: GroundedSearchResult, mode: "manual" |
     group.variables.slice(0, MAX_REVIEW_VARIABLES).map((variable) => {
       const groupTitle = chooseGroupDisplayTitle(group);
       const variableTitle = chooseVariableDisplayTitle(group, variable);
-      return `- ${variableTitle} (${variable.variable}) [${group.group} · ${groupTitle}]`;
+      const officialTitle = shortenText(variable.statName || variable.label || variable.variable, 110);
+      return `- ${variableTitle} (${variable.variable}) [${group.group} · ${groupTitle}] · Official: ${officialTitle}`;
     }),
   );
 
@@ -593,6 +653,32 @@ const inferDatasetForGroup = (dataset: string, group: string): string => {
   if (normalizedGroup.startsWith("CP")) return "acs/acs5/cprofile";
   if (normalizedGroup.startsWith("S")) return "acs/acs5/subject";
   return normalizedDataset;
+};
+
+const isResearchMeasureVariable = (name: string, meta: GroupVariableMetaLike | undefined): boolean => {
+  if (!name || NON_MEASURE_VARIABLE_NAMES.has(name)) return false;
+  if (name.endsWith("_F") || name.endsWith("_LABEL")) return false;
+  if (/_N($|_)/.test(name)) return false;
+  const label = normalizeString(meta?.label) ?? "";
+  if (RESEARCH_LABEL_EXCLUDE_PATTERNS.some((pattern) => pattern.test(label))) return false;
+  const predicate = normalizeString(meta?.predicateType)?.toLowerCase();
+  if (predicate === "int" || predicate === "integer" || predicate === "float" || predicate === "double") {
+    return true;
+  }
+  if (
+    predicate === "string" &&
+    (/\bnaics\b/i.test(label) || /\bemployment size\b/i.test(label) || /\bindustry\b/i.test(label))
+  ) {
+    return true;
+  }
+  return false;
+};
+
+const deriveResearchFallbackVariables = (variables: Map<string, GroupVariableMetaLike> | undefined): string[] => {
+  if (!(variables instanceof Map)) return [];
+  return Array.from(variables.entries())
+    .filter(([name, meta]) => isResearchMeasureVariable(name, meta))
+    .map(([name]) => name);
 };
 
 const CENSUS_TABLE_DOC_URL = (year: number, dataset: string, group: string) =>
@@ -734,9 +820,14 @@ const searchDatasetGroups = async (input: {
       try {
         const groupMeta = await fetchGroupMetadata(options);
         const resolved = resolveVariables(options, groupMeta);
-        const estimates = Array.isArray(resolved.estimates)
+        let estimates = Array.isArray(resolved.estimates)
           ? resolved.estimates.filter((entry: unknown): entry is string => typeof entry === "string")
           : [];
+        if (estimates.length === 0 && resolvedCapability?.supportTier === "research_only") {
+          estimates = deriveResearchFallbackVariables(
+            groupMeta.variables as Map<string, GroupVariableMetaLike>,
+          );
+        }
 
         const rankedVariables = estimates
           .map((variable: string): RankedVariableCandidate => {
@@ -846,6 +937,7 @@ const defaultSearchCensus = async (input: {
   query: string;
   dataset: string;
   year: number;
+  strictDataset?: boolean;
 }): Promise<GroundedSearchResult> => {
   const query = input.query.trim();
   const dataset = normalizeString(input.dataset) ?? DEFAULT_DATASET;
@@ -878,7 +970,7 @@ const defaultSearchCensus = async (input: {
 
   const terms = toSearchTerms(query);
   const datasetSearchOrder = [dataset];
-  if (intent.business) {
+  if (intent.business && !input.strictDataset) {
     for (const fallbackDataset of BUSINESS_RESEARCH_FALLBACK_DATASETS) {
       if (datasetSearchOrder.includes(fallbackDataset)) continue;
       const capability = getDatasetCapability(fallbackDataset);
@@ -962,20 +1054,47 @@ const defaultSearchCensus = async (input: {
 };
 
 const buildPlanningPromptFromMessages = (messages: ChatMessage[], latestUserMessage: string): string => {
+  const transcriptBlock = messages
+    .slice(-40)
+    .map((message, index) => `${index + 1}. ${message.role.toUpperCase()}: ${message.content}`)
+    .join("\n");
+  const latestGroundedEvidence = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && /\[grounded search evidence\]/i.test(message.content))
+    ?.content;
   const userMessages = messages
     .filter((message) => message.role === "user")
     .map((message) => message.content.trim())
     .filter((content) => content.length > 0);
-  if (userMessages.length <= 1) return latestUserMessage;
+  if (userMessages.length <= 1 && !transcriptBlock) {
+    return latestGroundedEvidence
+      ? [
+          latestUserMessage,
+          "",
+          "Grounded search evidence (use these exact groups/variables first):",
+          latestGroundedEvidence,
+        ].join("\n")
+      : latestUserMessage;
+  }
 
   const recent = userMessages.slice(-6);
   const contextBlock = recent.map((content, index) => `${index + 1}. ${content}`).join("\n");
   return [
+    transcriptBlock ? "Recent conversation transcript:" : null,
+    transcriptBlock || null,
+    transcriptBlock ? "" : null,
     "Conversation context (most recent user requests):",
     contextBlock,
     "",
     `Latest user message: "${latestUserMessage}"`,
     "If the latest message is only a plan go-ahead, use prior user lines to determine topic scope.",
+    latestGroundedEvidence
+      ? [
+          "",
+          "Grounded search evidence from earlier in this chat (prefer these exact groups/variables; do not invent new groups unless this evidence is empty):",
+          latestGroundedEvidence,
+        ].join("\n")
+      : null,
   ].join("\n");
 };
 
@@ -1043,7 +1162,7 @@ const callOpenRouter = async (
       "HTTP-Referer": "https://neprotomin.app",
     },
     body: JSON.stringify({
-      model: "anthropic/claude-3.5-haiku",
+      model: DEFAULT_OPENROUTER_MODEL,
       messages: [{ role: "system", content: buildSystemPrompt(dataset, year) }, ...messages],
       temperature: 0.3,
       max_tokens: 700,
@@ -1070,6 +1189,7 @@ const callPlanHandler = async (input: {
   req: AiAdminChatRequest;
   callerEmail: string | null;
   prompt: string;
+  searchPrompt: string;
   dataset: string;
   year: number;
   caps: unknown;
@@ -1081,6 +1201,7 @@ const callPlanHandler = async (input: {
     body: {
       callerEmail: input.callerEmail,
       prompt: input.prompt,
+      searchPrompt: input.searchPrompt,
       dataset: input.dataset,
       year: input.year,
       caps: input.caps,
@@ -1134,6 +1255,9 @@ export const createAiAdminChatHandler = (deps: ChatHandlerDeps = {}) => {
     }
 
     const messages = normalizeMessages(rawBody.messages);
+    const artifacts = normalizeContextArtifacts(rawBody.artifacts);
+    const artifactsContext = buildArtifactsContextBlock(artifacts);
+    const modelMessages = prependArtifactsContext(messages, artifactsContext);
     const latestUserMessage = [...messages].reverse().find((message) => message.role === "user");
     if (!latestUserMessage) {
       respond(res, 400, { error: "At least one user message is required." });
@@ -1144,6 +1268,7 @@ export const createAiAdminChatHandler = (deps: ChatHandlerDeps = {}) => {
     const year = parseYear(rawBody.year, DEFAULT_YEAR);
     const requestPlan = parseBoolean(rawBody.requestPlan, false);
     const requestSearch = parseBoolean(rawBody.requestSearch, false);
+    const searchStrictDataset = parseBoolean(rawBody.searchStrictDataset, false);
     const planRequested = shouldDraftPlan(latestUserMessage.content, requestPlan);
     const autoSearch = shouldAutoSearch({
       latestUserMessage: latestUserMessage.content,
@@ -1167,7 +1292,7 @@ export const createAiAdminChatHandler = (deps: ChatHandlerDeps = {}) => {
         let brainstormText: string | null = null;
         if (autoSearch) {
           try {
-            const brainstorm = await respondWithModel(messages, dataset, year);
+            const brainstorm = await respondWithModel(modelMessages, dataset, year);
             brainstormText = brainstorm.text;
             assistantText = brainstorm.text;
             if (brainstorm.warning) warnings.push(brainstorm.warning);
@@ -1181,7 +1306,12 @@ export const createAiAdminChatHandler = (deps: ChatHandlerDeps = {}) => {
 
         const queryUsed = composeSearchQueryFromBrainstorm(queryBase, brainstormText);
         try {
-          const rawSearchPayload = await searchCensus({ query: queryUsed, dataset, year });
+          const rawSearchPayload = await searchCensus({
+            query: queryUsed,
+            dataset,
+            year,
+            strictDataset: searchStrictDataset,
+          });
           searchPayload = {
             ...rawSearchPayload,
             query: queryBase,
@@ -1198,7 +1328,7 @@ export const createAiAdminChatHandler = (deps: ChatHandlerDeps = {}) => {
       assistantText = "Drafting plan from our conversation context.";
     } else {
       try {
-        const chatResponse = await respondWithModel(messages, dataset, year);
+        const chatResponse = await respondWithModel(modelMessages, dataset, year);
         assistantText = chatResponse.text;
         if (chatResponse.warning) warnings.push(chatResponse.warning);
       } catch (error) {
@@ -1208,11 +1338,16 @@ export const createAiAdminChatHandler = (deps: ChatHandlerDeps = {}) => {
 
     let planPayload: any = null;
     if (planRequested) {
-      const planningPrompt = buildPlanningPromptFromMessages(messages, latestUserMessage.content);
+      const planningPromptBase = buildPlanningPromptFromMessages(modelMessages, latestUserMessage.content);
+      const planningPrompt = artifactsContext
+        ? [planningPromptBase, "", "Thread artifacts for plan continuity:", artifactsContext].join("\n")
+        : planningPromptBase;
+      const planningSearchPrompt = buildSearchQueryFromMessages(messages, latestUserMessage.content);
       const planned = await draftPlan({
         req,
         callerEmail,
         prompt: planningPrompt,
+        searchPrompt: planningSearchPrompt || latestUserMessage.content,
         dataset,
         year,
         caps: rawBody.caps,
