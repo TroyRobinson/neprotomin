@@ -44,3 +44,5 @@ export const COUNTY_STAT_EXTREME_HIGH_LAYER_ID = "oklahoma-county-stat-extreme-h
 export const COUNTY_STAT_EXTREME_LOW_LAYER_ID = "oklahoma-county-stat-extreme-low";
 export const COUNTY_POI_EXTREME_HIGH_LAYER_ID = "oklahoma-county-poi-extreme-high";
 export const COUNTY_POI_EXTREME_LOW_LAYER_ID = "oklahoma-county-poi-extreme-low";
+export const ZIP_POI_COMBINED_LAYER_ID = "tulsa-zip-poi-combined";
+export const COUNTY_POI_COMBINED_LAYER_ID = "oklahoma-county-poi-combined";

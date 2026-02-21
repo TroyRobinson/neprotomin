@@ -162,6 +162,10 @@ const STAT_EXTREME_GOOD_ICON_ID = "stat-extreme-triangle-good";
 const STAT_EXTREME_BAD_ICON_ID = "stat-extreme-triangle-bad";
 const STAT_EXTREME_NEUTRAL_ICON_ID = "stat-extreme-triangle-neutral";
 const STAT_EXTREME_ICON_SIZE = 1.08;
+// Combined icon: two stacked triangles (high↑ on top, low↓ on bottom) for co-located extrema.
+type ExtremaTone = "good" | "bad" | "neutral";
+const statExtremeCombinedIconId = (highTone: ExtremaTone, lowTone: ExtremaTone) =>
+  `stat-extreme-combined-${highTone}-${lowTone}`;
 
 const getMapStyle = (theme: ThemeName): string =>
   theme === "dark" ? MAP_STYLE_DARK : MAP_STYLE_LIGHT;
@@ -229,6 +233,41 @@ const createStatExtremeArrowImage = (color: string): ImageData | null => {
   return ctx.getImageData(0, 0, size, size);
 };
 
+// Two stacked triangles on a single icon: high (↑) in topColor, low (↓) in bottomColor.
+const createStatExtremeCombinedImage = (topColor: string, bottomColor: string): ImageData | null => {
+  if (typeof document === "undefined") return null;
+  const w = 20;
+  const h = 30; // taller canvas to stack two triangles with a small gap
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.clearRect(0, 0, w, h);
+
+  const drawTriangle = (color: string, tipX: number, tipY: number, baseY: number) => {
+    const halfBase = 7;
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(tipX - halfBase, baseY);
+    ctx.lineTo(tipX + halfBase, baseY);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.4;
+    ctx.lineJoin = "miter";
+    ctx.stroke();
+  };
+
+  // High triangle pointing up (tip at top)
+  drawTriangle(topColor, w / 2, 2, 13);
+  // Low triangle pointing down (tip at bottom)
+  drawTriangle(bottomColor, w / 2, h - 2, h - 13);
+
+  return ctx.getImageData(0, 0, w, h);
+};
+
 import {
   SOURCE_ID,
   LAYER_CLUSTERS_ID,
@@ -263,6 +302,8 @@ import {
   COUNTY_STAT_EXTREME_LOW_LAYER_ID,
   COUNTY_POI_EXTREME_HIGH_LAYER_ID,
   COUNTY_POI_EXTREME_LOW_LAYER_ID,
+  ZIP_POI_COMBINED_LAYER_ID,
+  COUNTY_POI_COMBINED_LAYER_ID,
   COUNTY_BOUNDARY_SOURCE_ID,
   COUNTY_BOUNDARY_FILL_LAYER_ID,
   COUNTY_BOUNDARY_LINE_LAYER_ID,
@@ -292,7 +333,7 @@ type PoiFeature = GeoJSON.Feature<
   {
     poiKey: string;
     boundaryType: BoundaryTypeKey;
-    extremaKind: ExtremaKind;
+    extremaKind: ExtremaKind | "combined";
     areaCode: string;
     statCategory: string;
     iconId: string;
@@ -2250,6 +2291,13 @@ export const createMapView = ({
     return "neutral";
   };
 
+  // Derive the ExtremaTone ("good"|"bad"|"neutral") used for combined icon IDs.
+  const poiExtremaTone = (goodIfUp: boolean | null, extremaKind: ExtremaKind): ExtremaTone => {
+    if (goodIfUp === true) return extremaKind === "high" ? "good" : "bad";
+    if (goodIfUp === false) return extremaKind === "high" ? "bad" : "good";
+    return "neutral";
+  };
+
   const getSelectedStatZipPoiRowsForCurrentScope = () => {
     if (!selectedStatId) return [];
     const zipRows = getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", selectedCategory).filter(
@@ -2345,8 +2393,10 @@ export const createMapView = ({
   const applyPoiLayerVisibility = (showZipPoiLayers: boolean, showCountyPoiLayers: boolean) => {
     setPoiLayerState(ZIP_POI_EXTREME_HIGH_LAYER_ID, showZipPoiLayers);
     setPoiLayerState(ZIP_POI_EXTREME_LOW_LAYER_ID, showZipPoiLayers);
+    setPoiLayerState(ZIP_POI_COMBINED_LAYER_ID, showZipPoiLayers);
     setPoiLayerState(COUNTY_POI_EXTREME_HIGH_LAYER_ID, showCountyPoiLayers);
     setPoiLayerState(COUNTY_POI_EXTREME_LOW_LAYER_ID, showCountyPoiLayers);
+    setPoiLayerState(COUNTY_POI_COMBINED_LAYER_ID, showCountyPoiLayers);
   };
 
   const buildHoverPillsByArea = (): {
@@ -2553,12 +2603,21 @@ export const createMapView = ({
     let missingCountyCentroids = 0;
 
     const append = (rows: typeof zipRows, boundaryType: BoundaryTypeKey) => {
+      // Group rows by areaCode so co-located extrema can be collapsed into one badge.
+      const byArea = new Map<string, { high: typeof rows[0] | null; low: typeof rows[0] | null }>();
       for (const row of rows) {
+        const entry = byArea.get(row.areaCode) ?? { high: null, low: null };
+        if (row.extremaKind === "high" && !entry.high) entry.high = row;
+        else if (row.extremaKind === "low" && !entry.low) entry.low = row;
+        byArea.set(row.areaCode, entry);
+      }
+
+      for (const [areaCode, { high, low }] of byArea) {
         // ZIP centroids are chunk-loaded; skip rows whose centroids are not ready yet.
         const centroid =
           boundaryType === "ZIP"
-            ? getZctaCentroid(ZCTA_STATE, row.areaCode)
-            : countyCentroids.get(row.areaCode);
+            ? getZctaCentroid(ZCTA_STATE, areaCode)
+            : countyCentroids.get(areaCode);
         if (!centroid) {
           if (boundaryType === "ZIP") missingZipCentroids += 1;
           else missingCountyCentroids += 1;
@@ -2566,21 +2625,39 @@ export const createMapView = ({
         }
         if (boundaryType === "ZIP") zipFeatures += 1;
         else countyFeatures += 1;
-        features.push({
-          type: "Feature",
-          properties: {
-            poiKey: row.poiKey,
-            boundaryType,
-            extremaKind: row.extremaKind,
-            areaCode: row.areaCode,
-            statCategory: row.statCategory,
-            iconId: poiIconForRow(row.goodIfUp, row.extremaKind),
-          },
-          geometry: {
-            type: "Point",
-            coordinates: centroid,
-          },
-        });
+
+        if (high && low) {
+          // Both a high and a low extremum share this centroid — emit a single combined badge.
+          const highTone = poiExtremaTone(high.goodIfUp, "high");
+          const lowTone = poiExtremaTone(low.goodIfUp, "low");
+          features.push({
+            type: "Feature",
+            properties: {
+              poiKey: `${areaCode}::combined::${boundaryType}`,
+              boundaryType,
+              extremaKind: "combined",
+              areaCode,
+              statCategory: high.statCategory,
+              iconId: statExtremeCombinedIconId(highTone, lowTone),
+            },
+            geometry: { type: "Point", coordinates: centroid },
+          });
+        } else {
+          // Only one direction present — render the single triangle as before.
+          const row = (high ?? low)!;
+          features.push({
+            type: "Feature",
+            properties: {
+              poiKey: row.poiKey,
+              boundaryType,
+              extremaKind: row.extremaKind,
+              areaCode: row.areaCode,
+              statCategory: row.statCategory,
+              iconId: poiIconForRow(row.goodIfUp, row.extremaKind),
+            },
+            geometry: { type: "Point", coordinates: centroid },
+          });
+        }
       }
     };
 
@@ -2748,8 +2825,10 @@ export const createMapView = ({
     hideLayer(COUNTY_STAT_EXTREME_LOW_LAYER_ID, "county");
     setPoiLayerState(ZIP_POI_EXTREME_HIGH_LAYER_ID, false);
     setPoiLayerState(ZIP_POI_EXTREME_LOW_LAYER_ID, false);
+    setPoiLayerState(ZIP_POI_COMBINED_LAYER_ID, false);
     setPoiLayerState(COUNTY_POI_EXTREME_HIGH_LAYER_ID, false);
     setPoiLayerState(COUNTY_POI_EXTREME_LOW_LAYER_ID, false);
+    setPoiLayerState(COUNTY_POI_COMBINED_LAYER_ID, false);
   }
 
   // Keep extrema indicators as MapLibre symbol layers so they stay centered during zoom/pan/style swaps.
@@ -2839,6 +2918,22 @@ export const createMapView = ({
       });
     }
 
+    // Register the 9 combined icon variants (3 high tones × 3 low tones) the first time layers are set up.
+    const toneColors: Record<ExtremaTone, string> = {
+      good: STAT_EXTREME_GOOD_COLOR,
+      bad: STAT_EXTREME_BAD_COLOR,
+      neutral: STAT_EXTREME_NEUTRAL_COLOR,
+    };
+    for (const highTone of ["good", "bad", "neutral"] as ExtremaTone[]) {
+      for (const lowTone of ["good", "bad", "neutral"] as ExtremaTone[]) {
+        const id = statExtremeCombinedIconId(highTone, lowTone);
+        if (!map.hasImage(id)) {
+          const image = createStatExtremeCombinedImage(toneColors[highTone], toneColors[lowTone]);
+          if (image) try { map.addImage(id, image, { pixelRatio: 2 }); } catch {}
+        }
+      }
+    }
+
     const addPoiLayer = (
       layerId: string,
       boundaryType: BoundaryTypeKey,
@@ -2901,6 +2996,47 @@ export const createMapView = ({
       "COUNTY",
       "low",
       180,
+      boundaryMode === "counties",
+    );
+
+    // Combined badge layers — no rotation since the icon already encodes both directions.
+    const addCombinedPoiLayer = (layerId: string, boundaryType: BoundaryTypeKey, visible: boolean) => {
+      if (map.getLayer(layerId)) return;
+      addedLayer = true;
+      const before = map.getLayer(LAYER_CLUSTERS_ID) ? LAYER_CLUSTERS_ID : undefined;
+      const layer: any = {
+        id: layerId,
+        type: "symbol",
+        source: POINTS_OF_INTEREST_SOURCE_ID,
+        filter: [
+          "all",
+          ["==", ["get", "boundaryType"], boundaryType],
+          ["==", ["get", "extremaKind"], "combined"],
+        ],
+        layout: {
+          visibility: visible ? "visible" : "none",
+          "icon-image": ["coalesce", ["get", "iconId"], statExtremeCombinedIconId("neutral", "neutral")],
+          "icon-size": STAT_EXTREME_ICON_SIZE,
+          "icon-anchor": "center",
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+        },
+        paint: {
+          "icon-opacity": visible ? 1 : 0,
+        },
+      };
+      if (before) map.addLayer(layer, before);
+      else map.addLayer(layer);
+    };
+
+    addCombinedPoiLayer(
+      ZIP_POI_COMBINED_LAYER_ID,
+      "ZIP",
+      boundaryMode === "zips" && !zipGeometryHiddenDueToZoom,
+    );
+    addCombinedPoiLayer(
+      COUNTY_POI_COMBINED_LAYER_ID,
+      "COUNTY",
       boundaryMode === "counties",
     );
 
