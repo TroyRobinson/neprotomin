@@ -569,6 +569,12 @@ export const createMapView = ({
   const HOVER_PREVIEW_TRAIL_MS = 120;
   let cancelZipBoundaryLeaveClear: (() => void) | null = null;
   let cancelCountyBoundaryLeaveClear: (() => void) | null = null;
+  // Track last map-committed hover to detect React echo-back in setHoveredZip/County.
+  // The map fires onZipHoverChange(A) → React stores it → useEffect echoes
+  // setHoveredZip(A) back, which would latch hoveredZipFromToolbar and block
+  // subsequent hover transitions. The tracker lets us skip the echo.
+  let lastMapCommittedZipHover: string | null = null;
+  let lastMapCommittedCountyHover: string | null = null;
   let userLocation: { lng: number; lat: number } | null = initialUserLocation;
   let pendingUserLocationUpdate = Boolean(initialUserLocation);
   // Track pointer press state so quick taps zoom and sustained presses select.
@@ -3650,6 +3656,7 @@ export const createMapView = ({
         cancelZipBoundaryLeaveClearLocal();
         clearZipPreviewHover();
         hoveredZipFromMap = zip;
+        lastMapCommittedZipHover = zip;
         zipSelection.updateHover();
         if (mapInMotion) {
           pendingZipHover = zip;
@@ -3762,14 +3769,15 @@ export const createMapView = ({
       };
       map.on("click", handleBoundaryClick);
       map.on("dblclick", handleBoundaryDoubleClick);
+      // Only register enter/leave/move on the base and statdata fill layers.
+      // The hover fill layer's filter changes on every area transition, so its
+      // mouseleave events are spurious and cause leave-clear timers to fire
+      // after the preview was already set for the next area.
       map.on("mouseenter", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseEnter);
-      map.on("mouseenter", BOUNDARY_HOVER_FILL_LAYER_ID, onBoundaryMouseEnter);
       map.on("mouseenter", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseEnter);
       map.on("mouseleave", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseLeave);
-      map.on("mouseleave", BOUNDARY_HOVER_FILL_LAYER_ID, onBoundaryMouseLeave);
       map.on("mouseleave", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseLeave);
       map.on("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
-      map.on("mousemove", BOUNDARY_HOVER_FILL_LAYER_ID, onZipMouseMove);
       map.on("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
 
       // Dwell time for county hover (same pattern as ZIP)
@@ -3788,6 +3796,7 @@ export const createMapView = ({
         cancelCountyBoundaryLeaveClearLocal();
         clearCountyPreviewHover();
         hoveredCountyFromMap = county;
+        lastMapCommittedCountyHover = county;
         countySelection.updateHover();
         countyLabels?.setHoveredZip(county);
         if (mapInMotion) {
@@ -3898,14 +3907,12 @@ export const createMapView = ({
           }
         }, HOVER_DWELL_MS);
       };
+      // Same as ZIP: skip hover fill layer to avoid spurious mouseleave events.
       map.on("mouseenter", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseEnter);
-      map.on("mouseenter", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseEnter);
       map.on("mouseenter", COUNTY_STATDATA_FILL_LAYER_ID, onCountyMouseEnter);
       map.on("mouseleave", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseLeave);
-      map.on("mouseleave", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseLeave);
       map.on("mouseleave", COUNTY_STATDATA_FILL_LAYER_ID, onCountyMouseLeave);
       map.on("mousemove", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseMove);
-      map.on("mousemove", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseMove);
       map.on("mousemove", COUNTY_STATDATA_FILL_LAYER_ID, onCountyMouseMove);
       return () => {
         // Clean up dwell timers
@@ -3924,22 +3931,16 @@ export const createMapView = ({
         map.off("click", handleBoundaryClick);
         map.off("dblclick", handleBoundaryDoubleClick);
         map.off("mouseenter", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseEnter);
-        map.off("mouseenter", BOUNDARY_HOVER_FILL_LAYER_ID, onBoundaryMouseEnter);
         map.off("mouseenter", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseEnter);
         map.off("mouseleave", BOUNDARY_FILL_LAYER_ID, onBoundaryMouseLeave);
-        map.off("mouseleave", BOUNDARY_HOVER_FILL_LAYER_ID, onBoundaryMouseLeave);
         map.off("mouseleave", BOUNDARY_STATDATA_FILL_LAYER_ID, onBoundaryMouseLeave);
         map.off("mousemove", BOUNDARY_FILL_LAYER_ID, onZipMouseMove);
-        map.off("mousemove", BOUNDARY_HOVER_FILL_LAYER_ID, onZipMouseMove);
         map.off("mousemove", BOUNDARY_STATDATA_FILL_LAYER_ID, onZipMouseMove);
         map.off("mouseenter", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseEnter);
-        map.off("mouseenter", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseEnter);
         map.off("mouseenter", COUNTY_STATDATA_FILL_LAYER_ID, onCountyMouseEnter);
         map.off("mouseleave", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseLeave);
-        map.off("mouseleave", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseLeave);
         map.off("mouseleave", COUNTY_STATDATA_FILL_LAYER_ID, onCountyMouseLeave);
         map.off("mousemove", COUNTY_BOUNDARY_FILL_LAYER_ID, onCountyMouseMove);
-        map.off("mousemove", COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID, onCountyMouseMove);
         map.off("mousemove", COUNTY_STATDATA_FILL_LAYER_ID, onCountyMouseMove);
         countyInteractionLayers.forEach((layerId) => {
           map.off("mousedown", layerId, handleCountyPointerDown);
@@ -4666,6 +4667,16 @@ export const createMapView = ({
       zipSelection.setPinnedIds(zips, { shouldZoom: false, notify: false });
     },
     setHoveredZip: (zip: string | null) => {
+      // Skip if this is React echoing back the map's own committed hover.
+      // The map fires onZipHoverChange(A) → React stores it → useEffect
+      // echoes setHoveredZip(A) back. Without this guard the echo latches
+      // hoveredZipFromToolbar, blocking subsequent map hover transitions.
+      // Use lastMapCommittedZipHover instead of hoveredZipFromMap because
+      // the map may have already cleared hoveredZipFromMap by the time
+      // the React render + useEffect fires.
+      const isMapEcho = zip != null && zip === lastMapCommittedZipHover;
+      lastMapCommittedZipHover = null;
+      if (isMapEcho) return;
       hoveredZipFromToolbar = zip;
       if (zip) clearZipPreviewHover();
       zipSelection.updateHover();
@@ -4680,6 +4691,10 @@ export const createMapView = ({
       countySelection.setPinnedIds(counties, { shouldZoom: false, notify: false });
     },
     setHoveredCounty: (county: string | null) => {
+      // Same echo guard as zip (see comment in setHoveredZip).
+      const isMapEcho = county != null && county === lastMapCommittedCountyHover;
+      lastMapCommittedCountyHover = null;
+      if (isMapEcho) return;
       hoveredCountyFromToolbar = county;
       if (county) clearCountyPreviewHover();
       countySelection.updateHover();

@@ -129,6 +129,11 @@ export const createZipLabels = ({
     const rowPills = Array.from(element.querySelectorAll<HTMLElement>("[data-extrema-pill='1']"));
     element.dataset.extremaExit = "1";
     element.style.pointerEvents = "none";
+    // Also kill pointer-events on bridge/dropdown children so the fading
+    // tooltip can't intercept hover and re-latch hoveredFromPill state.
+    for (const tooltip of element.querySelectorAll<HTMLElement>("[data-extrema-tooltip='1']")) {
+      tooltip.style.pointerEvents = "none";
+    }
     if (animateContainerFade) {
       element.style.transition = labelFadeTransition;
       element.style.opacity = "0";
