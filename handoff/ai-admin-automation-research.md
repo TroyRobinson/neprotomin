@@ -318,3 +318,86 @@ Use a hybrid of "copilot + constrained agent":
 *   During active execution, poll `get_run` to refresh `run.status`, `run.steps`, and `run.events`.
 *   Disable step advancement controls while run is `paused`, `failed`, `completed`, or `stopped`.
 *   Treat `409` on `run_next_step` as a control-state signal (paused/conflict/invalid transition), not just a generic error.
+
+## 14. Conversation-First Product Direction (Confirmed)
+
+Date captured: 2026-02-21
+
+### Clarification Q&A log (for implementation)
+1. Question: Should plan generation wait for explicit user go-ahead?
+   Answer: Agent should wait for go-ahead by prompt policy, but may ask user if they want a plan draft after conversation lull.
+   Implementation impact: Chat system prompt should enforce `no plan draft until user approval signal` while allowing polite check-ins.
+2. Question: What should plan cards include?
+   Answer: Include plain-English stat titles plus small gray metadata per variable (ID, Universe, Dataset, Vintage, Type, Concept), plus derived formula explanations and a family tree view (grandparent/children/grandchildren titles).
+   Implementation impact: Slice 5 plan UI must render rich evidence blocks, derived formula narration, and family tree summary.
+3. Question: Should variable selections be a manual UI checklist or conversational edits?
+   Answer: Conversational only for now; agent updates and re-sends latest plan as chat evolves.
+   Implementation impact: No separate variable picker in Slice 5; rely on message-driven plan revisions.
+4. Question: How should plan edits happen?
+   Answer: Through chat only.
+   Implementation impact: Plan UI needs a read-only preview + Approve action; corrections are done in message thread.
+5. Question: How should execution run?
+   Answer: Step-by-step with progress bar at bottom of chat and cancel button; cancel stops run; user may manually clean partial data from stats list.
+   Implementation impact: Use `run_next_step` loop in UI with clear progress indicator and `stop_run` binding for cancel.
+6. Question: Should chat history be stored?
+   Answer: Yes; persist chat histories and list of generated stat IDs associated to that chat (prefer InstantDB).
+   Implementation impact: Add persistence model for one thread + messages + linked run IDs/stat IDs in a follow-up slice.
+7. Question: How should duplicates be handled?
+   Answer: Plan should check for existing target stats and block approval for duplicate creates; using existing stats as derived operands is allowed.
+   Implementation impact: Keep preflight conflict gating before approval/execution for creates; do not block existing-stat references used only as formula inputs.
+8. Question: How should derived reasoning be presented?
+   Answer: Agent should explain formula logic and why the formula is appropriate before plan approval.
+   Implementation impact: System prompt + response templates must include formula reasoning before draft plan presentation.
+9. Question: What should happen on minimize/navigation?
+   Answer: Preserve chat on minimize and across page navigation if simple; show unread bubble on minimized launcher.
+   Implementation impact: Persist thread state in client storage + hydrate on mount; add unread counters and run-status badges.
+10. Question: One or many threads?
+    Answer: One thread for now.
+    Implementation impact: Single active admin thread keyed by admin user/session; defer multi-thread model.
+
+### Revised Slice 5 scope (UI + orchestration client)
+*   Build bottom-right Admin chat launcher + modal with:
+    *   Conversation panel
+    *   Plan preview card (read-only) + Approve button
+    *   Run timeline/status
+    *   Bottom progress bar + Cancel button
+    *   Top-right `Clear chat` button
+*   Add conversation policy in system prompt:
+    *   Explore Census options and explain meanings first.
+    *   Explain derived formulas and rationale.
+    *   Only draft plan on explicit user go-ahead or after asking for permission during lull.
+*   Use existing run API commands:
+    *   `create_run` after user approves proposed plan draft
+    *   `approve_run` on click
+    *   iterative `run_next_step` for progress
+    *   `stop_run` for cancel
+    *   `get_run` for refresh/poll
+*   Add plan rendering details:
+    *   Plain-English titles
+    *   Small metadata text (ID/Universe/Dataset/Vintage/Type/Concept)
+    *   Derived formula section using generated stat names
+    *   Family tree title-only visualization
+*   Add pre-approval duplicate check display in plan card:
+    *   If duplicate create detected, disable approval and instruct user to adjust plan.
+
+### Revised Slice 6 scope (state persistence + one-thread memory)
+*   Persist one chat thread and messages (InstantDB preferred).
+*   Persist run links + generated stat IDs for traceability.
+*   Restore chat state when modal is reopened or after page navigation.
+*   Maintain unread bubble counts while minimized.
+
+### Revised Slice 7 scope (audit + provenance hardening)
+*   Extend existing run audit with chat linkage:
+    *   thread id
+    *   message ids used for approval context
+    *   approved plan snapshot
+*   Tag created entities with run metadata where feasible (`aiRunId`, `createdVia`).
+
+### Revised Slice 8 scope (safety + rollout hardening)
+*   Keep create-only blast radius enforcement.
+*   Keep duplicate-create blocking as an approval gate.
+*   Explicit user-facing behavior for partial runs on cancel (`stop_run`) and manual cleanup guidance.
+
+### Additional future slice (optional)
+*   Multi-thread chat support is explicitly deferred.
+*   If needed later, add a dedicated slice for multiple saved threads and thread switching UX.
