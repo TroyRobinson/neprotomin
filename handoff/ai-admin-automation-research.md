@@ -401,3 +401,173 @@ Date captured: 2026-02-21
 ### Additional future slice (optional)
 *   Multi-thread chat support is explicitly deferred.
 *   If needed later, add a dedicated slice for multiple saved threads and thread switching UX.
+
+## 15. Post-Slice 5 Observations + Scope Adjustments (2026-02-21)
+
+### What failed in live testing
+*   User requested business-count stats with size disaggregation, but generated plans proposed unrelated ACS groups/variables (e.g., `B01001` sex/age and `B28001` computing devices).
+*   Chat model often produced plausible plain-text planning language before grounded evidence was validated.
+*   Plan card showed non-executable derived/family steps, creating understandable confusion about why they cannot run in the same approved flow yet.
+
+### Root causes
+*   Planner currently biases to `acs/acs5` and does not yet enforce a strict relevance threshold between user intent and selected Census group/variable evidence.
+*   Planning fallback can still produce a "best available" group even when semantic fit is weak.
+*   Derived/family execution requires resolved stat ids, but planner output still describes variable/name-level intents.
+*   Execution pipeline has no dependency resolver yet to map import outputs (`createdStatId`) into downstream derived/family action payloads.
+
+### Confirmed UX direction update
+Add an explicit, grounded "search first" workflow before plan approval:
+*   Keep conversational flow.
+*   Show a user-reviewable list of Census variables sourced from real Census metadata/evidence before plan drafting.
+*   Add a dedicated Search button in chat UI (next to/near plan trigger) so user can request fresh evidence search at any time.
+
+### New implementation slices
+
+#### Slice 5A: Grounded Census search results in chat
+*   Add a read-only search action/endpoint for "candidate variables" with evidence:
+    *   Dataset/group/variable id
+    *   Concept + universe
+    *   Availability checks
+    *   Simple relevance score/reason against user request
+*   Render search-result cards in chat thread (not plain text only).
+*   Add explicit Search button in chat composer as manual trigger for new evidence pass.
+*   Verification:
+    *   For prompt "business count by size", search cards should show business-relevant candidates or an explicit "no strong match yet" response (not unrelated demographics/computers by default).
+
+#### Slice 5B: Relevance gating before plan generation
+*   Block or warn plan generation when evidence relevance is below threshold.
+*   If confidence is low, assistant asks clarifying question instead of drafting executable imports.
+*   Require plan draft to reference selected/confirmed search candidates.
+*   Verification:
+    *   Plan draft is not produced from weakly related groups unless user explicitly overrides.
+
+#### Slice 5C: Dependency resolution for one-run execution (imports -> derived -> family)
+*   Resolve variable-based derived intents into stat-id payloads after import steps complete.
+*   Resolve family parent/child names into concrete stat ids (newly created or pre-existing where allowed).
+*   Permit a single approved run to execute:
+    1. import steps
+    2. derived creation
+    3. family-link creation
+*   Keep create-only guardrails unchanged.
+*   Verification:
+    *   End-to-end run creates imported stats, then derived stats, then family links in one run without manual intervention.
+
+### Clarification note for current behavior
+The "Planned in Slice 3 only" blocker text is expected with current backend shape: those steps are intentionally retained as future intents until dependency resolution wiring is implemented.
+
+## 16. Slice 5A Completion (2026-02-21)
+
+### Implemented
+*   Added grounded Census search mode to chat endpoint: `api/ai-admin-chat.ts`
+    *   New `requestSearch: true` request path.
+    *   Search is read-only and evidence-backed from Census metadata (`groups.json` + group metadata + resolved variables + availability summaries).
+    *   Response now returns a structured `search` payload with:
+        *   query, dataset, year
+        *   matched groups with relevance score/reason
+        *   per-variable metadata (id, label, stat name, inferred type, concept, ZIP/County row counts)
+        *   warnings for weak/no matches or per-group inspection failures
+*   Added chat endpoint test coverage: `api/ai-admin-chat.test.ts`
+    *   Verifies `requestSearch` returns structured grounded search results and does not draft plan.
+*   Updated admin chat UI: `src/react/components/AdminAiChatModal.tsx`
+    *   Added Search button in composer (adjacent to plan button).
+    *   Added search loading state (`Searching Census variables...`).
+    *   Renders grounded search result cards directly in chat thread (not plain text only).
+    *   Cards show group metadata and variable metadata in user-reviewable format before planning.
+
+### Verification
+1. Open admin screen and AI chat modal.
+2. Send user context message like: `I want business count with size disaggregation`.
+3. Click the new Search (magnifier) button.
+4. Confirm chat shows:
+   *   assistant search status message
+   *   grounded search cards with Census group ids and variable ids
+   *   metadata rows (Universe, Dataset, Vintage, Type, Concept)
+5. Confirm no plan is drafted unless plan is explicitly requested.
+
+## 17. Generalized Dataset Scope Direction (2026-02-21)
+
+### User-approved additions (beyond business-only handling)
+1. Add a dataset capability registry so the agent can clearly state what is searchable/importable now versus out-of-range.
+2. Expand grounded search to run across an allowlist of supported datasets (not ACS-only).
+3. Show result-card badges/status indicating `Importable now`, `Research-only`, or `Out of range`, with concise reason.
+
+### Implementation status
+*   Item 1 implemented in this pass.
+*   Items 2 and 3 are queued for the next slice.
+
+### Item 1 completion details
+*   Added shared capability registry module: `api/_shared/censusDatasetCapabilities.ts`
+    *   Includes current dataset support metadata (`acs/acs5`, profile/subject/cprofile, `cbp`, `abscb`).
+    *   Tracks searchable/importable flags, support tier, geography coverage, and notes.
+*   Wired registry into grounded search response in `api/ai-admin-chat.ts`
+    *   Search responses now include:
+        *   `datasetCapability` for the requested dataset
+        *   `knownDatasetCapabilities` for transparent scope reporting
+    *   If dataset is not in registry (or marked non-searchable), warnings are returned explicitly.
+
+## 18. Auto-Search Initiative + Grounded Follow-up Context (2026-02-21)
+
+### Implemented
+*   `api/ai-admin-chat.ts`
+    *   Added auto-search trigger for clear stat-intent messages (unless user explicitly requested plan or manually triggered search).
+    *   Search messaging is now sequenced for clarity:
+        1. brainstorming/intent framing message
+        2. grounded search evidence payload
+        3. post-search review + recommendations
+    *   Search now returns an immediate review-style assistant message summarizing:
+        *   dataset scope/support tier
+        *   top group/variable candidates
+        *   whether results are review-only versus importable now
+    *   Response includes `autoSearchTriggered` to make behavior explicit for clients/debugging.
+*   `src/react/components/AdminAiChatModal.tsx`
+    *   Added serialization of grounded search evidence into message context sent back to the chat API.
+    *   This allows follow-up prompts (e.g., "do these match?") to reference prior search results correctly.
+    *   Added dataset scope line in search cards and warning rendering from search payload.
+    *   Send-state now shows `Searching Census variables...` for likely stat-intent chat turns.
+
+### Verification
+1. Send a stat-intent message (without pressing Search), e.g. `business size disaggregate`.
+2. Confirm chat auto-runs grounded search:
+   *   spinner shows search wording
+   *   assistant posts immediate review summary
+   *   search cards are appended after summary
+3. Ask follow-up `do these search results match?`
+4. Confirm assistant references prior grounded search evidence (instead of claiming no results were shown).
+
+## 19. Relevance + Routing Hardening (2026-02-21)
+
+### Implemented
+*   `api/ai-admin-chat.ts`
+    *   Improved term normalization to avoid malformed stems (e.g., `businesses -> business`).
+    *   Reworked brainstorm-term expansion to use a constrained allowlist + intent terms instead of broad sentence tokens.
+    *   Added explicit business-intent relevance gating so non-business ACS groups are downranked/filtered for business prompts.
+    *   Added optional auto-routing for business intent to research-only datasets (`cbp`, `abscb`) when needed.
+    *   Added no-valid-match behavior for business intents so the assistant does not summarize unrelated top matches as valid.
+    *   Search payload now includes `searchedDatasets`, per-group `supportTier`, and intent metadata for clearer UI/context.
+*   `src/react/components/AdminAiChatModal.tsx`
+    *   Search cards now show searched datasets and per-group support tier labels (`Importable now` / `Research-only`).
+    *   Search evidence serialization includes searched dataset and support tier context for follow-up model reasoning.
+
+### Verification
+1. Send: `a count of businesses, and include disaggregate stats by business size`.
+2. Confirm search terms are concise keyword-like terms (not long sentence fragments).
+3. Confirm non-business ACS family/household tables are no longer presented as top business matches.
+4. If importable ACS business matches are unavailable, confirm chat can surface research-only business dataset matches with explicit labeling.
+5. If no high-confidence business match exists, confirm assistant states that clearly instead of implying unrelated matches are good.
+
+## 20. Post-Search Summary UX Tightening (2026-02-21)
+
+### Implemented
+*   `api/ai-admin-chat.ts`
+    *   Post-search review now formats top matches as interpreted bullet points using short human-readable titles plus variable IDs.
+    *   Added fallback title logic so code-only concepts (`Bxxxx`) do not appear as the only user-facing title in summary text.
+    *   Added explicit review-line surfacing for research-only alternatives when importable matches are present.
+*   `src/react/components/AdminAiChatModal.tsx`
+    *   Search card now includes a dedicated "Research-only alternatives" section when alternatives exist.
+    *   Serialized search evidence includes alternative/tier context for follow-up assistant reasoning.
+
+### Verification
+1. Run a business-size prompt and confirm post-search review includes bullet list items with readable titles and `(VARIABLE_ID)`.
+2. Confirm that when research-only alternatives exist, they appear in both:
+   *   review message summary
+   *   search-card alternatives block

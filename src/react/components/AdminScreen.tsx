@@ -19,6 +19,7 @@ import {
   type DerivedStatOption,
 } from "./DerivedStatModal";
 import { AdminOrgsPanel } from "./AdminOrgsPanel";
+import { AdminAiChatModal } from "./AdminAiChatModal";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
 
 // Stat item from InstantDB stats table
@@ -3346,6 +3347,10 @@ const fuzzyMatch = (text: string, query: string): boolean => {
 
 export const AdminScreen = () => {
   const { authReady, user } = useAuthSession();
+  const aiCallerEmail =
+    user && typeof (user as { email?: unknown }).email === "string"
+      ? ((user as { email?: string }).email ?? null)
+      : null;
   const queryEnabled = authReady;
   const [activeTab, setActiveTab] = useState<"stats" | "orgs" | "batches">("stats");
   const [isTabDropdownOpen, setIsTabDropdownOpen] = useState(false);
@@ -6182,6 +6187,7 @@ export const AdminScreen = () => {
           </div>
         </div>
       )}
+      <AdminAiChatModal callerEmail={aiCallerEmail} />
     </div>
   );
 };

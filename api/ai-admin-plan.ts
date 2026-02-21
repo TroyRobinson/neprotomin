@@ -5,6 +5,7 @@ import {
   validateAiAdminPlanRequest,
   type AiAdminAction,
 } from "./_shared/aiAdminPlan.ts";
+import { createAiAdminDb, findExistingStatConflicts } from "./_shared/aiAdminActions.ts";
 import {
   deriveStatName,
   fetchGroupMetadata,
@@ -108,6 +109,17 @@ type PlanHandlerDeps = {
   planFromModel?: (input: PlanFromModelInput) => Promise<PlannedIntent | null>;
   searchGroups?: (dataset: string, year: number, prompt: string, limit: number) => Promise<CensusGroupMatch[]>;
   inspectImportCandidate?: (candidate: ImportCandidate) => Promise<ImportEvidence>;
+  detectPreflightConflicts?: (actions: AiAdminAction[]) => Promise<
+    Array<{
+      actionId: string;
+      actionType: string;
+      reason: string;
+      statId?: string;
+      statName?: string;
+      neId?: string;
+      detail: string;
+    }>
+  >;
   now?: () => number;
 };
 
@@ -554,6 +566,11 @@ const defaultInspectImportCandidate = async (candidate: ImportCandidate): Promis
   }
 };
 
+const defaultDetectPreflightConflicts = async (actions: AiAdminAction[]) => {
+  const db = createAiAdminDb();
+  return findExistingStatConflicts(db, actions);
+};
+
 const dedupeImportCandidates = (input: ImportCandidate[]): ImportCandidate[] => {
   const seen = new Set<string>();
   const out: ImportCandidate[] = [];
@@ -581,6 +598,7 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
   const planFromModel = deps.planFromModel ?? defaultModelPlanning;
   const searchGroups = deps.searchGroups ?? defaultSearchGroups;
   const inspectImportCandidate = deps.inspectImportCandidate ?? defaultInspectImportCandidate;
+  const detectPreflightConflicts = deps.detectPreflightConflicts ?? defaultDetectPreflightConflicts;
   const now = deps.now ?? (() => Date.now());
 
   return async function handler(req: AiAdminPlanRequest, res: AiAdminPlanResponse) {
@@ -931,6 +949,17 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
       return;
     }
 
+    let preflightConflicts: Awaited<ReturnType<typeof detectPreflightConflicts>> = [];
+    let preflightCheck: "ok" | "unavailable" = "ok";
+    try {
+      preflightConflicts = await detectPreflightConflicts(draftValidation.plan.actions);
+    } catch (error) {
+      preflightCheck = "unavailable";
+      const message =
+        error instanceof Error ? error.message : "Preflight duplicate check unavailable.";
+      researchWarnings.push(`Preflight duplicate check fallback: ${message}`);
+    }
+
     const unresolvedSteps = steps.filter((step) => !step.executableNow);
     const overallConfidence = deriveOverallConfidence(intent?.confidence ?? 0.45, importEvidence);
 
@@ -946,6 +975,9 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
         steps,
         actions: allPlannedActions,
         executeRequestDraft: draftValidation.plan,
+        preflightCheck,
+        preflightConflicts,
+        approvalBlocked: preflightCheck === "ok" && preflightConflicts.length > 0,
         unresolvedSteps: unresolvedSteps.map((step) => ({
           stepId: step.id,
           type: step.type,
