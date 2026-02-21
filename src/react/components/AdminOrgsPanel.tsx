@@ -277,51 +277,55 @@ const OrgImportModal = ({
     }
   }, [category, state, city, includeKeywords, excludeKeywords, limit, derivedNtee]);
 
-  const handleImport = useCallback(async () => {
+  const handleImport = useCallback(() => {
     setIsImporting(true);
     setError(null);
-    try {
-      const response = await fetch("/api/org-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category,
-          nteePrefix: derivedNtee,
-          state,
-          city,
-          includeKeywords,
-          excludeKeywords,
-          limit,
-          importAll,
-          label: label.trim() || suggestedLabel,
-          createdBy: user?.email ?? null,
-        }),
-      });
-      const rawText = await response.text();
-      let payload: any = null;
+    // Close immediately; import continues in background and progress appears in banner/batches.
+    onClose();
+    void (async () => {
       try {
-        payload = rawText ? JSON.parse(rawText) : null;
-      } catch {
-        payload = null;
+        const response = await fetch("/api/org-import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            category,
+            nteePrefix: derivedNtee,
+            state,
+            city,
+            includeKeywords,
+            excludeKeywords,
+            limit,
+            importAll,
+            label: label.trim() || suggestedLabel,
+            createdBy: user?.email ?? null,
+          }),
+        });
+        const rawText = await response.text();
+        let payload: any = null;
+        try {
+          payload = rawText ? JSON.parse(rawText) : null;
+        } catch {
+          payload = null;
+        }
+        if (!response.ok || !payload?.ok) {
+          const isSourceEcho =
+            rawText && rawText.includes("import { fetchProPublicaOrgs") && rawText.includes("export default async function handler");
+          const message = isSourceEcho
+            ? "Import API route is not running in dev. Start your serverless functions (e.g., `vercel dev`) so /api/org-import executes."
+            : (payload?.error || payload?.details || rawText || "Import failed") + ` (status ${response.status})`;
+          throw new Error(message);
+        }
+        if (payload?.batchId && onImportStarted) {
+          onImportStarted(payload.batchId);
+        }
+        if (onImported) onImported();
+      } catch (err: any) {
+        console.error("Org import failed", err);
+        setError(err?.message ?? "Import failed");
+      } finally {
+        setIsImporting(false);
       }
-      if (!response.ok || !payload?.ok) {
-        const isSourceEcho =
-          rawText && rawText.includes("import { fetchProPublicaOrgs") && rawText.includes("export default async function handler");
-        const message = isSourceEcho
-          ? "Import API route is not running in dev. Start your serverless functions (e.g., `vercel dev`) so /api/org-import executes."
-          : (payload?.error || payload?.details || rawText || "Import failed") + ` (status ${response.status})`;
-        throw new Error(message);
-      }
-      if (payload?.batchId && onImportStarted) {
-        onImportStarted(payload.batchId);
-      }
-      setIsImporting(false);
-      if (onImported) onImported();
-      onClose();
-    } catch (err: any) {
-      setIsImporting(false);
-      setError(err?.message ?? "Import failed");
-    }
+    })();
   }, [
     category,
     state,
