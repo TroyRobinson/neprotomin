@@ -1921,7 +1921,10 @@ export const createMapView = ({
   const updateZipHoverOutline = () => {
     const hovered = hoveredZipFromToolbar || hoveredZipFromPill || hoveredZipFromMap;
     const visualHovered = hovered || hoveredZipPreviewFromMap;
-    const previewOnly = !hovered && Boolean(visualHovered);
+    // Keep map-origin committed hover on the same lightweight fill style as
+    // traversal preview to avoid a second overlay jump when dwell labels appear.
+    const mapCommittedHoverOnly = Boolean(hoveredZipFromMap && !hoveredZipFromToolbar && !hoveredZipFromPill);
+    const previewOnly = Boolean(visualHovered) && (!hovered || mapCommittedHoverOnly);
     if (!hovered || hoveredZipPillArea !== hovered) {
       hoveredZipPillArea = null;
       hoveredZipPillKey = null;
@@ -2008,7 +2011,9 @@ export const createMapView = ({
   const updateCountyHoverOutline = () => {
     const hovered = hoveredCountyFromToolbar || hoveredCountyFromPill || hoveredCountyFromMap;
     const visualHovered = hovered || hoveredCountyPreviewFromMap;
-    const previewOnly = !hovered && Boolean(visualHovered);
+    // Match ZIP behavior: map dwell should not introduce a second stronger fill.
+    const mapCommittedHoverOnly = Boolean(hoveredCountyFromMap && !hoveredCountyFromToolbar && !hoveredCountyFromPill);
+    const previewOnly = Boolean(visualHovered) && (!hovered || mapCommittedHoverOnly);
     if (!hovered || hoveredCountyPillArea !== hovered) {
       hoveredCountyPillArea = null;
       hoveredCountyPillKey = null;
