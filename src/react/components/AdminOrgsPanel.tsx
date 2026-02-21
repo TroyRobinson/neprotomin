@@ -472,7 +472,7 @@ const OrgImportModal = ({
                 onChange={(e) => setImportAll(e.target.checked)}
                 className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-slate-700 dark:bg-slate-800"
               />
-              Import all matches (up to limit)
+              Extensive import (through pages)
             </label>
           </div>
         </div>
