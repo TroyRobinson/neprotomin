@@ -97,6 +97,9 @@ const CATEGORY_CHIP_SELECTED_CLASSES =
 const STAT_CHIP_SELECTED_CLASSES =
   "border-[1.5px] border-brand-500 bg-white text-brand-700 font-semibold shadow-floating hover:border-brand-500 hover:bg-white dark:border-brand-400 dark:bg-black dark:text-brand-300 dark:hover:border-brand-300 dark:hover:bg-black dark:!backdrop-blur-none";
 
+const STAT_YEAR_CHIP_CLASSES =
+  "border-transparent bg-white text-brand-700 font-semibold shadow-floating hover:bg-white dark:bg-black dark:text-brand-300 dark:hover:bg-black dark:!backdrop-blur-none";
+
 const CATEGORY_CHIP_INACTIVE_FEATURED_CLASSES =
   "border-slate-300 bg-slate-200 text-slate-700 shadow-sm hover:bg-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200";
 
@@ -254,6 +257,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   // Note: statWrapper lives inside the same flex row so it aligns immediately
   // to the right of the selected category chip.
   list.appendChild(statWrapper);
+  const selectedStatYearChip = document.createElement("span");
+  selectedStatYearChip.className = `${CATEGORY_CHIP_CLASSES} ${STAT_YEAR_CHIP_CLASSES}`;
+  selectedStatYearChip.textContent = "2023";
+  selectedStatYearChip.setAttribute("aria-hidden", "true");
 
   // Orgs chip now lives inside the Showing tooltip panel (desktop only).
   const orgsChipBtn = document.createElement("button");
@@ -265,7 +272,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   orgsLabel.className = "whitespace-nowrap";
   const orgsClose = document.createElement("span");
   orgsClose.innerHTML = CLOSE_ICON;
-  orgsClose.className = "-mr-1 flex items-center";
+  orgsClose.className = "-mr-0.5 mt-0.5 flex items-center";
   const updateOrgsChipState = () => {
     const isOn = orgsChipVisible;
     orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} w-full justify-between ${isOn ? ORGS_CHIP_ON_CLASSES : ORGS_CHIP_OFF_CLASSES}`;
@@ -1243,6 +1250,21 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     return Array.from(deduped.values());
   };
 
+  const renderSelectedStatYearChip = (selectedLabel: string | null) => {
+    const normalizedLabel = selectedLabel?.toLowerCase() ?? "";
+    const shouldShow =
+      !isMobile &&
+      Boolean(selectedStatId) &&
+      Boolean(selectedLabel) &&
+      !normalizedLabel.includes("change");
+    if (!shouldShow) {
+      selectedStatYearChip.remove();
+      return;
+    }
+    // Keep the year chip immediately to the right of the selected stat chip.
+    statWrapper.appendChild(selectedStatYearChip);
+  };
+
   // Selected stat chip can switch between related stat variants via an inline menu.
   const buildSelectedStatDropdownChip = (
     stat: Stat,
@@ -1515,6 +1537,18 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     cleanupStatEntries();
     statWrapper.replaceChildren();
     const dropdownOptions = getSelectedStatDropdownOptions();
+    const selectedStatDisplayLabel = selectedStatId
+      ? (() => {
+          const selectedStat =
+            stats.find((candidate) => candidate.id === selectedStatId) ??
+            allStats.find((candidate) => candidate.id === selectedStatId);
+          if (!selectedStat) return null;
+          return (
+            dropdownOptions.find((option) => option.id === selectedStat.id)?.label ??
+            (selectedStat.label || selectedStat.name)
+          );
+        })()
+      : null;
     statEntries = stats.map((s) => {
       const shouldRenderDropdown =
         !isMobile &&
@@ -1531,6 +1565,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     });
 
     updateStatSelectionStyles();
+    renderSelectedStatYearChip(selectedStatDisplayLabel);
     applyMobileLabelWidths();
   };
 
