@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createAiAdminExecutePlanHandler } from "./ai-admin-execute-plan";
+import { resetAiAdminRunStoreForTests } from "./_shared/aiAdminRunStore";
 
 type MockReqInit = {
   method?: string;
@@ -63,6 +64,7 @@ describe("ai-admin-execute-plan guardrails", () => {
   });
 
   afterEach(() => {
+    resetAiAdminRunStoreForTests();
     if (originalApiKey === undefined) {
       delete process.env.AI_ADMIN_API_KEY;
     } else {
@@ -283,6 +285,161 @@ describe("ai-admin-execute-plan guardrails", () => {
 
     expect(state.statusCode).toBe(202);
     expect((state.payload as { runId?: string }).runId).toBe("ai-run-1234567890");
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates an awaiting-approval run and executes one step at a time after approval", async () => {
+    const writeSpy = vi.fn(async (_db, action) => ({
+      actionId: action.id,
+      actionType: action.type,
+      status: "completed",
+      createdStatId: "stat-1",
+    }));
+    const handler = createAiAdminExecutePlanHandler({
+      executeWriteAction: writeSpy as any,
+      createDb: () => ({ query: vi.fn(), transact: vi.fn() }) as any,
+      detectPreflightConflicts: vi.fn(async () => []),
+      now: () => 22334455,
+    });
+
+    const { res: createRes, state: createState } = createMockResponse();
+    await handler(
+      createMockRequest(
+        withApiKeyAuth({
+          command: "create_run",
+          callerEmail: "admin@example.com",
+          actions: [
+            {
+              id: "step-1",
+              type: "create_stat_family_links",
+              payload: { parentStatId: "p1", childStatIds: ["c1"] },
+            },
+            {
+              id: "step-2",
+              type: "research_census",
+              payload: { query: "income" },
+            },
+          ],
+        }),
+      ) as any,
+      createRes as any,
+    );
+
+    expect(createState.statusCode).toBe(202);
+    const runId = (createState.payload as { run?: { runId?: string } }).run?.runId;
+    expect(runId).toBe("ai-run-22334455");
+    expect((createState.payload as { run?: { status?: string } }).run?.status).toBe("awaiting_approval");
+
+    const { res: approveRes, state: approveState } = createMockResponse();
+    await handler(
+      createMockRequest(
+        withApiKeyAuth({
+          command: "approve_run",
+          callerEmail: "admin@example.com",
+          runId,
+        }),
+      ) as any,
+      approveRes as any,
+    );
+    expect(approveState.statusCode).toBe(200);
+    expect((approveState.payload as { run?: { status?: string } }).run?.status).toBe("approved");
+
+    const { res: next1Res, state: next1State } = createMockResponse();
+    await handler(
+      createMockRequest(
+        withApiKeyAuth({
+          command: "run_next_step",
+          callerEmail: "admin@example.com",
+          runId,
+        }),
+      ) as any,
+      next1Res as any,
+    );
+    expect(next1State.statusCode).toBe(202);
+    expect((next1State.payload as { run?: { nextActionIndex?: number } }).run?.nextActionIndex).toBe(1);
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+
+    const { res: next2Res, state: next2State } = createMockResponse();
+    await handler(
+      createMockRequest(
+        withApiKeyAuth({
+          command: "run_next_step",
+          callerEmail: "admin@example.com",
+          runId,
+        }),
+      ) as any,
+      next2Res as any,
+    );
+    expect(next2State.statusCode).toBe(202);
+    expect((next2State.payload as { run?: { status?: string } }).run?.status).toBe("completed");
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("supports pause and resume while a run is in progress", async () => {
+    const writeSpy = vi.fn(async (_db, action) => ({
+      actionId: action.id,
+      actionType: action.type,
+      status: "completed",
+    }));
+    const handler = createAiAdminExecutePlanHandler({
+      executeWriteAction: writeSpy as any,
+      createDb: () => ({ query: vi.fn(), transact: vi.fn() }) as any,
+      detectPreflightConflicts: vi.fn(async () => []),
+      now: () => 99887766,
+    });
+
+    const { res: createRes, state: createState } = createMockResponse();
+    await handler(
+      createMockRequest(
+        withApiKeyAuth({
+          command: "create_run",
+          callerEmail: "admin@example.com",
+          actions: [
+            { id: "step-1", type: "create_stat_family_links", payload: { parentStatId: "p1", childStatIds: ["c1"] } },
+            { id: "step-2", type: "create_stat_family_links", payload: { parentStatId: "p1", childStatIds: ["c2"] } },
+          ],
+        }),
+      ) as any,
+      createRes as any,
+    );
+    const runId = (createState.payload as { run?: { runId?: string } }).run?.runId;
+
+    const { res: approveRes } = createMockResponse();
+    await handler(
+      createMockRequest(withApiKeyAuth({ command: "approve_run", callerEmail: "admin@example.com", runId })) as any,
+      approveRes as any,
+    );
+
+    const { res: pauseRes, state: pauseState } = createMockResponse();
+    await handler(
+      createMockRequest(withApiKeyAuth({ command: "pause_run", callerEmail: "admin@example.com", runId })) as any,
+      pauseRes as any,
+    );
+    expect(pauseState.statusCode).toBe(200);
+    expect((pauseState.payload as { run?: { status?: string } }).run?.status).toBe("paused");
+
+    const { res: blockedNextRes, state: blockedNextState } = createMockResponse();
+    await handler(
+      createMockRequest(withApiKeyAuth({ command: "run_next_step", callerEmail: "admin@example.com", runId })) as any,
+      blockedNextRes as any,
+    );
+    expect(blockedNextState.statusCode).toBe(409);
+    expect(writeSpy).toHaveBeenCalledTimes(0);
+
+    const { res: resumeRes, state: resumeState } = createMockResponse();
+    await handler(
+      createMockRequest(withApiKeyAuth({ command: "resume_run", callerEmail: "admin@example.com", runId })) as any,
+      resumeRes as any,
+    );
+    expect(resumeState.statusCode).toBe(200);
+    expect((resumeState.payload as { run?: { status?: string } }).run?.status).toBe("running");
+
+    const { res: nextRes, state: nextState } = createMockResponse();
+    await handler(
+      createMockRequest(withApiKeyAuth({ command: "run_next_step", callerEmail: "admin@example.com", runId })) as any,
+      nextRes as any,
+    );
+    expect(nextState.statusCode).toBe(202);
     expect(writeSpy).toHaveBeenCalledTimes(1);
   });
 });

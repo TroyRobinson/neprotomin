@@ -243,3 +243,78 @@ Use a hybrid of "copilot + constrained agent":
 *   Add run orchestration that can resolve planned references (e.g., derived/family dependencies) at execution time.
 *   Stream per-step execution state into chat UI (`awaiting_approval -> running -> paused/resumed`).
 *   Persist run events and approval/audit metadata.
+
+## 12. Slice 4 Completion Details
+
+### Completed
+*   Added in-memory run orchestration store: `api/_shared/aiAdminRunStore.ts`
+    *   Run state machine implemented with statuses:
+        *   `draft -> awaiting_approval -> approved -> running -> paused -> completed | failed | stopped`
+    *   Per-step state tracked (`pending/running/completed/failed`) with timestamps.
+    *   Timestamped run events recorded for approval and step lifecycle transitions.
+*   Extended `api/ai-admin-execute-plan.ts` with command-driven run orchestration:
+    *   `create_run`: validate + preflight + create an `awaiting_approval` run.
+    *   `get_run`: fetch run snapshot.
+    *   `approve_run`: transition to `approved`.
+    *   `run_next_step`: execute exactly one next step on server.
+    *   `pause_run` / `resume_run` / `stop_run`: explicit control transitions.
+*   `run_next_step` behavior:
+    *   Executes exactly one action (read-only action returns accepted-not-executed summary; write action executes through existing create-only primitives).
+    *   Re-checks preflight conflicts for write action before executing that step; on conflict, pauses run and returns review-required response.
+    *   Records step result summary and updates run status to `completed` when last step finishes.
+*   Backward compatibility retained:
+    *   Existing direct execute path still works when no command is supplied (`mode: "execute"`).
+*   Expanded endpoint tests (`api/ai-admin-execute-plan.test.ts`) for:
+    *   create-run -> approve -> run-next-step sequencing
+    *   pause/resume gating of step execution
+    *   existing guardrail tests still passing
+
+### Verification completed during implementation
+*   `npm test -- api/ai-admin-execute-plan.test.ts`
+*   `npm test -- api/ai-admin-plan.test.ts api/ai-admin-execute-plan.test.ts`
+
+### Manual verification steps (API-level)
+1. Create run:
+   *   `POST /api/ai-admin-execute-plan` with `{ command: "create_run", callerEmail, actions: [...] }`
+   *   Expect `202`, `mode: "create_run"`, `run.status: "awaiting_approval"`.
+2. Approve:
+   *   `POST /api/ai-admin-execute-plan` with `{ command: "approve_run", runId, callerEmail }`
+   *   Expect `200`, `run.status: "approved"`.
+3. Execute step-by-step:
+   *   `POST /api/ai-admin-execute-plan` with `{ command: "run_next_step", runId, callerEmail }`
+   *   Expect one step result per call and `run.nextActionIndex` increments by 1.
+4. Pause / resume:
+   *   Pause with `{ command: "pause_run", runId }`, expect `run.status: "paused"`.
+   *   While paused, `run_next_step` should return `409`.
+   *   Resume with `{ command: "resume_run", runId }`, expect `run.status: "running"`.
+5. Completion:
+   *   Repeated `run_next_step` eventually returns `run.status: "completed"` after the final pending step.
+
+### Slice 5 handoff context
+*   Wire chat popup modal controls to these orchestration commands (`create_run`, `approve_run`, `run_next_step`, `pause_run`, `resume_run`, `stop_run`, `get_run`).
+*   Show step timeline from `run.steps` and lifecycle records from `run.events`.
+*   Add lightweight polling/SSE strategy in UI for near-real-time run progression.
+
+## 13. Post-Slice 4 Context for Slice 5 UI
+
+### Endpoint command contract (`/api/ai-admin-execute-plan`)
+*   `create_run`
+    *   Input: validated `actions` plan + `callerEmail`.
+    *   Output: `mode: "create_run"`, `run.status: "awaiting_approval"`.
+*   `approve_run`
+    *   Input: `runId`, `callerEmail`.
+    *   Output: `mode: "approve_run"`, `run.status: "approved"`.
+*   `run_next_step`
+    *   Input: `runId`, `callerEmail`.
+    *   Output: `mode: "run_next_step"`, one `stepResult`, updated `run`.
+*   `pause_run` / `resume_run` / `stop_run`
+    *   Input: `runId` (+ optional `reason` for pause/stop).
+    *   Output: updated `run` state after transition.
+*   `get_run`
+    *   Input: `runId`.
+    *   Output: current run snapshot for timeline refresh.
+
+### UI polling expectations
+*   During active execution, poll `get_run` to refresh `run.status`, `run.steps`, and `run.events`.
+*   Disable step advancement controls while run is `paused`, `failed`, `completed`, or `stopped`.
+*   Treat `409` on `run_next_step` as a control-state signal (paused/conflict/invalid transition), not just a generic error.

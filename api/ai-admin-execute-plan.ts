@@ -11,6 +11,17 @@ import {
   executeAiAdminWriteAction,
   findExistingStatConflicts,
 } from "./_shared/aiAdminActions.ts";
+import {
+  approveAiAdminRun,
+  completeAiAdminRunStep,
+  createAiAdminRun,
+  failAiAdminRunStep,
+  getAiAdminRun,
+  pauseAiAdminRun,
+  resumeAiAdminRun,
+  startNextAiAdminRunStep,
+  stopAiAdminRun,
+} from "./_shared/aiAdminRunStore.ts";
 
 type AiAdminExecuteRequest = IncomingMessage & {
   method?: string;
@@ -57,6 +68,25 @@ type HandlerDeps = {
   createDb?: () => InstantAdminLike;
   now?: () => number;
 };
+
+type AiAdminRunCommand =
+  | "create_run"
+  | "get_run"
+  | "approve_run"
+  | "run_next_step"
+  | "pause_run"
+  | "resume_run"
+  | "stop_run";
+
+const AI_ADMIN_RUN_COMMANDS = new Set<AiAdminRunCommand>([
+  "create_run",
+  "get_run",
+  "approve_run",
+  "run_next_step",
+  "pause_run",
+  "resume_run",
+  "stop_run",
+]);
 
 const normalizeString = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -184,6 +214,57 @@ const authorizeRequest = (
   };
 };
 
+const readCommand = (value: unknown): AiAdminRunCommand | null => {
+  const normalized = normalizeString(value);
+  if (!normalized) return null;
+  if (AI_ADMIN_RUN_COMMANDS.has(normalized as AiAdminRunCommand)) {
+    return normalized as AiAdminRunCommand;
+  }
+  return null;
+};
+
+const createRunId = (now: number): string => `ai-run-${now}`;
+
+const summarizeUnknown = (value: unknown): string => {
+  if (value == null) return "null";
+  if (typeof value === "string") return value.length > 120 ? `${value.slice(0, 117)}...` : value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return `array(${value.length})`;
+  if (typeof value === "object") {
+    const keys = Object.keys(value as Record<string, unknown>);
+    if (keys.length === 0) return "object";
+    return keys
+      .slice(0, 5)
+      .map((key) => {
+        const entry = (value as Record<string, unknown>)[key];
+        if (entry == null || typeof entry === "number" || typeof entry === "boolean") {
+          return `${key}=${String(entry)}`;
+        }
+        if (typeof entry === "string") {
+          return `${key}=${entry.length > 30 ? `${entry.slice(0, 27)}...` : entry}`;
+        }
+        if (Array.isArray(entry)) return `${key}=array(${entry.length})`;
+        return `${key}=object`;
+      })
+      .join("; ");
+  }
+  return String(value);
+};
+
+const runGuardrailsSummary = {
+  createOnly: true,
+  allowlistedActionsOnly: true,
+  payloadMutationIntentBlocked: true,
+};
+
+const handleTransitionError = (res: AiAdminExecuteResponse, error: { code: string; message: string; run?: unknown }) => {
+  if (error.code === "run_not_found") {
+    respond(res, 404, { ok: false, error: error.message });
+    return;
+  }
+  respond(res, 409, { ok: false, error: error.message, run: error.run });
+};
+
 export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
   const executeWriteAction = deps.executeWriteAction ?? executeAiAdminWriteAction;
   const detectPreflightConflicts = deps.detectPreflightConflicts ?? findExistingStatConflicts;
@@ -208,6 +289,225 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
     const auth = authorizeRequest(req, callerEmail);
     if (!auth.ok) {
       respond(res, 403, { error: "Forbidden", reason: auth.reason });
+      return;
+    }
+
+    const command = readCommand(rawBody.command);
+
+    if (command === "get_run") {
+      const runId = normalizeString(rawBody.runId);
+      if (!runId) {
+        respond(res, 400, { error: "Missing required runId." });
+        return;
+      }
+      const run = getAiAdminRun(runId);
+      if (!run) {
+        respond(res, 404, { error: "Run not found." });
+        return;
+      }
+      respond(res, 200, {
+        ok: true,
+        mode: "run_status",
+        run,
+        guardrails: runGuardrailsSummary,
+      });
+      return;
+    }
+
+    if (command === "approve_run") {
+      const runId = normalizeString(rawBody.runId);
+      if (!runId) {
+        respond(res, 400, { error: "Missing required runId." });
+        return;
+      }
+      const transitioned = approveAiAdminRun(runId, callerEmail, now());
+      if (!transitioned.ok) {
+        handleTransitionError(res, transitioned);
+        return;
+      }
+      respond(res, 200, {
+        ok: true,
+        mode: "approve_run",
+        run: transitioned.run,
+        guardrails: runGuardrailsSummary,
+      });
+      return;
+    }
+
+    if (command === "pause_run") {
+      const runId = normalizeString(rawBody.runId);
+      if (!runId) {
+        respond(res, 400, { error: "Missing required runId." });
+        return;
+      }
+      const reason = normalizeString(rawBody.reason) ?? "Paused by user.";
+      const transitioned = pauseAiAdminRun(runId, reason, now());
+      if (!transitioned.ok) {
+        handleTransitionError(res, transitioned);
+        return;
+      }
+      respond(res, 200, {
+        ok: true,
+        mode: "pause_run",
+        run: transitioned.run,
+        guardrails: runGuardrailsSummary,
+      });
+      return;
+    }
+
+    if (command === "resume_run") {
+      const runId = normalizeString(rawBody.runId);
+      if (!runId) {
+        respond(res, 400, { error: "Missing required runId." });
+        return;
+      }
+      const transitioned = resumeAiAdminRun(runId, now());
+      if (!transitioned.ok) {
+        handleTransitionError(res, transitioned);
+        return;
+      }
+      respond(res, 200, {
+        ok: true,
+        mode: "resume_run",
+        run: transitioned.run,
+        guardrails: runGuardrailsSummary,
+      });
+      return;
+    }
+
+    if (command === "stop_run") {
+      const runId = normalizeString(rawBody.runId);
+      if (!runId) {
+        respond(res, 400, { error: "Missing required runId." });
+        return;
+      }
+      const reason = normalizeString(rawBody.reason) ?? "Stopped by user.";
+      const transitioned = stopAiAdminRun(runId, reason, now());
+      if (!transitioned.ok) {
+        handleTransitionError(res, transitioned);
+        return;
+      }
+      respond(res, 200, {
+        ok: true,
+        mode: "stop_run",
+        run: transitioned.run,
+        guardrails: runGuardrailsSummary,
+      });
+      return;
+    }
+
+    if (command === "run_next_step") {
+      const runId = normalizeString(rawBody.runId);
+      if (!runId) {
+        respond(res, 400, { error: "Missing required runId." });
+        return;
+      }
+
+      const startResult = startNextAiAdminRunStep(runId, now());
+      if (!startResult.ok) {
+        const statusCode =
+          startResult.code === "run_not_found"
+            ? 404
+            : startResult.code === "no_pending_steps"
+            ? 200
+            : 409;
+        respond(res, statusCode, {
+          ok: startResult.code === "no_pending_steps",
+          mode: "run_next_step",
+          error: startResult.message,
+          run: startResult.run,
+          guardrails: runGuardrailsSummary,
+        });
+        return;
+      }
+
+      const action = startResult.action;
+      const stepIndex = startResult.stepIndex;
+      const runSnapshot = startResult.run;
+
+      let db: InstantAdminLike | null = null;
+      if (isWriteActionType(action.type)) {
+        try {
+          db = createDb();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Failed to initialize admin client.";
+          const failed = failAiAdminRunStep(runId, stepIndex, message, now());
+          respond(res, 500, {
+            ok: false,
+            mode: "run_next_step",
+            error: "Server configuration error.",
+            message,
+            run: failed.ok ? failed.run : runSnapshot,
+            guardrails: runGuardrailsSummary,
+          });
+          return;
+        }
+
+        const conflicts = await detectPreflightConflicts(db, [action]);
+        if (conflicts.length > 0) {
+          const paused = pauseAiAdminRun(
+            runId,
+            "Execution paused: existing stat conflicts must be reviewed before writes.",
+            now(),
+          );
+          respond(res, 409, {
+            ok: false,
+            mode: "run_next_step",
+            error: "Execution paused: existing stat conflicts must be reviewed before writes.",
+            paused: true,
+            requiresUserReview: true,
+            conflicts,
+            run: paused.ok ? paused.run : runSnapshot,
+            guardrails: runGuardrailsSummary,
+          });
+          return;
+        }
+      }
+
+      let result: unknown;
+      try {
+        if (isWriteActionType(action.type)) {
+          result = await executeWriteAction(db as InstantAdminLike, action, {
+            runId,
+            caps: runSnapshot.caps,
+            callerEmail: runSnapshot.callerEmail,
+          });
+        } else {
+          result = {
+            actionId: action.id,
+            actionType: action.type,
+            status: "accepted_not_executed",
+            message: "Read-only action accepted. Research execution wiring is planned in a later slice.",
+            runId,
+          };
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Action execution failed.";
+        const failed = failAiAdminRunStep(runId, stepIndex, message, now());
+        respond(res, 500, {
+          ok: false,
+          mode: "run_next_step",
+          error: "Step execution failed.",
+          message,
+          run: failed.ok ? failed.run : runSnapshot,
+          guardrails: runGuardrailsSummary,
+        });
+        return;
+      }
+
+      const completed = completeAiAdminRunStep(runId, stepIndex, summarizeUnknown(result), now());
+      if (!completed.ok) {
+        handleTransitionError(res, completed);
+        return;
+      }
+
+      respond(res, 202, {
+        ok: true,
+        mode: "run_next_step",
+        run: completed.run,
+        stepResult: result,
+        guardrails: runGuardrailsSummary,
+      });
       return;
     }
 
@@ -267,7 +567,27 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
       return;
     }
 
-    const runId = `ai-run-${now()}`;
+    if (command === "create_run") {
+      const runId = createRunId(now());
+      const run = createAiAdminRun({
+        runId,
+        callerEmail: plan.callerEmail,
+        caps: plan.caps,
+        estimate: plan.estimate,
+        actions: plan.actions,
+        createdAt: now(),
+      });
+      respond(res, 202, {
+        ok: true,
+        mode: "create_run",
+        run,
+        actions: actionSummary,
+        guardrails: runGuardrailsSummary,
+      });
+      return;
+    }
+
+    const runId = createRunId(now());
     const stepResults: unknown[] = [];
     for (const action of plan.actions) {
       if (!isWriteActionType(action.type)) {
@@ -291,11 +611,7 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
       caps: plan.caps,
       estimate: plan.estimate,
       stepResults,
-      guardrails: {
-        createOnly: true,
-        allowlistedActionsOnly: true,
-        payloadMutationIntentBlocked: true,
-      },
+      guardrails: runGuardrailsSummary,
     });
   };
 };
