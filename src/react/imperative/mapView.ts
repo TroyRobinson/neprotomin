@@ -1323,6 +1323,8 @@ export const createMapView = ({
   
   // Track map motion state to suppress React hover callbacks during drag/zoom
   let mapInMotion = false;
+  // While pointer is over org point/cluster UI, suppress boundary hover effects.
+  let orgHoverSuppressesAreaHover = false;
   let pendingHoverArea: AreaId | null = null;
   let pendingZipHover: string | null = null;
   let pendingCountyHover: string | null = null;
@@ -3518,6 +3520,62 @@ export const createMapView = ({
     }, 100);
   };
 
+  const syncAreaHoverCallbacksFromCurrentSources = () => {
+    if (mapInMotion) return;
+    if (boundaryMode === "zips") {
+      const finalHovered = hoveredZipFromToolbar || hoveredZipFromPill || hoveredZipFromMap;
+      onZipHoverChange?.(finalHovered || null);
+      onAreaHoverChange?.(finalHovered ? { kind: "ZIP", id: finalHovered } : null);
+      return;
+    }
+    if (boundaryMode === "counties") {
+      const finalHovered = hoveredCountyFromToolbar || hoveredCountyFromPill || hoveredCountyFromMap;
+      onCountyHoverChange?.(finalHovered || null);
+      onAreaHoverChange?.(finalHovered ? { kind: "COUNTY", id: finalHovered } : null);
+      return;
+    }
+    onAreaHoverChange?.(null);
+  };
+
+  const clearMapOriginAreaHover = () => {
+    const hadZipHover = Boolean(
+      hoveredZipFromMap || hoveredZipPreviewFromMap || hoveredZipPreviewTrailFromMap || pendingZipHover,
+    );
+    const hadCountyHover = Boolean(
+      hoveredCountyFromMap || hoveredCountyPreviewFromMap || hoveredCountyPreviewTrailFromMap || pendingCountyHover,
+    );
+    if (!hadZipHover && !hadCountyHover && pendingHoverArea === null) return;
+
+    pendingZipHover = null;
+    pendingCountyHover = null;
+    pendingHoverArea = null;
+
+    if (hadZipHover) {
+      hoveredZipFromMap = null;
+      clearZipPreviewHover();
+      zipSelection.updateHover();
+      zipLabels?.setHoveredZip(hoveredZipFromToolbar || hoveredZipFromPill || null);
+    }
+
+    if (hadCountyHover) {
+      hoveredCountyFromMap = null;
+      clearCountyPreviewHover();
+      countySelection.updateHover();
+      countyLabels?.setHoveredZip(hoveredCountyFromToolbar || hoveredCountyFromPill || null);
+    }
+
+    syncLinkedExtremaHoverLabels();
+    syncAreaHoverCallbacksFromCurrentSources();
+  };
+
+  const setOrgHoverAreaSuppression = (suppressed: boolean) => {
+    if (orgHoverSuppressesAreaHover === suppressed) return;
+    orgHoverSuppressesAreaHover = suppressed;
+    if (suppressed) {
+      clearMapOriginAreaHover();
+    }
+  };
+
   map.once("load", () => {
     // Only reset to default if no initial position was provided from URL
     if (!initialMapPosition) {
@@ -3630,14 +3688,19 @@ export const createMapView = ({
       // Track short, low‑movement taps on mobile to treat as a primary select
       let tapStart: { point: maplibregl.PointLike; time: number; id: string | null } | null = null;
       let consumedTap = false;
-      const onPointsMouseEnter = () => { map.getCanvas().style.cursor = "pointer"; };
+      const onPointsMouseEnter = () => {
+        map.getCanvas().style.cursor = "pointer";
+        setOrgHoverAreaSuppression(true);
+      };
       const onPointsMouseLeave = () => { 
         map.getCanvas().style.cursor = "pointer"; 
         hideOrgHoverTooltip();
+        setOrgHoverAreaSuppression(false);
         // Clear hover - updateHighlight will restore selection if any
         onHover(null); 
       };
       const onPointsMouseMove = (e: any) => { 
+        setOrgHoverAreaSuppression(true);
         const f = e.features?.[0]; 
         const id = f?.properties?.id as string | undefined;
         const name = f?.properties?.name as string | undefined;
@@ -3740,22 +3803,28 @@ export const createMapView = ({
         } catch {}
       };
 
-      const onClustersMouseEnter = () => { map.getCanvas().style.cursor = "pointer"; };
+      const onClustersMouseEnter = () => {
+        map.getCanvas().style.cursor = "pointer";
+        setOrgHoverAreaSuppression(true);
+      };
       const onClustersMouseLeave = () => { 
         map.getCanvas().style.cursor = "pointer"; 
         hideOrgHoverTooltip();
+        setOrgHoverAreaSuppression(false);
         // Clear hover - selection will persist
         hoverClusterId = null;
         onHover(null); 
         updateSelectedHighlights();
       };
       const onClustersMouseMove = async (e: any) => {
+        setOrgHoverAreaSuppression(true);
         hideOrgHoverTooltip();
         const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS_ID] });
         const feature = features[0];
         const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
         const clusterId = feature?.properties?.cluster_id as number | undefined;
         if (!feature || !source || clusterId === undefined) {
+          setOrgHoverAreaSuppression(false);
           // If no cluster under cursor, clear hover (selection will persist)
           hoverClusterId = null;
           onHover(null);
@@ -4041,6 +4110,7 @@ export const createMapView = ({
       cancelZipBoundaryLeaveClear = cancelZipBoundaryLeaveClearLocal;
       
       const commitZipHover = (zip: string) => {
+        if (orgHoverSuppressesAreaHover) return;
         cancelZipBoundaryLeaveClearLocal();
         clearZipPreviewHover();
         hoveredZipFromMap = zip;
@@ -4100,6 +4170,15 @@ export const createMapView = ({
         if (boundaryMode !== "zips") return;
         // Disable hover on mobile when org pins are visible
         if (isMobile && orgPinsVisible) return;
+        const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
+        if (orgFeatures.length > 0) {
+          setOrgHoverAreaSuppression(true);
+          clearZipHoverDwell();
+          return;
+        }
+        if (orgHoverSuppressesAreaHover) {
+          setOrgHoverAreaSuppression(false);
+        }
         cancelZipBoundaryLeaveClearLocal();
         const features = map.queryRenderedFeatures(e.point, { layers: zipLayerOrder });
         const zip = features[0]?.properties?.[zipFeatureProperty] as string | undefined;
@@ -4181,6 +4260,7 @@ export const createMapView = ({
       cancelCountyBoundaryLeaveClear = cancelCountyBoundaryLeaveClearLocal;
       
       const commitCountyHover = (county: string) => {
+        if (orgHoverSuppressesAreaHover) return;
         cancelCountyBoundaryLeaveClearLocal();
         clearCountyPreviewHover();
         hoveredCountyFromMap = county;
@@ -4240,6 +4320,15 @@ export const createMapView = ({
         if (boundaryMode !== "counties") return;
         // Disable hover on mobile when org pins are visible
         if (isMobile && orgPinsVisible) return;
+        const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
+        if (orgFeatures.length > 0) {
+          setOrgHoverAreaSuppression(true);
+          clearCountyHoverDwell();
+          return;
+        }
+        if (orgHoverSuppressesAreaHover) {
+          setOrgHoverAreaSuppression(false);
+        }
         cancelCountyBoundaryLeaveClearLocal();
         const features = map.queryRenderedFeatures(e.point, { layers: countyLayerOrder });
         const county = features[0]?.properties?.[countyFeatureProperty] as string | undefined;
@@ -4986,6 +5075,7 @@ export const createMapView = ({
     const visibility = orgPinsVisible ? "visible" : "none";
     if (!orgPinsVisible) {
       hideOrgHoverTooltip();
+      setOrgHoverAreaSuppression(false);
     }
     if (map.getLayer(LAYER_CLUSTERS_ID)) {
       map.setLayoutProperty(LAYER_CLUSTERS_ID, "visibility", visibility);
