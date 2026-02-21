@@ -487,6 +487,7 @@ export const createMapView = ({
   container.appendChild(mapNode);
 
   let selectedCategory: string | null = null;
+  let extremasVisible = true;
   const categoryChips = createCategoryChips({
     isMobile,
     onChange: (categoryId) => {
@@ -524,6 +525,16 @@ export const createMapView = ({
       }
     },
     onOrgsChipClose: () => { try { onRequestHideOrgs?.(); } catch {} },
+    onExtremasToggle: () => {
+      extremasVisible = !extremasVisible;
+      try { categoryChips.setExtremasVisible(extremasVisible); } catch {}
+      if (extremasVisible) {
+        refreshStatVisuals();
+      } else {
+        hideStatExtremaArrows();
+        syncHoverPillsForAreaHover();
+      }
+    },
     onTimeChipClick: () => { try { onTimeChipClick?.(); } catch {} },
     onTimeChipClear: () => { try { onTimeChipClear?.(); } catch {} },
     onAreasModeChange: (mode) => {
@@ -543,6 +554,7 @@ export const createMapView = ({
   });
   container.appendChild(categoryChips.element);
   categoryChips.setAreasMode(initialAreasMode);
+  categoryChips.setExtremasVisible(extremasVisible);
 
   // Loading indicator: bottom-center pill on desktop, top-right spinner on mobile
   const loadingIndicator = createMapLoadingIndicator({ isMobile });
@@ -2373,7 +2385,8 @@ export const createMapView = ({
     return isPopulationLikeSelectedStat();
   };
 
-  const shouldRenderPointsOfInterest = () => !selectedStatId || shouldShowPoiWithSelectedStat();
+  const shouldRenderPointsOfInterest = () =>
+    extremasVisible && (!selectedStatId || shouldShowPoiWithSelectedStat());
 
   const setPoiLayerState = (layerId: string, visible: boolean) => {
     if (!map.getLayer(layerId)) return;
@@ -2405,6 +2418,9 @@ export const createMapView = ({
   } => {
     const zipByArea = new Map<string, HoverStackPill[]>();
     const countyByArea = new Map<string, HoverStackPill[]>();
+    if (!extremasVisible) {
+      return { zipByArea, countyByArea };
+    }
 
     const countyCentroids = getCountyCentroidsMap();
     const appendPill = (
@@ -3044,6 +3060,11 @@ export const createMapView = ({
   };
 
   const updateStatExtremaArrows = () => {
+    if (!extremasVisible) {
+      hideStatExtremaArrows();
+      syncHoverPillsForAreaHover();
+      return;
+    }
     const zoom = map.getZoom();
     const hideZip = boundaryMode === "zips" && zoom >= CHOROPLETH_HIDE_ZOOM;
     const showZipLayers = boundaryMode === "zips" && !hideZip;
@@ -3124,31 +3145,40 @@ export const createMapView = ({
         ? STAT_EXTREME_GOOD_ICON_ID
         : STAT_EXTREME_NEUTRAL_ICON_ID;
 
+    // Suppress a stat extremum for any area that already has a POI badge rendered there,
+    // avoiding a stacked triangle + badge at the same centroid.
+    const zipPoiAreaCodes = new Set(getZipPoiRowsForCurrentView().map((r) => r.areaCode));
+    const countyPoiAreaCodes = new Set(getCountyPoiRowsForCurrentView().map((r) => r.areaCode));
+    const zipHighId = showZipStatLayers && highestId && !zipPoiAreaCodes.has(highestId) ? highestId : null;
+    const zipLowId = showZipStatLayers && distinctLowestId && !zipPoiAreaCodes.has(distinctLowestId) ? distinctLowestId : null;
+    const countyHighId = showCountyStatLayers && highestId && !countyPoiAreaCodes.has(highestId) ? highestId : null;
+    const countyLowId = showCountyStatLayers && distinctLowestId && !countyPoiAreaCodes.has(distinctLowestId) ? distinctLowestId : null;
+
     setLayerState(
       ZIP_STAT_EXTREME_HIGH_LAYER_ID,
       "zip",
-      showZipStatLayers ? highestId : null,
+      zipHighId,
       highIconId,
       showZipStatLayers,
     );
     setLayerState(
       ZIP_STAT_EXTREME_LOW_LAYER_ID,
       "zip",
-      showZipStatLayers ? distinctLowestId : null,
+      zipLowId,
       lowIconId,
       showZipStatLayers,
     );
     setLayerState(
       COUNTY_STAT_EXTREME_HIGH_LAYER_ID,
       "county",
-      showCountyStatLayers ? highestId : null,
+      countyHighId,
       highIconId,
       showCountyStatLayers,
     );
     setLayerState(
       COUNTY_STAT_EXTREME_LOW_LAYER_ID,
       "county",
-      showCountyStatLayers ? distinctLowestId : null,
+      countyLowId,
       lowIconId,
       showCountyStatLayers,
     );
