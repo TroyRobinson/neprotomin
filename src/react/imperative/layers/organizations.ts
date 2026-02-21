@@ -37,13 +37,13 @@ const desktopPointRadiusExpression = [
   ["linear"],
   ["zoom"],
   8,
-  3,
+  3.5,
   10,
-  4.5,
+  5,
   12,
-  6,
+  6.25,
   14,
-  7.5,
+  7.75,
 ] as ExpressionSpecification;
 
 const mobilePointRadiusExpression = [
@@ -59,13 +59,13 @@ const desktopHighlightRadiusExpression = [
   ["linear"],
   ["zoom"],
   8,
-  5,
+  5.5,
   10,
-  6.5,
+  7,
   12,
-  8,
+  8.25,
   14,
-  9.5,
+  9.75,
 ] as ExpressionSpecification;
 
 const mobileHighlightRadiusExpression = [
@@ -234,7 +234,7 @@ export const ensureOrganizationLayers = (
     requestAnimationFrame(() => {
       if (!map.getLayer(LAYER_POINTS_ID)) return;
       // Keep individual points smaller while still readable/tappable on mobile.
-      // Desktop: 3 -> 7.5 as zoom increases, Mobile + zoom > 10: 9
+      // Desktop: 3.5 -> 7.75 as zoom increases, Mobile + zoom > 10: 9
       const pointRadius = getPointRadius(isMobile);
       map.setPaintProperty(LAYER_POINTS_ID, "circle-radius", pointRadius);
       map.setPaintProperty(LAYER_POINTS_ID, "circle-opacity", 1);
@@ -249,7 +249,7 @@ export const ensureOrganizationLayers = (
 
   if (!map.getLayer(LAYER_HIGHLIGHT_ID)) {
     // Keep highlight circles proportional to the reduced point sizes.
-    // Desktop: 5 -> 9.5 as zoom increases, Mobile + zoom > 10: 13
+    // Desktop: 5.5 -> 9.75 as zoom increases, Mobile + zoom > 10: 13
     const highlightRadius = getHighlightRadius(isMobile);
 
     map.addLayer({
