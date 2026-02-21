@@ -127,7 +127,7 @@ export const MapLibreMap = ({
   timeFilterAvailable = true,
   onLegendSettingsClick,
   onSidebarExpand,
-  legendRangeMode = "dynamic",
+  legendRangeMode = "scoped",
   visibleStatIds = null,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);

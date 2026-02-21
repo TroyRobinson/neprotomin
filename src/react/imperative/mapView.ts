@@ -467,7 +467,7 @@ export const createMapView = ({
   onTimeChipClear,
   onLegendSettingsClick,
   onSidebarExpand,
-  legendRangeMode: legendRangeModeInitial = "dynamic",
+  legendRangeMode: legendRangeModeInitial = "scoped",
 }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
   container.className = "relative flex flex-1";

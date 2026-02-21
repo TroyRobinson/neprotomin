@@ -303,7 +303,7 @@ export const ReactMapApp = () => {
     statVizVisible: initialMapState.sidebarInsights.statVizVisible,
     statVizCollapsed: initialMapState.sidebarInsights.statVizCollapsed,
   }));
-  const [legendRangeMode, setLegendRangeMode] = useState<"dynamic" | "scoped" | "global">("dynamic");
+  const [legendRangeMode, setLegendRangeMode] = useState<"dynamic" | "scoped" | "global">("scoped");
   const [mapSettingsOpen, setMapSettingsOpen] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(() => {
     if (typeof window === "undefined") return 0;
