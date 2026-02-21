@@ -20,6 +20,18 @@ const ORGS_CHIP_ON_CLASSES =
 const ORGS_CHIP_OFF_CLASSES =
   "border-[0.5px] border-white/60 bg-white/18 text-slate-500 ring-1 ring-white/45 hover:border-slate-300/70 hover:bg-white/30 hover:text-slate-600 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-400 dark:ring-white/8 dark:hover:border-slate-400/55 dark:hover:bg-slate-900/38 dark:hover:text-slate-300";
 
+const EXTREMAS_CHIP_ON_CLASSES =
+  "border-[0.5px] border-slate-200 bg-slate-100 text-slate-700 shadow-floating hover:bg-slate-200 dark:border-slate-600 dark:bg-slate-800/60 dark:text-slate-200";
+
+const EXTREMAS_CHIP_OFF_CLASSES = ORGS_CHIP_OFF_CLASSES;
+
+const EXTREMAS_BADGE_ICON = `
+  <svg viewBox="0 0 14 16" fill="none" aria-hidden="true" class="h-3.5 w-3">
+    <path d="M7 3 9.5 7H4.5L7 3Z" fill="#6fc284" />
+    <path d="M7 13 4.5 9H9.5L7 13Z" fill="#f15b41" />
+  </svg>
+`;
+
 const SEARCH_ICON = `
   <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px] text-brand-600 dark:text-brand-400">
     <path
@@ -142,6 +154,7 @@ export interface CategoryChipsController {
   setVisibleStatIds: (ids: string[] | null) => void;
   setAreasMode: (mode: AreasChipMode) => void;
   setOrgsVisible: (visible: boolean) => void;
+  setExtremasVisible: (visible: boolean) => void;
   setTimeSelection: (selection: TimeSelection | null) => void;
   setTimeFilterAvailable: (available: boolean) => void;
   /** Show/hide the sidebar expand button (right-chevron pill) */
@@ -156,6 +169,7 @@ interface CategoryChipsOptions {
   isMobile?: boolean;
   onSearch?: (query: string) => void;
   onOrgsChipClose?: () => void;
+  onExtremasToggle?: () => void;
   onTimeChipClick?: () => void;
   onTimeChipClear?: () => void;
   onAreasModeChange?: (mode: AreasChipMode) => void;
@@ -222,6 +236,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   let removeSearchOutsideHandler: (() => void) | null = null;
   let removeShowingOutsideHandler: (() => void) | null = null;
   let orgsChipVisible = false;
+  let extremasVisible = true;
   let timeFilterAvailable = false;
   let visibleStatIds: Set<string> | null = null;
 
@@ -265,6 +280,30 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   orgsChipBtn.addEventListener("click", () => {
     options.onOrgsChipClose?.();
   });
+
+  const extremasChipBtn = document.createElement("button");
+  extremasChipBtn.type = "button";
+  extremasChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${EXTREMAS_CHIP_ON_CLASSES}`;
+  const extremasLabel = document.createElement("span");
+  extremasLabel.textContent = "Extremas";
+  extremasLabel.className = "whitespace-nowrap";
+  const extremasBadge = document.createElement("span");
+  extremasBadge.innerHTML = EXTREMAS_BADGE_ICON;
+  extremasBadge.className = "-mr-0.5 flex items-center";
+  const updateExtremasChipState = () => {
+    const isOn = extremasVisible;
+    extremasChipBtn.className = `${CATEGORY_CHIP_CLASSES} w-full justify-between ${isOn ? EXTREMAS_CHIP_ON_CLASSES : EXTREMAS_CHIP_OFF_CLASSES}`;
+    extremasChipBtn.setAttribute("aria-pressed", `${isOn}`);
+    extremasChipBtn.title = isOn ? "Hide extrema indicators" : "Show extrema indicators";
+    extremasBadge.classList.toggle("opacity-50", !isOn);
+  };
+  extremasChipBtn.appendChild(extremasLabel);
+  extremasChipBtn.appendChild(extremasBadge);
+  updateExtremasChipState();
+  const handleExtremasChipClick = () => {
+    options.onExtremasToggle?.();
+  };
+  extremasChipBtn.addEventListener("click", handleExtremasChipClick);
 
   // Time Open chip - only shows when provider chip is visible
   const timeOpenChipBtn = document.createElement("button");
@@ -469,7 +508,6 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   const showingChipIcon = document.createElement("span");
   const showingChipLabelWrap = document.createElement("span");
   const showingChipLabel = document.createElement("span");
-  const showingChipRemainder = document.createElement("span");
   const showingChipOrgsDot = document.createElement("span");
   const showingChipChevron = document.createElement("span");
   const showingChipBridge = document.createElement("div");
@@ -555,19 +593,26 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   const getShowingSummaryState = (): {
     hasSpecificSelection: boolean;
     hasOrgs: boolean;
+    hasExtremas: boolean;
     trailingSegments: string[];
   } => {
     const trailingSegments: string[] = [];
     if (currentAreasMode === "zips") trailingSegments.push("Zips");
     else if (currentAreasMode !== "auto") trailingSegments.push(formatAreasModeLabel(currentAreasMode));
     return {
-      hasSpecificSelection: orgsChipVisible || trailingSegments.length > 0,
+      hasSpecificSelection: orgsChipVisible || extremasVisible || trailingSegments.length > 0,
       hasOrgs: orgsChipVisible,
+      hasExtremas: extremasVisible,
       trailingSegments,
     };
   };
 
-  const renderShowingLabel = (state: { hasSpecificSelection: boolean; hasOrgs: boolean; trailingSegments: string[] }) => {
+  const renderShowingLabel = (state: {
+    hasSpecificSelection: boolean;
+    hasOrgs: boolean;
+    hasExtremas: boolean;
+    trailingSegments: string[];
+  }) => {
     showingChipLabelWrap.replaceChildren();
 
     if (!state.hasSpecificSelection) {
@@ -580,28 +625,59 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     showingChipLabel.textContent = "Showing:";
     showingChipLabelWrap.appendChild(showingChipLabel);
 
+    const tokens: HTMLElement[] = [];
+
     if (state.hasOrgs) {
       const orgToken = document.createElement("span");
-      orgToken.className = "ml-1 mr-1 inline-flex items-center gap-1.5";
+      orgToken.className = "inline-flex items-center gap-1.5";
       const orgText = document.createElement("span");
       orgText.textContent = "Orgs";
       showingChipOrgsDot.classList.remove("hidden");
       orgToken.appendChild(orgText);
       orgToken.appendChild(showingChipOrgsDot);
-      showingChipLabelWrap.appendChild(orgToken);
+      tokens.push(orgToken);
     } else {
       showingChipOrgsDot.classList.add("hidden");
     }
 
-    const trailingLabel = (() => {
-      if (state.trailingSegments.length === 0) return "";
-      if (state.hasOrgs) return `, ${state.trailingSegments.join(", ")}`;
-      return state.trailingSegments.join(", ");
-    })();
-    if (trailingLabel.length > 0) {
-      showingChipRemainder.textContent = trailingLabel;
-      showingChipRemainder.className = state.hasOrgs ? "whitespace-nowrap" : "ml-1 whitespace-nowrap";
-      showingChipLabelWrap.appendChild(showingChipRemainder);
+    if (state.hasExtremas) {
+      const extremasToken = document.createElement("span");
+      extremasToken.className = "inline-flex items-center gap-1.5";
+      const extremasText = document.createElement("span");
+      extremasText.textContent = "Extremas";
+      const extremasGlyph = document.createElement("span");
+      extremasGlyph.className = "flex items-center";
+      extremasGlyph.innerHTML = EXTREMAS_BADGE_ICON;
+      extremasToken.appendChild(extremasText);
+      extremasToken.appendChild(extremasGlyph);
+      tokens.push(extremasToken);
+    }
+
+    for (const segment of state.trailingSegments) {
+      const segmentToken = document.createElement("span");
+      segmentToken.className = "whitespace-nowrap";
+      segmentToken.textContent = segment;
+      tokens.push(segmentToken);
+    }
+
+    tokens.forEach((token, index) => {
+      if (index === 0) {
+        token.classList.add("ml-1");
+      } else {
+        const separator = document.createElement("span");
+        separator.className = "whitespace-nowrap";
+        separator.className = "mx-1 whitespace-nowrap";
+        separator.textContent = ",";
+        showingChipLabelWrap.appendChild(separator);
+      }
+      showingChipLabelWrap.appendChild(token);
+    });
+
+    if (tokens.length === 0) {
+      const fallback = document.createElement("span");
+      fallback.className = "ml-1 whitespace-nowrap";
+      fallback.textContent = "Show on Map";
+      showingChipLabelWrap.appendChild(fallback);
     }
   };
 
@@ -626,7 +702,6 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   showingChipIcon.innerHTML = SETTINGS_ICON;
   showingChipLabelWrap.className = "flex items-center whitespace-nowrap";
   showingChipLabel.className = "whitespace-nowrap";
-  showingChipRemainder.className = "whitespace-nowrap";
   showingChipOrgsDot.className = "hidden h-1.5 w-1.5 rounded-full bg-[#fdd6c3]";
   showingChipChevron.className = "flex items-center text-slate-400 dark:text-slate-500";
   showingChipChevron.innerHTML = CHEVRON_DOWN_ICON;
@@ -646,6 +721,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   showingChipStack.className = "flex flex-col gap-1.5";
   showingChipStack.appendChild(orgsChipBtn);
+  showingChipStack.appendChild(extremasChipBtn);
   showingChipStack.appendChild(areasChipContainer);
   showingChipPanel.appendChild(showingChipStack);
 
@@ -869,6 +945,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       return;
     }
     updateOrgsChipState();
+    updateExtremasChipState();
     updateShowingChipSummary();
     const showShowingChip = !searchExpanded;
     showingChipContainer.style.display = showShowingChip ? "" : "none";
@@ -1576,6 +1653,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     showingChipContainer.removeEventListener("focusout", handleShowingFocusOut);
     showingChipBtn.removeEventListener("click", handleShowingClick);
     showingChipBtn.removeEventListener("keydown", handleShowingKeyDown);
+    extremasChipBtn.removeEventListener("click", handleExtremasChipClick);
     cleanupStatEntries();
     if (secondaryChipEntry) {
       secondaryChipEntry.btn.removeEventListener("click", secondaryChipEntry.handleClick);
@@ -1665,6 +1743,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
         applyAccessoryChipVisibility();
         return;
       }
+      applyAccessoryChipVisibility();
+    },
+    setExtremasVisible: (visible: boolean) => {
+      extremasVisible = visible;
       applyAccessoryChipVisibility();
     },
     setTimeFilterAvailable: (available: boolean) => {
