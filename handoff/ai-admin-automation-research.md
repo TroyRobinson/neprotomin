@@ -213,3 +213,33 @@ Use a hybrid of "copilot + constrained agent":
 *   Wire chat modal UX to render preflight conflicts and pause/resume controls.
 *   Add persistent run state machine (`draft/approved/running/paused/...`) and audit trail storage.
 *   Add richer idempotency behavior for partial-run retries across requests.
+
+## 11. Slice 3 Completion Details
+
+### Completed
+*   Added read-only planning endpoint: `api/ai-admin-plan.ts`
+    *   `POST /api/ai-admin-plan` accepts a natural-language prompt and returns a machine-readable proposed run plan.
+    *   Endpoint is admin/API-key gated with the same auth model as `ai-admin-execute-plan`.
+    *   No writes are executed in this route (`guardrails.writesExecuted: false`).
+*   Planning response now includes:
+    *   `plan.steps` with action type, confidence, payload, and execution readiness.
+    *   `plan.actions` (full proposed actions) and `plan.executeRequestDraft` (currently executable subset).
+    *   `plan.expectedCreates` (expected stats and relation link counts).
+    *   `research.importEvidence` with explicit Census evidence (dataset/group/variable/year, concept/universe, table URL, variable availability, ZIP/county preview counts).
+*   Added OpenRouter-backed planning intent generation for multi-step plan proposals.
+*   Added fallback AI group/variable suggestion reuse via exported helper in `api/ai-census-suggest.ts` (`suggestCensusWithAI`).
+*   Added tests for planning endpoint behavior: `api/ai-admin-plan.test.ts`.
+
+### Current behavior notes
+*   Slice 3 is intentionally planning-first. Derived/family steps are returned as structured steps but marked non-executable in this slice (`executableNow: false`) when they require additional resolution.
+*   `plan.executeRequestDraft` contains only actions that are executable today without additional orchestration.
+
+### Verification completed during implementation
+*   `npm test -- api/ai-admin-plan.test.ts`
+*   `npm test -- api/ai-admin-plan.test.ts api/ai-admin-execute-plan.test.ts`
+*   `npm run build`
+
+### Slice 4 handoff context
+*   Add run orchestration that can resolve planned references (e.g., derived/family dependencies) at execution time.
+*   Stream per-step execution state into chat UI (`awaiting_approval -> running -> paused/resumed`).
+*   Persist run events and approval/audit metadata.

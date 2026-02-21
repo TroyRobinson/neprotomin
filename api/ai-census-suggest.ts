@@ -15,6 +15,19 @@ type AISuggestResponse = {
   setHeader: (name: string, value: string) => void;
 };
 
+export type CensusAISuggestion = {
+  groupNumber: string;
+  statIds: string[];
+  reason: string;
+};
+
+type SuggestCensusInput = {
+  query: string;
+  dataset: string;
+  year: number;
+  fetchImpl?: typeof fetch;
+};
+
 const respond = (res: AISuggestResponse, statusCode: number, payload: unknown): void => {
   res.setHeader("Content-Type", "application/json");
   res.status(statusCode).json(payload);
@@ -23,14 +36,14 @@ const respond = (res: AISuggestResponse, statusCode: number, payload: unknown): 
 // Helper to read request body from IncomingMessage
 const readBody = (req: IncomingMessage): Promise<string> => {
   return new Promise((resolve, reject) => {
-    let body = '';
-    req.on('data', (chunk) => {
+    let body = "";
+    req.on("data", (chunk) => {
       body += chunk.toString();
     });
-    req.on('end', () => {
+    req.on("end", () => {
       resolve(body);
     });
-    req.on('error', reject);
+    req.on("error", reject);
   });
 };
 
@@ -41,31 +54,60 @@ const extractFirstJsonObject = (text: string): string | null => {
   return text.slice(start, end + 1);
 };
 
-export default async function handler(req: AISuggestRequest, res: AISuggestResponse) {
-  if (req.method !== "POST") {
-    respond(res, 405, { error: "Method not allowed" });
-    return;
-  }
+const normalizeSuggestion = (parsed: Record<string, unknown>): CensusAISuggestion | null => {
+  const groupNumberRaw = typeof parsed.groupNumber === "string" ? parsed.groupNumber.trim() : "";
+  const groupNumber = groupNumberRaw.toUpperCase();
+  const reason = typeof parsed.reason === "string" ? parsed.reason.trim() : "";
 
-  try {
-    const bodyText = await readBody(req);
-    const body = JSON.parse(bodyText) as { query: string; dataset: string; year: number };
+  const statIdRaw =
+    typeof parsed.statId === "string"
+      ? parsed.statId
+      : typeof parsed.statID === "string"
+        ? parsed.statID
+        : typeof parsed.variableId === "string"
+          ? parsed.variableId
+          : typeof parsed.variable === "string"
+            ? parsed.variable
+            : "";
+  const statIdsRaw =
+    Array.isArray(parsed.statIds)
+      ? parsed.statIds
+      : Array.isArray(parsed.statIDs)
+        ? parsed.statIDs
+        : Array.isArray(parsed.variableIds)
+          ? parsed.variableIds
+          : Array.isArray(parsed.variables)
+            ? parsed.variables
+            : null;
 
-    const { query, dataset, year } = body;
+  const statIds = (statIdsRaw ?? [])
+    .filter((value: unknown) => typeof value === "string")
+    .map((value: string) => value.trim().toUpperCase())
+    .filter(Boolean);
 
-    if (!query?.trim()) {
-      respond(res, 400, { error: "Missing 'query' parameter." });
-      return;
-    }
+  const singleStatId = statIdRaw ? String(statIdRaw).trim().toUpperCase() : "";
+  const normalizedStatIds = statIds.length > 0 ? statIds : singleStatId ? [singleStatId] : [];
 
-    const apiKey = process.env.OPENROUTER || process.env.OPENROUTER_API_KEY;
-    if (!apiKey) {
-      respond(res, 200, {}); // Return empty response if no API key
-      return;
-    }
+  if (!groupNumber || !reason) return null;
+  return {
+    groupNumber,
+    statIds: normalizedStatIds,
+    reason,
+  };
+};
 
-    // Call OpenRouter to get AI suggestion
-    const prompt = `You are an expert on U.S. Census Bureau data and the American Community Survey (ACS).
+export const suggestCensusWithAI = async ({
+  query,
+  dataset,
+  year,
+  fetchImpl = fetch,
+}: SuggestCensusInput): Promise<CensusAISuggestion | null> => {
+  if (!query.trim()) return null;
+
+  const apiKey = process.env.OPENROUTER || process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return null;
+
+  const prompt = `You are an expert on U.S. Census Bureau data and the American Community Survey (ACS).
 
 Given a user's search query for Census data, identify the single most relevant Census group ID and specific variable that best matches what they're looking for.
 
@@ -95,92 +137,75 @@ Respond with ONLY a JSON object in this exact format (no markdown, no explanatio
 If you cannot confidently suggest a group, respond with:
 {"groupNumber": "", "statIds": [], "reason": ""}`;
 
-    const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://neprotomin.app", // Required by OpenRouter
-      },
-      body: JSON.stringify({
-        model: "anthropic/claude-3.5-haiku", // Fast and cost-effective
-        messages: [
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.3,
-        max_tokens: 200,
-      }),
-    });
+  const openRouterResponse = await fetchImpl("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://neprotomin.app",
+    },
+    body: JSON.stringify({
+      model: "anthropic/claude-3.5-haiku",
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      temperature: 0.3,
+      max_tokens: 200,
+    }),
+  });
 
-    if (!openRouterResponse.ok) {
-      const errorText = await openRouterResponse.text().catch(() => "");
-      console.error("OpenRouter error:", errorText);
-      respond(res, 200, {}); // Fail gracefully - return empty suggestion
+  if (!openRouterResponse.ok) {
+    return null;
+  }
+
+  const aiResult = (await openRouterResponse.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const content = aiResult.choices?.[0]?.message?.content?.trim() || "";
+  if (!content) return null;
+
+  try {
+    const jsonText = extractFirstJsonObject(content) ?? content;
+    const parsed = JSON.parse(jsonText) as Record<string, unknown>;
+    return normalizeSuggestion(parsed);
+  } catch {
+    return null;
+  }
+};
+
+export default async function handler(req: AISuggestRequest, res: AISuggestResponse) {
+  if (req.method !== "POST") {
+    respond(res, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  try {
+    const bodyText = await readBody(req);
+    const body = JSON.parse(bodyText) as { query: string; dataset: string; year: number };
+
+    const { query, dataset, year } = body;
+
+    if (!query?.trim()) {
+      respond(res, 400, { error: "Missing 'query' parameter." });
       return;
     }
 
-    const aiResult = await openRouterResponse.json();
-    const content = aiResult.choices?.[0]?.message?.content?.trim() || "";
-
-    if (!content) {
+    const suggestion = await suggestCensusWithAI({ query, dataset, year });
+    if (!suggestion) {
       respond(res, 200, {});
       return;
     }
 
-    // Parse the JSON response from the AI
-    try {
-      const jsonText = extractFirstJsonObject(content) ?? content;
-      const parsed = JSON.parse(jsonText);
-      const groupNumber = typeof parsed.groupNumber === "string" ? parsed.groupNumber : "";
-      const reason = typeof parsed.reason === "string" ? parsed.reason : "";
-      const statIdRaw =
-        typeof parsed.statId === "string"
-          ? parsed.statId
-          : typeof parsed.statID === "string"
-            ? parsed.statID
-            : typeof parsed.variableId === "string"
-              ? parsed.variableId
-              : typeof parsed.variable === "string"
-                ? parsed.variable
-                : "";
-      const statIdsRaw =
-        Array.isArray(parsed.statIds)
-          ? parsed.statIds
-          : Array.isArray(parsed.statIDs)
-            ? parsed.statIDs
-            : Array.isArray(parsed.variableIds)
-              ? parsed.variableIds
-              : Array.isArray(parsed.variables)
-                ? parsed.variables
-                : null;
-
-      const statIds = (statIdsRaw ?? [])
-        .filter((v: unknown) => typeof v === "string")
-        .map((s: string) => s.trim())
-        .filter(Boolean);
-
-      // Back-compat: if model returns a single statId string, treat it as a one-item list.
-      const statId = statIdRaw ? String(statIdRaw).trim() : "";
-      const normalizedStatIds = statIds.length ? statIds : statId ? [statId] : [];
-
-      if (groupNumber && reason) {
-        respond(res, 200, {
-          groupNumber,
-          statIds: normalizedStatIds,
-          // Keep for backward-compat with older clients (or if someone inspects logs/tools)
-          statId: normalizedStatIds[0] ?? null,
-          reason,
-        });
-      } else {
-        respond(res, 200, {});
-      }
-    } catch (parseError) {
-      console.error("Failed to parse AI response:", content);
-      respond(res, 200, {}); // Fail gracefully
-    }
+    respond(res, 200, {
+      groupNumber: suggestion.groupNumber,
+      statIds: suggestion.statIds,
+      // Backward compatibility for callers that still read a single statId field.
+      statId: suggestion.statIds[0] ?? null,
+      reason: suggestion.reason,
+    });
   } catch (error) {
     console.error("ai-census-suggest failed", error);
     // Fail gracefully for AI suggestions - don't block the main search
