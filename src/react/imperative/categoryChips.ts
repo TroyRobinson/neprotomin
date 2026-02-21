@@ -10,6 +10,10 @@ const TIME_OPEN_CHIP_CLASSES =
 const AREAS_CHIP_CLASSES =
   "border-[0.5px] border-white/60 bg-white/18 text-slate-700 ring-1 ring-white/45 hover:border-brand-200/70 hover:bg-white/30 hover:text-brand-700 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-200 dark:ring-white/8 dark:hover:border-brand-400/50 dark:hover:bg-slate-900/38 dark:hover:text-white";
 
+const SHOWING_CHIP_CLASSES = AREAS_CHIP_CLASSES;
+const SHOWING_CHIP_ACTIVE_CLASSES =
+  "border-slate-300 bg-white/90 text-slate-800 ring-0 dark:border-slate-500 dark:bg-slate-900/45 dark:text-slate-100 dark:ring-0";
+
 const ORGS_CHIP_ON_CLASSES =
   "border-[0.5px] border-transparent bg-[#f7e2d6] text-[#7a4030] shadow-floating hover:bg-[#f1d3c3] dark:bg-[#7a4030]/30 dark:text-[#d79c84]";
 
@@ -42,6 +46,24 @@ const CHEVRON_DOWN_ICON = `
       fill-rule="evenodd"
       d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
       clip-rule="evenodd"
+    />
+  </svg>
+`;
+
+const SETTINGS_ICON = `
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" class="h-3.5 w-3.5">
+    <path
+      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065Z"
+      stroke="currentColor"
+      stroke-width="1.2"
+      stroke-linejoin="round"
+    />
+    <circle
+      cx="12"
+      cy="12"
+      r="2.4"
+      stroke="currentColor"
+      stroke-width="1.2"
     />
   </svg>
 `;
@@ -198,6 +220,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   let searchForm: HTMLFormElement | null = null;
   let searchInput: HTMLInputElement | null = null;
   let removeSearchOutsideHandler: (() => void) | null = null;
+  let removeShowingOutsideHandler: (() => void) | null = null;
   let orgsChipVisible = false;
   let timeFilterAvailable = false;
   let visibleStatIds: Set<string> | null = null;
@@ -217,8 +240,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   // to the right of the selected category chip.
   list.appendChild(statWrapper);
 
-  // Orgs chip lives between selected category and stat chips (desktop only)
-  // When no category selected, it appears at the end of category chips
+  // Orgs chip now lives inside the Showing tooltip panel (desktop only).
   const orgsChipBtn = document.createElement("button");
   orgsChipBtn.type = "button";
   // Match org cluster color: peach accent family when on, subdued neutral when off.
@@ -231,7 +253,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   orgsClose.className = "-mr-1 flex items-center";
   const updateOrgsChipState = () => {
     const isOn = orgsChipVisible;
-    orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${isOn ? ORGS_CHIP_ON_CLASSES : ORGS_CHIP_OFF_CLASSES}`;
+    orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} w-full justify-between ${isOn ? ORGS_CHIP_ON_CLASSES : ORGS_CHIP_OFF_CLASSES}`;
     orgsLabel.textContent = "Organizations";
     orgsChipBtn.setAttribute("aria-pressed", `${isOn}`);
     orgsChipBtn.title = isOn ? "Hide organizations" : "Show organizations";
@@ -240,11 +262,9 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   orgsChipBtn.appendChild(orgsLabel);
   orgsChipBtn.appendChild(orgsClose);
   updateOrgsChipState();
-  orgsChipBtn.style.display = "none"; // hidden by default
   orgsChipBtn.addEventListener("click", () => {
     options.onOrgsChipClose?.();
   });
-  list.appendChild(orgsChipBtn);
 
   // Time Open chip - only shows when provider chip is visible
   const timeOpenChipBtn = document.createElement("button");
@@ -349,10 +369,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   const areasMenuOptions = new Map<AreasChipMode, HTMLButtonElement>();
 
   // Map chip-level Areas control mirrors the toolbar's mode options.
-  areasChipContainer.className = "relative pointer-events-auto";
+  areasChipContainer.className = "relative pointer-events-auto w-full";
   areasChipContainer.style.display = isMobile ? "none" : "";
   areasChipBtn.type = "button";
-  areasChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${AREAS_CHIP_CLASSES} pr-2`;
+  areasChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${AREAS_CHIP_CLASSES} w-full justify-between pr-2`;
   areasChipBtn.setAttribute("aria-haspopup", "listbox");
   areasChipBtn.setAttribute("aria-expanded", "false");
   areasChipBtn.setAttribute("aria-label", "Areas mode");
@@ -383,7 +403,6 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   areasChipContainer.appendChild(areasChipBtn);
   areasChipContainer.appendChild(areasChipMenu);
-  list.appendChild(areasChipContainer);
 
   const closeAreasMenu = () => {
     if (!areasMenuOpen) return;
@@ -418,6 +437,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     mode: AreasChipMode,
     config: { emitChange?: boolean; closeMenu?: boolean } = {},
   ) => {
+    currentAreasMode = mode;
     areasChipLabel.textContent = `Areas: ${formatAreasModeLabel(mode)}`;
     AREA_MODE_OPTIONS.forEach((entry) => {
       const optionBtn = areasMenuOptions.get(entry.value);
@@ -429,6 +449,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
         ? "flex w-full items-center justify-between rounded-lg bg-brand-50 px-2.5 py-1.5 text-left text-xs text-brand-700 transition dark:bg-brand-400/15 dark:text-brand-300"
         : "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800";
     });
+    updateShowingChipSummary();
     if (config.closeMenu) closeAreasMenu();
     if (config.emitChange) {
       try {
@@ -436,6 +457,209 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       } catch {}
     }
   };
+
+  // Keep current areas mode synchronized so the combined Showing chip can summarize state.
+  let currentAreasMode: AreasChipMode = "auto";
+  let updateShowingChipSummary = () => {};
+
+  // Combined meta chip: compact "Showing: ..." button with a hover panel that
+  // exposes the original Organizations + Areas controls as a vertical stack.
+  const showingChipContainer = document.createElement("div");
+  const showingChipBtn = document.createElement("button");
+  const showingChipIcon = document.createElement("span");
+  const showingChipLabelWrap = document.createElement("span");
+  const showingChipLabel = document.createElement("span");
+  const showingChipRemainder = document.createElement("span");
+  const showingChipOrgsDot = document.createElement("span");
+  const showingChipChevron = document.createElement("span");
+  const showingChipBridge = document.createElement("div");
+  const showingChipPanel = document.createElement("div");
+  const showingChipStack = document.createElement("div");
+  let showingPanelOpen = false;
+  let showingPanelPinned = false;
+
+  const clearShowingOutsideHandler = () => {
+    if (!removeShowingOutsideHandler) return;
+    removeShowingOutsideHandler();
+    removeShowingOutsideHandler = null;
+  };
+
+  const closeShowingPanel = (config: { force?: boolean } = {}) => {
+    const force = config.force === true;
+    if (!showingPanelOpen) {
+      if (force) {
+        showingPanelPinned = false;
+        showingChipBridge.style.display = "none";
+        clearShowingOutsideHandler();
+      }
+      return;
+    }
+    if (showingPanelPinned && !force) return;
+    showingPanelOpen = false;
+    showingPanelPinned = false;
+    showingChipBridge.style.display = "none";
+    showingChipPanel.classList.add("hidden");
+    showingChipBtn.setAttribute("aria-expanded", "false");
+    showingChipChevron.firstElementChild?.classList.remove("rotate-180");
+    clearShowingOutsideHandler();
+    closeAreasMenu();
+  };
+
+  const openShowingPanel = (config: { pinned?: boolean } = {}) => {
+    const pinned = config.pinned === true;
+    showingPanelPinned = pinned;
+    if (!showingPanelOpen) {
+      showingPanelOpen = true;
+      showingChipBridge.style.display = "";
+      showingChipPanel.classList.remove("hidden");
+      showingChipBtn.setAttribute("aria-expanded", "true");
+      showingChipChevron.firstElementChild?.classList.add("rotate-180");
+    }
+    clearShowingOutsideHandler();
+    if (pinned) {
+      const handlePointerDown = (event: PointerEvent) => {
+        const target = event.target as Node | null;
+        if (target && showingChipContainer.contains(target)) return;
+        closeShowingPanel({ force: true });
+      };
+      document.addEventListener("pointerdown", handlePointerDown, true);
+      removeShowingOutsideHandler = () => {
+        document.removeEventListener("pointerdown", handlePointerDown, true);
+      };
+    }
+  };
+
+  const handleShowingPointerEnter = () => openShowingPanel();
+  const handleShowingPointerLeave = () => closeShowingPanel();
+  const handleShowingFocusIn = () => openShowingPanel();
+  const handleShowingFocusOut = (event: FocusEvent) => {
+    const next = event.relatedTarget as Node | null;
+    if (next && showingChipContainer.contains(next)) return;
+    closeShowingPanel();
+  };
+  const handleShowingClick = (event: MouseEvent) => {
+    event.preventDefault();
+    if (showingPanelOpen && showingPanelPinned) {
+      closeShowingPanel({ force: true });
+      return;
+    }
+    openShowingPanel({ pinned: true });
+  };
+  const handleShowingKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    closeShowingPanel({ force: true });
+    showingChipBtn.blur();
+  };
+
+  const getShowingSummaryState = (): {
+    hasSpecificSelection: boolean;
+    hasOrgs: boolean;
+    trailingSegments: string[];
+  } => {
+    const trailingSegments: string[] = [];
+    if (currentAreasMode === "zips") trailingSegments.push("Zips");
+    else if (currentAreasMode !== "auto") trailingSegments.push(formatAreasModeLabel(currentAreasMode));
+    return {
+      hasSpecificSelection: orgsChipVisible || trailingSegments.length > 0,
+      hasOrgs: orgsChipVisible,
+      trailingSegments,
+    };
+  };
+
+  const renderShowingLabel = (state: { hasSpecificSelection: boolean; hasOrgs: boolean; trailingSegments: string[] }) => {
+    showingChipLabelWrap.replaceChildren();
+
+    if (!state.hasSpecificSelection) {
+      showingChipLabel.textContent = "Show on Map";
+      showingChipLabelWrap.appendChild(showingChipLabel);
+      showingChipOrgsDot.classList.add("hidden");
+      return;
+    }
+
+    showingChipLabel.textContent = "Showing:";
+    showingChipLabelWrap.appendChild(showingChipLabel);
+
+    if (state.hasOrgs) {
+      const orgToken = document.createElement("span");
+      orgToken.className = "ml-1 mr-1 inline-flex items-center gap-1.5";
+      const orgText = document.createElement("span");
+      orgText.textContent = "Orgs";
+      showingChipOrgsDot.classList.remove("hidden");
+      orgToken.appendChild(orgText);
+      orgToken.appendChild(showingChipOrgsDot);
+      showingChipLabelWrap.appendChild(orgToken);
+    } else {
+      showingChipOrgsDot.classList.add("hidden");
+    }
+
+    const trailingLabel = (() => {
+      if (state.trailingSegments.length === 0) return "";
+      if (state.hasOrgs) return `, ${state.trailingSegments.join(", ")}`;
+      return state.trailingSegments.join(", ");
+    })();
+    if (trailingLabel.length > 0) {
+      showingChipRemainder.textContent = trailingLabel;
+      showingChipRemainder.className = state.hasOrgs ? "whitespace-nowrap" : "ml-1 whitespace-nowrap";
+      showingChipLabelWrap.appendChild(showingChipRemainder);
+    }
+  };
+
+  updateShowingChipSummary = () => {
+    const state = getShowingSummaryState();
+    renderShowingLabel(state);
+    showingChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${SHOWING_CHIP_CLASSES} pr-2 ${
+      state.hasSpecificSelection ? SHOWING_CHIP_ACTIVE_CLASSES : ""
+    }`;
+  };
+
+  showingChipContainer.className = "relative pointer-events-auto";
+  showingChipContainer.style.display = isMobile ? "none" : "";
+
+  showingChipBtn.type = "button";
+  showingChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${SHOWING_CHIP_CLASSES} pr-2`;
+  showingChipBtn.setAttribute("aria-haspopup", "dialog");
+  showingChipBtn.setAttribute("aria-expanded", "false");
+  showingChipBtn.setAttribute("aria-label", "Showing options");
+
+  showingChipIcon.className = "flex items-center text-slate-400 dark:text-slate-500";
+  showingChipIcon.innerHTML = SETTINGS_ICON;
+  showingChipLabelWrap.className = "flex items-center whitespace-nowrap";
+  showingChipLabel.className = "whitespace-nowrap";
+  showingChipRemainder.className = "whitespace-nowrap";
+  showingChipOrgsDot.className = "hidden h-1.5 w-1.5 rounded-full bg-[#fdd6c3]";
+  showingChipChevron.className = "flex items-center text-slate-400 dark:text-slate-500";
+  showingChipChevron.innerHTML = CHEVRON_DOWN_ICON;
+
+  showingChipBtn.appendChild(showingChipIcon);
+  showingChipBtn.appendChild(showingChipLabelWrap);
+  showingChipBtn.appendChild(showingChipChevron);
+
+  // Invisible hover bridge prevents tooltip collapse while crossing button→panel gap.
+  showingChipBridge.className = "pointer-events-auto absolute left-0 top-full z-10 h-2 min-w-[12rem]";
+  showingChipBridge.style.display = "none";
+
+  showingChipPanel.className =
+    "absolute left-0 top-full z-20 mt-1 hidden min-w-[12rem] rounded-xl border border-slate-200/80 bg-white/90 p-1.5 shadow-lg backdrop-blur-md dark:border-slate-700/80 dark:bg-slate-900/90";
+  showingChipPanel.setAttribute("role", "dialog");
+  showingChipPanel.setAttribute("aria-label", "Showing options");
+
+  showingChipStack.className = "flex flex-col gap-1.5";
+  showingChipStack.appendChild(orgsChipBtn);
+  showingChipStack.appendChild(areasChipContainer);
+  showingChipPanel.appendChild(showingChipStack);
+
+  showingChipContainer.appendChild(showingChipBtn);
+  showingChipContainer.appendChild(showingChipBridge);
+  showingChipContainer.appendChild(showingChipPanel);
+  list.appendChild(showingChipContainer);
+
+  showingChipContainer.addEventListener("pointerenter", handleShowingPointerEnter);
+  showingChipContainer.addEventListener("pointerleave", handleShowingPointerLeave);
+  showingChipContainer.addEventListener("focusin", handleShowingFocusIn);
+  showingChipContainer.addEventListener("focusout", handleShowingFocusOut);
+  showingChipBtn.addEventListener("click", handleShowingClick);
+  showingChipBtn.addEventListener("keydown", handleShowingKeyDown);
 
   areasChipBtn.addEventListener("click", () => {
     if (areasMenuOpen) closeAreasMenu();
@@ -535,18 +759,14 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   const positionTrailingChips = () => {
     if (isMobile) return;
-    if (orgsChipBtn.style.display !== "none") {
-      if (orgsChipBtn.parentElement !== list) list.appendChild(orgsChipBtn);
-      list.appendChild(orgsChipBtn);
-    }
     if (timeOpenChipBtn.style.display !== "none") {
       if (timeOpenChipBtn.parentElement !== list) list.appendChild(timeOpenChipBtn);
       list.appendChild(timeOpenChipBtn);
     }
-    if (areasChipContainer.style.display !== "none") {
-      if (areasChipContainer.parentElement !== list) list.appendChild(areasChipContainer);
-      // Keep Areas chip fixed as the right-most trailing control.
-      list.appendChild(areasChipContainer);
+    if (showingChipContainer.style.display !== "none") {
+      if (showingChipContainer.parentElement !== list) list.appendChild(showingChipContainer);
+      // Keep the combined Showing chip fixed as the right-most trailing control.
+      list.appendChild(showingChipContainer);
     }
   };
 
@@ -640,23 +860,22 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   const applyAccessoryChipVisibility = () => {
     if (isMobile) {
-      // Organizations chip is desktop-only; on mobile we show only the time chip when available.
-      orgsChipBtn.style.display = "none";
+      // Showing chip is desktop-only; on mobile we show only the time chip when available.
+      showingChipContainer.style.display = "none";
       const showTime = orgsChipVisible && timeFilterAvailable;
       timeOpenChipBtn.style.display = showTime ? "" : "none";
-      areasChipContainer.style.display = "none";
+      closeShowingPanel({ force: true });
       closeAreasMenu();
       return;
     }
     updateOrgsChipState();
-    const showOrganizations = !searchExpanded;
-    orgsChipBtn.style.display = showOrganizations ? "" : "none";
+    updateShowingChipSummary();
+    const showShowingChip = !searchExpanded;
+    showingChipContainer.style.display = showShowingChip ? "" : "none";
+    if (!showShowingChip) closeShowingPanel({ force: true });
 
     // Desktop UX: keep the map chip row cleaner by hiding the time chip entirely.
     timeOpenChipBtn.style.display = "none";
-    const showAreas = !searchExpanded;
-    areasChipContainer.style.display = showAreas ? "" : "none";
-    if (!showAreas) closeAreasMenu();
     update();
   };
 
@@ -1351,10 +1570,17 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     entries.forEach(({ button, handleClick }) => {
       button.removeEventListener("click", handleClick);
     });
+    showingChipContainer.removeEventListener("pointerenter", handleShowingPointerEnter);
+    showingChipContainer.removeEventListener("pointerleave", handleShowingPointerLeave);
+    showingChipContainer.removeEventListener("focusin", handleShowingFocusIn);
+    showingChipContainer.removeEventListener("focusout", handleShowingFocusOut);
+    showingChipBtn.removeEventListener("click", handleShowingClick);
+    showingChipBtn.removeEventListener("keydown", handleShowingKeyDown);
     cleanupStatEntries();
     if (secondaryChipEntry) {
       secondaryChipEntry.btn.removeEventListener("click", secondaryChipEntry.handleClick);
     }
+    clearShowingOutsideHandler();
     if (removeSearchOutsideHandler) {
       removeSearchOutsideHandler();
       removeSearchOutsideHandler = null;
