@@ -40,7 +40,10 @@ type ImportCandidate = {
   group: string;
   variables: string[];
   reason: string;
+  source: "model" | "ai_fallback" | "grounded_backup";
 };
+
+type ModelImportCandidate = Omit<ImportCandidate, "source">;
 
 type VariableEvidence = {
   variable: string;
@@ -61,9 +64,19 @@ type ImportEvidence = {
   universe: string | null;
   tableUrl: string;
   reason: string;
+  source?: ImportCandidate["source"];
   variables: VariableEvidence[];
   missingVariables: string[];
   error?: string;
+};
+
+type RejectedModelImportCandidate = {
+  group: string | null;
+  dataset: string | null;
+  year: number | null;
+  variables: string[];
+  reason: string;
+  stage: "sanitize" | "inspect" | "availability";
 };
 
 type DerivedFormula =
@@ -94,7 +107,7 @@ type FamilyPlanCandidate = {
 type PlannedIntent = {
   confidence: number;
   notes: string;
-  imports: ImportCandidate[];
+  imports: ModelImportCandidate[];
   derived: DerivedPlanCandidate[];
   families: FamilyPlanCandidate[];
 };
@@ -458,7 +471,7 @@ const defaultModelPlanning = async ({ prompt, dataset, year }: PlanFromModelInpu
   const derivedRaw = Array.isArray(parsed.derived) ? parsed.derived : [];
   const familiesRaw = Array.isArray(parsed.families) ? parsed.families : [];
 
-  const imports: ImportCandidate[] = [];
+  const imports: ModelImportCandidate[] = [];
   for (const raw of importsRaw.slice(0, MAX_IMPORT_CANDIDATES)) {
     if (!isRecord(raw)) continue;
     const group = normalizeGroupId(raw.group);
@@ -643,6 +656,7 @@ const defaultInspectImportCandidate = async (candidate: ImportCandidate): Promis
       universe: groupMeta.universe ?? null,
       tableUrl: CENSUS_TABLE_DOC_URL(year, dataset, candidate.group),
       reason: candidate.reason,
+      source: candidate.source,
       variables,
       missingVariables,
     };
@@ -658,6 +672,7 @@ const defaultInspectImportCandidate = async (candidate: ImportCandidate): Promis
       universe: null,
       tableUrl: CENSUS_TABLE_DOC_URL(year, dataset, candidate.group),
       reason: candidate.reason,
+      source: candidate.source,
       variables: [],
       missingVariables: [...candidate.variables],
       error: summary,
@@ -687,6 +702,7 @@ const sanitizeImportCandidate = (
     group,
     variables: normalizedVariables,
     reason: normalizeString(candidate.reason) ?? "Model-recommended Census import.",
+    source: candidate.source,
   };
 };
 
@@ -791,14 +807,39 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
       }
     }
 
-    const importCandidatesFromModel = (intent?.imports ?? [])
-      .map((candidate) =>
-        sanitizeImportCandidate(candidate, {
+    const rejectedModelImportCandidates: RejectedModelImportCandidate[] = [];
+    const importCandidatesFromModel: ImportCandidate[] = [];
+    for (const rawCandidate of intent?.imports ?? []) {
+      const rawVariables = (rawCandidate as { variables?: unknown[] }).variables;
+      const sanitized = sanitizeImportCandidate(
+        {
+          ...rawCandidate,
+          source: "model",
+        },
+        {
           dataset,
           year,
-        }),
-      )
-      .filter((candidate): candidate is ImportCandidate => candidate != null);
+        },
+      );
+      if (!sanitized) {
+        rejectedModelImportCandidates.push({
+          group: normalizeString((rawCandidate as { group?: unknown }).group) ?? null,
+          dataset: normalizeString((rawCandidate as { dataset?: unknown }).dataset) ?? dataset,
+          year: parseYear((rawCandidate as { year?: unknown }).year, year),
+          variables: Array.isArray(rawVariables)
+            ? rawVariables
+                .map((entry) => normalizeString(entry))
+                .filter((entry): entry is string => Boolean(entry))
+                .slice(0, MAX_VARIABLES_PER_IMPORT)
+            : [],
+          stage: "sanitize",
+          reason:
+            "AI suggested an invalid Census import candidate (missing/invalid group id or variables). Planner requires a valid table group id (for example B01001 or C24070).",
+        });
+        continue;
+      }
+      importCandidatesFromModel.push(sanitized);
+    }
     const importCandidates: ImportCandidate[] = [...importCandidatesFromModel];
 
     if (aiSuggestFallback?.groupNumber) {
@@ -814,6 +855,7 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
           group: fallbackGroup,
           variables: fallbackVariables,
           reason: aiSuggestFallback.reason || "AI fallback import recommendation.",
+          source: "ai_fallback",
         });
       }
     }
@@ -828,6 +870,7 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
           importCandidates.length === 0
             ? "Top Census group search match from prompt."
             : "Grounded Census group backup candidate from prompt context.",
+        source: "grounded_backup",
       });
     }
 
@@ -835,9 +878,13 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
 
     let importEvidence: ImportEvidence[] = [];
     try {
-      importEvidence = await Promise.all(
+      const inspectedEvidence = await Promise.all(
         dedupedImportCandidates.map(async (candidate) => inspectImportCandidate(candidate)),
       );
+      importEvidence = inspectedEvidence.map((evidence, index) => ({
+        ...evidence,
+        source: evidence.source ?? dedupedImportCandidates[index]?.source ?? "model",
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to inspect Census imports.";
       respond(res, 502, { error: "Failed to inspect Census imports.", details: message });
@@ -889,13 +936,45 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
       evidence: {
         topGroups: groupMatches,
         aiFallback: aiSuggestFallback,
+        importExecutionPolicy: "strict_model_only",
       },
     });
+
+    for (let index = 0; index < rejectedModelImportCandidates.length; index += 1) {
+      const rejection = rejectedModelImportCandidates[index];
+      steps.push({
+        id: `step-model-reject-${index + 1}`,
+        type: "research_census",
+        title: `AI-suggested import rejected${rejection.group ? ` (${rejection.group})` : ""}`,
+        description: "Planner could not use this AI-suggested import candidate for execution.",
+        confidence: 0.35,
+        executableNow: false,
+        payload: {
+          dataset: rejection.dataset,
+          year: rejection.year,
+          group: rejection.group,
+          variables: rejection.variables,
+          stage: rejection.stage,
+        },
+        blockers: [rejection.reason],
+      });
+    }
 
     const variableToImportStepId = new Map<string, string>();
     let importStepIndex = 0;
     for (const evidence of importEvidence) {
+      if (evidence.source !== "model") {
+        continue;
+      }
       if (evidence.status !== "ok") {
+        rejectedModelImportCandidates.push({
+          group: evidence.group,
+          dataset: evidence.dataset,
+          year: evidence.year,
+          variables: evidence.missingVariables,
+          stage: "inspect",
+          reason: summarizeImportError(evidence.error ?? "Unknown Census error."),
+        });
         steps.push({
           id: `step-import-error-${importStepIndex + 1}`,
           type: "import_census_stat",
@@ -916,6 +995,40 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
       }
 
       const availableVariables = evidence.variables.filter((variable) => variable.available);
+      if (availableVariables.length === 0) {
+        rejectedModelImportCandidates.push({
+          group: evidence.group,
+          dataset: evidence.dataset,
+          year: evidence.year,
+          variables: evidence.variables.map((variable) => variable.variable),
+          stage: "availability",
+          reason:
+            evidence.variables.length > 0
+              ? `None of the AI-suggested variables were available for ${evidence.group} in ${evidence.dataset} ${evidence.year}.`
+              : `AI-suggested group ${evidence.group} did not yield importable variables in ${evidence.dataset} ${evidence.year}.`,
+        });
+        steps.push({
+          id: `step-import-error-${importStepIndex + 1}`,
+          type: "import_census_stat",
+          title: `Import Census group ${evidence.group}`,
+          description: "AI-suggested import candidate had no importable variables after Census metadata validation.",
+          confidence: 0.25,
+          executableNow: false,
+          payload: {
+            dataset: evidence.dataset,
+            group: evidence.group,
+            year: evidence.year,
+          },
+          blockers: [
+            evidence.variables.length > 0
+              ? `No requested variables are available in ${evidence.dataset} ${evidence.year}.`
+              : "No importable variables were resolved for this AI-suggested group.",
+          ],
+          evidence,
+        });
+        importStepIndex += 1;
+        continue;
+      }
       for (const variable of availableVariables) {
         const stepId = `step-import-${importStepIndex + 1}`;
         const action: AiAdminAction = {
@@ -1121,12 +1234,14 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
       mode: "plan",
       plan: {
         prompt,
-        notes: intent?.notes ?? "Generated from Census research evidence.",
-        confidence: overallConfidence,
-        requiresUserApproval: true,
-        readOnlyResearch: true,
-        steps,
-        actions: allPlannedActions,
+      notes: intent?.notes ?? "Generated from Census research evidence.",
+      confidence: overallConfidence,
+      requiresUserApproval: true,
+      readOnlyResearch: true,
+      importExecutionPolicy: "strict_model_only",
+      rejectedModelImportCandidates,
+      steps,
+      actions: allPlannedActions,
         executeRequestDraft: draftValidation.plan,
         preflightCheck,
         preflightConflicts,
@@ -1150,6 +1265,7 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
         aiFallback: aiSuggestFallback,
         importEvidence,
         warnings: researchWarnings,
+        rejectedModelImportCandidates,
       },
       guardrails: {
         createOnly: true,

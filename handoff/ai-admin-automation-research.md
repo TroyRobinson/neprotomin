@@ -608,3 +608,89 @@ User-observed disconnect: chat recommendations were grounded in one direction, b
 2. Ask follow-up refinements and regenerate plan.
 3. Confirm follow-up model responses and new plan continue referencing prior search/plan state.
 4. Confirm plan endpoint behavior uses intent query for group search (less drift to unrelated groups when prompt transcript is long).
+
+## 22. Next-Slice Direction: Resolver + Strict Planner Provenance (2026-02-21)
+
+### User clarification (what should happen next)
+1. The plan executor should be able to run a single approved sequence where:
+   * imports run first
+   * derived stats run after import success
+   * family/group links run after derived/import success
+2. If a step fails, execution should pause and the agent should re-evaluate with that failure context available in chat history.
+3. Executable imports should come only from the AI planner's suggested import candidates (not backend-added fallback candidates).
+4. Planning should still validate/filter the AI model's suggestions and show explicit notes when a suggested stat cannot be used, including why.
+5. Those planning rejections/errors should be included in the agent's future chat context so the agent can self-correct on the next plan attempt.
+
+### Current state (important constraint)
+*   Backend execution already supports:
+    * `create_derived_stat`
+    * `create_stat_family_links`
+*   Planner currently blocks those from execution because it emits symbolic references (variables/names), not resolved stat IDs.
+*   Planner currently merges model candidates with fallback candidates (AI suggest fallback + grounded top-group backup), which can admit semantically off-topic but valid imports.
+
+### Planned implementation changes (next slices)
+
+### A. Strict planner provenance for executable imports
+*   Add provenance metadata to import candidates (`model`, `ai_fallback`, `grounded_backup`).
+*   Make executable import actions derive only from `model` provenance candidates (default mode for chat planner path).
+*   Preserve non-model candidates as research notes only (not executable actions).
+*   Add `rejectedModelCandidates` (or equivalent) to plan payload with reasons such as:
+    * invalid group/variable
+    * census metadata 404 / unavailable
+    * not available in selected dataset/year
+    * low semantic relevance / failed relevance gate
+*   Include these rejection notes in chat artifact context so later AI turns can see what failed and why.
+
+### B. Dependency resolver for sequential execution
+*   Add runtime resolver state to run execution (or a resolver helper invoked during `run_next_step`) that maps:
+    * import step results -> created stat IDs
+    * imported variable / NE ID -> created stat IDs
+    * derived stat names -> created stat IDs
+    * family names/titles -> resolved stat IDs (where applicable)
+*   Rewrite pending derived/family action payloads to concrete IDs before execution:
+    * derived: `numeratorId`, `denominatorId`, `sumOperandIds`
+    * family: `parentStatId`, `childStatIds`
+*   Promote derived/family actions into executable plan actions once their dependencies are resolvable.
+
+### C. Failure pause + re-evaluate loop
+*   On execution failure:
+    * pause run
+    * record structured failure event and step error detail
+    * expose failure artifact to chat context
+*   Agent can then propose a revised plan/patch (user approval required before additional writes).
+*   Initial scope can stop at "pause + visible error + context captured"; automatic re-planning can come next.
+
+### Verification targets for upcoming work
+1. Approve a plan with imports + derived + family steps and run it end-to-end.
+2. Confirm derived stats appear after imports without a second approval flow.
+3. Confirm family links/groupings are created after derived/import steps.
+4. Confirm an invalid AI-suggested import appears as a rejected planner note (not executable).
+5. Confirm that rejection note appears in later chat context and improves the next plan attempt.
+
+## 23. Slice Update: Strict Planner Provenance + Rejected AI Import Notes (2026-02-22)
+
+### Implemented
+*   `api/ai-admin-plan.ts`
+    *   Added internal import-candidate provenance (`model`, `ai_fallback`, `grounded_backup`).
+    *   Enforced strict provenance for executable imports:
+        *   only `model`-proposed import candidates can become executable `import_census_stat` actions.
+        *   fallback candidates are still inspected/researched but remain non-executable.
+    *   Added rejected AI-model import tracking (`rejectedModelImportCandidates`) for planner-visible/user-visible reasons including:
+        *   sanitize failure (invalid group/variable shape)
+        *   Census metadata validation failure (including sanitized 404 summaries)
+        *   no importable variables available after validation
+    *   Added explicit non-executable planner note steps for rejected AI-suggested imports so the plan UI communicates what the AI tried and why it was blocked.
+    *   Added `importExecutionPolicy: "strict_model_only"` to plan payload.
+*   `src/react/components/AdminAiChatModal.tsx`
+    *   Extended plan artifact serialization to include strict import policy and rejected AI-suggested import notes, so future chat/planning turns can see those failures in context.
+*   Tests
+    *   `api/ai-admin-plan.test.ts`
+        *   Updated fallback-related tests to reflect strict provenance (fallback imports no longer executable).
+        *   Added assertions that rejected AI model candidates are surfaced in plan payload.
+
+### Behavioral impact
+*   This addresses the "random valid but off-topic stat got imported" class of failures by preventing backend-added fallback candidates from entering executable plan actions.
+*   Planner can still inspect fallback/grounded candidates for research context, but execution approval is blocked unless at least one AI-model-suggested import validates.
+
+### Remaining next step (still needed)
+*   Dependency resolver for imports -> derived -> family so derived stats and grouping can execute in the same approved run after import success.

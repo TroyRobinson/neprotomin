@@ -97,6 +97,15 @@ type AiAdminAction = {
 type AiAdminPlanDraft = {
   notes: string;
   confidence: number;
+  importExecutionPolicy?: string;
+  rejectedModelImportCandidates?: Array<{
+    group?: string | null;
+    dataset?: string | null;
+    year?: number | null;
+    variables?: string[];
+    reason: string;
+    stage?: string;
+  }>;
   steps: Array<{
     id: string;
     type: string;
@@ -314,14 +323,23 @@ const buildPlanSummaryText = (plan: AiAdminPlanDraft | null): string | null => {
   const conflictLines = (plan.preflightConflicts ?? [])
     .slice(0, 4)
     .map((conflict) => `${conflict.actionType}: ${conflict.detail}`);
+  const rejectedLines = (plan.rejectedModelImportCandidates ?? [])
+    .slice(0, 4)
+    .map((entry) => {
+      const label = entry.group ?? "unknown group";
+      const scope = [entry.dataset, entry.year].filter(Boolean).join(" ");
+      return `${label}${scope ? ` (${scope})` : ""}: ${entry.reason}`;
+    });
 
   return [
     "[Plan Artifact]",
     `Notes: ${plan.notes}`,
     `Confidence: ${Math.round(plan.confidence * 100)}%`,
+    plan.importExecutionPolicy ? `Import execution policy: ${plan.importExecutionPolicy}` : null,
     `Approval blocked: ${plan.approvalBlocked ? "yes" : "no"}${
       plan.approvalBlockReason ? ` (${plan.approvalBlockReason})` : ""
     }`,
+    rejectedLines.length > 0 ? "Rejected AI-suggested imports:\n" + rejectedLines.join("\n") : null,
     stepLines.length > 0 ? "Steps:\n" + stepLines.join("\n") : null,
     actionLines.length > 0 ? "Planned actions:\n" + actionLines.join("\n") : null,
     conflictLines.length > 0 ? "Preflight conflicts:\n" + conflictLines.join("\n") : null,
