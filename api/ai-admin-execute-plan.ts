@@ -18,9 +18,11 @@ import {
   failAiAdminRunStep,
   getAiAdminRun,
   pauseAiAdminRun,
+  restoreAiAdminRunFromSnapshot,
   resumeAiAdminRun,
   startNextAiAdminRunStep,
   stopAiAdminRun,
+  type AiAdminRunSnapshot,
 } from "./_shared/aiAdminRunStore.ts";
 
 type AiAdminExecuteRequest = IncomingMessage & {
@@ -93,6 +95,9 @@ const normalizeString = (value: unknown): string | null => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const splitEntries = (value?: string | null): string[] => {
   if (!value) return [];
@@ -257,6 +262,30 @@ const runGuardrailsSummary = {
   payloadMutationIntentBlocked: true,
 };
 
+const restoreRunFromSnapshotIfPossible = (
+  rawSnapshot: unknown,
+  expectedRunId: string,
+  callerEmail: string | null,
+): AiAdminRunSnapshot | null => {
+  if (!isRecord(rawSnapshot)) return null;
+  const runId = normalizeString(rawSnapshot.runId);
+  if (!runId || runId !== expectedRunId) return null;
+  if (!Array.isArray(rawSnapshot.actions) || !Array.isArray(rawSnapshot.steps)) return null;
+  if (!isRecord(rawSnapshot.caps)) return null;
+
+  // Re-validate actions/caps to avoid restoring mutated unsupported commands.
+  const validation = validateAiAdminPlanRequest({
+    callerEmail: normalizeString(rawSnapshot.callerEmail) ?? callerEmail,
+    dryRun: false,
+    validateOnly: false,
+    caps: rawSnapshot.caps,
+    actions: rawSnapshot.actions,
+  });
+  if (!validation.ok) return null;
+
+  return restoreAiAdminRunFromSnapshot(rawSnapshot as unknown as AiAdminRunSnapshot);
+};
+
 const handleTransitionError = (res: AiAdminExecuteResponse, error: { code: string; message: string; run?: unknown }) => {
   if (error.code === "run_not_found") {
     respond(res, 404, { ok: false, error: error.message });
@@ -300,7 +329,9 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
         respond(res, 400, { error: "Missing required runId." });
         return;
       }
-      const run = getAiAdminRun(runId);
+      const run =
+        getAiAdminRun(runId) ??
+        restoreRunFromSnapshotIfPossible(rawBody.runSnapshot, runId, callerEmail);
       if (!run) {
         respond(res, 404, { error: "Run not found." });
         return;
@@ -319,6 +350,9 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
       if (!runId) {
         respond(res, 400, { error: "Missing required runId." });
         return;
+      }
+      if (!getAiAdminRun(runId)) {
+        restoreRunFromSnapshotIfPossible(rawBody.runSnapshot, runId, callerEmail);
       }
       const transitioned = approveAiAdminRun(runId, callerEmail, now());
       if (!transitioned.ok) {
@@ -339,6 +373,9 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
       if (!runId) {
         respond(res, 400, { error: "Missing required runId." });
         return;
+      }
+      if (!getAiAdminRun(runId)) {
+        restoreRunFromSnapshotIfPossible(rawBody.runSnapshot, runId, callerEmail);
       }
       const reason = normalizeString(rawBody.reason) ?? "Paused by user.";
       const transitioned = pauseAiAdminRun(runId, reason, now());
@@ -361,6 +398,9 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
         respond(res, 400, { error: "Missing required runId." });
         return;
       }
+      if (!getAiAdminRun(runId)) {
+        restoreRunFromSnapshotIfPossible(rawBody.runSnapshot, runId, callerEmail);
+      }
       const transitioned = resumeAiAdminRun(runId, now());
       if (!transitioned.ok) {
         handleTransitionError(res, transitioned);
@@ -380,6 +420,9 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
       if (!runId) {
         respond(res, 400, { error: "Missing required runId." });
         return;
+      }
+      if (!getAiAdminRun(runId)) {
+        restoreRunFromSnapshotIfPossible(rawBody.runSnapshot, runId, callerEmail);
       }
       const reason = normalizeString(rawBody.reason) ?? "Stopped by user.";
       const transitioned = stopAiAdminRun(runId, reason, now());
@@ -401,6 +444,9 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
       if (!runId) {
         respond(res, 400, { error: "Missing required runId." });
         return;
+      }
+      if (!getAiAdminRun(runId)) {
+        restoreRunFromSnapshotIfPossible(rawBody.runSnapshot, runId, callerEmail);
       }
 
       const startResult = startNextAiAdminRunStep(runId, now());

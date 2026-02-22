@@ -215,6 +215,12 @@ export const getAiAdminRun = (runId: string): AiAdminRunSnapshot | null => {
   return run ? cloneRun(run) : null;
 };
 
+export const restoreAiAdminRunFromSnapshot = (snapshot: AiAdminRunSnapshot): AiAdminRunSnapshot => {
+  const run = JSON.parse(JSON.stringify(snapshot)) as AiAdminRunInternal;
+  runs.set(run.runId, run);
+  return cloneRun(run);
+};
+
 export const approveAiAdminRun = (
   runId: string,
   approvedBy: string | null,

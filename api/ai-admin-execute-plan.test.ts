@@ -442,4 +442,54 @@ describe("ai-admin-execute-plan guardrails", () => {
     expect(nextState.statusCode).toBe(202);
     expect(writeSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("rehydrates run state from runSnapshot when in-memory store is missing the run", async () => {
+    const writeSpy = vi.fn(async (_db, action) => ({
+      actionId: action.id,
+      actionType: action.type,
+      status: "completed",
+    }));
+    const handler = createAiAdminExecutePlanHandler({
+      executeWriteAction: writeSpy as any,
+      createDb: () => ({ query: vi.fn(), transact: vi.fn() }) as any,
+      detectPreflightConflicts: vi.fn(async () => []),
+      now: () => 55667788,
+    });
+
+    const { res: createRes, state: createState } = createMockResponse();
+    await handler(
+      createMockRequest(
+        withApiKeyAuth({
+          command: "create_run",
+          callerEmail: "admin@example.com",
+          actions: [{ id: "step-1", type: "create_stat_family_links", payload: { parentStatId: "p1", childStatIds: ["c1"] } }],
+        }),
+      ) as any,
+      createRes as any,
+    );
+
+    expect(createState.statusCode).toBe(202);
+    const createdRun = (createState.payload as { run?: any }).run;
+    const runId = createdRun?.runId as string;
+    expect(runId).toBe("ai-run-55667788");
+
+    // Simulate a different serverless instance/process with empty in-memory store.
+    resetAiAdminRunStoreForTests();
+
+    const { res: approveRes, state: approveState } = createMockResponse();
+    await handler(
+      createMockRequest(
+        withApiKeyAuth({
+          command: "approve_run",
+          callerEmail: "admin@example.com",
+          runId,
+          runSnapshot: createdRun,
+        }),
+      ) as any,
+      approveRes as any,
+    );
+
+    expect(approveState.statusCode).toBe(200);
+    expect((approveState.payload as { run?: { status?: string } }).run?.status).toBe("approved");
+  });
 });

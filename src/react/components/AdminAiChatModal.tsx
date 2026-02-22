@@ -474,14 +474,21 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
   const runNextStep = useCallback(async (): Promise<{ done: boolean }> => {
     const current = runRef.current;
     if (!current) return { done: true };
-    const response = await requestJson<{ run?: AiAdminRun; error?: string; conflicts?: unknown[] }>(
-      "/api/ai-admin-execute-plan",
-      {
-        command: "run_next_step",
-        runId: current.runId,
-        callerEmail: normalizedCallerEmail,
-      },
-    );
+    let response: ApiJsonResult<{ run?: AiAdminRun; error?: string; conflicts?: unknown[] }>;
+    try {
+      response = await requestJson<{ run?: AiAdminRun; error?: string; conflicts?: unknown[] }>(
+        "/api/ai-admin-execute-plan",
+        {
+          command: "run_next_step",
+          runId: current.runId,
+          callerEmail: normalizedCallerEmail,
+          runSnapshot: current,
+        },
+      );
+    } catch (error) {
+      setRunError(error instanceof Error ? error.message : "Run step request failed.");
+      return { done: true };
+    }
 
     const nextRun = response.data && typeof response.data === "object" ? (response.data as any).run : null;
     if (nextRun) {
@@ -506,18 +513,23 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
   // Run execution is stepped so pause/cancel can interrupt between writes.
   const startAutoRun = useCallback(async () => {
     if (!runRef.current) return;
-    autoRunRef.current = true;
-    setIsAutoRunning(true);
-    setRunError(null);
-    while (autoRunRef.current) {
-      const currentRun = runRef.current;
-      if (!currentRun || !RUNNING_STATUSES.has(currentRun.status)) break;
-      const result = await runNextStep();
-      if (result.done) break;
-      await new Promise((resolve) => setTimeout(resolve, 180));
+    try {
+      autoRunRef.current = true;
+      setIsAutoRunning(true);
+      setRunError(null);
+      while (autoRunRef.current) {
+        const currentRun = runRef.current;
+        if (!currentRun || !RUNNING_STATUSES.has(currentRun.status)) break;
+        const result = await runNextStep();
+        if (result.done) break;
+        await new Promise((resolve) => setTimeout(resolve, 180));
+      }
+    } catch (error) {
+      setRunError(error instanceof Error ? error.message : "Run failed unexpectedly.");
+    } finally {
+      autoRunRef.current = false;
+      setIsAutoRunning(false);
     }
-    autoRunRef.current = false;
-    setIsAutoRunning(false);
   }, [runNextStep]);
 
   const pauseAutoRun = useCallback(() => {
@@ -739,6 +751,7 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
         command: "approve_run",
         callerEmail: normalizedCallerEmail,
         runId: createdRun.runId,
+        runSnapshot: createdRun,
       },
     );
     setIsBusyRunControl(false);
@@ -766,6 +779,7 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
         runId: run.runId,
         callerEmail: normalizedCallerEmail,
         reason: "Paused from chat controls.",
+        runSnapshot: run,
       },
     );
     setIsBusyRunControl(false);
@@ -786,6 +800,7 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
         command: "resume_run",
         runId: run.runId,
         callerEmail: normalizedCallerEmail,
+        runSnapshot: run,
       },
     );
     setIsBusyRunControl(false);
@@ -809,6 +824,7 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
         runId: run.runId,
         callerEmail: normalizedCallerEmail,
         reason: "Stopped from chat progress controls.",
+        runSnapshot: run,
       },
     );
     setIsBusyRunControl(false);
@@ -823,6 +839,7 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
   const handleRunClick = useCallback(async () => {
     if (!run || isBusyRunControl) return;
     setRunError(null);
+    runRef.current = run;
 
     if (run.status === "paused") {
       await handleResumeRun();
@@ -840,6 +857,7 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
         command: "get_run",
         runId: run.runId,
         callerEmail: normalizedCallerEmail,
+        runSnapshot: run,
       });
       if (response.ok && response.data?.run) {
         setRun(response.data.run);
