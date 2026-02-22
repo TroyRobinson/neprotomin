@@ -268,6 +268,8 @@ export const Sidebar = ({
     selectionKey: null,
   });
   const lastNonMapSelectionKeyRef = useRef<string | null>(null);
+  const orgTabAutoEnableEligibleRef = useRef(true);
+  const prevKeepOrgsOnMapRef = useRef<boolean | undefined>(undefined);
   const setActiveTabWithSync = useCallback(
     (tab: TabType) => {
       setActiveTab(tab);
@@ -1116,6 +1118,15 @@ export const Sidebar = ({
   ]);
 
   useEffect(() => {
+    const prev = prevKeepOrgsOnMapRef.current;
+    if (prev === true && keepOrgsOnMap === false) {
+      // Once org pins are turned off (user or external action), don't auto-turn them back on from org-tab clicks.
+      orgTabAutoEnableEligibleRef.current = false;
+    }
+    prevKeepOrgsOnMapRef.current = keepOrgsOnMap;
+  }, [keepOrgsOnMap]);
+
+  useEffect(() => {
     const hasAnyVisibleOrgs = categoryFilteredCount > 0;
     const visible = hasAnyVisibleOrgs && keepOrgsOnMap;
     onOrgPinsVisibleChange?.(visible);
@@ -1193,6 +1204,12 @@ export const Sidebar = ({
   };
 
   const handleTabChange = (tab: TabType) => {
+    if (tab === "orgs" && orgTabAutoEnableEligibleRef.current) {
+      orgTabAutoEnableEligibleRef.current = false;
+      if (!keepOrgsOnMap) {
+        setKeepOrgsOnMap(true);
+      }
+    }
     setActiveTabWithSync(tab);
   };
 

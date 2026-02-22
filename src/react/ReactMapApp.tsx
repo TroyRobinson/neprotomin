@@ -297,6 +297,7 @@ export const ReactMapApp = () => {
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
   const [isDraggingSheet, setIsDraggingSheet] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(() => initialMapState.showAdvanced);
+  const suppressDesktopAreaAutoAdvancedRef = useRef(false);
   const [sidebarInsightsState, setSidebarInsightsState] = useState(() => ({
     demographicsVisible: initialMapState.sidebarInsights.demographicsVisible,
     demographicsExpanded: initialMapState.sidebarInsights.demographicsExpanded,
@@ -328,6 +329,11 @@ export const ReactMapApp = () => {
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showZipSearchModal, setShowZipSearchModal] = useState(false);
   const [showTimeSelectorModal, setShowTimeSelectorModal] = useState(false);
+  const handleAdvancedToggle = useCallback((next: boolean) => {
+    // Respect a user's explicit "off" choice for desktop ZIP area auto-advanced.
+    suppressDesktopAreaAutoAdvancedRef.current = !next;
+    setShowAdvanced(next);
+  }, []);
   const setCategoryFilterWithSync = useCallback((next: string | null) => {
     const previous = categoryFilterRef.current;
     categoryFilterRef.current = next;
@@ -2562,6 +2568,14 @@ export const ReactMapApp = () => {
         expandSheet();
       }
     }
+    if (!isMobile && change.kind === "ZIP" && isNonEmpty && hasChanged) {
+      if (sidebarCollapsed) {
+        setSidebarCollapsed(false);
+      }
+      if (!showAdvanced && !suppressDesktopAreaAutoAdvancedRef.current) {
+        setShowAdvanced(true);
+      }
+    }
     if (hasChanged) {
       track("map_area_selected", {
         areaKind: change.kind,
@@ -3729,7 +3743,7 @@ export const ReactMapApp = () => {
                 selectionLabelOverride={searchSelectionLabel}
                 selectionStyleVariant={selectionStyleVariant}
                 showAdvanced={showAdvanced}
-                onAdvancedToggle={setShowAdvanced}
+                onAdvancedToggle={handleAdvancedToggle}
                 insightsState={sidebarInsightsState}
                 onInsightsStateChange={(patch) =>
                   setSidebarInsightsState((prev) => ({
@@ -3739,7 +3753,12 @@ export const ReactMapApp = () => {
                 }
                 initialTab={sidebarTab}
                 onTabChange={setSidebarTab}
-                onCollapse={setSidebarCollapsed}
+                onCollapse={(nextCollapsed) => {
+                  if (!nextCollapsed && !isFoodDomain) {
+                    setSidebarTab("stats");
+                  }
+                  setSidebarCollapsed(nextCollapsed);
+                }}
               />
             </div>
           )}
@@ -4002,7 +4021,7 @@ export const ReactMapApp = () => {
                   variant="mobile"
                   showInsights={true}
                   showAdvanced={showAdvanced}
-                  onAdvancedToggle={setShowAdvanced}
+                  onAdvancedToggle={handleAdvancedToggle}
                   insightsState={sidebarInsightsState}
                   onInsightsStateChange={(patch) =>
                     setSidebarInsightsState((prev) => ({
