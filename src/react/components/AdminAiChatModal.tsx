@@ -452,6 +452,10 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
     () => (plan?.steps ?? []).filter((step) => !step.executableNow),
     [plan?.steps],
   );
+  const familyLinkSteps = useMemo(
+    () => (plan?.steps ?? []).filter((step) => step.type === "create_stat_family_links"),
+    [plan?.steps],
+  );
 
   const requestJson = useCallback(
     async <T,>(url: string, body: Record<string, unknown>): Promise<ApiJsonResult<T>> => {
@@ -1167,7 +1171,7 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
                         Future Suggestions
                       </p>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        These are retained in the plan draft but currently non-executable until dependency resolution is wired.
+                        These steps are retained in the plan draft but are currently non-executable due to unresolved dependencies or planner constraints.
                       </p>
                       {futureSuggestionSteps.map((step) => (
                         <div key={step.id} className="rounded-md border border-slate-200 px-2 py-2 dark:border-slate-700">
@@ -1190,13 +1194,11 @@ export const AdminAiChatModal = ({ callerEmail }: { callerEmail: string | null |
                     </div>
                   )}
 
-                  {futureSuggestionSteps.some((step) => step.type === "create_stat_family_links") && (
+                  {familyLinkSteps.length > 0 && (
                     <div className="mt-3 rounded-md border border-slate-200 px-2 py-2 dark:border-slate-700">
                       <p className="font-semibold text-slate-700 dark:text-slate-200">Family Tree</p>
                       <div className="mt-1 space-y-1 text-[11px] text-slate-600 dark:text-slate-300">
-                        {futureSuggestionSteps
-                          .filter((step) => step.type === "create_stat_family_links")
-                          .map((step) => {
+                        {familyLinkSteps.map((step) => {
                             const parentName =
                               typeof step.payload.parentName === "string" ? step.payload.parentName : "Parent";
                             const childNames = Array.isArray(step.payload.childNames)

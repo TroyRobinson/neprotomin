@@ -47,6 +47,7 @@ export type AiAdminRunStep = {
   startedAt: number | null;
   finishedAt: number | null;
   resultSummary: string | null;
+  resultMeta?: Record<string, unknown> | null;
   error: string | null;
 };
 
@@ -176,6 +177,7 @@ export const createAiAdminRun = (input: CreateRunInput): AiAdminRunSnapshot => {
     startedAt: null,
     finishedAt: null,
     resultSummary: null,
+    resultMeta: null,
     error: null,
   }));
 
@@ -364,6 +366,7 @@ export const completeAiAdminRunStep = (
   stepIndex: number,
   resultSummary: string,
   now: number,
+  resultMeta?: Record<string, unknown>,
 ): TransitionResult => {
   const run = getRunInternal(runId);
   if (!run) return { ok: false, code: "run_not_found", message: "Run not found." };
@@ -379,6 +382,7 @@ export const completeAiAdminRunStep = (
   step.status = "completed";
   step.finishedAt = now;
   step.resultSummary = resultSummary;
+  step.resultMeta = resultMeta ?? null;
   step.error = null;
   run.nextActionIndex = Math.max(run.nextActionIndex, stepIndex + 1);
   run.updatedAt = now;
@@ -387,6 +391,7 @@ export const completeAiAdminRunStep = (
     actionId: step.actionId,
     actionType: step.actionType,
     resultSummary,
+    ...(resultMeta ? { resultMeta } : {}),
   });
 
   if (run.nextActionIndex >= run.actions.length) {

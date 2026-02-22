@@ -694,3 +694,43 @@ User-observed disconnect: chat recommendations were grounded in one direction, b
 
 ### Remaining next step (still needed)
 *   Dependency resolver for imports -> derived -> family so derived stats and grouping can execute in the same approved run after import success.
+
+## 24. Slice Update: Runtime Dependency Resolver for Imports -> Derived -> Family (2026-02-22)
+
+### Implemented
+*   `api/_shared/aiAdminRunStore.ts`
+    *   Run steps now persist structured `resultMeta` (in addition to `resultSummary`) so later steps can resolve dependencies across requests/serverless rehydration.
+*   `api/ai-admin-execute-plan.ts`
+    *   Added runtime dependency resolver before each write-step execution in `run_next_step`.
+    *   Resolver builds state from prior completed step metadata:
+        *   `actionId -> createdStatId`
+        *   `census:VARIABLE -> createdStatId`
+        *   `statName -> createdStatId`
+    *   Derived stat steps (`create_derived_stat`) now auto-resolve:
+        *   `numeratorId`
+        *   `denominatorId`
+        *   `sumOperandIds`
+      using prior import results and (if needed) existing stats by `neId`.
+    *   Family-link steps (`create_stat_family_links`) now auto-resolve:
+        *   `parentStatId`
+        *   `childStatIds`
+      using prior created stat names and (if needed) existing stats by `name`.
+    *   If dependencies cannot be resolved, the run is paused with a clear error message instead of silently failing.
+    *   Resolved action payloads are used for both preflight conflict checks and execution.
+*   `api/ai-admin-plan.ts`
+    *   Derived steps with satisfiable import dependencies are now included in `executeRequestDraft.actions` (no longer forced into "Future Suggestions").
+    *   Family-link steps are now included in `executeRequestDraft.actions` when structurally valid (runtime resolver handles ID/name resolution at execution time).
+*   `src/react/components/AdminAiChatModal.tsx`
+    *   Updated "Future Suggestions" copy to reflect generic non-executable reasons (instead of dependency resolver not being wired).
+    *   Family Tree block now renders for all family-link plan steps, including executable ones.
+*   Tests
+    *   `api/ai-admin-execute-plan.test.ts`
+        *   Added run-time chaining test that proves `import -> derived -> family` resolution and execution in one approved run.
+
+### Behavioral impact
+*   Approved runs can now automatically execute eligible derived stats after imports, and then family links, in sequence.
+*   This removes the earlier need for a separate approval/execution pass for many derived/family steps.
+*   Family-link success still depends on planner naming a real parent stat (either one created earlier in the run or an existing stat in the DB by name).
+
+### Remaining known gap
+*   Planner may still choose a conceptual family parent label (e.g. `"Business"`) that does not correspond to an actual stat record. In that case the runtime resolver will pause the run and surface the unresolved parent name. A later planning/prompting slice should improve parent-stat selection or introduce explicit parent-stat creation behavior where appropriate.

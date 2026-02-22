@@ -492,4 +492,117 @@ describe("ai-admin-execute-plan guardrails", () => {
     expect(approveState.statusCode).toBe(200);
     expect((approveState.payload as { run?: { status?: string } }).run?.status).toBe("approved");
   });
+
+  it("resolves derived and family dependencies from prior step results during a run", async () => {
+    const querySpy = vi.fn(async (query: any) => {
+      const nameFilter = query?.stats?.$?.where?.name?.$in;
+      if (Array.isArray(nameFilter) && nameFilter.includes("Business")) {
+        return { stats: [{ id: "stat-parent", name: "Business", neId: null }] };
+      }
+      return { stats: [] };
+    });
+
+    const callPayloads: Array<{ id: string; type: string; payload: Record<string, unknown> }> = [];
+    const writeSpy = vi.fn(async (_db, action) => {
+      callPayloads.push({ id: action.id, type: action.type, payload: { ...action.payload } });
+      if (action.type === "import_census_stat") {
+        return {
+          actionId: action.id,
+          actionType: action.type,
+          status: "completed",
+          createdStatId: "stat-import-retail",
+          createdStatName: "Retail trade",
+        };
+      }
+      if (action.type === "create_derived_stat") {
+        return {
+          actionId: action.id,
+          actionType: action.type,
+          status: "completed",
+          createdStatId: "stat-derived-total",
+          createdStatName: "Total Self Employed Businesses",
+        };
+      }
+      if (action.type === "create_stat_family_links") {
+        return {
+          actionId: action.id,
+          actionType: action.type,
+          status: "completed",
+          createdRelations: 1,
+        };
+      }
+      return { actionId: action.id, actionType: action.type, status: "completed" };
+    });
+
+    const handler = createAiAdminExecutePlanHandler({
+      executeWriteAction: writeSpy as any,
+      createDb: () => ({ query: querySpy, transact: vi.fn() }) as any,
+      detectPreflightConflicts: vi.fn(async () => []),
+      now: (() => {
+        let t = 70000000;
+        return () => ++t;
+      })(),
+    });
+
+    const actions = [
+      {
+        id: "step-import-1",
+        type: "import_census_stat",
+        payload: { dataset: "acs/acs5", group: "C24070", variable: "C24070_034E" },
+      },
+      {
+        id: "step-derived-1",
+        type: "create_derived_stat",
+        payload: {
+          name: "Total Self Employed Businesses",
+          formula: "sum",
+          sumOperandVariables: ["C24070_034E"],
+          sumOperandImportStepIds: ["step-import-1"],
+        },
+      },
+      {
+        id: "step-family-1",
+        type: "create_stat_family_links",
+        payload: {
+          parentName: "Business",
+          childNames: ["Total Self Employed Businesses"],
+          statAttribute: "Total",
+        },
+      },
+    ];
+
+    const { res: createRes, state: createState } = createMockResponse();
+    await handler(
+      createMockRequest(withApiKeyAuth({ command: "create_run", callerEmail: "admin@example.com", actions })) as any,
+      createRes as any,
+    );
+    expect(createState.statusCode).toBe(202);
+    const runId = (createState.payload as { run?: { runId?: string } }).run?.runId;
+    expect(runId).toBeTruthy();
+
+    const { res: approveRes } = createMockResponse();
+    await handler(
+      createMockRequest(withApiKeyAuth({ command: "approve_run", callerEmail: "admin@example.com", runId })) as any,
+      approveRes as any,
+    );
+
+    for (let i = 0; i < actions.length; i += 1) {
+      const { res: nextRes, state: nextState } = createMockResponse();
+      await handler(
+        createMockRequest(withApiKeyAuth({ command: "run_next_step", callerEmail: "admin@example.com", runId })) as any,
+        nextRes as any,
+      );
+      expect(nextState.statusCode).toBe(202);
+    }
+
+    expect(writeSpy).toHaveBeenCalledTimes(3);
+    const derivedCall = callPayloads.find((entry) => entry.type === "create_derived_stat");
+    expect(Array.isArray(derivedCall?.payload.sumOperandIds)).toBe(true);
+    expect((derivedCall?.payload.sumOperandIds as string[])[0]).toBe("stat-import-retail");
+
+    const familyCall = callPayloads.find((entry) => entry.type === "create_stat_family_links");
+    expect(familyCall?.payload.parentStatId).toBe("stat-parent");
+    expect((familyCall?.payload.childStatIds as string[])[0]).toBe("stat-derived-total");
+    expect(querySpy).toHaveBeenCalled();
+  });
 });

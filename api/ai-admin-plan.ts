@@ -1144,6 +1144,10 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
         source: "derived",
         fromStepId: stepId,
       });
+      const derivedExecutableNow = blockers.length === 0;
+      if (derivedExecutableNow) {
+        executableActions.push(action);
+      }
 
       steps.push({
         id: stepId,
@@ -1151,14 +1155,12 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
         title: `Create derived stat ${derived.name}`,
         description: derived.reason,
         confidence: blockers.length === 0 ? 0.72 : 0.4,
-        executableNow: false,
+        executableNow: derivedExecutableNow,
         payload: action.payload,
         blockers:
           blockers.length > 0
             ? blockers
-            : [
-                "Planned in Slice 3 only. Derived execution remains a separate approval/execution step in later slices.",
-              ],
+            : undefined,
       });
       derivedStepIndex += 1;
     }
@@ -1178,17 +1180,26 @@ export const createAiAdminPlanHandler = (deps: PlanHandlerDeps = {}) => {
         },
       };
       allPlannedActions.push(action);
+      const familyBlockers: string[] = [];
+      if (!family.parentName.trim()) {
+        familyBlockers.push("Family link requires a parent stat name.");
+      }
+      if (!Array.isArray(family.childNames) || family.childNames.length === 0) {
+        familyBlockers.push("Family link requires at least one child stat name.");
+      }
+      const familyExecutableNow = familyBlockers.length === 0 && hasExecutableImportActions;
+      if (familyExecutableNow) {
+        executableActions.push(action);
+      }
       steps.push({
         id: stepId,
         type: action.type,
         title: `Create family links under ${family.parentName}`,
         description: family.reason,
         confidence: 0.6,
-        executableNow: false,
+        executableNow: familyExecutableNow,
         payload: action.payload,
-        blockers: [
-          "Planned in Slice 3 only. Family-link execution requires stat id resolution in later slices.",
-        ],
+        blockers: familyBlockers.length > 0 ? familyBlockers : undefined,
       });
       familyStepIndex += 1;
     }

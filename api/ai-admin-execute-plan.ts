@@ -71,6 +71,12 @@ type HandlerDeps = {
   now?: () => number;
 };
 
+type ResolverState = {
+  statIdByActionId: Map<string, string>;
+  statIdByNeId: Map<string, string>;
+  statIdByName: Map<string, string>;
+};
+
 type AiAdminRunCommand =
   | "create_run"
   | "get_run"
@@ -254,6 +260,335 @@ const summarizeUnknown = (value: unknown): string => {
       .join("; ");
   }
   return String(value);
+};
+
+const collectResolverState = (run: AiAdminRunSnapshot): ResolverState => {
+  const state: ResolverState = {
+    statIdByActionId: new Map<string, string>(),
+    statIdByNeId: new Map<string, string>(),
+    statIdByName: new Map<string, string>(),
+  };
+
+  for (let index = 0; index < run.steps.length; index += 1) {
+    const step = run.steps[index] as typeof run.steps[number] & { resultMeta?: Record<string, unknown> | null };
+    if (step.status !== "completed" || !step.resultMeta || typeof step.resultMeta !== "object") continue;
+    const action = run.actions[index];
+    if (!action) continue;
+    const createdStatId = normalizeString(step.resultMeta.createdStatId);
+    if (!createdStatId) continue;
+
+    state.statIdByActionId.set(action.id, createdStatId);
+
+    const createdStatName = normalizeString(step.resultMeta.createdStatName);
+    if (createdStatName) state.statIdByName.set(createdStatName, createdStatId);
+
+    const importVariable = normalizeString(step.resultMeta.importVariable);
+    if (importVariable) {
+      state.statIdByNeId.set(`census:${importVariable}`, createdStatId);
+    }
+
+    if (action.type === "import_census_stat") {
+      const variable = normalizeString(action.payload.variable);
+      if (variable) state.statIdByNeId.set(`census:${variable}`, createdStatId);
+    }
+    if (action.type === "create_derived_stat") {
+      const name = normalizeString(action.payload.name);
+      if (name) state.statIdByName.set(name, createdStatId);
+    }
+  }
+
+  return state;
+};
+
+const extractStatsRows = (resp: unknown): Array<Record<string, unknown>> => {
+  if (!isRecord(resp)) return [];
+  const statsNode = (resp as Record<string, unknown>).stats;
+  if (Array.isArray(statsNode)) {
+    return statsNode.filter((row): row is Record<string, unknown> => isRecord(row));
+  }
+  if (isRecord(statsNode) && Array.isArray(statsNode.data)) {
+    return statsNode.data.filter((row): row is Record<string, unknown> => isRecord(row));
+  }
+  return [];
+};
+
+const lookupExistingStats = async (
+  db: InstantAdminLike,
+  input: { names?: string[]; neIds?: string[] },
+): Promise<{ byName: Map<string, string>; byNeId: Map<string, string> }> => {
+  const names = Array.from(new Set((input.names ?? []).map((v) => v.trim()).filter(Boolean)));
+  const neIds = Array.from(new Set((input.neIds ?? []).map((v) => v.trim()).filter(Boolean)));
+  if (names.length === 0 && neIds.length === 0) {
+    return { byName: new Map(), byNeId: new Map() };
+  }
+
+  const where: Record<string, unknown>[] = [];
+  if (names.length > 0) where.push({ name: { $in: names } });
+  if (neIds.length > 0) where.push({ neId: { $in: neIds } });
+
+  const resp = await db.query({
+    stats: {
+      $: {
+        where: where.length > 1 ? { or: where } : where[0],
+        fields: ["id", "name", "neId"],
+      },
+    },
+  });
+  const rows = extractStatsRows(resp);
+  const byName = new Map<string, string>();
+  const byNeId = new Map<string, string>();
+  for (const row of rows) {
+    const id = normalizeString(row.id);
+    if (!id) continue;
+    const name = normalizeString(row.name);
+    const neId = normalizeString(row.neId);
+    if (name && !byName.has(name)) byName.set(name, id);
+    if (neId && !byNeId.has(neId)) byNeId.set(neId, id);
+  }
+  return { byName, byNeId };
+};
+
+const resolveDerivedActionDependencies = async (
+  db: InstantAdminLike,
+  action: AiAdminAction,
+  state: ResolverState,
+): Promise<{ ok: true; action: AiAdminAction } | { ok: false; message: string }> => {
+  const payload = { ...action.payload };
+  const unresolvedNeIds = new Set<string>();
+
+  const resolveByImportStepOrVariable = (
+    importStepIdKey: string,
+    variableKey: string,
+    outputIdKey: string,
+  ) => {
+    const existingId = normalizeString(payload[outputIdKey]);
+    if (existingId) return;
+
+    const importStepId = normalizeString(payload[importStepIdKey]);
+    if (importStepId) {
+      const mapped = state.statIdByActionId.get(importStepId);
+      if (mapped) {
+        payload[outputIdKey] = mapped;
+        return;
+      }
+    }
+
+    const variable = normalizeString(payload[variableKey]);
+    if (variable) {
+      const neId = `census:${variable}`;
+      const mapped = state.statIdByNeId.get(neId);
+      if (mapped) {
+        payload[outputIdKey] = mapped;
+        return;
+      }
+      unresolvedNeIds.add(neId);
+    }
+  };
+
+  resolveByImportStepOrVariable("numeratorImportStepId", "numeratorVariable", "numeratorId");
+  resolveByImportStepOrVariable("denominatorImportStepId", "denominatorVariable", "denominatorId");
+
+  if (!Array.isArray(payload.sumOperandIds) || payload.sumOperandIds.length === 0) {
+    const resolvedIds: string[] = [];
+    const unresolvedOperands: string[] = [];
+    const importStepIds = Array.isArray(payload.sumOperandImportStepIds)
+      ? payload.sumOperandImportStepIds.map((entry) => normalizeString(entry))
+      : [];
+    const variables = Array.isArray(payload.sumOperandVariables)
+      ? payload.sumOperandVariables.map((entry) => normalizeString(entry))
+      : [];
+    const maxLen = Math.max(importStepIds.length, variables.length);
+    for (let i = 0; i < maxLen; i += 1) {
+      const importStepId = importStepIds[i] ?? null;
+      const variable = variables[i] ?? null;
+      if (importStepId && state.statIdByActionId.has(importStepId)) {
+        resolvedIds.push(state.statIdByActionId.get(importStepId)!);
+        continue;
+      }
+      if (variable) {
+        const neId = `census:${variable}`;
+        const mapped = state.statIdByNeId.get(neId);
+        if (mapped) {
+          resolvedIds.push(mapped);
+          continue;
+        }
+        unresolvedNeIds.add(neId);
+        unresolvedOperands.push(variable);
+        continue;
+      }
+      if (importStepId) unresolvedOperands.push(importStepId);
+    }
+    if (resolvedIds.length > 0) payload.sumOperandIds = resolvedIds;
+    if (unresolvedOperands.length > 0) {
+      // Preserve unresolved detail for error message.
+      (payload as Record<string, unknown>).__resolverUnresolvedOperands = unresolvedOperands;
+    }
+  }
+
+  if (unresolvedNeIds.size > 0) {
+    const lookup = await lookupExistingStats(db, { neIds: Array.from(unresolvedNeIds) });
+    for (const [neId, statId] of lookup.byNeId.entries()) {
+      state.statIdByNeId.set(neId, statId);
+    }
+
+    resolveByImportStepOrVariable("numeratorImportStepId", "numeratorVariable", "numeratorId");
+    resolveByImportStepOrVariable("denominatorImportStepId", "denominatorVariable", "denominatorId");
+
+    if (!Array.isArray(payload.sumOperandIds) || payload.sumOperandIds.length === 0) {
+      const variables = Array.isArray(payload.sumOperandVariables)
+        ? payload.sumOperandVariables.map((entry) => normalizeString(entry)).filter((entry): entry is string => Boolean(entry))
+        : [];
+      const resolvedIds = variables
+        .map((variable) => state.statIdByNeId.get(`census:${variable}`) ?? null)
+        .filter((entry): entry is string => Boolean(entry));
+      if (resolvedIds.length > 0) payload.sumOperandIds = resolvedIds;
+    }
+  }
+
+  const missing: string[] = [];
+  if (normalizeString(payload.numeratorVariable) && !normalizeString(payload.numeratorId)) {
+    missing.push(`numerator ${String(payload.numeratorVariable)}`);
+  }
+  if (normalizeString(payload.denominatorVariable) && !normalizeString(payload.denominatorId)) {
+    missing.push(`denominator ${String(payload.denominatorVariable)}`);
+  }
+  if (Array.isArray(payload.sumOperandVariables)) {
+    const operandIds = Array.isArray(payload.sumOperandIds)
+      ? payload.sumOperandIds.map((entry) => normalizeString(entry)).filter((entry): entry is string => Boolean(entry))
+      : [];
+    const operandVars = payload.sumOperandVariables
+      .map((entry) => normalizeString(entry))
+      .filter((entry): entry is string => Boolean(entry));
+    if (operandVars.length > 0 && operandIds.length < operandVars.length) {
+      const unresolved = operandVars.filter((variable) => !state.statIdByNeId.has(`census:${variable}`));
+      if (unresolved.length > 0) {
+        missing.push(`sum operands ${unresolved.join(", ")}`);
+      }
+    }
+  }
+
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      message: `Derived stat dependencies are not resolved yet: ${missing.join("; ")}.`,
+    };
+  }
+
+  delete (payload as Record<string, unknown>).__resolverUnresolvedOperands;
+  return { ok: true, action: { ...action, payload } };
+};
+
+const resolveFamilyActionDependencies = async (
+  db: InstantAdminLike,
+  action: AiAdminAction,
+  state: ResolverState,
+): Promise<{ ok: true; action: AiAdminAction } | { ok: false; message: string }> => {
+  const payload = { ...action.payload };
+  const unresolvedNames = new Set<string>();
+
+  const parentStatId = normalizeString(payload.parentStatId);
+  if (!parentStatId) {
+    const parentName = normalizeString(payload.parentName);
+    if (parentName) {
+      const mapped = state.statIdByName.get(parentName);
+      if (mapped) payload.parentStatId = mapped;
+      else unresolvedNames.add(parentName);
+    }
+  }
+
+  const existingChildIds = Array.isArray(payload.childStatIds)
+    ? payload.childStatIds.map((entry) => normalizeString(entry)).filter((entry): entry is string => Boolean(entry))
+    : [];
+  if (existingChildIds.length === 0) {
+    const childNames = Array.isArray(payload.childNames)
+      ? payload.childNames.map((entry) => normalizeString(entry)).filter((entry): entry is string => Boolean(entry))
+      : [];
+    const resolvedChildIds: string[] = [];
+    for (const childName of childNames) {
+      const mapped = state.statIdByName.get(childName);
+      if (mapped) resolvedChildIds.push(mapped);
+      else unresolvedNames.add(childName);
+    }
+    if (resolvedChildIds.length > 0) payload.childStatIds = resolvedChildIds;
+  }
+
+  if (unresolvedNames.size > 0) {
+    const lookup = await lookupExistingStats(db, { names: Array.from(unresolvedNames) });
+    for (const [name, statId] of lookup.byName.entries()) {
+      state.statIdByName.set(name, statId);
+    }
+
+    if (!normalizeString(payload.parentStatId)) {
+      const parentName = normalizeString(payload.parentName);
+      if (parentName) {
+        const mapped = state.statIdByName.get(parentName);
+        if (mapped) payload.parentStatId = mapped;
+      }
+    }
+    if (!Array.isArray(payload.childStatIds) || payload.childStatIds.length === 0) {
+      const childNames = Array.isArray(payload.childNames)
+        ? payload.childNames.map((entry) => normalizeString(entry)).filter((entry): entry is string => Boolean(entry))
+        : [];
+      const resolvedChildIds = childNames
+        .map((childName) => state.statIdByName.get(childName) ?? null)
+        .filter((entry): entry is string => Boolean(entry));
+      if (resolvedChildIds.length > 0) payload.childStatIds = resolvedChildIds;
+    }
+  }
+
+  const missingNames: string[] = [];
+  if (!normalizeString(payload.parentStatId) && normalizeString(payload.parentName)) {
+    missingNames.push(`parent "${String(payload.parentName)}"`);
+  }
+  const childNames = Array.isArray(payload.childNames)
+    ? payload.childNames.map((entry) => normalizeString(entry)).filter((entry): entry is string => Boolean(entry))
+    : [];
+  if (childNames.length > 0) {
+    const missingChildren = childNames.filter((name) => !state.statIdByName.has(name));
+    if (missingChildren.length > 0) {
+      missingNames.push(`children ${missingChildren.map((name) => `"${name}"`).join(", ")}`);
+    }
+  }
+
+  if (missingNames.length > 0) {
+    return {
+      ok: false,
+      message: `Family-link dependencies are not resolved yet: ${missingNames.join("; ")}.`,
+    };
+  }
+
+  return { ok: true, action: { ...action, payload } };
+};
+
+const resolveActionDependencies = async (
+  db: InstantAdminLike | null,
+  action: AiAdminAction,
+  run: AiAdminRunSnapshot,
+): Promise<{ ok: true; action: AiAdminAction } | { ok: false; message: string }> => {
+  if (!isWriteActionType(action.type)) return { ok: true, action };
+  if (!db) return { ok: true, action };
+  if (action.type !== "create_derived_stat" && action.type !== "create_stat_family_links") {
+    return { ok: true, action };
+  }
+  const resolverState = collectResolverState(run);
+  if (action.type === "create_derived_stat") {
+    return resolveDerivedActionDependencies(db, action, resolverState);
+  }
+  return resolveFamilyActionDependencies(db, action, resolverState);
+};
+
+const buildStepResultMeta = (action: AiAdminAction, result: unknown): Record<string, unknown> | undefined => {
+  if (!isRecord(result)) return undefined;
+  const meta: Record<string, unknown> = {};
+  const createdStatId = normalizeString(result.createdStatId);
+  const createdStatName = normalizeString(result.createdStatName);
+  if (createdStatId) meta.createdStatId = createdStatId;
+  if (createdStatName) meta.createdStatName = createdStatName;
+  if (action.type === "import_census_stat") {
+    const variable = normalizeString(action.payload.variable);
+    if (variable) meta.importVariable = variable;
+  }
+  return Object.keys(meta).length > 0 ? meta : undefined;
 };
 
 const runGuardrailsSummary = {
@@ -472,6 +807,7 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
       const runSnapshot = startResult.run;
 
       let db: InstantAdminLike | null = null;
+      let actionForExecution = action;
       if (isWriteActionType(action.type)) {
         try {
           db = createDb();
@@ -489,7 +825,24 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
           return;
         }
 
-        const conflicts = await detectPreflightConflicts(db, [action]);
+        const resolved = await resolveActionDependencies(db, action, runSnapshot);
+        if (!resolved.ok) {
+          const paused = pauseAiAdminRun(runId, `Execution paused: ${resolved.message}`, now());
+          respond(res, 409, {
+            ok: false,
+            mode: "run_next_step",
+            error: "Execution paused: unresolved step dependencies.",
+            message: resolved.message,
+            paused: true,
+            requiresUserReview: true,
+            run: paused.ok ? paused.run : runSnapshot,
+            guardrails: runGuardrailsSummary,
+          });
+          return;
+        }
+        actionForExecution = resolved.action;
+
+        const conflicts = await detectPreflightConflicts(db, [actionForExecution]);
         if (conflicts.length > 0) {
           const paused = pauseAiAdminRun(
             runId,
@@ -513,7 +866,7 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
       let result: unknown;
       try {
         if (isWriteActionType(action.type)) {
-          result = await executeWriteAction(db as InstantAdminLike, action, {
+          result = await executeWriteAction(db as InstantAdminLike, actionForExecution, {
             runId,
             caps: runSnapshot.caps,
             callerEmail: runSnapshot.callerEmail,
@@ -541,7 +894,13 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
         return;
       }
 
-      const completed = completeAiAdminRunStep(runId, stepIndex, summarizeUnknown(result), now());
+      const completed = completeAiAdminRunStep(
+        runId,
+        stepIndex,
+        summarizeUnknown(result),
+        now(),
+        buildStepResultMeta(actionForExecution, result),
+      );
       if (!completed.ok) {
         handleTransitionError(res, completed);
         return;
@@ -635,7 +994,9 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
 
     const runId = createRunId(now());
     const stepResults: unknown[] = [];
-    for (const action of plan.actions) {
+    const stepResultMetas: Array<Record<string, unknown> | undefined> = [];
+    for (let i = 0; i < plan.actions.length; i += 1) {
+      const action = plan.actions[i];
       if (!isWriteActionType(action.type)) {
         stepResults.push({
           actionId: action.id,
@@ -645,9 +1006,59 @@ export const createAiAdminExecutePlanHandler = (deps: HandlerDeps = {}) => {
         });
         continue;
       }
+      const resolved = await resolveActionDependencies(db, action, {
+        runId,
+        status: "running",
+        callerEmail: plan.callerEmail,
+        caps: plan.caps,
+        estimate: plan.estimate,
+        actions: plan.actions,
+        steps: plan.actions.map((plannedAction, index) => ({
+          index,
+          actionId: plannedAction.id,
+          actionType: plannedAction.type,
+          status:
+            index < i && stepResultMetas[index] !== undefined
+              ? "completed"
+              : index === i
+              ? "running"
+              : "pending",
+          payloadSummary: "",
+          startedAt: null,
+          finishedAt: null,
+          resultSummary: null,
+          resultMeta: index < i ? (stepResultMetas[index] ?? null) : null,
+          error: null,
+        })),
+        nextActionIndex: i,
+        createdAt: now(),
+        updatedAt: now(),
+        approvedAt: null,
+        approvedBy: null,
+        pausedAt: null,
+        pausedReason: null,
+        stoppedAt: null,
+        stopReason: null,
+        completedAt: null,
+        failedAt: null,
+        lastError: null,
+        events: [],
+      });
+      if (!resolved.ok) {
+        respond(res, 409, {
+          ok: false,
+          mode: "execute",
+          error: "Execution paused: unresolved step dependencies.",
+          message: resolved.message,
+          guardrails: runGuardrailsSummary,
+        });
+        return;
+      }
+      const actionForExecution = resolved.action;
       stepResults.push(
-        await executeWriteAction(db, action, { runId, caps: plan.caps, callerEmail: plan.callerEmail }),
+        await executeWriteAction(db, actionForExecution, { runId, caps: plan.caps, callerEmail: plan.callerEmail }),
       );
+      stepResultMetas[i] = buildStepResultMeta(actionForExecution, stepResults[stepResults.length - 1]);
     }
 
     respond(res, 202, {
