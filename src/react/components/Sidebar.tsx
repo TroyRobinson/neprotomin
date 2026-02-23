@@ -258,6 +258,7 @@ export const Sidebar = ({
   const [isOrgsScrollAtTop, setIsOrgsScrollAtTop] = useState(true);
   const [isStatsScrollAtTop, setIsStatsScrollAtTop] = useState(true);
   const orgsScrollRef = useRef<HTMLDivElement>(null);
+  const statsScrollRef = useRef<HTMLDivElement>(null);
   const searchDropdownTimeoutRef = useRef<number | null>(null);
   const orgSearchScrollTimeoutRef = useRef<number | null>(null);
   const searchPinnedClearTimeoutRef = useRef<number | null>(null);
@@ -324,7 +325,8 @@ export const Sidebar = ({
     const atTop = event.currentTarget.scrollTop <= 2;
     setIsOrgsScrollAtTop((prev) => (prev === atTop ? prev : atTop));
   }, []);
-  const handleStatsScrollTopChange = useCallback((atTop: boolean) => {
+  const handleStatsScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const atTop = event.currentTarget.scrollTop <= 2;
     setIsStatsScrollAtTop((prev) => (prev === atTop ? prev : atTop));
   }, []);
 
@@ -992,6 +994,21 @@ export const Sidebar = ({
     visibleInSelection.length,
     visibleRecent.length,
   ]);
+  useEffect(() => {
+    if (activeTab !== "stats") return;
+    const node = statsScrollRef.current;
+    if (!node) return;
+    const atTop = node.scrollTop <= 2;
+    setIsStatsScrollAtTop((prev) => (prev === atTop ? prev : atTop));
+  }, [
+    activeTab,
+    selectedStatId,
+    secondaryStatId,
+    categoryFilter,
+    showAdvanced,
+    shouldShowDemographicsBar,
+    demographicsExpanded,
+  ]);
   const baseTotalCount = typeof totalSourceCount === "number" ? totalSourceCount : visibleCount;
   // If area selection yields no direct matches, keep showing viewport count
   // so the ORGS tab label doesn't get stuck at 0 while results still exist in "ALL".
@@ -1580,7 +1597,11 @@ export const Sidebar = ({
         )}
         {/* Statistics Tab */}
         {activeTab === "stats" && (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div
+            ref={statsScrollRef}
+            onScroll={handleStatsScroll}
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+          >
             {/* Demographics summary sits inside STATS tab, above StatViz/stat list content */}
             {shouldShowDemographicsBar && (
               <DemographicsBar
@@ -1599,7 +1620,6 @@ export const Sidebar = ({
             )}
             <StatList
               variant={variant}
-              onScrollTopChange={handleStatsScrollTopChange}
               statsById={statsById}
               statSummariesById={statSummariesById}
               statDataById={statDataById}

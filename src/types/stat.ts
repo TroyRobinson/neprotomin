@@ -4,6 +4,8 @@ export interface Stat {
   id: string;
   name: string;
   label?: string; // Human-friendly display label (use instead of name when available)
+  description?: string | null;
+  source?: string | null;
   category: Category;
   goodIfUp?: boolean;
   pointsOfInterestEnabled?: boolean;

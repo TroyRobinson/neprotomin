@@ -26,6 +26,7 @@ interface StatItem {
   id: string;
   name: string;
   label?: string | null; // Human-friendly display label
+  description?: string | null;
   category: string;
   neId?: string | null;
   source?: string | null;
@@ -272,6 +273,7 @@ const parseStat = (row: unknown): StatItem | null => {
     id: r.id,
     name: r.name,
     label: typeof r.label === "string" && r.label.trim() ? r.label : null,
+    description: typeof r.description === "string" && r.description.trim() ? r.description : null,
     category: r.category,
     neId: typeof r.neId === "string" ? r.neId : null,
     source: typeof r.source === "string" ? r.source : null,
@@ -306,6 +308,7 @@ type VisibilityInput = StatVisibility | "inherit";
 interface EditFormState {
   label: string;
   name: string;
+  description: string;
   category: string;
   source: string;
   goodIfUp: boolean | null;
@@ -336,6 +339,7 @@ const createEditForm = (stat: StatItem, hasParent: boolean): EditFormState => {
   return {
     label: stat.label ?? "",
     name: stat.name,
+    description: stat.description ?? "",
     category: stat.category,
     source: stat.source ?? "",
     goodIfUp: stat.goodIfUp ?? null,
@@ -692,7 +696,7 @@ const StatListItem = ({
     <div
       ref={containerRef}
       onKeyDown={handleKeyDown}
-      className="flex flex-col gap-3 rounded-xl border-2 border-brand-400 bg-white px-4 py-3 shadow-lg ring-2 ring-brand-100 dark:border-brand-500 dark:bg-slate-800 dark:ring-brand-900/50"
+      className="select-text flex flex-col gap-3 rounded-xl border-2 border-brand-400 bg-white px-4 py-3 shadow-lg ring-2 ring-brand-100 dark:border-brand-500 dark:bg-slate-800 dark:ring-brand-900/50"
     >
       {/* Label field with original name and source as subtitles */}
       <div className="flex flex-col gap-1">
@@ -707,11 +711,30 @@ const StatListItem = ({
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-500 dark:focus:ring-brand-900/50"
           autoFocus
         />
-        <div className="flex gap-4 text-[10px] text-slate-400 dark:text-slate-500">
+        <div className="select-text flex gap-4 text-[10px] text-slate-400 dark:text-slate-500">
           {form.name && <span>Original: {buildOriginalStatName(stat, summary)}</span>}
           {form.source && <span>Source: {form.source}</span>}
         </div>
       </div>
+
+      {!hasParent ? (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            Description <span className="text-slate-400 dark:text-slate-500">(sidebar stat text)</span>
+          </label>
+          <textarea
+            value={form.description}
+            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => handleChange("description", e.target.value)}
+            placeholder="Short explanation shown in the selected stat panel..."
+            rows={3}
+            className="min-h-[76px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-500 dark:focus:ring-brand-900/50"
+          />
+        </div>
+      ) : (
+        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+          Description is shown from the top-level parent stat. Edit it on the parent card.
+        </p>
+      )}
 
       {/* Options row - wraps on mobile */}
       <div className="flex flex-wrap items-center gap-3">
@@ -825,7 +848,7 @@ const StatListItem = ({
       </div>
 
       {/* Info section: Years, Areas, IDs - compact inline */}
-      <div className="mt-2 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+      <div className="mt-2 select-text rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           {summary && summary.latestDate && (
             <span>
@@ -5257,6 +5280,7 @@ export const AdminScreen = () => {
         const updates: Record<string, unknown> = {
           name: form.name,
           label: nextLabel, // Store null if empty
+          description: form.description.trim() || null,
           category: form.category,
           source: form.source.trim() || null,
           goodIfUp: form.goodIfUp,

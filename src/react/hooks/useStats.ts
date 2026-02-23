@@ -555,6 +555,9 @@ export const useStats = ({
           id: row.id,
           name: row.name,
           label: typeof row.label === "string" && row.label.trim() ? row.label : undefined,
+          description:
+            typeof row.description === "string" && row.description.trim() ? row.description : undefined,
+          source: typeof row.source === "string" && row.source.trim() ? row.source : undefined,
           category: row.category as Category,
           goodIfUp: typeof row.goodIfUp === "boolean" ? row.goodIfUp : undefined,
           pointsOfInterestEnabled:

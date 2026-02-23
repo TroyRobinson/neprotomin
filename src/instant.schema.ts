@@ -138,6 +138,7 @@ const _schema = i.schema({
       // Human-friendly label for display (e.g., "Female Married w/o Spouse")
       // When set, shown as main title in UI; original name becomes subtitle
       label: i.string().indexed().optional(),
+      description: i.string().optional(),
       category: i.string().indexed(),
       neId: i.string().unique().indexed().optional(),
       source: i.string().indexed().optional(), // e.g., "NE" | "Census"

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import type { Stat, StatRelation, StatRelationsByParent, StatRelationsByChild } from "../../types/stat";
 import { UNDEFINED_STAT_ATTRIBUTE } from "../../types/stat";
@@ -11,6 +11,7 @@ import { StatViz } from "./StatViz";
 import type { AreaId } from "../../types/areas";
 
 const STAT_SEARCH_MATCH_THRESHOLD = 0.4;
+const STAT_META_COLLAPSED_MAX_HEIGHT_PX = 48;
 
 // Compute average of all values in a boundary entry (used for context average display)
 const computeContextAverage = (entry: StatBoundaryEntry | undefined): number => {
@@ -172,7 +173,7 @@ export const StatList = ({
   onStatSelect,
   onRetryStatData,
   onClearCategory,
-  onScrollTopChange,
+  onScrollTopChange: _onScrollTopChange,
   variant = "desktop",
   zipScopeDisplayName = null,
   countyScopeDisplayName: _countyScopeDisplayName = null,
@@ -190,14 +191,6 @@ export const StatList = ({
   const [searchQuery, setSearchQuery] = useState("");
   const normalizedQuery = useMemo(() => normalizeForSearch(searchQuery), [searchQuery]);
   const effectiveNormalizedQuery = showStatSearch ? normalizedQuery : "";
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-  const reportScrollTop = useCallback(() => {
-    if (!onScrollTopChange) return;
-    const node = scrollContainerRef.current;
-    if (!node) return;
-    onScrollTopChange(node.scrollTop <= 2);
-  }, [onScrollTopChange]);
 
   // Determine which boundary level to use: prefer activeAreaKind if set, otherwise infer from selections
   const effectiveAreaKind = useMemo<SupportedAreaKind | null>(() => {
@@ -290,18 +283,6 @@ export const StatList = ({
     });
   }, [rows, effectiveNormalizedQuery]);
 
-  // Keep parent fade state in sync with this list's current scroll position.
-  useEffect(() => {
-    reportScrollTop();
-  }, [reportScrollTop, filteredRows.length, showAdvanced, showStatSearch]);
-
-  const handleListScroll = useCallback(
-    (event: React.UIEvent<HTMLDivElement>) => {
-      onScrollTopChange?.(event.currentTarget.scrollTop <= 2);
-    },
-    [onScrollTopChange],
-  );
-
   // Find the root parent and intermediate child by traversing up the hierarchy
   // This handles parent → child → grandchild relationships
   const { rootParentId, intermediateChildId } = useMemo(() => {
@@ -349,6 +330,10 @@ export const StatList = ({
     if (!displayStatId) return null;
     return rows.find((row) => row.id === displayStatId) ?? null;
   }, [rows, displayStatId]);
+  const displayHeaderStat = useMemo(
+    () => (displayStatId ? (statsById.get(displayStatId) ?? null) : null),
+    [displayStatId, statsById],
+  );
 
   const headerHasChartData = useMemo(() => {
     if (!selectedStatRow) return false;
@@ -747,7 +732,7 @@ export const StatList = ({
   };
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-col">
       {/* Fixed area: Pinned selected stat */}
       {selectedStatRow && (
         <div className="min-h-[112px] border-t border-b border-slate-200 dark:border-slate-700 px-4 pt-0 pb-3 shadow-md bg-slate-50 dark:bg-slate-800/50">
@@ -785,6 +770,9 @@ export const StatList = ({
               ))}
             </div>
           )}
+          {!showAdvanced && (
+            <StatHeaderMeta description={displayHeaderStat?.description} source={displayHeaderStat?.source} />
+          )}
 
           {/* Embedded StatViz chart - only shown in advanced mode; min-h reserves
              space so the stat list doesn't jump and the selected-stat panel stays stable */}
@@ -821,15 +809,14 @@ export const StatList = ({
               )}
             </div>
           )}
+          {showAdvanced && (
+            <StatHeaderMeta description={displayHeaderStat?.description} source={displayHeaderStat?.source} />
+          )}
         </div>
       )}
 
       {/* Scrollable content */}
-      <div
-        ref={scrollContainerRef}
-        onScroll={handleListScroll}
-        className="flex-1 overflow-y-auto px-4 pt-2 pb-6 bg-slate-100 dark:bg-slate-800"
-      >
+      <div className="px-4 pt-2 pb-6 bg-slate-100 dark:bg-slate-800">
         {showStatSearch && (
           <div className="pt-2 mb-2">
             <div className="flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 shadow-sm transition-colors focus-within:border-brand-200 focus-within:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:focus-within:border-slate-600 dark:focus-within:bg-slate-800/70">
@@ -917,6 +904,74 @@ interface StatListItemProps {
   /** Context average to display (only for header) */
   contextAvg?: { value: number; label: string; type: string } | null;
 }
+
+interface StatHeaderMetaProps {
+  description?: string | null;
+  source?: string | null;
+}
+
+const StatHeaderMeta = ({ description, source }: StatHeaderMetaProps) => {
+  const descriptionText =
+    typeof description === "string" && description.trim().length > 0 ? description.trim() : null;
+  const sourceText = typeof source === "string" && source.trim().length > 0 ? source.trim() : null;
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [descriptionText, sourceText]);
+
+  useEffect(() => {
+    const node = contentRef.current;
+    if (!node) return;
+
+    const measure = () => {
+      setIsOverflowing(node.scrollHeight > STAT_META_COLLAPSED_MAX_HEIGHT_PX + 1);
+    };
+
+    measure();
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(measure);
+      observer.observe(node);
+      return () => observer.disconnect();
+    }
+
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [descriptionText, sourceText]);
+
+  if (!descriptionText) return null;
+
+  return (
+    <div className="mt-3">
+      <div
+        ref={contentRef}
+        className="transition-[max-height] duration-150 ease-out overflow-hidden"
+        style={expanded ? undefined : { maxHeight: `${STAT_META_COLLAPSED_MAX_HEIGHT_PX}px` }}
+      >
+        <p className="text-[12px] leading-4 text-slate-400 dark:text-slate-500 whitespace-pre-wrap">
+          {descriptionText}
+        </p>
+        {sourceText && (
+          <p className="mt-1 text-[10px] leading-[14px] font-light uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+            - SOURCE: {sourceText}
+          </p>
+        )}
+      </div>
+      {isOverflowing && (
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="mt-1 text-[10px] font-light text-slate-500 underline underline-offset-2 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+        >
+          {expanded ? "hide" : "show more"}
+        </button>
+      )}
+    </div>
+  );
+};
 
 const StatListItem = ({
   row,
