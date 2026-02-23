@@ -408,11 +408,6 @@ const MOBILE_DRAG_COLLAPSE_DISTANCE_METERS = 8;
 const ZCTA_STATE: ZctaStateCode = "ok";
 const OKC_COUNTY_ID = "109";
 const TULSA_COUNTY_ID = "143";
-const POI_VISIBLE_WITH_SELECTED_STAT_IDS = new Set<string>([
-  DEFAULT_POPULATION_STAT_ID,
-  "8807bf0b-5a85-4a73-82f2-cd18c8140072",
-  "82edc133-f761-4db9-8159-d5d8de3ea047",
-]);
 const ZCTA_LOAD_MIN_ZOOM = 9;
 const ZCTA_LOAD_PADDING_DEGREES = 0.75;
 const ZIP_LABEL_STACK_MIN_ZOOM = 10.8;
@@ -1149,8 +1144,8 @@ export const createMapView = ({
       loadedZctas: getLoadedZctaCount(ZCTA_STATE),
       zipPoiScopeMode: boundaryMode === "zips" ? "tulsa_area+okc_area" : "n/a",
       poiRowsZip: getZipPoiRowsForCurrentView().length,
-      poiRowsZipAllScopes: getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", selectedCategory).length,
-      poiRowsCounty: getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", selectedCategory).length,
+      poiRowsZipAllScopes: getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", null).length,
+      poiRowsCounty: getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", null).length,
       poiHintsCached: poiZipChunkHints.size,
       lastEnsuredPoiZipChunkKey,
       lastPoiBuildSummary,
@@ -2504,83 +2499,26 @@ export const createMapView = ({
     return "neutral";
   };
 
-  const getSelectedStatZipPoiRowsForCurrentScope = () => {
-    if (!selectedStatId) return [];
-    const zipRows = getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", selectedCategory).filter(
-      (row) => row.scopeKey === "tulsa_area" || row.scopeKey === "okc_area",
-    );
-    return zipRows.filter((row) => row.statId === selectedStatId);
-  };
-
-  const getSelectedStatCountyPoiRowsForCurrentScope = () => {
-    if (!selectedStatId) return [];
-    const countyRowsAll = getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", selectedCategory);
-    const countyRows = boundaryMode === "counties"
-      ? countyRowsAll.filter((row) => row.scopeKey === "oklahoma")
-      : countyRowsAll;
-    return countyRows.filter((row) => row.statId === selectedStatId);
-  };
-
   const getZipPoiRowsForCurrentView = () => {
-    const allRows = getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", selectedCategory);
+    const allRows = getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", null);
     if (boundaryMode !== "zips") return [];
     // At ZIP level, always show city-scope extrema (Tulsa + OKC).
     // Statewide ZIP extrema remain hidden to reduce noise at city zoom.
     const zipRows = allRows.filter(
       (row) => row.scopeKey === "tulsa_area" || row.scopeKey === "okc_area",
     );
-    if (!selectedStatId) return zipRows;
-
-    // When a stat is selected and has POI rows, show only that stat's POIs at city scope.
-    const selectedRows = getSelectedStatZipPoiRowsForCurrentScope();
-    if (selectedRows.length > 0) return selectedRows;
-    return isPopulationLikeSelectedStat() || POI_VISIBLE_WITH_SELECTED_STAT_IDS.has(selectedStatId)
-      ? zipRows
-      : [];
+    return zipRows;
   };
 
   const getCountyPoiRowsForCurrentView = () => {
-    const countyRowsAll = getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", selectedCategory);
+    const countyRowsAll = getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", null);
     const countyRows = boundaryMode === "counties"
       ? countyRowsAll.filter((row) => row.scopeKey === "oklahoma")
       : countyRowsAll;
-    if (!selectedStatId) return countyRows;
-
-    // Keep county POIs aligned with the selected-stat-only behavior when possible.
-    const selectedRows = getSelectedStatCountyPoiRowsForCurrentScope();
-    if (selectedRows.length > 0) return selectedRows;
-    return isPopulationLikeSelectedStat() || POI_VISIBLE_WITH_SELECTED_STAT_IDS.has(selectedStatId)
-      ? countyRows
-      : [];
+    return countyRows;
   };
 
-  const selectedStatHasPoiRows = () => {
-    if (!selectedStatId) return false;
-    const zipRows = getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", selectedCategory).filter(
-      (row) => row.scopeKey === "tulsa_area" || row.scopeKey === "okc_area",
-    );
-    if (zipRows.some((row) => row.statId === selectedStatId)) return true;
-
-    const countyRows = getPointsOfInterestRows(pointsOfInterestSnapshot, "COUNTY", selectedCategory);
-    return countyRows.some((row) => row.statId === selectedStatId);
-  };
-
-  const isPopulationLikeSelectedStat = () => {
-    if (!selectedStatId) return false;
-    const statName = statNameById.get(selectedStatId);
-    const normalized = typeof statName === "string" ? statName.trim().toLowerCase() : "";
-    return normalized.length > 0 && normalized.includes("population");
-  };
-
-  const shouldShowPoiWithSelectedStat = () => {
-    if (!selectedStatId) return false;
-    if (selectedStatHasPoiRows()) return true;
-    if (POI_VISIBLE_WITH_SELECTED_STAT_IDS.has(selectedStatId)) return true;
-    return isPopulationLikeSelectedStat();
-  };
-
-  const shouldRenderPointsOfInterest = () =>
-    extremasVisible && (!selectedStatId || shouldShowPoiWithSelectedStat());
+  const shouldRenderPointsOfInterest = () => extremasVisible;
 
   const setPoiLayerState = (layerId: string, visible: boolean) => {
     if (!map.getLayer(layerId)) return;
@@ -2624,6 +2562,17 @@ export const createMapView = ({
     ) => {
       const rows = targetMap.get(areaCode) ?? [];
       if (rows.some((row) => row.key === pill.key)) return;
+      // Avoid duplicate tooltip rows when a POI extremum and the selected-stat extremum
+      // represent the same stat + direction in the same scope for one area.
+      if (pill.statId) {
+        const pillScope = pill.scopeLabel ?? null;
+        const hasEquivalent = rows.some((row) =>
+          row.statId === pill.statId
+          && row.direction === pill.direction
+          && (row.scopeLabel ?? null) === pillScope,
+        );
+        if (hasEquivalent) return;
+      }
       rows.push(pill);
       targetMap.set(areaCode, rows);
     };
@@ -2666,8 +2615,6 @@ export const createMapView = ({
     if (selectedStatId) {
       const selectedStatLabel = statNameById.get(selectedStatId) || "Stat";
       const selectedStatGoodIfUp = statGoodIfUpById.get(selectedStatId) ?? null;
-      const selectedZipPoiRows = getSelectedStatZipPoiRowsForCurrentScope();
-      const selectedCountyPoiRows = getSelectedStatCountyPoiRowsForCurrentScope();
       const selectedZipScopeLabel = compactScopeLabel(activeZipParentArea) ?? "OK";
       const selectedCountyScopeLabel = "OK";
       const zoom = map.getZoom();
@@ -2680,7 +2627,7 @@ export const createMapView = ({
       const zipExtremes = getExtremeAreaIds(zipEntry?.data);
       const countyExtremes = getExtremeAreaIds(countyEntry?.data);
 
-      if (showZipStatExtrema && selectedZipPoiRows.length === 0) {
+      if (showZipStatExtrema) {
         if (zipExtremes.highestId) {
           appendPill(zipExtremes.highestId, zipByArea, {
             key: `stat:${selectedStatId}:zip:high`,
@@ -2705,7 +2652,7 @@ export const createMapView = ({
         }
       }
 
-      if (showCountyStatExtrema && selectedCountyPoiRows.length === 0) {
+      if (showCountyStatExtrema) {
         if (countyExtremes.highestId) {
           appendPill(countyExtremes.highestId, countyByArea, {
             key: `stat:${selectedStatId}:county:high`,
@@ -2909,7 +2856,7 @@ export const createMapView = ({
       selectedStatId,
       selectedCategory,
       zipPoiScopeMode: boundaryMode === "zips" ? "tulsa_area+okc_area" : "n/a",
-      zipRowsAllScopes: getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", selectedCategory).length,
+      zipRowsAllScopes: getPointsOfInterestRows(pointsOfInterestSnapshot, "ZIP", null).length,
       sourceFeatures: data.features.length,
       ...lastPoiBuildSummary,
       zipLayerVisible: zipLayerVisibility,
@@ -3327,10 +3274,8 @@ export const createMapView = ({
       : getStatEntryByBoundary(selectedStatId, "ZIP");
     const { highestId, lowestId } = getExtremeAreaIds(entry?.data);
     const distinctLowestId = lowestId && lowestId !== highestId ? lowestId : null;
-    const suppressZipStatExtrema = getSelectedStatZipPoiRowsForCurrentScope().length > 0;
-    const suppressCountyStatExtrema = getSelectedStatCountyPoiRowsForCurrentScope().length > 0;
-    const showZipStatLayers = showZipLayers && !suppressZipStatExtrema;
-    const showCountyStatLayers = showCountyLayers && !suppressCountyStatExtrema;
+    const showZipStatLayers = showZipLayers;
+    const showCountyStatLayers = showCountyLayers;
 
     const goodIfUp = statGoodIfUpById.get(selectedStatId);
     const highIconId =
