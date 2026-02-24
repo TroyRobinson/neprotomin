@@ -211,6 +211,12 @@ import type { Stat } from "../../types/stat";
 import { statsStore } from "../../state/stats";
 import { categoriesStore, type CategoryRow } from "../../state/categories";
 import { formatTimeSelection as formatTimeSelectionLabel, type TimeSelection } from "../lib/timeFilters";
+import {
+  MAP_TOUR_CHANGE_OPTION_ATTR,
+  MAP_TOUR_STAT_LABEL_ATTR,
+  MAP_TOUR_TARGET_ATTR,
+  MAP_TOUR_TARGETS,
+} from "./constants/mapTourTargets";
 
 export type AreasChipMode = "auto" | "zips" | "counties" | "none";
 
@@ -1779,7 +1785,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     const menu = document.createElement("div");
     menu.className =
       "absolute left-0 top-full z-20 mt-1 hidden min-w-[14rem] rounded-xl border border-slate-200/80 bg-white/95 p-1.5 shadow-lg backdrop-blur-md dark:border-slate-700/80 dark:bg-slate-900/95";
-    menu.setAttribute("data-ne-tour-target", "map-primary-stat-menu");
+    menu.setAttribute(MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS.primaryStatMenu);
     menu.setAttribute("role", "listbox");
     menu.setAttribute("aria-label", "Stat options");
 
@@ -1825,11 +1831,11 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       const optionBtn = document.createElement("button");
       optionBtn.type = "button";
       optionBtn.setAttribute("role", "option");
-      optionBtn.setAttribute("data-ne-tour-target", "map-primary-stat-option");
+      optionBtn.setAttribute(MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS.primaryStatOption);
       optionBtn.setAttribute("data-ne-tour-stat-id", option.id);
-      optionBtn.setAttribute("data-ne-tour-stat-label", option.label);
+      optionBtn.setAttribute(MAP_TOUR_STAT_LABEL_ATTR, option.label);
       if (option.label.toLowerCase().includes("change")) {
-        optionBtn.setAttribute("data-ne-tour-change-option", "true");
+        optionBtn.setAttribute(MAP_TOUR_CHANGE_OPTION_ATTR, "true");
       }
 
       const labelSpan = document.createElement("span");
@@ -1858,7 +1864,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
     const deselectBtn = document.createElement("button");
     deselectBtn.type = "button";
-    deselectBtn.setAttribute("data-ne-tour-target", "map-primary-stat-deselect");
+    deselectBtn.setAttribute(MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS.primaryStatDeselect);
     deselectBtn.className =
       "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-600 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100";
     const deselectIcon = document.createElement("span");
@@ -2065,9 +2071,9 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       const isSelected = selectedStatId === id;
       if (isDropdown) {
         if (isSelected) {
-          btn.setAttribute("data-ne-tour-target", "map-primary-stat-chip");
+          btn.setAttribute(MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS.primaryStatChip);
         } else {
-          btn.removeAttribute("data-ne-tour-target");
+          btn.removeAttribute(MAP_TOUR_TARGET_ATTR);
         }
         applyChipVisibility(btn, isSelected);
         return;
@@ -2088,9 +2094,9 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       // Show close icon only when stat is selected
       if (closeIcon) toggleCloseIcon(closeIcon, isSelected);
       if (isSelected) {
-        btn.setAttribute("data-ne-tour-target", "map-primary-stat-chip");
+        btn.setAttribute(MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS.primaryStatChip);
       } else {
-        btn.removeAttribute("data-ne-tour-target");
+        btn.removeAttribute(MAP_TOUR_TARGET_ATTR);
       }
       // Hide unselected stats when another stat is selected (desktop) or whenever not selected (mobile)
       const shouldShow = isMobile ? isSelected : !selectedStatId || selectedStatId === id;
