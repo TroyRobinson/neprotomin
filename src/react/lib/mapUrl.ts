@@ -34,6 +34,7 @@ export interface MapState {
   secondaryStatId: string | null;
   category: string | null;
   orgIds: string[];
+  startTour: boolean;
   showAdvanced: boolean;
   orgPinsVisible: boolean;
   areasMode: AreasMode;
@@ -109,6 +110,7 @@ export function getMapStateFromUrl(): MapState {
   const secondaryStatId = getSecondaryStatIdFromUrl();
   const category = getCategoryFromUrl();
   const orgIds = getOrgIdsFromUrl();
+  const startTour = getStartTourFromUrl();
   const showAdvanced = getShowAdvancedFromUrl();
   const orgPinsVisible = getOrgPinsVisibleFromUrl();
   const areasMode = getAreasModeFromUrl();
@@ -123,6 +125,7 @@ export function getMapStateFromUrl(): MapState {
     secondaryStatId,
     category,
     orgIds,
+    startTour,
     showAdvanced,
     orgPinsVisible,
     areasMode,
@@ -203,6 +206,14 @@ export function getOrgIdsFromUrl(): string[] {
   const orgsParam = params.get("orgs");
   if (!orgsParam) return [];
   return orgsParam.split(",").filter(id => id.trim().length > 0);
+}
+
+// Get guided tour trigger from URL (?tour=true / ?tour=1)
+export function getStartTourFromUrl(): boolean {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  const raw = (params.get("tour") || "").trim().toLowerCase();
+  return raw === "true" || raw === "1";
 }
 
 // Get showAdvanced from URL (defaults to false if not present)

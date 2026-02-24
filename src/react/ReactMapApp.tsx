@@ -192,6 +192,7 @@ export const ReactMapApp = () => {
   const { isRunning: isCensusImportRunning } = useCensusImportQueue();
   // Parse initial map state from URL once (must be first to be available for other initializers)
   const [initialMapState] = useState(() => getMapStateFromUrl());
+  const pendingUrlTourStartRef = useRef<boolean>(initialMapState.startTour);
   const initialMapPosition = initialMapState.position;
   // Initialize boundary state from URL areasMode
   const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>(() => {
@@ -2644,7 +2645,20 @@ export const ReactMapApp = () => {
     mapControllerRef.current = controller;
     // Sync initial sidebar expand button visibility
     controller?.setSidebarExpandVisible(sidebarCollapsed);
-  }, [sidebarCollapsed]);
+    if (controller && pendingUrlTourStartRef.current && activeScreen === "map") {
+      controller.startOnboardingTour();
+      pendingUrlTourStartRef.current = false;
+    }
+  }, [activeScreen, sidebarCollapsed]);
+
+  useEffect(() => {
+    if (!pendingUrlTourStartRef.current) return;
+    if (activeScreen !== "map") return;
+    const controller = mapControllerRef.current;
+    if (!controller) return;
+    controller.startOnboardingTour();
+    pendingUrlTourStartRef.current = false;
+  }, [activeScreen]);
 
   const applyDomainSidebarModeForAreaSearch = useCallback(() => {
     // ZIP/county searches should open the domain's preferred sidebar mode.
@@ -4190,6 +4204,10 @@ export const ReactMapApp = () => {
         rangeMode={legendRangeMode}
         reducedDataLoading={reducedDataLoading}
         onChangeReducedDataLoading={setReducedDataLoading}
+        tourAvailable={!isMobile}
+        onStartTour={() => {
+          mapControllerRef.current?.startOnboardingTour();
+        }}
         onChangeRangeMode={(mode) => {
           setLegendRangeMode(mode);
           if (mapControllerRef.current) {
