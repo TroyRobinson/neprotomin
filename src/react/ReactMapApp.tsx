@@ -2321,10 +2321,6 @@ export const ReactMapApp = () => {
     setFeedbackSubmitSuccess(null);
   }, []);
 
-  const handleBackFromFeedback = useCallback(() => {
-    setHelpMenuMode("menu");
-  }, []);
-
   const handleCancelFeedback = useCallback(() => {
     closeHelpMenu();
     setFeedbackDraft("");
@@ -4161,15 +4157,8 @@ export const ReactMapApp = () => {
                     aria-label="Submit Feedback"
                     aria-modal="false"
                   >
-                    <div className="mb-3 flex items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        className="rounded-md px-2 py-1 text-sm text-slate-700 transition hover:bg-white focus-visible:bg-white dark:text-slate-200 dark:hover:bg-white dark:hover:text-slate-900 dark:focus-visible:bg-white dark:focus-visible:text-slate-900"
-                        onClick={handleBackFromFeedback}
-                      >
-                        Back
-                      </button>
-                      <h3 className="text-base font-medium text-slate-800">Submit Feedback</h3>
+                    <div className="mb-3 flex items-center">
+                      <h3 className="text-base font-medium text-slate-500 dark:text-slate-400">Submit Feedback</h3>
                     </div>
                     <textarea
                       value={feedbackDraft}
@@ -4188,10 +4177,14 @@ export const ReactMapApp = () => {
                       className="w-[24rem] max-w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/30"
                     />
                     {feedbackSubmitError ? (
-                      <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{feedbackSubmitError}</p>
+                      <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-800/60 dark:bg-rose-950/40 dark:text-rose-300">
+                        {feedbackSubmitError}
+                      </div>
                     ) : null}
                     {feedbackSubmitSuccess ? (
-                      <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">{feedbackSubmitSuccess}</p>
+                      <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+                        {feedbackSubmitSuccess}
+                      </div>
                     ) : null}
                     <div className="mt-3 flex items-center justify-end gap-2">
                       <button
@@ -4200,7 +4193,7 @@ export const ReactMapApp = () => {
                         onClick={handleCancelFeedback}
                         disabled={isSubmittingFeedback}
                       >
-                        Cancel
+                        {feedbackSubmitSuccess ? "Done" : "Cancel"}
                       </button>
                       <button
                         type="button"

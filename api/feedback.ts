@@ -108,6 +108,18 @@ const resolveRecipients = (): string[] => {
   return Array.from(normalized);
 };
 
+const formatSubmittedAt = (date: Date): string =>
+  new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  }).format(date);
+
 const respond = (res: FeedbackResponse, statusCode: number, payload: unknown): void => {
   res.setHeader("Content-Type", "application/json");
   res.status(statusCode).json(payload);
@@ -150,7 +162,7 @@ export default async function handler(req: FeedbackRequest, res: FeedbackRespons
     }
 
     const recipients = resolveRecipients();
-    const submittedAt = new Date().toISOString();
+    const submittedAt = formatSubmittedAt(new Date());
     const textLines = [
       "New feedback submission",
       "",
