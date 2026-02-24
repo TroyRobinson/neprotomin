@@ -51,6 +51,7 @@ const isVisibleTarget = (target: HTMLElement | null): target is HTMLElement => {
 };
 
 type LocalRect = { left: number; top: number; right: number; bottom: number };
+type TourCardPosition = { step: OnboardingStep; left: number; top: number };
 
 export const createMapOnboardingTour = ({
   container,
@@ -66,6 +67,7 @@ export const createMapOnboardingTour = ({
   let onboardingStep: OnboardingStep | null = null;
   let onboardingRetryTimer: number | null = null;
   let onboardingPositionRaf: number | null = null;
+  let onboardingCardPosition: TourCardPosition | null = null;
   let onboardingForceStart = false;
   let onboardingDismissed = false;
   try {
@@ -180,6 +182,16 @@ export const createMapOnboardingTour = ({
     return isVisibleTarget(target) ? target : null;
   };
 
+  const getShowingPanelTarget = (): HTMLElement | null => {
+    const target = targetRoot.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.showingPanel));
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getShowingAreasMenuTarget = (): HTMLElement | null => {
+    const target = targetRoot.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.showingAreasMenu));
+    return isVisibleTarget(target) ? target : null;
+  };
+
   const getShareChipTarget = (): HTMLElement | null => {
     const target = targetRoot.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.shareChip));
     return isVisibleTarget(target) ? target : null;
@@ -200,6 +212,11 @@ export const createMapOnboardingTour = ({
       ? shareBtn.parentElement.querySelector<HTMLElement>('[role="dialog"][aria-label="Share options"]')
       : null;
     return isVisibleTarget(panel) ? panel : null;
+  };
+
+  const getPrimaryStatMenuTarget = (): HTMLElement | null => {
+    const target = targetRoot.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.primaryStatMenu));
+    return isVisibleTarget(target) ? target : null;
   };
 
   const getSearchBarTarget = (): HTMLElement | null => {
@@ -321,6 +338,7 @@ export const createMapOnboardingTour = ({
       cancelAnimationFrame(onboardingPositionRaf);
       onboardingPositionRaf = null;
     }
+    onboardingCardPosition = null;
     setTourLock(null);
     closeSelectedStatDropdown();
     closeShowingPanel();
@@ -377,11 +395,28 @@ export const createMapOnboardingTour = ({
         bottom: highlightTop + highlightHeight,
       },
     ];
+    const addAvoidRectFor = (el: HTMLElement | null) => {
+      if (!el) return;
+      avoidRects.push(getLocalRect(el.getBoundingClientRect()));
+    };
+
+    if (onboardingStep === "change") {
+      addAvoidRectFor(getPrimaryStatMenuTarget());
+    }
     if (onboardingStep === "share") {
       const sharePanel = getSharePanelTarget();
-      if (sharePanel) {
-        avoidRects.push(getLocalRect(sharePanel.getBoundingClientRect()));
-      }
+      addAvoidRectFor(sharePanel);
+    }
+    if (
+      onboardingStep === "showingTrigger" ||
+      onboardingStep === "showingExtremas" ||
+      onboardingStep === "showingOrganizations" ||
+      onboardingStep === "showingAreas"
+    ) {
+      addAvoidRectFor(getShowingPanelTarget());
+    }
+    if (onboardingStep === "showingAreas") {
+      addAvoidRectFor(getShowingAreasMenuTarget());
     }
 
     const toCardRect = (left: number, top: number): LocalRect => ({
@@ -423,21 +458,47 @@ export const createMapOnboardingTour = ({
       addCandidate(avoid.left - cardWidth - 10, highlightTop);
     }
 
+    const currentStep = onboardingStep;
+    const stickyPosition =
+      onboardingCardPosition && currentStep && onboardingCardPosition.step === currentStep
+        ? {
+            left: clampLeft(onboardingCardPosition.left),
+            top: clampTop(onboardingCardPosition.top),
+          }
+        : null;
+    if (stickyPosition && scoreCandidate(stickyPosition.left, stickyPosition.top) === 0) {
+      stepCard.style.left = `${stickyPosition.left}px`;
+      stepCard.style.top = `${stickyPosition.top}px`;
+      stepCard.style.visibility = "visible";
+      onboardingCardPosition = currentStep
+        ? { step: currentStep, left: stickyPosition.left, top: stickyPosition.top }
+        : null;
+      return;
+    }
+
     let best = candidates[0] ?? { left: clampLeft(highlightLeft), top: clampTop(highlightTop + highlightHeight + 10) };
     let bestScore = scoreCandidate(best.left, best.top);
+    let bestDistance =
+      stickyPosition ? Math.abs(best.left - stickyPosition.left) + Math.abs(best.top - stickyPosition.top) : 0;
     for (let i = 1; i < candidates.length; i += 1) {
       const next = candidates[i];
       const nextScore = scoreCandidate(next.left, next.top);
-      if (nextScore < bestScore) {
+      const nextDistance =
+        stickyPosition ? Math.abs(next.left - stickyPosition.left) + Math.abs(next.top - stickyPosition.top) : 0;
+      if (nextScore < bestScore || (nextScore === bestScore && nextDistance < bestDistance)) {
         best = next;
         bestScore = nextScore;
-        if (bestScore === 0) break;
+        bestDistance = nextDistance;
+        if (bestScore === 0 && stickyPosition) {
+          break;
+        }
       }
     }
 
     stepCard.style.left = `${best.left}px`;
     stepCard.style.top = `${best.top}px`;
     stepCard.style.visibility = "visible";
+    onboardingCardPosition = currentStep ? { step: currentStep, left: best.left, top: best.top } : null;
   };
 
   const renderTourCard = (
@@ -590,6 +651,7 @@ export const createMapOnboardingTour = ({
       return;
     }
     onboardingStep = "showingExtremas";
+    setTourLock(MAP_TOUR_LOCKS.showingPanel);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       "Extremas are currently showing the highest and lowest values for various statistics on the map. Hover them on the map to see the greatest values for all Oklahoma, OKC, or Tulsa.",
@@ -619,6 +681,7 @@ export const createMapOnboardingTour = ({
       return;
     }
     onboardingStep = "showingOrganizations";
+    setTourLock(MAP_TOUR_LOCKS.showingPanel);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       "Organizations shows organization points on the map (sourced from Google and ProPublica). Zoom in and hover or click them to see their details.",
@@ -648,12 +711,14 @@ export const createMapOnboardingTour = ({
       return;
     }
     onboardingStep = "showingAreas";
+    setTourLock(MAP_TOUR_LOCKS.showingPanel);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       "Areas determines the boundaries of your map areas, which defaults to changing as you zoom in. You can also fix it to ZIP, County, and more modes coming soon.",
       {
         label: "Next",
         onClick: () => {
+          setTourLock(null);
           closeShowingPanel();
           showShareStep();
         },
@@ -665,6 +730,7 @@ export const createMapOnboardingTour = ({
 
   const showShareStep = (attempt = 0) => {
     clearOnboardingRetry();
+    setTourLock(null);
     closeShowingPanel();
     if (!openSharePanel()) {
       if (attempt < 24) {
@@ -684,12 +750,14 @@ export const createMapOnboardingTour = ({
       return;
     }
     onboardingStep = "share";
+    setTourLock(MAP_TOUR_LOCKS.sharePanel);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       "Hover over Share to reveal its menu. When you have the map the way you want, copy the URL link, screenshot, or data to present to others you work with.",
       {
         label: "Next",
         onClick: () => {
+          setTourLock(null);
           closeSharePanel();
           showSearchMenuStep();
         },
@@ -701,6 +769,7 @@ export const createMapOnboardingTour = ({
 
   const showSearchMenuStep = (attempt = 0) => {
     clearOnboardingRetry();
+    setTourLock(null);
     closeSharePanel();
     const target = getSearchBarTarget();
     if (!target) {
@@ -805,12 +874,12 @@ export const createMapOnboardingTour = ({
 
   const refresh = () => {
     if (!onboardingStep) return;
-    const currentStep = onboardingStep;
     if (onboardingPositionRaf !== null) {
       cancelAnimationFrame(onboardingPositionRaf);
     }
     onboardingPositionRaf = requestAnimationFrame(() => {
       onboardingPositionRaf = null;
+      const currentStep = onboardingStep;
       if (!currentStep) return;
       if (
         currentStep === "change"
@@ -837,6 +906,8 @@ export const createMapOnboardingTour = ({
   dismissWelcomeBtn.addEventListener("click", dismissTour);
   startTourBtn.addEventListener("click", startTourFlowFromBanner);
   window.addEventListener("resize", refresh);
+  window.addEventListener("pointerup", refresh, true);
+  window.addEventListener("keyup", refresh, true);
 
   if (!onboardingDismissed) {
     showWelcomeToast();
@@ -851,6 +922,8 @@ export const createMapOnboardingTour = ({
     dismissWelcomeBtn.removeEventListener("click", dismissTour);
     startTourBtn.removeEventListener("click", startTourFlowFromBanner);
     window.removeEventListener("resize", refresh);
+    window.removeEventListener("pointerup", refresh, true);
+    window.removeEventListener("keyup", refresh, true);
     hideTourStep();
     welcomeToast.remove();
     stepOverlay.remove();

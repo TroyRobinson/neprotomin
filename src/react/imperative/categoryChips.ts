@@ -514,6 +514,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   areasChipMenu.className =
     "absolute right-0 top-full z-20 mt-1 hidden min-w-[9rem] rounded-xl border border-slate-200/80 bg-white/90 p-1.5 shadow-lg backdrop-blur-md dark:border-slate-700/80 dark:bg-slate-900/90";
+  areasChipMenu.setAttribute(MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS.showingAreasMenu);
   areasChipMenu.setAttribute("role", "listbox");
   areasChipMenu.setAttribute("aria-label", "Areas mode");
 
@@ -638,6 +639,12 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     removeShowingOutsideHandler = null;
   };
 
+  const isShowingPanelTourLocked = (): boolean =>
+    wrapper.getAttribute(MAP_TOUR_LOCK_ATTR) === MAP_TOUR_LOCKS.showingPanel;
+
+  const isSharePanelTourLocked = (): boolean =>
+    wrapper.getAttribute(MAP_TOUR_LOCK_ATTR) === MAP_TOUR_LOCKS.sharePanel;
+
   const clearExportOutsideHandler = () => {
     if (!removeExportOutsideHandler) return;
     removeExportOutsideHandler();
@@ -657,8 +664,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     }
   };
 
-  const closeShowingPanel = (config: { force?: boolean } = {}) => {
+  const closeShowingPanel = (config: { force?: boolean; bypassTourLock?: boolean } = {}) => {
     const force = config.force === true;
+    const bypassTourLock = config.bypassTourLock === true;
+    if (isShowingPanelTourLocked() && !bypassTourLock) return;
     if (!showingPanelOpen) {
       if (force) {
         showingPanelPinned = false;
@@ -678,8 +687,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     closeAreasMenu();
   };
 
-  const closeExportPanel = (config: { force?: boolean } = {}) => {
+  const closeExportPanel = (config: { force?: boolean; bypassTourLock?: boolean } = {}) => {
     const force = config.force === true;
+    const bypassTourLock = config.bypassTourLock === true;
+    if (isSharePanelTourLocked() && !bypassTourLock) return;
     if (!exportPanelOpen) {
       if (force) {
         exportPanelPinned = false;
@@ -1055,6 +1066,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   showingChipPanel.className =
     "absolute left-0 top-full z-20 mt-1 hidden min-w-[12rem] rounded-xl border border-white/60 bg-white/18 p-1.5 shadow-lg ring-1 ring-white/45 backdrop-blur-md dark:border-slate-500/35 dark:bg-slate-900/22 dark:ring-white/8";
+  showingChipPanel.setAttribute(MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS.showingPanel);
   showingChipPanel.setAttribute("role", "dialog");
   showingChipPanel.setAttribute("aria-label", "Showing options");
 
@@ -1422,8 +1434,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       exportChipContainer.style.display = "none";
       const showTime = orgsChipVisible && timeFilterAvailable;
       timeOpenChipBtn.style.display = showTime ? "" : "none";
-      closeShowingPanel({ force: true });
-      closeExportPanel({ force: true });
+      closeShowingPanel({ force: true, bypassTourLock: true });
+      closeExportPanel({ force: true, bypassTourLock: true });
       closeAreasMenu();
       return;
     }
@@ -1432,9 +1444,9 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     updateShowingChipSummary();
     const showShowingChip = !searchExpanded;
     showingChipContainer.style.display = showShowingChip ? "" : "none";
-    if (!showShowingChip) closeShowingPanel({ force: true });
+    if (!showShowingChip) closeShowingPanel({ force: true, bypassTourLock: true });
     exportChipContainer.style.display = showShowingChip ? "" : "none";
-    if (!showShowingChip) closeExportPanel({ force: true });
+    if (!showShowingChip) closeExportPanel({ force: true, bypassTourLock: true });
 
     // Desktop UX: keep the map chip row cleaner by hiding the time chip entirely.
     timeOpenChipBtn.style.display = "none";

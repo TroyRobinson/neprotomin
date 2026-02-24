@@ -5,6 +5,8 @@ export const MAP_TOUR_LOCK_ATTR = "data-ne-tour-lock";
 
 export const MAP_TOUR_LOCKS = {
   primaryStatMenu: "primary-stat-menu",
+  showingPanel: "showing-panel",
+  sharePanel: "share-panel",
 } as const;
 
 export const MAP_TOUR_TARGETS = {
@@ -16,6 +18,8 @@ export const MAP_TOUR_TARGETS = {
   showingOrganizations: "map-showing-organizations",
   showingExtremas: "map-showing-extremas",
   showingAreas: "map-showing-areas",
+  showingPanel: "map-showing-panel",
+  showingAreasMenu: "map-showing-areas-menu",
   shareChip: "map-share-chip",
   legend: "map-legend",
 } as const;
