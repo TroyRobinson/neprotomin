@@ -76,6 +76,7 @@ interface AreaSelectionChange {
 
 interface MapViewOptions {
   initialAreasMode?: AreasChipMode;
+  initialExtremasVisible?: boolean;
   initialUserLocation?: { lng: number; lat: number } | null;
   initialMapPosition?: { lng: number; lat: number; zoom: number } | null;
   onHover: (idOrIds: string | string[] | null) => void;
@@ -102,6 +103,7 @@ interface MapViewOptions {
   isMobile?: boolean;
   onLocationSearch?: (query: string) => void;
   onRequestHideOrgs?: () => void;
+  onExtremasVisibilityChange?: (visible: boolean) => void;
   onTimeChipClick?: () => void;
   onTimeChipClear?: () => void;
   onExportCsvAreasDownload?: () => void;
@@ -138,6 +140,7 @@ export interface MapViewController {
   setTimeFilterAvailable: (available: boolean) => void;
   setExportCsvAreasVisible: (visible: boolean) => void;
   setOrganizationPinsVisible: (visible: boolean) => void;
+  setExtremasVisible: (visible: boolean) => void;
   setUserLocation: (location: { lng: number; lat: number } | null) => void;
   fitBounds: (bounds: BoundsArray, options?: { padding?: number; maxZoom?: number; duration?: number }) => void;
   setCamera: (centerLng: number, centerLat: number, zoom: number, options?: { animate?: boolean }) => void;
@@ -493,6 +496,7 @@ const getCountyAreaBounds = countyAreaEntry.getBounds;
 
 export const createMapView = ({
   initialAreasMode = "auto",
+  initialExtremasVisible,
   initialUserLocation = null,
   initialMapPosition = null,
   onHover,
@@ -516,6 +520,7 @@ export const createMapView = ({
   isMobile = false,
   onLocationSearch,
   onRequestHideOrgs,
+  onExtremasVisibilityChange,
   onTimeChipClick,
   onTimeChipClear,
   onExportCsvAreasDownload,
@@ -544,7 +549,7 @@ export const createMapView = ({
   container.appendChild(mapNode);
 
   let selectedCategory: string | null = null;
-  let extremasVisible = getDomainDefaults().defaultExtremasVisible;
+  let extremasVisible = initialExtremasVisible ?? getDomainDefaults().defaultExtremasVisible;
   let runMapLinkCopy: (() => Promise<void>) | null = null;
   let runMapScreenshotCopy: (() => Promise<void>) | null = null;
   let runMapScreenshotDownload: (() => Promise<void>) | null = null;
@@ -586,14 +591,12 @@ export const createMapView = ({
     },
     onOrgsChipClose: () => { try { onRequestHideOrgs?.(); } catch {} },
     onExtremasToggle: () => {
-      extremasVisible = !extremasVisible;
-      try { categoryChips.setExtremasVisible(extremasVisible); } catch {}
-      if (extremasVisible) {
-        refreshStatVisuals();
-      } else {
-        hideStatExtremaArrows();
-        syncHoverPillsForAreaHover();
+      const next = !extremasVisible;
+      if (typeof onExtremasVisibilityChange === "function") {
+        onExtremasVisibilityChange(next);
+        return;
       }
+      setExtremasVisibleInternal(next);
     },
     onTimeChipClick: () => { try { onTimeChipClick?.(); } catch {} },
     onTimeChipClear: () => { try { onTimeChipClear?.(); } catch {} },
@@ -631,6 +634,19 @@ export const createMapView = ({
   categoryChips.setAreasMode(initialAreasMode);
   categoryChips.setExtremasVisible(extremasVisible);
   categoryChips.setExportCsvAreasVisible(Boolean(exportCsvAreasAvailable));
+
+  // Keep extrema/POI visibility changes consistent for chip events and React-controlled updates.
+  const setExtremasVisibleInternal = (visible: boolean) => {
+    if (extremasVisible === visible) return;
+    extremasVisible = visible;
+    try { categoryChips.setExtremasVisible(extremasVisible); } catch {}
+    if (extremasVisible) {
+      refreshStatVisuals();
+    } else {
+      hideStatExtremaArrows();
+      syncHoverPillsForAreaHover();
+    }
+  };
 
   // Temporary export feedback banner shown for clipboard copy actions.
   const exportToastEl = document.createElement("div");
@@ -5324,6 +5340,9 @@ export const createMapView = ({
       updateOrganizationPinsVisibility();
       orgLegend?.setVisible(visible);
       try { categoryChips.setOrgsVisible(visible); } catch {}
+    },
+    setExtremasVisible: (visible: boolean) => {
+      setExtremasVisibleInternal(visible);
     },
     setUserLocation: (location: { lng: number; lat: number } | null) => {
       userLocation = location;

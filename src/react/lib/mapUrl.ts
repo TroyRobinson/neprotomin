@@ -1,5 +1,5 @@
 // URL utilities for shareable map positions and state
-// Uses query parameters: ?lat=36.1540&lng=-95.9928&z=12&stat=uuid&stat2=uuid&category=Food&orgs=id1,id2
+// Uses query parameters: ?lat=36.1540&lng=-95.9928&z=12&stat=uuid&stat2=uuid&category=Food&orgs=id1,id2&poi=true
 import { getDomainDefaults } from "./domains";
 
 export interface MapPosition {
@@ -37,6 +37,7 @@ export interface MapState {
   startTour: boolean;
   showAdvanced: boolean;
   orgPinsVisible: boolean;
+  extremasVisible: boolean;
   areasMode: AreasMode;
   selectedZips: string[];
   selectedCounties: string[];
@@ -113,6 +114,7 @@ export function getMapStateFromUrl(): MapState {
   const startTour = getStartTourFromUrl();
   const showAdvanced = getShowAdvancedFromUrl();
   const orgPinsVisible = getOrgPinsVisibleFromUrl();
+  const extremasVisible = getExtremasVisibleFromUrl();
   const areasMode = getAreasModeFromUrl();
   const selectedZips = getSelectedZipsFromUrl();
   const selectedCounties = getSelectedCountiesFromUrl();
@@ -128,6 +130,7 @@ export function getMapStateFromUrl(): MapState {
     startTour,
     showAdvanced,
     orgPinsVisible,
+    extremasVisible,
     areasMode,
     selectedZips,
     selectedCounties,
@@ -234,6 +237,16 @@ export function getOrgPinsVisibleFromUrl(): boolean {
   return value === "true";
 }
 
+// Get extrema/POI visibility from URL (defaults based on domain if not present)
+export function getExtremasVisibleFromUrl(): boolean {
+  const defaultExtremasVisible = getDomainDefaults().defaultExtremasVisible;
+  if (typeof window === "undefined") return defaultExtremasVisible;
+  const params = new URLSearchParams(window.location.search);
+  const value = params.get("poi");
+  if (value === null) return defaultExtremasVisible;
+  return value === "true";
+}
+
 // Get areas mode from URL (defaults to "auto" if not present)
 export function getAreasModeFromUrl(): AreasMode {
   if (typeof window === "undefined") return "auto";
@@ -320,6 +333,7 @@ export function updateUrlWithMapState(
   sidebarInsights: Omit<SidebarInsightsState, "hasAnyParam">,
   persistSidebarInsights: boolean,
   sidebarCollapsed = true,
+  extremasVisible = getDomainDefaults().defaultExtremasVisible,
 ): void {
   if (typeof window === "undefined") return;
 
@@ -371,6 +385,14 @@ export function updateUrlWithMapState(
     url.searchParams.set("pins", orgPinsVisible ? "true" : "false");
   } else {
     url.searchParams.delete("pins");
+  }
+
+  const defaultExtremasVisible = getDomainDefaults().defaultExtremasVisible;
+  // Persist extrema visibility only when it differs from this domain's default.
+  if (extremasVisible !== defaultExtremasVisible) {
+    url.searchParams.set("poi", extremasVisible ? "true" : "false");
+  } else {
+    url.searchParams.delete("poi");
   }
 
   // Update areas mode (only if not "auto", since that's the default)

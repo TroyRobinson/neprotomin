@@ -504,6 +504,119 @@ describe("mapUrl selection persistence", () => {
     expect((globalThis as any).window.location.search).not.toContain("pins=");
   });
 
+  it("uses domain defaults for extrema/POI visibility when URL has no poi param", () => {
+    const w: WindowLike = {
+      location: { href: "http://example.test/", search: "", hostname: "example.test" },
+      history: {
+        replaceState: vi.fn((_data, _unused, url) => {
+          setWindowUrl(url);
+        }),
+      },
+    };
+    (globalThis as any).window = w;
+
+    setWindowUrl("http://example.test/");
+    expect(getMapStateFromUrl().extremasVisible).toBe(true);
+
+    setWindowUrl("http://okfoodmap.com/");
+    expect(getMapStateFromUrl().extremasVisible).toBe(false);
+
+    setWindowUrl("http://okfoodmap.com/?poi=true");
+    expect(getMapStateFromUrl().extremasVisible).toBe(true);
+  });
+
+  it("persists poi query only when extrema visibility differs from domain default", () => {
+    const w: WindowLike = {
+      location: { href: "http://example.test/", search: "", hostname: "example.test" },
+      history: {
+        replaceState: vi.fn((_data, _unused, url) => {
+          setWindowUrl(url);
+        }),
+      },
+    };
+    (globalThis as any).window = w;
+
+    setWindowUrl("http://example.test/");
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      null,
+      [],
+      false,
+      false,
+      "auto",
+      [],
+      [],
+      "stats",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+      true,
+      true,
+    );
+    expect((globalThis as any).window.location.search).not.toContain("poi=");
+
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      null,
+      [],
+      false,
+      false,
+      "auto",
+      [],
+      [],
+      "stats",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+      true,
+      false,
+    );
+    expect((globalThis as any).window.location.search).toContain("poi=false");
+
+    setWindowUrl("http://okfoodmap.com/");
+    updateUrlWithMapState(
+      36.0,
+      -95.9,
+      10,
+      null,
+      null,
+      null,
+      [],
+      false,
+      true,
+      "auto",
+      [],
+      [],
+      "orgs",
+      {
+        statVizVisible: true,
+        statVizCollapsed: false,
+        demographicsVisible: true,
+        demographicsExpanded: false,
+      },
+      false,
+      true,
+      false,
+    );
+    expect((globalThis as any).window.location.search).not.toContain("poi=");
+  });
+
   it("parses sidebar collapsed state from URL and defaults to collapsed", () => {
     const w: WindowLike = {
       location: { href: "http://example.test/", search: "", hostname: "example.test" },

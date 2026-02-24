@@ -241,6 +241,7 @@ export const ReactMapApp = () => {
   const [hasInteractedWithMap, setHasInteractedWithMap] = useState(false);
   const [sidebarFollowsMap, setSidebarFollowsMap] = useState(true);
   const [orgPinsVisible, setOrgPinsVisible] = useState<boolean>(() => initialMapState.orgPinsVisible);
+  const [extremasVisible, setExtremasVisible] = useState<boolean>(() => initialMapState.extremasVisible);
   const orgPinsVisibleRef = useRef<boolean>(initialMapState.orgPinsVisible);
   const foodAutoEnabledOrgsRef = useRef(false);
   const [orgsVisibleIds, setOrgsVisibleIds] = useState<string[]>([]);
@@ -1689,6 +1690,7 @@ export const ReactMapApp = () => {
       sidebarInsightsState,
       persistSidebarInsights,
       sidebarCollapsed,
+      extremasVisible,
     );
   }, [
     cameraState,
@@ -1705,6 +1707,7 @@ export const ReactMapApp = () => {
     sidebarInsightsState,
     persistSidebarInsights,
     sidebarCollapsed,
+    extremasVisible,
   ]);
 
   const mergeStatEntry = (
@@ -2223,6 +2226,7 @@ export const ReactMapApp = () => {
       setOrgPinsVisible(false);
       setForceHideOrgsNonce((n) => n + 1); // keep org pins off after brand reset
     }
+    setExtremasVisible(domainDefaults.defaultExtremasVisible);
     setBoundaryMode("zips");
     setBoundaryControlMode("auto");
     applyAreaSelection("ZIP", { selected: [], pinned: [], transient: [] });
@@ -3986,6 +3990,7 @@ export const ReactMapApp = () => {
               key={isMobile ? "mobile" : "desktop"}
               organizations={availableOrganizations}
               orgPinsVisible={orgPinsVisible}
+              extremasVisible={extremasVisible}
               initialMapPosition={initialMapPosition}
               zoomOutRequestNonce={zoomOutNonce}
               clearMapCategoryNonce={clearMapCategoryNonce}
@@ -4000,6 +4005,7 @@ export const ReactMapApp = () => {
                   return next;
                 });
               }}
+              onExtremasVisibleChange={setExtremasVisible}
               boundaryMode={boundaryMode}
               areasMode={areasMode}
               autoBoundarySwitch={autoBoundarySwitch}

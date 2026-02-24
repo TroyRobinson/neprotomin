@@ -15,12 +15,14 @@ interface AreaSelectionChange {
 interface MapLibreMapProps {
   organizations?: Organization[];
   orgPinsVisible?: boolean;
+  extremasVisible?: boolean;
   initialMapPosition?: { lng: number; lat: number; zoom: number } | null;
   zoomOutRequestNonce?: number;
   // When incremented, explicitly clear the map's category chips
   clearMapCategoryNonce?: number;
   // Request from map chip to toggle organization pin visibility.
   onRequestHideOrgs?: () => void;
+  onExtremasVisibleChange?: (visible: boolean) => void;
   onTimeChipClick?: () => void;
   boundaryMode?: BoundaryMode;
   selectedZips?: string[];
@@ -83,10 +85,12 @@ interface MapLibreMapProps {
 export const MapLibreMap = ({
   organizations = [],
   orgPinsVisible = false,
+  extremasVisible = true,
   initialMapPosition = null,
   zoomOutRequestNonce,
   clearMapCategoryNonce,
   onRequestHideOrgs,
+  onExtremasVisibleChange,
   onTimeChipClick,
   onTimeChipClear,
   onExportCsvAreasDownload,
@@ -165,6 +169,7 @@ export const MapLibreMap = ({
   const onTimeChipClearRef = useRef(onTimeChipClear);
   const onExportCsvAreasDownloadRef = useRef(onExportCsvAreasDownload);
   const onLocationSearchRef = useRef(onLocationSearch);
+  const onExtremasVisibleChangeRef = useRef(onExtremasVisibleChange);
   const setLegendInsetRef = useRef<(pixels: number) => void>(() => {});
   const onLegendSettingsClickRef = useRef(onLegendSettingsClick);
   const legendRangeModeRef = useRef<"dynamic" | "scoped" | "global">(legendRangeMode);
@@ -195,6 +200,7 @@ export const MapLibreMap = ({
   const onSidebarExpandRef = useRef(onSidebarExpand);
   useEffect(() => { onSidebarExpandRef.current = onSidebarExpand; }, [onSidebarExpand]);
   useEffect(() => { onLocationSearchRef.current = onLocationSearch; }, [onLocationSearch]);
+  useEffect(() => { onExtremasVisibleChangeRef.current = onExtremasVisibleChange; }, [onExtremasVisibleChange]);
   useEffect(() => { onLegendSettingsClickRef.current = onLegendSettingsClick; }, [onLegendSettingsClick]);
   useEffect(() => { legendRangeModeRef.current = legendRangeMode; }, [legendRangeMode]);
   useEffect(() => { visibleStatIdsRef.current = visibleStatIds; }, [visibleStatIds]);
@@ -221,6 +227,7 @@ export const MapLibreMap = ({
     if (!containerRef.current) return;
 
     const mapController = createMapView({
+      initialExtremasVisible: Boolean(extremasVisible),
       initialAreasMode: areasMode,
       initialUserLocation: userLocation,
       initialMapPosition,
@@ -268,6 +275,9 @@ export const MapLibreMap = ({
       isMobile,
       onRequestHideOrgs: () => {
         try { onRequestHideOrgs?.(); } catch {}
+      },
+      onExtremasVisibilityChange: (visible) => {
+        try { onExtremasVisibleChangeRef.current?.(visible); } catch {}
       },
       onTimeChipClick: () => {
         try { onTimeChipClickRef.current?.(); } catch {}
@@ -337,6 +347,13 @@ export const MapLibreMap = ({
       mapControllerRef.current.setOrganizationPinsVisible(Boolean(orgPinsVisible));
     }
   }, [orgPinsVisible]);
+
+  // Update extrema/POI visibility
+  useEffect(() => {
+    if (mapControllerRef.current) {
+      mapControllerRef.current.setExtremasVisible(Boolean(extremasVisible));
+    }
+  }, [extremasVisible]);
 
   useEffect(() => {
     if (mapControllerRef.current) {
