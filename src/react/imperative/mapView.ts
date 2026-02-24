@@ -148,6 +148,7 @@ export interface MapViewController {
   setLegendRightContent: (el: HTMLElement | null) => void;
   setLegendRangeMode: (mode: "dynamic" | "scoped" | "global") => void;
   startOnboardingTour: () => void;
+  showOnboardingTourIntro: () => void;
   setOnboardingTourAutoPromptEnabled: (enabled: boolean) => void;
   setSidebarExpandVisible: (visible: boolean) => void;
   resize: () => void;
@@ -5383,6 +5384,9 @@ export const createMapView = ({
     },
     startOnboardingTour: () => {
       onboardingTour.start();
+    },
+    showOnboardingTourIntro: () => {
+      onboardingTour.showIntro();
     },
     setOnboardingTourAutoPromptEnabled: (enabled: boolean) => {
       onboardingTour.setAutoPromptEnabled(enabled);

@@ -1,4 +1,5 @@
 export const MAP_TOUR_APPLY_STATE_EVENT = "ne:map-tour:apply-state";
+export const MAP_TOUR_OPEN_FEEDBACK_EVENT = "ne:map-tour:open-feedback";
 
 export interface MapTourApplyStateDetail {
   lat: number;

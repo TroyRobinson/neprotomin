@@ -132,7 +132,7 @@ export const MapSettingsModal: React.FC<MapSettingsModalProps> = ({
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
             <div className="font-medium text-slate-800 dark:text-slate-100">Onboarding</div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Start the guided tour any time. You can also auto-start it with <code>?tour=true</code> or <code>?tour=1</code>.
+              Start the guided tour any time. You can also open the welcome intro with <code>?tour=true</code> or <code>?tour=1</code>.
             </p>
             <div className="mt-3">
               <button

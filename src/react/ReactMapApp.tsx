@@ -42,6 +42,7 @@ import { getStatDisplayName, UNDEFINED_STAT_ATTRIBUTE } from "../types/stat";
 import {
   MAP_TOUR_ADVANCED_STATS_PRESET,
   MAP_TOUR_APPLY_STATE_EVENT,
+  MAP_TOUR_OPEN_FEEDBACK_EVENT,
   type MapTourApplyStateDetail,
 } from "./imperative/constants/mapTourEvents";
 type SupportedAreaKind = "ZIP" | "COUNTY";
@@ -197,7 +198,7 @@ export const ReactMapApp = () => {
   const { isRunning: isCensusImportRunning } = useCensusImportQueue();
   // Parse initial map state from URL once (must be first to be available for other initializers)
   const [initialMapState] = useState(() => getMapStateFromUrl());
-  const pendingUrlTourStartRef = useRef<boolean>(initialMapState.startTour);
+  const pendingUrlTourIntroRef = useRef<boolean>(initialMapState.startTour);
   const initialMapPosition = initialMapState.position;
   // Initialize boundary state from URL areasMode
   const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>(() => {
@@ -2321,6 +2322,18 @@ export const ReactMapApp = () => {
     setFeedbackSubmitSuccess(null);
   }, []);
 
+  useEffect(() => {
+    const handleTourOpenFeedback = () => {
+      setActiveScreen("map");
+      handleSubmitFeedbackFromHelpMenu();
+    };
+
+    window.addEventListener(MAP_TOUR_OPEN_FEEDBACK_EVENT, handleTourOpenFeedback as EventListener);
+    return () => {
+      window.removeEventListener(MAP_TOUR_OPEN_FEEDBACK_EVENT, handleTourOpenFeedback as EventListener);
+    };
+  }, [handleSubmitFeedbackFromHelpMenu]);
+
   const handleCancelFeedback = useCallback(() => {
     closeHelpMenu();
     setFeedbackDraft("");
@@ -2832,19 +2845,19 @@ export const ReactMapApp = () => {
     mapControllerRef.current = controller;
     // Sync initial sidebar expand button visibility
     controller?.setSidebarExpandVisible(sidebarCollapsed);
-    if (controller && pendingUrlTourStartRef.current && activeScreen === "map") {
-      controller.startOnboardingTour();
-      pendingUrlTourStartRef.current = false;
+    if (controller && pendingUrlTourIntroRef.current && activeScreen === "map") {
+      controller.showOnboardingTourIntro();
+      pendingUrlTourIntroRef.current = false;
     }
   }, [activeScreen, sidebarCollapsed]);
 
   useEffect(() => {
-    if (!pendingUrlTourStartRef.current) return;
+    if (!pendingUrlTourIntroRef.current) return;
     if (activeScreen !== "map") return;
     const controller = mapControllerRef.current;
     if (!controller) return;
-    controller.startOnboardingTour();
-    pendingUrlTourStartRef.current = false;
+    controller.showOnboardingTourIntro();
+    pendingUrlTourIntroRef.current = false;
   }, [activeScreen]);
 
   const applyDomainSidebarModeForAreaSearch = useCallback(() => {

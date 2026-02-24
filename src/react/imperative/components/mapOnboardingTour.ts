@@ -9,10 +9,12 @@ import {
 import {
   MAP_TOUR_ADVANCED_STATS_PRESET,
   MAP_TOUR_APPLY_STATE_EVENT,
+  MAP_TOUR_OPEN_FEEDBACK_EVENT,
 } from "../constants/mapTourEvents";
 
 export interface MapOnboardingTourController {
   start: () => void;
+  showIntro: () => void;
   setAutoPromptEnabled: (enabled: boolean) => void;
   refresh: () => void;
   destroy: () => void;
@@ -54,6 +56,7 @@ const targetSelector = (target: string): string => `[${MAP_TOUR_TARGET_ATTR}="${
 
 const createNoopController = (): MapOnboardingTourController => ({
   start: () => {},
+  showIntro: () => {},
   setAutoPromptEnabled: () => {},
   refresh: () => {},
   destroy: () => {},
@@ -84,6 +87,9 @@ export const createMapOnboardingTour = ({
   let onboardingRetryTimer: number | null = null;
   let onboardingPositionRaf: number | null = null;
   let onboardingCardPosition: TourCardPosition | null = null;
+  let restartHintTimer: number | null = null;
+  let restartHintFadeTimer: number | null = null;
+  let helpMenuSuppressed = false;
   let onboardingForceStart = false;
   let autoPromptEnabled = initialAutoPromptEnabled;
   let onboardingDismissed = false;
@@ -93,7 +99,7 @@ export const createMapOnboardingTour = ({
 
   const welcomeToast = document.createElement("div");
   welcomeToast.className =
-    "pointer-events-auto absolute bottom-[4.5rem] right-4 z-[15] hidden w-[22rem] rounded-xl border border-slate-200 bg-white/95 p-3.5 shadow-xl backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95";
+    "pointer-events-auto absolute z-[32] hidden w-[22rem] rounded-xl border border-slate-200 bg-white/95 p-3.5 shadow-xl backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95";
   welcomeToast.setAttribute("role", "dialog");
   welcomeToast.setAttribute("aria-label", "Welcome tour");
   welcomeToast.innerHTML = `
@@ -118,6 +124,14 @@ export const createMapOnboardingTour = ({
   welcomeToast.appendChild(welcomeActions);
   container.appendChild(welcomeToast);
 
+  const restartHintToast = document.createElement("div");
+  restartHintToast.className =
+    "pointer-events-none absolute z-[33] hidden max-w-[15rem] rounded-lg border border-brand-200/80 bg-white/95 px-2.5 py-1.5 text-[11px] font-medium leading-4 text-slate-700 opacity-0 shadow-lg transition-opacity duration-150 ease-out backdrop-blur-sm dark:border-brand-500/40 dark:bg-slate-900/95 dark:text-slate-200";
+  restartHintToast.setAttribute("role", "status");
+  restartHintToast.setAttribute("aria-live", "polite");
+  restartHintToast.textContent = "Click here to start the tour again";
+  container.appendChild(restartHintToast);
+
   const stepOverlay = document.createElement("div");
   stepOverlay.className = "pointer-events-none absolute inset-0 z-[14] hidden";
   const highlightBox = document.createElement("div");
@@ -141,6 +155,17 @@ export const createMapOnboardingTour = ({
     }
   };
 
+  const clearRestartHintTimer = () => {
+    if (restartHintTimer !== null) {
+      window.clearTimeout(restartHintTimer);
+      restartHintTimer = null;
+    }
+    if (restartHintFadeTimer !== null) {
+      window.clearTimeout(restartHintFadeTimer);
+      restartHintFadeTimer = null;
+    }
+  };
+
   const setOnboardingDismissed = () => {
     onboardingDismissed = true;
     try {
@@ -159,10 +184,24 @@ export const createMapOnboardingTour = ({
     if (!force && !autoPromptEnabled) return;
     if (onboardingDismissed) return;
     welcomeToast.classList.remove("hidden");
+    requestAnimationFrame(() => {
+      positionWelcomeToast();
+    });
   };
 
   const hideWelcomeToast = () => {
     welcomeToast.classList.add("hidden");
+  };
+
+  const hideRestartHintToast = () => {
+    clearRestartHintTimer();
+    if (restartHintToast.classList.contains("hidden")) return;
+    restartHintToast.classList.remove("opacity-100");
+    restartHintToast.classList.add("opacity-0");
+    restartHintFadeTimer = window.setTimeout(() => {
+      restartHintToast.classList.add("hidden");
+      restartHintFadeTimer = null;
+    }, 150);
   };
 
   const getSelectedStatChipTarget = (): HTMLElement | null => {
@@ -240,6 +279,43 @@ export const createMapOnboardingTour = ({
       targetRoot.ownerDocument?.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.brandLogo)) ??
       null;
     return isVisibleTarget(target) ? target : null;
+  };
+
+  const getHelpButtonTarget = (): HTMLElement | null => {
+    const doc = targetRoot.ownerDocument;
+    if (!doc) return null;
+    const target = doc.querySelector<HTMLElement>('button[aria-label="Help"]');
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getHelpMenuRoot = (): HTMLElement | null => {
+    const doc = targetRoot.ownerDocument;
+    if (!doc) return null;
+    const button = doc.querySelector<HTMLButtonElement>('button[aria-label="Help"]');
+    if (!button) return null;
+    return button.parentElement instanceof HTMLElement ? button.parentElement : button;
+  };
+
+  const setHelpMenuSuppressed = (suppressed: boolean) => {
+    if (suppressed === helpMenuSuppressed) return;
+    const root = getHelpMenuRoot();
+    if (!root) {
+      helpMenuSuppressed = suppressed;
+      return;
+    }
+    if (suppressed) {
+      root.dataset.neTourPrevVisibility = root.style.visibility || "";
+      root.dataset.neTourPrevPointerEvents = root.style.pointerEvents || "";
+      root.style.visibility = "hidden";
+      root.style.pointerEvents = "none";
+      helpMenuSuppressed = true;
+      return;
+    }
+    root.style.visibility = root.dataset.neTourPrevVisibility || "";
+    root.style.pointerEvents = root.dataset.neTourPrevPointerEvents || "";
+    delete root.dataset.neTourPrevVisibility;
+    delete root.dataset.neTourPrevPointerEvents;
+    helpMenuSuppressed = false;
   };
 
   const getSidebarStatDetailsTarget = (): HTMLElement | null => {
@@ -509,9 +585,106 @@ export const createMapOnboardingTour = ({
     }
     onboardingCardPosition = null;
     setTourLock(null);
+    setHelpMenuSuppressed(false);
     closeSelectedStatDropdown();
     closeShowingPanel();
     closeSharePanel();
+  };
+
+  const positionWelcomeToast = () => {
+    if (welcomeToast.classList.contains("hidden")) return;
+    const containerRect = container.getBoundingClientRect();
+    const insetPad = 8;
+    const toastToHelpGap = 12;
+    const fallbackBottomOffset = 72;
+
+    welcomeToast.style.maxWidth = `${Math.max(220, Math.min(352, containerRect.width - insetPad * 2))}px`;
+    welcomeToast.style.left = `${insetPad}px`;
+    welcomeToast.style.top = `${insetPad}px`;
+
+    const toastRect = welcomeToast.getBoundingClientRect();
+    const toastWidth = toastRect.width;
+    const toastHeight = toastRect.height;
+
+    const clampLeft = (left: number): number => {
+      const maxLeft = Math.max(insetPad, containerRect.width - toastWidth - insetPad);
+      return Math.min(Math.max(left, insetPad), maxLeft);
+    };
+    const clampTop = (top: number): number => {
+      const maxTop = Math.max(insetPad, containerRect.height - toastHeight - insetPad);
+      return Math.min(Math.max(top, insetPad), maxTop);
+    };
+
+    // Default placement keeps the intro near the lower-right controls.
+    let nextLeft = clampLeft(containerRect.width - toastWidth - insetPad);
+    let nextTop = clampTop(containerRect.height - toastHeight - fallbackBottomOffset);
+
+    // When help is visible, anchor the intro directly to the left of the help icon.
+    const helpTarget = getHelpButtonTarget();
+    if (helpTarget) {
+      const helpRect = helpTarget.getBoundingClientRect();
+      const localHelpLeft = helpRect.left - containerRect.left;
+      const localHelpCenterY = helpRect.top - containerRect.top + helpRect.height / 2;
+      nextLeft = clampLeft(localHelpLeft - toastWidth - toastToHelpGap);
+      nextTop = clampTop(localHelpCenterY - toastHeight / 2);
+    }
+
+    welcomeToast.style.left = `${nextLeft}px`;
+    welcomeToast.style.top = `${nextTop}px`;
+  };
+
+  const positionRestartHintToast = () => {
+    if (restartHintToast.classList.contains("hidden")) return;
+    const containerRect = container.getBoundingClientRect();
+    const insetPad = 8;
+    const toastToHelpGap = 10;
+
+    restartHintToast.style.maxWidth = `${Math.max(180, Math.min(240, containerRect.width - insetPad * 2))}px`;
+    restartHintToast.style.left = `${insetPad}px`;
+    restartHintToast.style.top = `${insetPad}px`;
+
+    const toastRect = restartHintToast.getBoundingClientRect();
+    const toastWidth = toastRect.width;
+    const toastHeight = toastRect.height;
+
+    const clampLeft = (left: number): number => {
+      const maxLeft = Math.max(insetPad, containerRect.width - toastWidth - insetPad);
+      return Math.min(Math.max(left, insetPad), maxLeft);
+    };
+    const clampTop = (top: number): number => {
+      const maxTop = Math.max(insetPad, containerRect.height - toastHeight - insetPad);
+      return Math.min(Math.max(top, insetPad), maxTop);
+    };
+
+    let nextLeft = clampLeft(containerRect.width - toastWidth - insetPad);
+    let nextTop = clampTop(containerRect.height - toastHeight - 16);
+
+    const helpTarget = getHelpButtonTarget();
+    if (helpTarget) {
+      const helpRect = helpTarget.getBoundingClientRect();
+      const localHelpLeft = helpRect.left - containerRect.left;
+      const localHelpCenterY = helpRect.top - containerRect.top + helpRect.height / 2;
+      nextLeft = clampLeft(localHelpLeft - toastWidth - toastToHelpGap);
+      nextTop = clampTop(localHelpCenterY - toastHeight / 2);
+    }
+
+    restartHintToast.style.left = `${nextLeft}px`;
+    restartHintToast.style.top = `${nextTop}px`;
+  };
+
+  const showRestartHintToast = () => {
+    clearRestartHintTimer();
+    restartHintToast.classList.add("opacity-0");
+    restartHintToast.classList.remove("opacity-100");
+    restartHintToast.classList.remove("hidden");
+    requestAnimationFrame(() => {
+      positionRestartHintToast();
+      restartHintToast.classList.remove("opacity-0");
+      restartHintToast.classList.add("opacity-100");
+    });
+    restartHintTimer = window.setTimeout(() => {
+      hideRestartHintToast();
+    }, 3000);
   };
 
   const positionTourStep = (target: HTMLElement) => {
@@ -774,6 +947,7 @@ export const createMapOnboardingTour = ({
     message: string | Node,
     primary: { label: string; onClick: () => void },
     secondary?: { label: string; onClick: () => void; tone?: "neutral" | "primary" },
+    tertiary?: { label: string; onClick: () => void; tone?: "neutral" | "primary" },
   ) => {
     stepCard.replaceChildren();
     if (typeof message === "string") {
@@ -798,6 +972,17 @@ export const createMapOnboardingTour = ({
       secondaryBtn.addEventListener("click", secondary.onClick);
       actions.appendChild(secondaryBtn);
     }
+    if (tertiary) {
+      const tertiaryBtn = document.createElement("button");
+      tertiaryBtn.type = "button";
+      tertiaryBtn.className =
+        tertiary.tone === "primary"
+          ? "rounded-md bg-brand-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500"
+          : "rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800";
+      tertiaryBtn.textContent = tertiary.label;
+      tertiaryBtn.addEventListener("click", tertiary.onClick);
+      actions.appendChild(tertiaryBtn);
+    }
     const primaryBtn = document.createElement("button");
     primaryBtn.type = "button";
     primaryBtn.className =
@@ -808,10 +993,20 @@ export const createMapOnboardingTour = ({
     stepCard.appendChild(actions);
   };
 
-  const dismissTour = () => {
+  const completeTour = () => {
     hideWelcomeToast();
     hideTourStep();
     setOnboardingDismissed();
+  };
+
+  const dismissTour = () => {
+    completeTour();
+    showRestartHintToast();
+  };
+
+  const openFeedbackFromTour = () => {
+    completeTour();
+    window.dispatchEvent(new CustomEvent(MAP_TOUR_OPEN_FEEDBACK_EVENT));
   };
 
   // If a step target never appears, continue forward so the tour never gets stuck in a loop.
@@ -823,6 +1018,7 @@ export const createMapOnboardingTour = ({
 
   const showChipStep = (attempt = 0) => {
     clearOnboardingRetry();
+    setHelpMenuSuppressed(false);
     const target = getSelectedStatChipTarget();
     if (!target) {
       const maxAttempts = onboardingForceStart ? 200 : 20;
@@ -1228,17 +1424,27 @@ export const createMapOnboardingTour = ({
     copy.className = "text-xs leading-5 text-slate-700 dark:text-slate-200";
     copy.append("Thank you for exploring with us! If you have any questions or ideas, please reach out to ");
     const emailLink = document.createElement("a");
-    emailLink.href = "mailto:troy.robinson@9bcorp.com";
+    emailLink.href = "#";
     emailLink.className = "font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700";
     emailLink.textContent = "troy.robinson@9bcorp.com";
+    emailLink.addEventListener("click", (event) => {
+      event.preventDefault();
+      openFeedbackFromTour();
+    });
     copy.append(emailLink);
     copy.append(".");
-    renderTourCard(copy, { label: "Done", onClick: dismissTour }, { label: "Dismiss", onClick: dismissTour });
+    renderTourCard(
+      copy,
+      { label: "Done", onClick: completeTour },
+      { label: "Dismiss", onClick: dismissTour },
+      { label: "Submit Feedback", onClick: openFeedbackFromTour },
+    );
     positionFinalTourStep();
   };
 
   const showMyLocationStep = (attempt = 0) => {
     clearOnboardingRetry();
+    setHelpMenuSuppressed(true);
     const target = getMyLocationTarget();
     if (!target) {
       if (attempt < 24) {
@@ -1260,6 +1466,7 @@ export const createMapOnboardingTour = ({
 
   const showLegendStep = (attempt = 0) => {
     clearOnboardingRetry();
+    setHelpMenuSuppressed(false);
     const target = getLegendTarget();
     if (!target) {
       if (attempt < 24) {
@@ -1272,7 +1479,7 @@ export const createMapOnboardingTour = ({
     onboardingStep = "legend";
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "The legend shows the range of data for the current stat, represented by the color intensities (choropleth) on the map. Click for map settings and to replay this tour.",
+      "The legend shows the range of data for the current stat, represented by the color intensities (choropleth) on the map. Click for advanced map settings.",
       { label: "Next", onClick: () => showBrandLogoStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -1281,6 +1488,7 @@ export const createMapOnboardingTour = ({
 
   const showBrandLogoStep = (attempt = 0) => {
     clearOnboardingRetry();
+    setHelpMenuSuppressed(false);
     const target = getBrandLogoTarget();
     if (!target) {
       if (attempt < 24) {
@@ -1344,16 +1552,28 @@ export const createMapOnboardingTour = ({
   };
 
   const startTourFlowFromBanner = () => {
+    setHelpMenuSuppressed(false);
+    hideRestartHintToast();
     hideWelcomeToast();
     onboardingForceStart = true;
     showChipStep();
   };
 
   const start = () => {
+    setHelpMenuSuppressed(false);
+    hideRestartHintToast();
     clearOnboardingDismissed();
     hideTourStep();
     onboardingForceStart = true;
     showChipStep();
+  };
+
+  const showIntro = () => {
+    setHelpMenuSuppressed(false);
+    hideRestartHintToast();
+    clearOnboardingDismissed();
+    hideTourStep();
+    showWelcomeToast({ force: true });
   };
 
   const setAutoPromptEnabled = (enabled: boolean) => {
@@ -1368,6 +1588,9 @@ export const createMapOnboardingTour = ({
   };
 
   const refresh = () => {
+    positionWelcomeToast();
+    positionRestartHintToast();
+    setHelpMenuSuppressed(onboardingStep === "myLocation");
     if (!onboardingStep) return;
     if (onboardingPositionRaf !== null) {
       cancelAnimationFrame(onboardingPositionRaf);
@@ -1447,6 +1670,8 @@ export const createMapOnboardingTour = ({
 
   const destroy = () => {
     clearOnboardingRetry();
+    clearRestartHintTimer();
+    setHelpMenuSuppressed(false);
     if (onboardingPositionRaf !== null) {
       cancelAnimationFrame(onboardingPositionRaf);
       onboardingPositionRaf = null;
@@ -1459,8 +1684,9 @@ export const createMapOnboardingTour = ({
     window.removeEventListener("click", advanceSearchMenuOnSidebarToggleClick, true);
     hideTourStep();
     welcomeToast.remove();
+    restartHintToast.remove();
     stepOverlay.remove();
   };
 
-  return { start, setAutoPromptEnabled, refresh, destroy };
+  return { start, showIntro, setAutoPromptEnabled, refresh, destroy };
 };
