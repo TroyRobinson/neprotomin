@@ -1039,18 +1039,24 @@ export const Sidebar = ({
   const missingCount = countyZoomContext?.hiddenCount ?? Math.max(totalCount - visibleCount, 0);
   const hideCategoryTags = Boolean(categoryFilter);
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
+  const [pendingCategorySwitch, setPendingCategorySwitch] = useState<{
+    categoryId: string;
+    label: string;
+  } | null>(null);
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
-  // Close category dropdown when clicking outside
+  const categoryControlsRef = useRef<HTMLDivElement>(null);
+  // Close category controls when clicking outside.
   useEffect(() => {
-    if (!categoryDropdownOpen) return;
+    if (!categoryDropdownOpen && !pendingCategorySwitch) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target as Node)) {
+      if (categoryControlsRef.current && !categoryControlsRef.current.contains(e.target as Node)) {
         setCategoryDropdownOpen(false);
+        setPendingCategorySwitch(null);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [categoryDropdownOpen]);
+  }, [categoryDropdownOpen, pendingCategorySwitch]);
 
   // Jump to the list top whenever the map triggers a direct org selection.
   useEffect(() => {
@@ -1248,6 +1254,58 @@ export const Sidebar = ({
   const categoryToolbarLabel = categoryFilter
     ? abbreviateCategoryFilterLabel(selectedCategoryLabel)
     : selectedCategoryLabel;
+  const selectedStatRow = useMemo(
+    () => (selectedStatId ? (statsById.get(selectedStatId) ?? null) : null),
+    [selectedStatId, statsById],
+  );
+  const selectedStatLabel =
+    selectedStatRow && (selectedStatRow.label || selectedStatRow.name)
+      ? selectedStatRow.label || selectedStatRow.name
+      : "the current statistic";
+  const selectedStatCategory = selectedStatRow?.category ?? null;
+
+  const handleCategorySelectionRequest = useCallback(
+    (nextCategoryId: string | null) => {
+      if (nextCategoryId === categoryFilter) {
+        setCategoryDropdownOpen(false);
+        setPendingCategorySwitch(null);
+        return;
+      }
+
+      const shouldWarnAboutStatRemoval =
+        Boolean(nextCategoryId) &&
+        Boolean(selectedStatId) &&
+        Boolean(selectedStatCategory) &&
+        selectedStatCategory !== nextCategoryId;
+
+      if (shouldWarnAboutStatRemoval) {
+        setPendingCategorySwitch({
+          categoryId: nextCategoryId!,
+          label: getCategoryLabel(nextCategoryId as any),
+        });
+        setCategoryDropdownOpen(false);
+        return;
+      }
+
+      setPendingCategorySwitch(null);
+      handleCategoryChange(nextCategoryId);
+      setCategoryDropdownOpen(false);
+    },
+    [categoryFilter, getCategoryLabel, handleCategoryChange, selectedStatCategory, selectedStatId],
+  );
+
+  const handleConfirmCategorySwitch = useCallback(() => {
+    if (!pendingCategorySwitch) return;
+    onStatSelect?.(null, { clear: true });
+    handleCategoryChange(pendingCategorySwitch.categoryId);
+    setPendingCategorySwitch(null);
+    setCategoryDropdownOpen(false);
+  }, [handleCategoryChange, onStatSelect, pendingCategorySwitch]);
+
+  const handleCancelCategorySwitch = useCallback(() => {
+    setPendingCategorySwitch(null);
+  }, []);
+
   const countyZoomOrgNoun = `${categoryFilter ? `${selectedCategoryLabel} ` : ""}org`;
   const missingZoomCategoryText = categoryFilter ? ` ${selectedCategoryLabel}` : "";
   const shouldShowContentTopFade =
@@ -1515,11 +1573,14 @@ export const Sidebar = ({
         {/* Category Filter + Collapse (desktop only) */}
         {variant === "desktop" && (
           <>
-            <div className="ml-auto flex items-center gap-1 self-start">
+            <div className="relative ml-auto flex items-center gap-1 self-start" ref={categoryControlsRef}>
               <div className="relative" ref={categoryDropdownRef}>
                 <button
                   type="button"
-                  onClick={() => setCategoryDropdownOpen((prev) => !prev)}
+                  onClick={() => {
+                    setPendingCategorySwitch(null);
+                    setCategoryDropdownOpen((prev) => !prev);
+                  }}
                   className={`flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-normal transition ${
                     categoryFilter
                       ? "bg-brand-50 text-brand-600 hover:bg-brand-100 dark:bg-brand-400/10 dark:text-brand-300 dark:hover:bg-brand-400/20"
@@ -1541,8 +1602,7 @@ export const Sidebar = ({
                     <button
                       type="button"
                       onClick={() => {
-                        handleCategoryChange(null);
-                        setCategoryDropdownOpen(false);
+                        handleCategorySelectionRequest(null);
                       }}
                       className={`block w-full px-3 py-1.5 text-left text-xs transition hover:bg-slate-100 dark:hover:bg-slate-800 ${!categoryFilter ? "bg-slate-100 font-semibold text-slate-800 dark:bg-slate-800 dark:text-slate-100" : "font-medium text-slate-600 dark:text-slate-300"}`}
                     >
@@ -1553,8 +1613,7 @@ export const Sidebar = ({
                         key={cat.slug}
                         type="button"
                         onClick={() => {
-                          handleCategoryChange(cat.slug);
-                          setCategoryDropdownOpen(false);
+                          handleCategorySelectionRequest(cat.slug);
                         }}
                         className={`block w-full px-3 py-1.5 text-left text-xs transition hover:bg-slate-100 dark:hover:bg-slate-800 ${
                           categoryFilter === cat.slug
@@ -1572,8 +1631,7 @@ export const Sidebar = ({
                 <button
                   type="button"
                   onClick={() => {
-                    handleCategoryChange(null);
-                    setCategoryDropdownOpen(false);
+                    handleCategorySelectionRequest(null);
                   }}
                   className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-50 text-brand-600 hover:bg-brand-100 dark:bg-brand-400/10 dark:text-brand-300 dark:hover:bg-brand-400/20"
                   title="Clear category filter"
@@ -1582,6 +1640,30 @@ export const Sidebar = ({
                     <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                   </svg>
                 </button>
+              )}
+              {pendingCategorySwitch && (
+                <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-md border border-amber-200 bg-white p-3 text-slate-700 shadow-lg dark:border-amber-400/30 dark:bg-slate-900 dark:text-slate-200">
+                  <p className="text-xs leading-relaxed">
+                    Switching to <span className="font-semibold">{pendingCategorySwitch.label}</span> will remove{" "}
+                    <span className="font-semibold">{selectedStatLabel}</span> from the map.
+                  </p>
+                  <div className="mt-2 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCancelCategorySwitch}
+                      className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmCategorySwitch}
+                      className="rounded-md bg-brand-500 px-2 py-1 text-[11px] font-semibold text-white transition hover:bg-brand-600"
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </>

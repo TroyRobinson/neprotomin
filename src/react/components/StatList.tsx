@@ -858,10 +858,10 @@ export const StatList = ({
         )}
         {selectedStatRow && (
           <p className="mb-1 px-1 pt-1 text-[10px] font-normal uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-            Additional Stats
+            Other Statistics
           </p>
         )}
-        {selectedStatId && variant !== "mobile" && (
+        {selectedStatId && variant !== "mobile" && additionalFilteredRows.length > 0 && (
           <div className="mb-2 rounded-lg border border-slate-200/70 bg-slate-100/80 px-3 py-1.5 text-[11px] font-light text-slate-400 dark:border-slate-700/70 dark:bg-slate-700/30 dark:text-slate-500">
             Shift+click another stat to show secondary on map
           </div>
