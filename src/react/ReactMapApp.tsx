@@ -2243,7 +2243,20 @@ export const ReactMapApp = () => {
       });
       setSelectedOrgIds([]);
       setSelectedOrgIdsFromMap(false);
-      mapControllerRef.current?.setCamera(detail.lng, detail.lat, detail.zoom, { animate: false });
+      const controller = mapControllerRef.current;
+      controller?.setCamera(detail.lng, detail.lat, detail.zoom, { animate: false });
+      // Force map transient-selection layers to match tour-selected areas even when
+      // React state keys don't change between repeated tour starts.
+      if (controller) {
+        controller.clearTransientSelection();
+        if (detail.selectedZips.length > 0) {
+          controller.addTransientZips(detail.selectedZips);
+        }
+        controller.clearCountyTransientSelection();
+        if (detail.selectedCounties.length > 0) {
+          controller.addTransientCounties(detail.selectedCounties);
+        }
+      }
     };
 
     const handleTourApplyState = (event: Event) => {
