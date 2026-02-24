@@ -31,6 +31,15 @@ interface MapOnboardingTourOptions {
 
 const DEFAULT_DISMISSED_STORAGE_KEY = "ne.map.onboarding.dismissed.v1";
 const DEFAULT_PREFERRED_CHANGE_OPTION_LABEL = "Population (Change '21-23)";
+const TOUR_HIGHLIGHT_BORDER_COLOR = "#f15b41";
+const TOUR_HIGHLIGHT_GLOW_RGBA = "241, 91, 65";
+const TOUR_HIGHLIGHT_BASE_SHADOW = `0 0 0 4px rgba(${TOUR_HIGHLIGHT_GLOW_RGBA}, 0.22)`;
+const TOUR_PRIMARY_BUTTON_CLASS =
+  "rounded-md bg-[#f15b41] px-2.5 py-1 text-xs font-medium text-white transition hover:bg-[#d64f38]";
+const TOUR_NEUTRAL_BUTTON_CLASS =
+  "rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800";
+const TOUR_DISMISS_BUTTON_CLASS =
+  "rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:text-slate-300 dark:hover:border-red-400/40 dark:hover:bg-red-500/10 dark:hover:text-red-200";
 
 type OnboardingStep =
   | "chip"
@@ -51,6 +60,27 @@ type OnboardingStep =
   | "myLocation"
   | "legend"
   | "brandLogo";
+
+const TOUR_STEP_SEQUENCE: readonly OnboardingStep[] = [
+  "chip",
+  "change",
+  "showingExtremas",
+  "showingOrganizations",
+  "showingAreas",
+  "share",
+  "myLocation",
+  "legend",
+  "brandLogo",
+  "searchMenu",
+  "sidebarStatDetails",
+  "advancedStats",
+  "sidebarAddAreas",
+  "sidebarDemographicsExpand",
+  "sidebarOtherStats",
+  "sidebarOrgsTab",
+  "sidebarCategoryFilter",
+  "tourFinale",
+];
 
 const targetSelector = (target: string): string => `[${MAP_TOUR_TARGET_ATTR}="${target}"]`;
 
@@ -87,6 +117,9 @@ export const createMapOnboardingTour = ({
   let onboardingRetryTimer: number | null = null;
   let onboardingPositionRaf: number | null = null;
   let onboardingCardPosition: TourCardPosition | null = null;
+  let onboardingLastFlashedStep: OnboardingStep | null = null;
+  let highlightFlashAnimation: Animation | null = null;
+  let secondaryHighlightFlashAnimation: Animation | null = null;
   let restartHintTimer: number | null = null;
   let restartHintFadeTimer: number | null = null;
   let helpMenuSuppressed = false;
@@ -135,11 +168,13 @@ export const createMapOnboardingTour = ({
   const stepOverlay = document.createElement("div");
   stepOverlay.className = "pointer-events-none absolute inset-0 z-[14] hidden";
   const highlightBox = document.createElement("div");
-  highlightBox.className = "absolute rounded-2xl border-2 border-brand-400/90";
-  highlightBox.style.boxShadow = "0 0 0 4px rgba(142, 144, 196, 0.2)";
+  highlightBox.className = "absolute rounded-2xl border-2";
+  highlightBox.style.borderColor = TOUR_HIGHLIGHT_BORDER_COLOR;
+  highlightBox.style.boxShadow = TOUR_HIGHLIGHT_BASE_SHADOW;
   const secondaryHighlightBox = document.createElement("div");
-  secondaryHighlightBox.className = "absolute hidden rounded-2xl border-2 border-brand-400/90";
-  secondaryHighlightBox.style.boxShadow = "0 0 0 4px rgba(142, 144, 196, 0.2)";
+  secondaryHighlightBox.className = "absolute hidden rounded-2xl border-2";
+  secondaryHighlightBox.style.borderColor = TOUR_HIGHLIGHT_BORDER_COLOR;
+  secondaryHighlightBox.style.boxShadow = TOUR_HIGHLIGHT_BASE_SHADOW;
   const stepCard = document.createElement("div");
   stepCard.className =
     "pointer-events-auto absolute max-w-[22rem] rounded-xl border border-slate-200 bg-white/95 p-3.5 shadow-xl backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95";
@@ -570,6 +605,11 @@ export const createMapOnboardingTour = ({
   };
 
   const hideTourStep = () => {
+    highlightFlashAnimation?.cancel();
+    secondaryHighlightFlashAnimation?.cancel();
+    highlightFlashAnimation = null;
+    secondaryHighlightFlashAnimation = null;
+    onboardingLastFlashedStep = null;
     onboardingStep = null;
     onboardingForceStart = false;
     stepOverlay.classList.add("hidden");
@@ -589,6 +629,36 @@ export const createMapOnboardingTour = ({
     closeSelectedStatDropdown();
     closeShowingPanel();
     closeSharePanel();
+  };
+
+  const flashHighlight = (step: OnboardingStep, includeSecondary: boolean) => {
+    if (onboardingLastFlashedStep === step) return;
+    onboardingLastFlashedStep = step;
+
+    highlightFlashAnimation?.cancel();
+    secondaryHighlightFlashAnimation?.cancel();
+    highlightFlashAnimation = null;
+    secondaryHighlightFlashAnimation = null;
+
+    const keyframes: Keyframe[] = [
+      {
+        borderColor: "rgba(241, 91, 65, 0.7)",
+        boxShadow: `0 0 0 0 rgba(${TOUR_HIGHLIGHT_GLOW_RGBA}, 0.5), 0 0 0 10px rgba(${TOUR_HIGHLIGHT_GLOW_RGBA}, 0.35)`,
+      },
+      {
+        borderColor: TOUR_HIGHLIGHT_BORDER_COLOR,
+        boxShadow: TOUR_HIGHLIGHT_BASE_SHADOW,
+      },
+    ];
+    const timing: KeyframeAnimationOptions = {
+      duration: 500,
+      easing: "ease-out",
+      fill: "forwards",
+    };
+    highlightFlashAnimation = highlightBox.animate(keyframes, timing);
+    if (includeSecondary) {
+      secondaryHighlightFlashAnimation = secondaryHighlightBox.animate(keyframes, timing);
+    }
   };
 
   const positionWelcomeToast = () => {
@@ -749,6 +819,9 @@ export const createMapOnboardingTour = ({
       secondaryHighlightBox.style.height = `${secondaryHeight}px`;
     } else {
       secondaryHighlightBox.classList.add("hidden");
+    }
+    if (onboardingStep) {
+      flashHighlight(onboardingStep, Boolean(secondaryTarget));
     }
 
     stepCard.style.visibility = "hidden";
@@ -959,38 +1032,62 @@ export const createMapOnboardingTour = ({
       stepCard.appendChild(message);
     }
 
+    const stepIndex = onboardingStep ? TOUR_STEP_SEQUENCE.indexOf(onboardingStep) : -1;
+    const completedSteps = stepIndex > -1 ? stepIndex : 0;
+    const canGoBack = stepIndex > 0 && primary.label === "Next";
+
+    const footer = document.createElement("div");
+    footer.className = "mt-3 flex items-center justify-between gap-2";
+
+    const progress = document.createElement("p");
+    progress.className = "text-[11px] text-slate-400 dark:text-slate-500";
+    progress.textContent = `${completedSteps}/${TOUR_STEP_SEQUENCE.length} Steps`;
+    footer.appendChild(progress);
+
     const actions = document.createElement("div");
-    actions.className = "mt-3 flex items-center justify-end gap-2";
+    actions.className = "flex items-center justify-end gap-2";
     if (secondary) {
       const secondaryBtn = document.createElement("button");
       secondaryBtn.type = "button";
       secondaryBtn.className =
         secondary.tone === "primary"
-          ? "rounded-md bg-brand-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500"
-          : "rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800";
+          ? TOUR_PRIMARY_BUTTON_CLASS
+          : secondary.label === "Dismiss"
+            ? TOUR_DISMISS_BUTTON_CLASS
+            : TOUR_NEUTRAL_BUTTON_CLASS;
       secondaryBtn.textContent = secondary.label;
       secondaryBtn.addEventListener("click", secondary.onClick);
       actions.appendChild(secondaryBtn);
+    }
+    if (canGoBack) {
+      const backBtn = document.createElement("button");
+      backBtn.type = "button";
+      backBtn.className = TOUR_NEUTRAL_BUTTON_CLASS;
+      backBtn.textContent = "Back";
+      backBtn.addEventListener("click", () => showPreviousStep());
+      actions.appendChild(backBtn);
     }
     if (tertiary) {
       const tertiaryBtn = document.createElement("button");
       tertiaryBtn.type = "button";
       tertiaryBtn.className =
         tertiary.tone === "primary"
-          ? "rounded-md bg-brand-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500"
-          : "rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800";
+          ? TOUR_PRIMARY_BUTTON_CLASS
+          : tertiary.label === "Dismiss"
+            ? TOUR_DISMISS_BUTTON_CLASS
+            : TOUR_NEUTRAL_BUTTON_CLASS;
       tertiaryBtn.textContent = tertiary.label;
       tertiaryBtn.addEventListener("click", tertiary.onClick);
       actions.appendChild(tertiaryBtn);
     }
     const primaryBtn = document.createElement("button");
     primaryBtn.type = "button";
-    primaryBtn.className =
-      "rounded-md bg-brand-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500";
+    primaryBtn.className = TOUR_PRIMARY_BUTTON_CLASS;
     primaryBtn.textContent = primary.label;
     primaryBtn.addEventListener("click", primary.onClick);
     actions.appendChild(primaryBtn);
-    stepCard.appendChild(actions);
+    footer.appendChild(actions);
+    stepCard.appendChild(footer);
   };
 
   const completeTour = () => {
@@ -1506,6 +1603,75 @@ export const createMapOnboardingTour = ({
       { label: "Dismiss", onClick: dismissTour },
     );
     positionTourStep(target);
+  };
+
+  const showStepByKey = (step: OnboardingStep) => {
+    switch (step) {
+      case "chip":
+        showChipStep();
+        return;
+      case "change":
+        showChangeStep();
+        return;
+      case "showingExtremas":
+        showShowingExtremasStep();
+        return;
+      case "showingOrganizations":
+        showShowingOrganizationsStep();
+        return;
+      case "showingAreas":
+        showShowingAreasStep();
+        return;
+      case "share":
+        showShareStep();
+        return;
+      case "myLocation":
+        showMyLocationStep();
+        return;
+      case "legend":
+        showLegendStep();
+        return;
+      case "brandLogo":
+        showBrandLogoStep();
+        return;
+      case "searchMenu":
+        showSearchMenuStep();
+        return;
+      case "sidebarStatDetails":
+        showSidebarStatDetailsStep();
+        return;
+      case "advancedStats":
+        showAdvancedStatsStep();
+        return;
+      case "sidebarAddAreas":
+        showSidebarAddAreasStep();
+        return;
+      case "sidebarDemographicsExpand":
+        showSidebarDemographicsExpandStep();
+        return;
+      case "sidebarOtherStats":
+        showSidebarOtherStatsStep();
+        return;
+      case "sidebarOrgsTab":
+        showSidebarOrgsTabStep();
+        return;
+      case "sidebarCategoryFilter":
+        showSidebarCategoryFilterStep();
+        return;
+      case "tourFinale":
+        showTourFinaleStep();
+        return;
+      default:
+        return;
+    }
+  };
+
+  const showPreviousStep = () => {
+    if (!onboardingStep) return;
+    const currentIndex = TOUR_STEP_SEQUENCE.indexOf(onboardingStep);
+    if (currentIndex <= 0) return;
+    const previous = TOUR_STEP_SEQUENCE[currentIndex - 1];
+    showStepByKey(previous);
   };
 
   const targetForStep = (step: OnboardingStep): HTMLElement | null => {
