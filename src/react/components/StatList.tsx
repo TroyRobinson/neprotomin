@@ -12,6 +12,7 @@ import type { AreaId } from "../../types/areas";
 
 const STAT_SEARCH_MATCH_THRESHOLD = 0.4;
 const STAT_META_COLLAPSED_MAX_HEIGHT_PX = 48;
+const SOURCE_ORIGINAL_PREVIEW_MAX_WORDS = 4;
 
 // Compute average of all values in a boundary entry (used for context average display)
 const computeContextAverage = (entry: StatBoundaryEntry | undefined): number => {
@@ -334,6 +335,10 @@ export const StatList = ({
     () => (displayStatId ? (statsById.get(displayStatId) ?? null) : null),
     [displayStatId, statsById],
   );
+  const additionalFilteredRows = useMemo(() => {
+    if (!displayStatId) return filteredRows;
+    return filteredRows.filter((row) => row.id !== displayStatId);
+  }, [filteredRows, displayStatId]);
 
   const headerHasChartData = useMemo(() => {
     if (!selectedStatRow) return false;
@@ -732,10 +737,10 @@ export const StatList = ({
   };
 
   return (
-    <div className="flex flex-col">
+    <div className="flex min-h-full flex-col bg-slate-100 dark:bg-slate-800">
       {/* Fixed area: Pinned selected stat */}
       {selectedStatRow && (
-        <div className="min-h-[112px] border-t border-b border-slate-200 dark:border-slate-700 px-4 pt-0 pb-3 shadow-md bg-slate-50 dark:bg-slate-800/50">
+        <div className="flex-none min-h-[112px] border-t border-b border-slate-200 dark:border-slate-700 px-4 pt-0 pb-3 shadow-md bg-slate-50 dark:bg-slate-800/50">
           <ul>
             <StatListItem
               row={selectedStatRow}
@@ -771,7 +776,11 @@ export const StatList = ({
             </div>
           )}
           {!showAdvanced && (
-            <StatHeaderMeta description={displayHeaderStat?.description} source={displayHeaderStat?.source} />
+            <StatHeaderMeta
+              description={displayHeaderStat?.description}
+              source={displayHeaderStat?.source}
+              stat={displayHeaderStat}
+            />
           )}
 
           {/* Embedded StatViz chart - only shown in advanced mode; min-h reserves
@@ -810,13 +819,17 @@ export const StatList = ({
             </div>
           )}
           {showAdvanced && (
-            <StatHeaderMeta description={displayHeaderStat?.description} source={displayHeaderStat?.source} />
+            <StatHeaderMeta
+              description={displayHeaderStat?.description}
+              source={displayHeaderStat?.source}
+              stat={displayHeaderStat}
+            />
           )}
         </div>
       )}
 
       {/* Scrollable content */}
-      <div className="px-4 pt-2 pb-6 bg-slate-100 dark:bg-slate-800">
+      <div className="flex-1 px-4 pt-2 pb-6 bg-slate-100 dark:bg-slate-800">
         {showStatSearch && (
           <div className="pt-2 mb-2">
             <div className="flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 shadow-sm transition-colors focus-within:border-brand-200 focus-within:bg-brand-50 dark:border-slate-700/70 dark:bg-slate-900/50 dark:focus-within:border-slate-600 dark:focus-within:bg-slate-800/70">
@@ -843,12 +856,17 @@ export const StatList = ({
             </div>
           </div>
         )}
+        {selectedStatRow && (
+          <p className="mb-1 px-1 pt-1 text-[10px] font-normal uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+            Additional Stats
+          </p>
+        )}
         {selectedStatId && variant !== "mobile" && (
-          <div className="mb-2 rounded-lg border border-slate-200/70 bg-slate-100/80 px-3 py-1.5 text-[11px] text-slate-500 dark:border-slate-700/70 dark:bg-slate-700/30 dark:text-slate-400">
+          <div className="mb-2 rounded-lg border border-slate-200/70 bg-slate-100/80 px-3 py-1.5 text-[11px] font-light text-slate-400 dark:border-slate-700/70 dark:bg-slate-700/30 dark:text-slate-500">
             Shift+click another stat to show secondary on map
           </div>
         )}
-        {filteredRows.length === 0 ? (
+        {additionalFilteredRows.length === 0 ? (
           <p className="px-1 pt-2 text-xs text-slate-500 dark:text-slate-400">
             {effectiveNormalizedQuery
               ? "No statistics match your search."
@@ -856,7 +874,7 @@ export const StatList = ({
           </p>
         ) : (
           <ul className="space-y-2">
-            {filteredRows.map((row) => (
+            {additionalFilteredRows.map((row) => (
               <StatListItem
                 key={row.id}
                 row={row}
@@ -908,12 +926,36 @@ interface StatListItemProps {
 interface StatHeaderMetaProps {
   description?: string | null;
   source?: string | null;
+  stat?: Stat | null;
 }
 
-const StatHeaderMeta = ({ description, source }: StatHeaderMetaProps) => {
+const truncateWords = (value: string, maxWords: number): { text: string; truncated: boolean } => {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return { text: value.trim(), truncated: false };
+  return { text: `${words.slice(0, maxWords).join(" ")}...`, truncated: true };
+};
+
+const StatHeaderMeta = ({ description, source, stat }: StatHeaderMetaProps) => {
   const descriptionText =
     typeof description === "string" && description.trim().length > 0 ? description.trim() : null;
   const sourceText = typeof source === "string" && source.trim().length > 0 ? source.trim() : null;
+  const censusOriginalDescriptor = useMemo(() => {
+    if (!sourceText || !stat || !/census/i.test(sourceText)) return null;
+    const statName = typeof stat.name === "string" && stat.name.trim().length > 0 ? stat.name.trim() : null;
+    const rawNeId = typeof stat.neId === "string" && stat.neId.trim().length > 0 ? stat.neId.trim() : null;
+    const neId = rawNeId ? rawNeId.replace(/^census:/i, "") : null;
+    const statType = typeof stat.type === "string" && stat.type.trim().length > 0 ? stat.type.trim() : null;
+    const prefix = [neId, statType].filter(Boolean).join(" ");
+    const parts = [prefix, statName].filter((part): part is string => Boolean(part && part.trim()));
+    return parts.length > 0 ? parts.join(" · ") : null;
+  }, [sourceText, stat]);
+  const censusOriginalPreview = useMemo(
+    () =>
+      censusOriginalDescriptor
+        ? truncateWords(censusOriginalDescriptor, SOURCE_ORIGINAL_PREVIEW_MAX_WORDS)
+        : null,
+    [censusOriginalDescriptor],
+  );
   const contentRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [isOverflowing, setIsOverflowing] = useState(false);
@@ -955,8 +997,17 @@ const StatHeaderMeta = ({ description, source }: StatHeaderMetaProps) => {
           {descriptionText}
         </p>
         {sourceText && (
-          <p className="mt-1 text-[10px] leading-[14px] font-light uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+          <p className="mt-1.5 text-[10px] leading-[14px] font-light uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
             - SOURCE: {sourceText}
+            {censusOriginalPreview && (
+              <span
+                className="normal-case font-light tracking-normal cursor-default"
+                title={censusOriginalPreview.truncated ? (censusOriginalDescriptor ?? undefined) : undefined}
+              >
+                {" · "}
+                {censusOriginalPreview.text}
+              </span>
+            )}
           </p>
         )}
       </div>
@@ -964,7 +1015,7 @@ const StatHeaderMeta = ({ description, source }: StatHeaderMetaProps) => {
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="mt-1 text-[10px] font-light text-slate-500 underline underline-offset-2 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+          className="mt-1 pb-0.5 text-[10px] leading-4 font-light text-slate-400 underline underline-offset-1 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
         >
           {expanded ? "hide" : "show more"}
         </button>

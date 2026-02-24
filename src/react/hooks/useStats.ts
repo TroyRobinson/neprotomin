@@ -558,6 +558,7 @@ export const useStats = ({
           description:
             typeof row.description === "string" && row.description.trim() ? row.description : undefined,
           source: typeof row.source === "string" && row.source.trim() ? row.source : undefined,
+          neId: typeof row.neId === "string" && row.neId.trim() ? row.neId : undefined,
           category: row.category as Category,
           goodIfUp: typeof row.goodIfUp === "boolean" ? row.goodIfUp : undefined,
           pointsOfInterestEnabled:

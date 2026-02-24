@@ -54,6 +54,10 @@ class StatsStore {
               typeof (row as any).source === "string" && (row as any).source.trim()
                 ? (row as any).source
                 : undefined,
+            neId:
+              typeof (row as any).neId === "string" && (row as any).neId.trim()
+                ? (row as any).neId
+                : undefined,
             category: (row as any).category,
             goodIfUp: typeof (row as any).goodIfUp === "boolean" ? (row as any).goodIfUp : undefined,
             pointsOfInterestEnabled:
