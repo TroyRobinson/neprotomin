@@ -213,6 +213,8 @@ import { categoriesStore, type CategoryRow } from "../../state/categories";
 import { formatTimeSelection as formatTimeSelectionLabel, type TimeSelection } from "../lib/timeFilters";
 import {
   MAP_TOUR_CHANGE_OPTION_ATTR,
+  MAP_TOUR_LOCK_ATTR,
+  MAP_TOUR_LOCKS,
   MAP_TOUR_STAT_LABEL_ATTR,
   MAP_TOUR_TARGET_ATTR,
   MAP_TOUR_TARGETS,
@@ -1410,6 +1412,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
     // Update stats UI region
     renderStatChips();
+    openLockedPrimaryStatDropdown();
   };
 
   const applyAccessoryChipVisibility = () => {
@@ -1726,6 +1729,19 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     return Array.from(deduped.values());
   };
 
+  const isPrimaryStatMenuTourLocked = (): boolean =>
+    wrapper.getAttribute(MAP_TOUR_LOCK_ATTR) === MAP_TOUR_LOCKS.primaryStatMenu;
+
+  const openLockedPrimaryStatDropdown = () => {
+    if (!isPrimaryStatMenuTourLocked()) return;
+    const selectedStatChip = wrapper.querySelector<HTMLButtonElement>(
+      `[${MAP_TOUR_TARGET_ATTR}="${MAP_TOUR_TARGETS.primaryStatChip}"]`,
+    );
+    if (!selectedStatChip) return;
+    if (selectedStatChip.getAttribute("aria-expanded") === "true") return;
+    selectedStatChip.click();
+  };
+
   const renderSelectedStatYearChip = (selectedLabel: string | null) => {
     const normalizedLabel = selectedLabel?.toLowerCase() ?? "";
     const shouldShow =
@@ -1801,7 +1817,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       handleClick: () => void;
     }> = [];
 
-    const closeMenu = () => {
+    const closeMenu = ({ force = false }: { force?: boolean } = {}) => {
+      if (!force && isPrimaryStatMenuTourLocked()) return;
       if (menu.classList.contains("hidden")) return;
       menu.classList.add("hidden");
       btn.setAttribute("aria-expanded", "false");
@@ -1938,7 +1955,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       btn,
       handleClick,
       destroy: () => {
-        closeMenu();
+        closeMenu({ force: true });
         btn.removeEventListener("keydown", handleKeyDown);
         optionButtons.forEach((entry) => {
           entry.button.removeEventListener("click", entry.handleClick);

@@ -1,5 +1,7 @@
 import {
   MAP_TOUR_CHANGE_OPTION_ATTR,
+  MAP_TOUR_LOCK_ATTR,
+  MAP_TOUR_LOCKS,
   MAP_TOUR_STAT_LABEL_ATTR,
   MAP_TOUR_TARGET_ATTR,
   MAP_TOUR_TARGETS,
@@ -302,6 +304,14 @@ export const createMapOnboardingTour = ({
     }
   };
 
+  const setTourLock = (lock: string | null) => {
+    if (!lock) {
+      targetRoot.removeAttribute(MAP_TOUR_LOCK_ATTR);
+      return;
+    }
+    targetRoot.setAttribute(MAP_TOUR_LOCK_ATTR, lock);
+  };
+
   const hideTourStep = () => {
     onboardingStep = null;
     onboardingForceStart = false;
@@ -311,6 +321,7 @@ export const createMapOnboardingTour = ({
       cancelAnimationFrame(onboardingPositionRaf);
       onboardingPositionRaf = null;
     }
+    setTourLock(null);
     closeSelectedStatDropdown();
     closeShowingPanel();
     closeSharePanel();
@@ -513,12 +524,14 @@ export const createMapOnboardingTour = ({
       return;
     }
     onboardingStep = "change";
+    setTourLock(MAP_TOUR_LOCKS.primaryStatMenu);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       "You can even see change over time mapped out.",
       {
         label: "Next",
         onClick: () => {
+          setTourLock(null);
           closeSelectedStatDropdown();
           showShowingTriggerStep();
         },
@@ -530,6 +543,7 @@ export const createMapOnboardingTour = ({
 
   const showShowingTriggerStep = (attempt = 0) => {
     clearOnboardingRetry();
+    setTourLock(null);
     closeSelectedStatDropdown();
     const target = getShowingChipTarget();
     if (!target) {
@@ -798,6 +812,11 @@ export const createMapOnboardingTour = ({
     onboardingPositionRaf = requestAnimationFrame(() => {
       onboardingPositionRaf = null;
       if (!currentStep) return;
+      if (
+        currentStep === "change"
+      ) {
+        openSelectedStatDropdown();
+      }
       if (
         currentStep === "showingExtremas" ||
         currentStep === "showingOrganizations" ||
