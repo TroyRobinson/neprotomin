@@ -109,6 +109,7 @@ interface MapViewOptions {
   onLegendSettingsClick?: () => void;
   onSidebarExpand?: () => void;
   legendRangeMode?: "dynamic" | "scoped" | "global";
+  onboardingAutoPromptEnabled?: boolean;
 }
 
 export interface MapViewController {
@@ -147,6 +148,7 @@ export interface MapViewController {
   setLegendRightContent: (el: HTMLElement | null) => void;
   setLegendRangeMode: (mode: "dynamic" | "scoped" | "global") => void;
   startOnboardingTour: () => void;
+  setOnboardingTourAutoPromptEnabled: (enabled: boolean) => void;
   setSidebarExpandVisible: (visible: boolean) => void;
   resize: () => void;
   destroy: () => void;
@@ -520,6 +522,7 @@ export const createMapView = ({
   onLegendSettingsClick,
   onSidebarExpand,
   legendRangeMode: legendRangeModeInitial = "scoped",
+  onboardingAutoPromptEnabled = true,
 }: MapViewOptions): MapViewController => {
   const container = document.createElement("section");
   container.className = "relative flex flex-1";
@@ -797,6 +800,7 @@ export const createMapView = ({
     container,
     targetRoot: categoryChips.element,
     enabled: !isMobile,
+    autoPromptEnabled: onboardingAutoPromptEnabled,
   });
   destroyFns.push(() => {
     onboardingTour.destroy();
@@ -5379,6 +5383,9 @@ export const createMapView = ({
     },
     startOnboardingTour: () => {
       onboardingTour.start();
+    },
+    setOnboardingTourAutoPromptEnabled: (enabled: boolean) => {
+      onboardingTour.setAutoPromptEnabled(enabled);
     },
     setSidebarExpandVisible: (visible: boolean) => {
       categoryChips.setSidebarExpandVisible(visible);

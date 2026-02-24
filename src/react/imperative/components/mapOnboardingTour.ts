@@ -13,6 +13,7 @@ import {
 
 export interface MapOnboardingTourController {
   start: () => void;
+  setAutoPromptEnabled: (enabled: boolean) => void;
   refresh: () => void;
   destroy: () => void;
 }
@@ -21,6 +22,7 @@ interface MapOnboardingTourOptions {
   container: HTMLElement;
   targetRoot: HTMLElement;
   enabled?: boolean;
+  autoPromptEnabled?: boolean;
   dismissedStorageKey?: string;
   preferredChangeOptionLabel?: string;
 }
@@ -52,6 +54,7 @@ const targetSelector = (target: string): string => `[${MAP_TOUR_TARGET_ATTR}="${
 
 const createNoopController = (): MapOnboardingTourController => ({
   start: () => {},
+  setAutoPromptEnabled: () => {},
   refresh: () => {},
   destroy: () => {},
 });
@@ -69,6 +72,7 @@ export const createMapOnboardingTour = ({
   container,
   targetRoot,
   enabled = true,
+  autoPromptEnabled: initialAutoPromptEnabled = true,
   dismissedStorageKey = DEFAULT_DISMISSED_STORAGE_KEY,
   preferredChangeOptionLabel = DEFAULT_PREFERRED_CHANGE_OPTION_LABEL,
 }: MapOnboardingTourOptions): MapOnboardingTourController => {
@@ -81,6 +85,7 @@ export const createMapOnboardingTour = ({
   let onboardingPositionRaf: number | null = null;
   let onboardingCardPosition: TourCardPosition | null = null;
   let onboardingForceStart = false;
+  let autoPromptEnabled = initialAutoPromptEnabled;
   let onboardingDismissed = false;
   try {
     onboardingDismissed = window.localStorage.getItem(dismissedStorageKey) === "1";
@@ -143,7 +148,15 @@ export const createMapOnboardingTour = ({
     } catch {}
   };
 
-  const showWelcomeToast = () => {
+  const clearOnboardingDismissed = () => {
+    onboardingDismissed = false;
+    try {
+      window.localStorage.removeItem(dismissedStorageKey);
+    } catch {}
+  };
+
+  const showWelcomeToast = ({ force = false }: { force?: boolean } = {}) => {
+    if (!force && !autoPromptEnabled) return;
     if (onboardingDismissed) return;
     welcomeToast.classList.remove("hidden");
   };
@@ -809,8 +822,9 @@ export const createMapOnboardingTour = ({
       if (attempt < maxAttempts) {
         onboardingRetryTimer = window.setTimeout(() => showChipStep(attempt + 1), onboardingForceStart ? 250 : 120);
       } else {
+        const forceWelcome = onboardingForceStart;
         onboardingForceStart = false;
-        showWelcomeToast();
+        showWelcomeToast({ force: forceWelcome });
       }
       return;
     }
@@ -1138,7 +1152,7 @@ export const createMapOnboardingTour = ({
     onboardingStep = "sidebarOtherStats";
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Explore other statistics. Shift+click a statistic in the list to see it overlayed on your first stat.",
+      "Explore other statistics by clicking them. Or shift+click a statistic in the list to see it overlayed on your first stat.",
       { label: "Next", onClick: () => showSidebarOrgsTabStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -1329,10 +1343,21 @@ export const createMapOnboardingTour = ({
   };
 
   const start = () => {
-    onboardingDismissed = false;
+    clearOnboardingDismissed();
     hideTourStep();
-    onboardingForceStart = false;
-    showWelcomeToast();
+    onboardingForceStart = true;
+    showChipStep();
+  };
+
+  const setAutoPromptEnabled = (enabled: boolean) => {
+    autoPromptEnabled = enabled;
+    if (!autoPromptEnabled) {
+      hideWelcomeToast();
+      return;
+    }
+    if (!onboardingStep && !onboardingDismissed) {
+      showWelcomeToast();
+    }
   };
 
   const refresh = () => {
@@ -1409,7 +1434,7 @@ export const createMapOnboardingTour = ({
   window.addEventListener("keyup", refresh, true);
   window.addEventListener("click", advanceSearchMenuOnSidebarToggleClick, true);
 
-  if (!onboardingDismissed) {
+  if (autoPromptEnabled && !onboardingDismissed) {
     showWelcomeToast();
   }
 
@@ -1430,5 +1455,5 @@ export const createMapOnboardingTour = ({
     stepOverlay.remove();
   };
 
-  return { start, refresh, destroy };
+  return { start, setAutoPromptEnabled, refresh, destroy };
 };

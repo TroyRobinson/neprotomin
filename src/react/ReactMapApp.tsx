@@ -409,6 +409,12 @@ export const ReactMapApp = () => {
   }, [isMobile, viewportHeight]);
 
   const { user, authReady } = useAuthSession();
+  const shouldAutoPromptOnboardingTour = useMemo(() => {
+    if (isMobile) return false;
+    // On food domains, tour only starts manually (button/URL), never auto-prompts.
+    if (isFoodDomain) return false;
+    return true;
+  }, [isFoodDomain, isMobile]);
   const persistSidebarInsights = showAdvanced;
   const isAdmin = useMemo(() => {
     if (!user || user.isGuest) return false;
@@ -3918,6 +3924,7 @@ export const ReactMapApp = () => {
               onLegendSettingsClick={() => setMapSettingsOpen(true)}
               onSidebarExpand={() => setSidebarCollapsed(false)}
               legendRangeMode={legendRangeMode}
+              onboardingTourAutoPromptEnabled={shouldAutoPromptOnboardingTour}
               visibleStatIds={visibleStatIds}
             />
             {/* Desktop-only overlay still shows the location button inline */}

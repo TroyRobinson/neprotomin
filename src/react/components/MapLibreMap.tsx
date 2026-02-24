@@ -70,6 +70,7 @@ interface MapLibreMapProps {
   onLegendSettingsClick?: () => void;
   onSidebarExpand?: () => void;
   legendRangeMode?: "dynamic" | "scoped" | "global";
+  onboardingTourAutoPromptEnabled?: boolean;
   visibleStatIds?: string[] | null;
 }
 
@@ -132,6 +133,7 @@ export const MapLibreMap = ({
   onLegendSettingsClick,
   onSidebarExpand,
   legendRangeMode = "scoped",
+  onboardingTourAutoPromptEnabled = true,
   visibleStatIds = null,
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -287,6 +289,7 @@ export const MapLibreMap = ({
         try { onLegendSettingsClickRef.current?.(); } catch {}
       },
       legendRangeMode,
+      onboardingAutoPromptEnabled: onboardingTourAutoPromptEnabled,
     });
 
     containerRef.current.appendChild(mapController.element);
@@ -340,6 +343,12 @@ export const MapLibreMap = ({
       mapControllerRef.current.setLegendRangeMode(legendRangeModeRef.current);
     }
   }, [legendRangeMode]);
+
+  useEffect(() => {
+    if (mapControllerRef.current) {
+      mapControllerRef.current.setOnboardingTourAutoPromptEnabled(Boolean(onboardingTourAutoPromptEnabled));
+    }
+  }, [onboardingTourAutoPromptEnabled]);
 
   useEffect(() => {
     if (mapControllerRef.current) {
