@@ -63,6 +63,8 @@ interface MapLibreMapProps {
   onControllerReady?: (controller: MapViewController | null) => void;
   userLocation?: { lng: number; lat: number } | null;
   onTimeChipClear?: () => void;
+  onExportCsvAreasDownload?: () => void;
+  exportCsvAreasAvailable?: boolean;
   onLocationSearch?: (query: string) => void;
   timeFilterAvailable?: boolean;
   onLegendSettingsClick?: () => void;
@@ -86,6 +88,8 @@ export const MapLibreMap = ({
   onRequestHideOrgs,
   onTimeChipClick,
   onTimeChipClear,
+  onExportCsvAreasDownload,
+  exportCsvAreasAvailable = false,
   boundaryMode = "zips",
   selectedZips = [],
   pinnedZips = [],
@@ -157,6 +161,7 @@ export const MapLibreMap = ({
   const onMapDragStartRef = useRef(onMapDragStart);
   const onTimeChipClickRef = useRef(onTimeChipClick);
   const onTimeChipClearRef = useRef(onTimeChipClear);
+  const onExportCsvAreasDownloadRef = useRef(onExportCsvAreasDownload);
   const onLocationSearchRef = useRef(onLocationSearch);
   const setLegendInsetRef = useRef<(pixels: number) => void>(() => {});
   const onLegendSettingsClickRef = useRef(onLegendSettingsClick);
@@ -184,6 +189,7 @@ export const MapLibreMap = ({
   useEffect(() => { onMapDragStartRef.current = onMapDragStart; }, [onMapDragStart]);
   useEffect(() => { onTimeChipClickRef.current = onTimeChipClick; }, [onTimeChipClick]);
   useEffect(() => { onTimeChipClearRef.current = onTimeChipClear; }, [onTimeChipClear]);
+  useEffect(() => { onExportCsvAreasDownloadRef.current = onExportCsvAreasDownload; }, [onExportCsvAreasDownload]);
   const onSidebarExpandRef = useRef(onSidebarExpand);
   useEffect(() => { onSidebarExpandRef.current = onSidebarExpand; }, [onSidebarExpand]);
   useEffect(() => { onLocationSearchRef.current = onLocationSearch; }, [onLocationSearch]);
@@ -267,6 +273,10 @@ export const MapLibreMap = ({
       onTimeChipClear: () => {
         try { onTimeChipClearRef.current?.(); } catch {}
       },
+      onExportCsvAreasDownload: () => {
+        try { onExportCsvAreasDownloadRef.current?.(); } catch {}
+      },
+      exportCsvAreasAvailable,
       onSidebarExpand: () => {
         try { onSidebarExpandRef.current?.(); } catch {}
       },
@@ -283,6 +293,7 @@ export const MapLibreMap = ({
     mapControllerRef.current = mapController;
     mapController.setVisibleStatIds(visibleStatIdsRef.current);
     mapController.setSelectedStatOptions(selectedStatOptions);
+    mapController.setExportCsvAreasVisible(Boolean(exportCsvAreasAvailable));
     setLegendInsetRef.current = mapController.setLegendInset;
     if (typeof legendInset === "number") {
       mapController.setLegendInset(legendInset);
@@ -342,6 +353,12 @@ export const MapLibreMap = ({
       mapControllerRef.current.setTimeFilterAvailable(Boolean(timeFilterAvailable));
     }
   }, [timeFilterAvailable]);
+
+  useEffect(() => {
+    if (mapControllerRef.current) {
+      mapControllerRef.current.setExportCsvAreasVisible(Boolean(exportCsvAreasAvailable));
+    }
+  }, [exportCsvAreasAvailable]);
 
   useEffect(() => {
     if (mapControllerRef.current) {

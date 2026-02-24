@@ -102,6 +102,8 @@ interface MapViewOptions {
   onRequestHideOrgs?: () => void;
   onTimeChipClick?: () => void;
   onTimeChipClear?: () => void;
+  onExportCsvAreasDownload?: () => void;
+  exportCsvAreasAvailable?: boolean;
   onLegendSettingsClick?: () => void;
   onSidebarExpand?: () => void;
   legendRangeMode?: "dynamic" | "scoped" | "global";
@@ -131,6 +133,7 @@ export interface MapViewController {
   fitAllOrganizations: () => void;
   setTimeSelection: (selection: TimeSelection | null) => void;
   setTimeFilterAvailable: (available: boolean) => void;
+  setExportCsvAreasVisible: (visible: boolean) => void;
   setOrganizationPinsVisible: (visible: boolean) => void;
   setUserLocation: (location: { lng: number; lat: number } | null) => void;
   fitBounds: (bounds: BoundsArray, options?: { padding?: number; maxZoom?: number; duration?: number }) => void;
@@ -509,6 +512,8 @@ export const createMapView = ({
   onRequestHideOrgs,
   onTimeChipClick,
   onTimeChipClear,
+  onExportCsvAreasDownload,
+  exportCsvAreasAvailable = false,
   onLegendSettingsClick,
   onSidebarExpand,
   legendRangeMode: legendRangeModeInitial = "scoped",
@@ -533,6 +538,7 @@ export const createMapView = ({
 
   let selectedCategory: string | null = null;
   let extremasVisible = getDomainDefaults().defaultExtremasVisible;
+  let runMapLinkCopy: (() => Promise<void>) | null = null;
   let runMapScreenshotCopy: (() => Promise<void>) | null = null;
   let runMapScreenshotDownload: (() => Promise<void>) | null = null;
   const categoryChips = createCategoryChips({
@@ -584,6 +590,10 @@ export const createMapView = ({
     },
     onTimeChipClick: () => { try { onTimeChipClick?.(); } catch {} },
     onTimeChipClear: () => { try { onTimeChipClear?.(); } catch {} },
+    onExportLinkCopy: async () => {
+      if (!runMapLinkCopy) throw new Error("Map export (link copy) is not ready yet");
+      return runMapLinkCopy();
+    },
     onExportScreenshotCopy: async () => {
       if (!runMapScreenshotCopy) throw new Error("Map export (copy) is not ready yet");
       return runMapScreenshotCopy();
@@ -591,6 +601,9 @@ export const createMapView = ({
     onExportScreenshotDownload: async () => {
       if (!runMapScreenshotDownload) throw new Error("Map export (download) is not ready yet");
       return runMapScreenshotDownload();
+    },
+    onExportCsvAreasDownload: () => {
+      try { onExportCsvAreasDownload?.(); } catch {}
     },
     onAreasModeChange: (mode) => {
       if (mode !== "auto") {
@@ -610,6 +623,7 @@ export const createMapView = ({
   container.appendChild(categoryChips.element);
   categoryChips.setAreasMode(initialAreasMode);
   categoryChips.setExtremasVisible(extremasVisible);
+  categoryChips.setExportCsvAreasVisible(Boolean(exportCsvAreasAvailable));
 
   // Temporary export feedback banner shown for clipboard copy actions.
   const exportToastEl = document.createElement("div");
@@ -1220,6 +1234,27 @@ export const createMapView = ({
         [blob.type || "image/png"]: blob,
       }),
     ]);
+  };
+
+  runMapLinkCopy = async () => {
+    const canWriteTextClipboard =
+      typeof window !== "undefined" &&
+      window.isSecureContext &&
+      typeof navigator !== "undefined" &&
+      typeof navigator.clipboard?.writeText === "function";
+    if (!canWriteTextClipboard) {
+      showExportToast("Clipboard copy is not supported in this browser", "error");
+      throw new Error("Clipboard text write unsupported");
+    }
+    const currentUrl = typeof window !== "undefined" ? window.location.href : "";
+    try {
+      await navigator.clipboard.writeText(currentUrl);
+      showExportToast("Link copied", "success");
+    } catch (error) {
+      console.warn("Clipboard text write failed", error);
+      showExportToast("Couldn't copy link", "error");
+      throw error;
+    }
   };
 
   runMapScreenshotCopy = async () => {
@@ -5287,6 +5322,9 @@ export const createMapView = ({
     },
     setTimeFilterAvailable: (available: boolean) => {
       categoryChips.setTimeFilterAvailable(available);
+    },
+    setExportCsvAreasVisible: (visible: boolean) => {
+      categoryChips.setExportCsvAreasVisible(visible);
     },
     fitBounds: (bounds: BoundsArray, options?: { padding?: number; maxZoom?: number; duration?: number }) => {
       map.fitBounds(bounds, {

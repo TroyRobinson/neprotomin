@@ -1604,6 +1604,7 @@ export const ReactMapApp = () => {
         : [],
     [activeAreaKind, activeSelectedCodes],
   );
+  const canExportAreasCsvFromMap = Boolean(showAdvanced && activeAreaKind && activeSelectedCodes.length > 0);
 
   const autoBoundarySwitch = boundaryControlMode === "auto";
 
@@ -3848,6 +3849,8 @@ export const ReactMapApp = () => {
                 });
                 handleClearTimeFilter();
               }}
+              onExportCsvAreasDownload={handleExport}
+              exportCsvAreasAvailable={canExportAreasCsvFromMap}
               onLegendSettingsClick={() => setMapSettingsOpen(true)}
               onSidebarExpand={() => setSidebarCollapsed(false)}
               legendRangeMode={legendRangeMode}

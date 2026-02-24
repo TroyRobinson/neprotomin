@@ -13,15 +13,21 @@ const AREAS_CHIP_CLASSES =
 const SHOWING_CHIP_CLASSES = AREAS_CHIP_CLASSES;
 const SHOWING_CHIP_ACTIVE_CLASSES =
   "border-slate-300 bg-white/90 text-slate-800 ring-0 dark:border-slate-500 dark:bg-slate-900/45 dark:text-slate-100 dark:ring-0";
+const SHOWING_PANEL_ACTION_CLASSES =
+  "border-slate-200/90 bg-slate-50 text-slate-600 hover:bg-white hover:border-slate-300 dark:border-slate-700/90 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-black dark:hover:border-slate-500";
+const SHOWING_PANEL_ACTION_SELECTED_BORDER_CLASSES =
+  "!border-[1.5px] !border-slate-300 dark:!border-slate-500";
+const EXPORT_PANEL_ACTION_CLASSES =
+  "border-slate-200/90 bg-slate-50 text-slate-700 hover:bg-white hover:border-slate-300 dark:border-slate-700/90 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-black dark:hover:border-slate-500";
 
 const ORGS_CHIP_ON_CLASSES =
-  "border-[0.5px] border-transparent bg-[#f7e2d6] text-[#7a4030] shadow-floating hover:bg-[#f1d3c3] dark:bg-[#7a4030]/30 dark:text-[#d79c84]";
+  "border-[0.5px] border-transparent bg-[#f7e2d6] text-[#7a4030] shadow-floating hover:bg-[#f1d3c3] dark:bg-[#7a4030]/30 dark:text-[#d79c84] dark:hover:bg-black";
 
 const ORGS_CHIP_OFF_CLASSES =
-  "border-[0.5px] border-white/60 bg-white/18 text-slate-500 ring-1 ring-white/45 hover:border-slate-300/70 hover:bg-white/30 hover:text-slate-600 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-400 dark:ring-white/8 dark:hover:border-slate-400/55 dark:hover:bg-slate-900/38 dark:hover:text-slate-300";
+  SHOWING_PANEL_ACTION_CLASSES;
 
 const EXTREMAS_CHIP_ON_CLASSES =
-  "border-[0.5px] border-slate-200 bg-slate-100 text-slate-700 shadow-floating hover:bg-slate-200 dark:border-slate-600 dark:bg-slate-800/60 dark:text-slate-200";
+  "border-[0.5px] border-slate-200 bg-slate-50 text-slate-700 shadow-floating hover:bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-black";
 
 const EXTREMAS_CHIP_OFF_CLASSES = ORGS_CHIP_OFF_CLASSES;
 
@@ -83,7 +89,14 @@ const SETTINGS_ICON = `
 const EXPORT_ICON = `
   <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" class="h-3.5 w-3.5">
     <path
-      d="M10 3.5v7m0 0L7.25 7.75M10 10.5l2.75-2.75M4 12.75v1.25A1.5 1.5 0 005.5 15.5h9A1.5 1.5 0 0016 14v-1.25"
+      d="M11.5 4.75h3.75v3.75m0-3.75-5.5 5.5"
+      stroke="currentColor"
+      stroke-width="1.4"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M9 4.75H5.5a1.75 1.75 0 0 0-1.75 1.75v8A1.75 1.75 0 0 0 5.5 16.25h8a1.75 1.75 0 0 0 1.75-1.75V11"
       stroke="currentColor"
       stroke-width="1.4"
       stroke-linecap="round"
@@ -107,6 +120,29 @@ const IMAGE_ICON = `
       stroke-linecap="round"
       stroke-linejoin="round"
     />
+  </svg>
+`;
+
+const LINK_ICON = `
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" class="h-3.5 w-3.5">
+    <path
+      d="M8.35 11.65 11.65 8.35M7.9 7.25H5.6a3.1 3.1 0 1 0 0 6.2h2.3m4.2-6.2h2.3a3.1 3.1 0 1 1 0 6.2h-2.3"
+      stroke="currentColor"
+      stroke-width="1.55"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </svg>
+`;
+
+const SPREADSHEET_ICON = `
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" class="h-3.5 w-3.5">
+    <path
+      d="M4.75 3.75h10.5a1 1 0 0 1 1 1v10.5a1 1 0 0 1-1 1H4.75a1 1 0 0 1-1-1V4.75a1 1 0 0 1 1-1Z"
+      stroke="currentColor"
+      stroke-width="1.2"
+    />
+    <path d="M7 3.75v12.5M3.75 8h12.5M3.75 12h12.5" stroke="currentColor" stroke-width="1.1" />
   </svg>
 `;
 
@@ -190,6 +226,7 @@ export interface CategoryChipsController {
   setExtremasVisible: (visible: boolean) => void;
   setTimeSelection: (selection: TimeSelection | null) => void;
   setTimeFilterAvailable: (available: boolean) => void;
+  setExportCsvAreasVisible: (visible: boolean) => void;
   /** Show/hide the sidebar expand button (right-chevron pill) */
   setSidebarExpandVisible: (visible: boolean) => void;
   destroy: () => void;
@@ -206,8 +243,10 @@ interface CategoryChipsOptions {
   onTimeChipClick?: () => void;
   onTimeChipClear?: () => void;
   onAreasModeChange?: (mode: AreasChipMode) => void;
+  onExportLinkCopy?: () => Promise<void> | void;
   onExportScreenshotCopy?: () => Promise<void> | void;
   onExportScreenshotDownload?: () => Promise<void> | void;
+  onExportCsvAreasDownload?: () => Promise<void> | void;
   /** Called when the sidebar expand button is clicked */
   onSidebarExpand?: () => void;
 }
@@ -274,6 +313,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   let orgsChipVisible = false;
   let extremasVisible = true;
   let timeFilterAvailable = false;
+  let exportCsvAreasVisible = false;
   let visibleStatIds: Set<string> | null = null;
 
   const isStatVisible = (stat: Stat): boolean => {
@@ -308,7 +348,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   orgsClose.className = "-mr-px mt-0.5 flex items-center";
   const updateOrgsChipState = () => {
     const isOn = orgsChipVisible;
-    orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} w-full justify-between ${isOn ? ORGS_CHIP_ON_CLASSES : ORGS_CHIP_OFF_CLASSES}`;
+    orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} w-full justify-between ${isOn ? `${ORGS_CHIP_ON_CLASSES} ${SHOWING_PANEL_ACTION_SELECTED_BORDER_CLASSES}` : ORGS_CHIP_OFF_CLASSES}`;
     orgsLabel.textContent = "Organizations";
     orgsChipBtn.setAttribute("aria-pressed", `${isOn}`);
     orgsChipBtn.title = isOn ? "Hide organizations" : "Show organizations";
@@ -332,7 +372,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   extremasBadge.className = "-mr-0.5 flex items-center";
   const updateExtremasChipState = () => {
     const isOn = extremasVisible;
-    extremasChipBtn.className = `${CATEGORY_CHIP_CLASSES} w-full justify-between ${isOn ? EXTREMAS_CHIP_ON_CLASSES : EXTREMAS_CHIP_OFF_CLASSES}`;
+    extremasChipBtn.className = `${CATEGORY_CHIP_CLASSES} w-full justify-between ${isOn ? `${EXTREMAS_CHIP_ON_CLASSES} ${SHOWING_PANEL_ACTION_SELECTED_BORDER_CLASSES}` : EXTREMAS_CHIP_OFF_CLASSES}`;
     extremasChipBtn.setAttribute("aria-pressed", `${isOn}`);
     extremasChipBtn.title = isOn ? "Hide extrema indicators" : "Show extrema indicators";
     extremasBadge.classList.toggle("opacity-50", !isOn);
@@ -451,7 +491,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   areasChipContainer.className = "relative pointer-events-auto w-full";
   areasChipContainer.style.display = isMobile ? "none" : "";
   areasChipBtn.type = "button";
-  areasChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${AREAS_CHIP_CLASSES} w-full justify-between pr-2`;
+  areasChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${SHOWING_PANEL_ACTION_CLASSES} w-full justify-between pr-2`;
   areasChipBtn.setAttribute("aria-haspopup", "listbox");
   areasChipBtn.setAttribute("aria-expanded", "false");
   areasChipBtn.setAttribute("aria-label", "Areas mode");
@@ -517,6 +557,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     config: { emitChange?: boolean; closeMenu?: boolean } = {},
   ) => {
     currentAreasMode = mode;
+    const hasExplicitAreasMode = mode !== "auto";
+    areasChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${SHOWING_PANEL_ACTION_CLASSES} w-full justify-between pr-2 ${
+      hasExplicitAreasMode ? SHOWING_PANEL_ACTION_SELECTED_BORDER_CLASSES : ""
+    }`;
     areasChipLabel.textContent = `Areas: ${formatAreasModeLabel(mode)}`;
     AREA_MODE_OPTIONS.forEach((entry) => {
       const optionBtn = areasMenuOptions.get(entry.value);
@@ -564,13 +608,18 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   const exportChipBridge = document.createElement("div");
   const exportChipPanel = document.createElement("div");
   const exportChipStack = document.createElement("div");
+  const exportLinkCopyBtn = document.createElement("button");
+  const exportLinkCopyBtnLabel = document.createElement("span");
   const exportScreenshotCopyBtn = document.createElement("button");
   const exportScreenshotCopyBtnLabel = document.createElement("span");
   const exportScreenshotDownloadBtn = document.createElement("button");
   const exportScreenshotDownloadBtnLabel = document.createElement("span");
+  const exportCsvAreasDownloadBtn = document.createElement("button");
+  const exportCsvAreasDownloadBtnLabel = document.createElement("span");
+  const exportCsvAreasHelperText = document.createElement("div");
   let exportPanelOpen = false;
   let exportPanelPinned = false;
-  let exportActionBusy: "copy" | "download" | null = null;
+  let exportActionBusy: "link" | "copy" | "download" | "csv" | null = null;
 
   const clearShowingOutsideHandler = () => {
     if (!removeShowingOutsideHandler) return;
@@ -633,6 +682,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     exportPanelPinned = false;
     exportChipBridge.style.display = "none";
     exportChipPanel.classList.add("hidden");
+    setExportCsvAreasHelperVisible(false);
     exportChipBtn.setAttribute("aria-expanded", "false");
     exportChipChevron.firstElementChild?.classList.remove("rotate-180");
     clearExportOutsideHandler();
@@ -734,18 +784,82 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     exportChipBtn.blur();
   };
 
-  const setExportActionBusy = (action: "copy" | "download" | null) => {
+  const getExportCsvAreasUnavailableHelpText = () =>
+    "Enable Advanced Stats mode and select one or more ZIPs or Counties to export CSV.";
+
+  const setExportCsvAreasHelperVisible = (visible: boolean) => {
+    const shouldShow =
+      visible &&
+      Boolean(options.onExportCsvAreasDownload) &&
+      !exportCsvAreasVisible &&
+      exportActionBusy !== "csv";
+    exportCsvAreasHelperText.classList.toggle("hidden", !shouldShow);
+  };
+  const handleExportCsvAreasPointerEnter = () => setExportCsvAreasHelperVisible(true);
+  const handleExportCsvAreasPointerLeave = () => setExportCsvAreasHelperVisible(false);
+  const handleExportCsvAreasFocus = () => setExportCsvAreasHelperVisible(true);
+  const handleExportCsvAreasBlur = () => setExportCsvAreasHelperVisible(false);
+
+  const updateExportCsvAreasActionVisibility = () => {
+    const hasCallback = Boolean(options.onExportCsvAreasDownload);
+    const unavailable = hasCallback && !exportCsvAreasVisible;
+    exportCsvAreasDownloadBtn.style.display = hasCallback ? "" : "none";
+    exportCsvAreasHelperText.style.display = hasCallback ? "" : "none";
+    exportCsvAreasDownloadBtn.setAttribute("aria-disabled", `${unavailable}`);
+    exportCsvAreasDownloadBtn.title = unavailable
+      ? getExportCsvAreasUnavailableHelpText()
+      : "Download CSV for selected areas (same as sidebar export csv)";
+    exportCsvAreasDownloadBtn.classList.toggle("opacity-60", unavailable && exportActionBusy !== "csv");
+    exportCsvAreasDownloadBtn.classList.toggle("cursor-help", unavailable && exportActionBusy !== "csv");
+    exportCsvAreasDownloadBtn.classList.toggle("hover:!bg-slate-50", unavailable);
+    exportCsvAreasDownloadBtn.classList.toggle("hover:!border-slate-200/90", unavailable);
+    exportCsvAreasDownloadBtn.classList.toggle("dark:hover:!bg-slate-800", unavailable);
+    exportCsvAreasDownloadBtn.classList.toggle("dark:hover:!border-slate-700/90", unavailable);
+    if (!unavailable) {
+      setExportCsvAreasHelperVisible(false);
+    }
+  };
+
+  const setExportActionBusy = (action: "link" | "copy" | "download" | "csv" | null) => {
     exportActionBusy = action;
     const isBusy = action !== null;
+    exportLinkCopyBtn.disabled = isBusy;
     exportScreenshotCopyBtn.disabled = isBusy;
     exportScreenshotDownloadBtn.disabled = isBusy;
+    exportCsvAreasDownloadBtn.disabled = isBusy;
+    exportLinkCopyBtn.classList.toggle("opacity-70", isBusy);
+    exportLinkCopyBtn.classList.toggle("cursor-wait", isBusy);
     exportScreenshotCopyBtn.classList.toggle("opacity-70", isBusy);
     exportScreenshotCopyBtn.classList.toggle("cursor-wait", isBusy);
     exportScreenshotDownloadBtn.classList.toggle("opacity-70", isBusy);
     exportScreenshotDownloadBtn.classList.toggle("cursor-wait", isBusy);
+    exportCsvAreasDownloadBtn.classList.toggle("opacity-70", isBusy);
+    exportCsvAreasDownloadBtn.classList.toggle("cursor-wait", isBusy);
+    exportLinkCopyBtnLabel.textContent = action === "link" ? "Link: Copying..." : "Link: Copy";
     exportScreenshotCopyBtnLabel.textContent = action === "copy" ? "Screenshot: Copying..." : "Screenshot: Copy";
     exportScreenshotDownloadBtnLabel.textContent =
       action === "download" ? "Screenshot: Downloading..." : "Screenshot: Download";
+    exportCsvAreasDownloadBtnLabel.textContent =
+      action === "csv" ? "CSV Areas: Downloading..." : "CSV Areas: Download";
+    if (action === "csv") setExportCsvAreasHelperVisible(false);
+    updateExportCsvAreasActionVisibility();
+  };
+  const handleExportLinkCopyClick = async (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (exportActionBusy) return;
+    if (!options.onExportLinkCopy) {
+      console.warn("Map link copy export unavailable");
+      return;
+    }
+    setExportActionBusy("link");
+    try {
+      await options.onExportLinkCopy();
+    } catch (error) {
+      console.warn("Map link copy export failed", error);
+    } finally {
+      setExportActionBusy(null);
+    }
   };
   const handleExportScreenshotCopyClick = async (event: MouseEvent) => {
     event.preventDefault();
@@ -777,6 +891,27 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       await options.onExportScreenshotDownload();
     } catch (error) {
       console.warn("Map screenshot download failed", error);
+    } finally {
+      setExportActionBusy(null);
+    }
+  };
+  const handleExportCsvAreasDownloadClick = async (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (exportActionBusy) return;
+    if (!options.onExportCsvAreasDownload) {
+      console.warn("Map CSV areas export unavailable");
+      return;
+    }
+    if (!exportCsvAreasVisible) {
+      setExportCsvAreasHelperVisible(true);
+      return;
+    }
+    setExportActionBusy("csv");
+    try {
+      await options.onExportCsvAreasDownload();
+    } catch (error) {
+      console.warn("Map CSV areas export failed", error);
     } finally {
       setExportActionBusy(null);
     }
@@ -907,7 +1042,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   showingChipBridge.style.display = "none";
 
   showingChipPanel.className =
-    "absolute left-0 top-full z-20 mt-1 hidden min-w-[12rem] rounded-xl border border-slate-200/80 bg-white/90 p-1.5 shadow-lg backdrop-blur-md dark:border-slate-700/80 dark:bg-slate-900/90";
+    "absolute left-0 top-full z-20 mt-1 hidden min-w-[12rem] rounded-xl border border-white/60 bg-white/18 p-1.5 shadow-lg ring-1 ring-white/45 backdrop-blur-md dark:border-slate-500/35 dark:bg-slate-900/22 dark:ring-white/8";
   showingChipPanel.setAttribute("role", "dialog");
   showingChipPanel.setAttribute("aria-label", "Showing options");
 
@@ -936,12 +1071,12 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   exportChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${SHOWING_CHIP_CLASSES} pr-2`;
   exportChipBtn.setAttribute("aria-haspopup", "dialog");
   exportChipBtn.setAttribute("aria-expanded", "false");
-  exportChipBtn.setAttribute("aria-label", "Export options");
+  exportChipBtn.setAttribute("aria-label", "Share options");
 
   exportChipIcon.className = "flex items-center text-slate-400 dark:text-slate-500";
   exportChipIcon.innerHTML = EXPORT_ICON;
   exportChipLabel.className = "whitespace-nowrap";
-  exportChipLabel.textContent = "Export";
+  exportChipLabel.textContent = "Share";
   exportChipChevron.className = "flex items-center text-slate-400 dark:text-slate-500";
   exportChipChevron.innerHTML = CHEVRON_DOWN_ICON;
 
@@ -954,14 +1089,35 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   exportChipBridge.style.display = "none";
 
   exportChipPanel.className =
-    "absolute left-0 top-full z-20 mt-1 hidden min-w-[12rem] rounded-xl border border-slate-200/80 bg-white/90 p-1.5 shadow-lg backdrop-blur-md dark:border-slate-700/80 dark:bg-slate-900/90";
+    "absolute left-0 top-full z-20 mt-1 hidden min-w-[12rem] rounded-xl border border-white/60 bg-white/18 p-1.5 shadow-lg ring-1 ring-white/45 backdrop-blur-md dark:border-slate-500/35 dark:bg-slate-900/22 dark:ring-white/8";
   exportChipPanel.setAttribute("role", "dialog");
-  exportChipPanel.setAttribute("aria-label", "Export options");
+  exportChipPanel.setAttribute("aria-label", "Share options");
 
   exportChipStack.className = "flex flex-col gap-1.5";
+  exportLinkCopyBtn.type = "button";
+  exportLinkCopyBtn.className =
+    `${CATEGORY_CHIP_CLASSES} ${EXPORT_PANEL_ACTION_CLASSES} w-full justify-between px-2.5`;
+  exportLinkCopyBtn.title = "Copy the current page URL and parameters";
+  const exportLinkCopyBtnLeft = document.createElement("span");
+  exportLinkCopyBtnLeft.className = "flex items-center gap-1.5";
+  const exportLinkCopyBtnIcon = document.createElement("span");
+  exportLinkCopyBtnIcon.className = "flex items-center text-slate-500 dark:text-slate-400";
+  exportLinkCopyBtnIcon.innerHTML = LINK_ICON;
+  exportLinkCopyBtnLeft.appendChild(exportLinkCopyBtnIcon);
+  exportLinkCopyBtnLabel.className = "whitespace-nowrap";
+  exportLinkCopyBtnLabel.textContent = "Link: Copy";
+  exportLinkCopyBtnLeft.appendChild(exportLinkCopyBtnLabel);
+  exportLinkCopyBtn.appendChild(exportLinkCopyBtnLeft);
+  const exportLinkCopyBtnArrow = document.createElement("span");
+  exportLinkCopyBtnArrow.className = "flex items-center text-slate-400 dark:text-slate-500";
+  exportLinkCopyBtnArrow.innerHTML = ARROW_ICON;
+  exportLinkCopyBtn.appendChild(exportLinkCopyBtnArrow);
+  exportLinkCopyBtn.addEventListener("click", handleExportLinkCopyClick);
+  exportChipStack.appendChild(exportLinkCopyBtn);
+
   exportScreenshotCopyBtn.type = "button";
   exportScreenshotCopyBtn.className =
-    `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES} w-full justify-between px-2.5`;
+    `${CATEGORY_CHIP_CLASSES} ${EXPORT_PANEL_ACTION_CLASSES} w-full justify-between px-2.5`;
   exportScreenshotCopyBtn.title = "Copy a map screenshot to the clipboard";
   const exportScreenshotCopyBtnLeft = document.createElement("span");
   exportScreenshotCopyBtnLeft.className = "flex items-center gap-1.5";
@@ -982,7 +1138,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   exportScreenshotDownloadBtn.type = "button";
   exportScreenshotDownloadBtn.className =
-    `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES} w-full justify-between px-2.5`;
+    `${CATEGORY_CHIP_CLASSES} ${EXPORT_PANEL_ACTION_CLASSES} w-full justify-between px-2.5`;
   exportScreenshotDownloadBtn.title = "Download a PNG screenshot of the map";
   const exportScreenshotDownloadBtnLeft = document.createElement("span");
   exportScreenshotDownloadBtnLeft.className = "flex items-center gap-1.5";
@@ -1000,6 +1156,35 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   exportScreenshotDownloadBtn.appendChild(exportScreenshotDownloadBtnArrow);
   exportScreenshotDownloadBtn.addEventListener("click", handleExportScreenshotDownloadClick);
   exportChipStack.appendChild(exportScreenshotDownloadBtn);
+
+  exportCsvAreasDownloadBtn.type = "button";
+  exportCsvAreasDownloadBtn.className =
+    `${CATEGORY_CHIP_CLASSES} ${EXPORT_PANEL_ACTION_CLASSES} w-full justify-between px-2.5`;
+  const exportCsvAreasDownloadBtnLeft = document.createElement("span");
+  exportCsvAreasDownloadBtnLeft.className = "flex items-center gap-1.5";
+  const exportCsvAreasDownloadBtnIcon = document.createElement("span");
+  exportCsvAreasDownloadBtnIcon.className = "flex items-center text-slate-500 dark:text-slate-400";
+  exportCsvAreasDownloadBtnIcon.innerHTML = SPREADSHEET_ICON;
+  exportCsvAreasDownloadBtnLeft.appendChild(exportCsvAreasDownloadBtnIcon);
+  exportCsvAreasDownloadBtnLabel.className = "whitespace-nowrap";
+  exportCsvAreasDownloadBtnLabel.textContent = "CSV Areas: Download";
+  exportCsvAreasDownloadBtnLeft.appendChild(exportCsvAreasDownloadBtnLabel);
+  exportCsvAreasDownloadBtn.appendChild(exportCsvAreasDownloadBtnLeft);
+  const exportCsvAreasDownloadBtnArrow = document.createElement("span");
+  exportCsvAreasDownloadBtnArrow.className = "flex items-center text-slate-400 dark:text-slate-500";
+  exportCsvAreasDownloadBtnArrow.innerHTML = ARROW_ICON;
+  exportCsvAreasDownloadBtn.appendChild(exportCsvAreasDownloadBtnArrow);
+  exportCsvAreasDownloadBtn.addEventListener("click", handleExportCsvAreasDownloadClick);
+  exportCsvAreasDownloadBtn.addEventListener("pointerenter", handleExportCsvAreasPointerEnter);
+  exportCsvAreasDownloadBtn.addEventListener("pointerleave", handleExportCsvAreasPointerLeave);
+  exportCsvAreasDownloadBtn.addEventListener("focus", handleExportCsvAreasFocus);
+  exportCsvAreasDownloadBtn.addEventListener("blur", handleExportCsvAreasBlur);
+  updateExportCsvAreasActionVisibility();
+  exportChipStack.appendChild(exportCsvAreasDownloadBtn);
+  exportCsvAreasHelperText.className =
+    "hidden rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] leading-tight text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300";
+  exportCsvAreasHelperText.textContent = getExportCsvAreasUnavailableHelpText();
+  exportChipStack.appendChild(exportCsvAreasHelperText);
   exportChipPanel.appendChild(exportChipStack);
 
   exportChipContainer.appendChild(exportChipBtn);
@@ -1973,8 +2158,14 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     exportChipContainer.removeEventListener("focusout", handleExportFocusOut);
     exportChipBtn.removeEventListener("click", handleExportClick);
     exportChipBtn.removeEventListener("keydown", handleExportKeyDown);
+    exportLinkCopyBtn.removeEventListener("click", handleExportLinkCopyClick);
     exportScreenshotCopyBtn.removeEventListener("click", handleExportScreenshotCopyClick);
     exportScreenshotDownloadBtn.removeEventListener("click", handleExportScreenshotDownloadClick);
+    exportCsvAreasDownloadBtn.removeEventListener("click", handleExportCsvAreasDownloadClick);
+    exportCsvAreasDownloadBtn.removeEventListener("pointerenter", handleExportCsvAreasPointerEnter);
+    exportCsvAreasDownloadBtn.removeEventListener("pointerleave", handleExportCsvAreasPointerLeave);
+    exportCsvAreasDownloadBtn.removeEventListener("focus", handleExportCsvAreasFocus);
+    exportCsvAreasDownloadBtn.removeEventListener("blur", handleExportCsvAreasBlur);
     extremasChipBtn.removeEventListener("click", handleExtremasChipClick);
     cleanupStatEntries();
     if (secondaryChipEntry) {
@@ -2075,6 +2266,10 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     setTimeFilterAvailable: (available: boolean) => {
       timeFilterAvailable = available;
       applyAccessoryChipVisibility();
+    },
+    setExportCsvAreasVisible: (visible: boolean) => {
+      exportCsvAreasVisible = visible;
+      updateExportCsvAreasActionVisibility();
     },
     setTimeSelection,
     setSidebarExpandVisible: (visible: boolean) => {
