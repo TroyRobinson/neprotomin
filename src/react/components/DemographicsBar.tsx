@@ -34,12 +34,36 @@ interface BreakdownSegmentDisplay {
   valuePercent: number;
 }
 
-const COLOR_CLASS: Record<string, string> = {
-  "brand-200": "bg-brand-200",
-  "brand-300": "bg-brand-300",
-  "brand-400": "bg-brand-400",
-  "brand-500": "bg-brand-500",
-  "brand-700": "bg-brand-700",
+const DEMOGRAPHICS_BAR_START_HEX = "#bae5f2";
+const DEMOGRAPHICS_BAR_END_HEX = "#1e98ac";
+
+const parseHexColor = (hex: string): { r: number; g: number; b: number } => {
+  const normalized = hex.replace("#", "");
+  if (!/^[\da-fA-F]{6}$/.test(normalized)) return { r: 0, g: 0, b: 0 };
+  return {
+    r: Number.parseInt(normalized.slice(0, 2), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    b: Number.parseInt(normalized.slice(4, 6), 16),
+  };
+};
+
+const toHexChannel = (value: number): string =>
+  Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, "0");
+
+const interpolateHexColor = (fromHex: string, toHex: string, ratio: number): string => {
+  const from = parseHexColor(fromHex);
+  const to = parseHexColor(toHex);
+  const t = Math.max(0, Math.min(1, ratio));
+  const r = from.r + (to.r - from.r) * t;
+  const g = from.g + (to.g - from.g) * t;
+  const b = from.b + (to.b - from.b) * t;
+  return `#${toHexChannel(r)}${toHexChannel(g)}${toHexChannel(b)}`;
+};
+
+const getDemographicsSegmentColor = (index: number, total: number): string => {
+  if (total <= 1) return DEMOGRAPHICS_BAR_END_HEX;
+  const ratio = index / (total - 1);
+  return interpolateHexColor(DEMOGRAPHICS_BAR_START_HEX, DEMOGRAPHICS_BAR_END_HEX, ratio);
 };
 
 const formatPopulation = (value: number | undefined): string => {
@@ -87,23 +111,23 @@ const SegmentBar = ({ segments, label }: SegmentBarProps) => {
             </span>
           </div>
         )}
-        {segments.map((seg) => {
-        const width = Math.max(0, Math.min(100, Math.round(seg.valuePercent)));
-        const left = offset;
-        offset += width;
-        if (width <= 0) return null;
-        const colorClass = COLOR_CLASS[seg.colorToken] || "bg-brand-300";
-        return (
-          <div
-            key={seg.key}
-            className={`absolute bottom-0 top-0 ${colorClass}`}
-            style={{ left: `${left}%`, width: `${width}%` }}
-            onMouseEnter={(e) => updateTooltip(`${seg.label}: ${width}%`, e)}
-            onMouseMove={(e) => updateTooltip(`${seg.label}: ${width}%`, e)}
-            onMouseLeave={() => setTooltip(null)}
-          />
-        );
-      })}
+        {segments.map((seg, index) => {
+          const width = Math.max(0, Math.min(100, Math.round(seg.valuePercent)));
+          const left = offset;
+          offset += width;
+          if (width <= 0) return null;
+          const fillColor = getDemographicsSegmentColor(index, segments.length);
+          return (
+            <div
+              key={seg.key}
+              className="absolute bottom-0 top-0"
+              style={{ left: `${left}%`, width: `${width}%`, backgroundColor: fillColor }}
+              onMouseEnter={(e) => updateTooltip(`${seg.label}: ${width}%`, e)}
+              onMouseMove={(e) => updateTooltip(`${seg.label}: ${width}%`, e)}
+              onMouseLeave={() => setTooltip(null)}
+            />
+          );
+        })}
       </div>
       {tooltip && (
         <div
@@ -615,7 +639,7 @@ export const DemographicsBar = ({
               Data unavailable for this area. Try selecting different areas or check back later.
             </p>
           ) : hasBreakdowns ? (
-            <div className="space-y-3">{renderBreakdowns(snapshot.breakdowns)}</div>
+            <div className="space-y-3 pb-2">{renderBreakdowns(snapshot.breakdowns)}</div>
           ) : (
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
               Demographic breakdowns are missing right now. They will appear here once real data is loaded.
