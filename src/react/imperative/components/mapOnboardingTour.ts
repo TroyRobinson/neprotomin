@@ -814,6 +814,13 @@ export const createMapOnboardingTour = ({
     setOnboardingDismissed();
   };
 
+  // If a step target never appears, continue forward so the tour never gets stuck in a loop.
+  const skipToNextStep = (step: OnboardingStep, next: () => void) => {
+    console.warn(`[tour] Skipping step "${step}" because its target is unavailable.`);
+    setTourLock(null);
+    next();
+  };
+
   const showChipStep = (attempt = 0) => {
     clearOnboardingRetry();
     const target = getSelectedStatChipTarget();
@@ -854,7 +861,7 @@ export const createMapOnboardingTour = ({
       if (attempt < (onboardingForceStart ? 120 : 12)) {
         onboardingRetryTimer = window.setTimeout(() => showChangeStep(attempt + 1), 100);
       } else {
-        showChipStep();
+        skipToNextStep("change", showShowingExtremasStep);
       }
       return;
     }
@@ -884,7 +891,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShowingExtremasStep(attempt + 1), 100);
       } else {
-        showChangeStep();
+        skipToNextStep("showingExtremas", showShowingOrganizationsStep);
       }
       return;
     }
@@ -893,7 +900,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShowingExtremasStep(attempt + 1), 100);
       } else {
-        showChangeStep();
+        skipToNextStep("showingExtremas", showShowingOrganizationsStep);
       }
       return;
     }
@@ -914,7 +921,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShowingOrganizationsStep(attempt + 1), 100);
       } else {
-        showShowingExtremasStep();
+        skipToNextStep("showingOrganizations", showShowingAreasStep);
       }
       return;
     }
@@ -923,7 +930,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShowingOrganizationsStep(attempt + 1), 100);
       } else {
-        showShowingExtremasStep();
+        skipToNextStep("showingOrganizations", showShowingAreasStep);
       }
       return;
     }
@@ -944,7 +951,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShowingAreasStep(attempt + 1), 100);
       } else {
-        showShowingOrganizationsStep();
+        skipToNextStep("showingAreas", showShareStep);
       }
       return;
     }
@@ -953,7 +960,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShowingAreasStep(attempt + 1), 100);
       } else {
-        showShowingOrganizationsStep();
+        skipToNextStep("showingAreas", showShareStep);
       }
       return;
     }
@@ -983,7 +990,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShareStep(attempt + 1), 100);
       } else {
-        showShowingAreasStep();
+        skipToNextStep("share", showMyLocationStep);
       }
       return;
     }
@@ -992,7 +999,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShareStep(attempt + 1), 100);
       } else {
-        showShowingAreasStep();
+        skipToNextStep("share", showMyLocationStep);
       }
       return;
     }
@@ -1023,7 +1030,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showSearchMenuStep(attempt + 1), 120);
       } else {
-        showBrandLogoStep();
+        skipToNextStep("searchMenu", showSidebarStatDetailsStep);
       }
       return;
     }
@@ -1051,7 +1058,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 28) {
         onboardingRetryTimer = window.setTimeout(() => showSidebarStatDetailsStep(attempt + 1), 120);
       } else {
-        showSearchMenuStep();
+        skipToNextStep("sidebarStatDetails", showAdvancedStatsStep);
       }
       return;
     }
@@ -1076,7 +1083,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 28) {
         onboardingRetryTimer = window.setTimeout(() => showAdvancedStatsStep(attempt + 1), 120);
       } else {
-        showSidebarStatDetailsStep();
+        skipToNextStep("advancedStats", showSidebarAddAreasStep);
       }
       return;
     }
@@ -1101,7 +1108,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 28) {
         onboardingRetryTimer = window.setTimeout(() => showSidebarAddAreasStep(attempt + 1), 120);
       } else {
-        showAdvancedStatsStep();
+        skipToNextStep("sidebarAddAreas", showSidebarDemographicsExpandStep);
       }
       return;
     }
@@ -1123,7 +1130,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 28) {
         onboardingRetryTimer = window.setTimeout(() => showSidebarDemographicsExpandStep(attempt + 1), 120);
       } else {
-        showSidebarAddAreasStep();
+        skipToNextStep("sidebarDemographicsExpand", showSidebarOtherStatsStep);
       }
       return;
     }
@@ -1145,7 +1152,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 28) {
         onboardingRetryTimer = window.setTimeout(() => showSidebarOtherStatsStep(attempt + 1), 120);
       } else {
-        showSidebarDemographicsExpandStep();
+        skipToNextStep("sidebarOtherStats", showSidebarOrgsTabStep);
       }
       return;
     }
@@ -1168,7 +1175,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 28) {
         onboardingRetryTimer = window.setTimeout(() => showSidebarOrgsTabStep(attempt + 1), 120);
       } else {
-        showSidebarOtherStatsStep();
+        skipToNextStep("sidebarOrgsTab", showSidebarCategoryFilterStep);
       }
       return;
     }
@@ -1190,7 +1197,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 28) {
         onboardingRetryTimer = window.setTimeout(() => showSidebarCategoryFilterStep(attempt + 1), 120);
       } else {
-        showSidebarOrgsTabStep();
+        skipToNextStep("sidebarCategoryFilter", showTourFinaleStep);
       }
       return;
     }
@@ -1199,7 +1206,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 28) {
         onboardingRetryTimer = window.setTimeout(() => showSidebarCategoryFilterStep(attempt + 1), 120);
       } else {
-        showSidebarOrgsTabStep();
+        skipToNextStep("sidebarCategoryFilter", showTourFinaleStep);
       }
       return;
     }
@@ -1237,7 +1244,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showMyLocationStep(attempt + 1), 120);
       } else {
-        showShareStep();
+        skipToNextStep("myLocation", showLegendStep);
       }
       return;
     }
@@ -1258,7 +1265,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showLegendStep(attempt + 1), 120);
       } else {
-        showMyLocationStep();
+        skipToNextStep("legend", showBrandLogoStep);
       }
       return;
     }
@@ -1279,7 +1286,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showBrandLogoStep(attempt + 1), 120);
       } else {
-        showSearchMenuStep();
+        skipToNextStep("brandLogo", showSearchMenuStep);
       }
       return;
     }
