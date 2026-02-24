@@ -458,6 +458,11 @@ export const createMapOnboardingTour = ({
       addCandidate(avoid.left - cardWidth - 10, highlightTop);
     }
 
+    const isShowingSubStep =
+      onboardingStep === "showingExtremas" ||
+      onboardingStep === "showingOrganizations" ||
+      onboardingStep === "showingAreas";
+
     const currentStep = onboardingStep;
     const stickyPosition =
       onboardingCardPosition && currentStep && onboardingCardPosition.step === currentStep
@@ -480,17 +485,36 @@ export const createMapOnboardingTour = ({
     let bestScore = scoreCandidate(best.left, best.top);
     let bestDistance =
       stickyPosition ? Math.abs(best.left - stickyPosition.left) + Math.abs(best.top - stickyPosition.top) : 0;
-    for (let i = 1; i < candidates.length; i += 1) {
-      const next = candidates[i];
-      const nextScore = scoreCandidate(next.left, next.top);
-      const nextDistance =
-        stickyPosition ? Math.abs(next.left - stickyPosition.left) + Math.abs(next.top - stickyPosition.top) : 0;
-      if (nextScore < bestScore || (nextScore === bestScore && nextDistance < bestDistance)) {
-        best = next;
-        bestScore = nextScore;
-        bestDistance = nextDistance;
-        if (bestScore === 0 && stickyPosition) {
-          break;
+
+    if (isShowingSubStep) {
+      const leftCandidates = candidates.filter((candidate) => candidate.left < highlightLeft);
+      if (leftCandidates.length > 0) {
+        best = leftCandidates[0];
+        bestScore = scoreCandidate(best.left, best.top);
+        for (let i = 1; i < leftCandidates.length; i += 1) {
+          const next = leftCandidates[i];
+          const nextScore = scoreCandidate(next.left, next.top);
+          const bestTopDistance = Math.abs(best.top - highlightTop);
+          const nextTopDistance = Math.abs(next.top - highlightTop);
+          if (nextScore < bestScore || (nextScore === bestScore && nextTopDistance < bestTopDistance)) {
+            best = next;
+            bestScore = nextScore;
+          }
+        }
+      }
+    } else {
+      for (let i = 1; i < candidates.length; i += 1) {
+        const next = candidates[i];
+        const nextScore = scoreCandidate(next.left, next.top);
+        const nextDistance =
+          stickyPosition ? Math.abs(next.left - stickyPosition.left) + Math.abs(next.top - stickyPosition.top) : 0;
+        if (nextScore < bestScore || (nextScore === bestScore && nextDistance < bestDistance)) {
+          best = next;
+          bestScore = nextScore;
+          bestDistance = nextDistance;
+          if (bestScore === 0 && stickyPosition) {
+            break;
+          }
         }
       }
     }
@@ -588,7 +612,7 @@ export const createMapOnboardingTour = ({
     setTourLock(MAP_TOUR_LOCKS.primaryStatMenu);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "You can even see change over time mapped out.",
+      "You can even see change over time mapped out. Try it now! Click to switch the map stat.",
       {
         label: "Next",
         onClick: () => {
@@ -825,7 +849,7 @@ export const createMapOnboardingTour = ({
     onboardingStep = "legend";
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "The legend shows the range of data for the current stat, represented by the color intensities (choropleth) on the map.",
+      "The legend shows the range of data for the current stat, represented by the color intensities (choropleth) on the map. Click for map settings and to replay this tour.",
       { label: "Done", onClick: dismissTour },
       { label: "Dismiss", onClick: dismissTour },
     );
