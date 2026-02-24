@@ -863,47 +863,49 @@ export const StatList = ({
             </div>
           </div>
         )}
-        {selectedStatRow && (
-          <p className="mb-1 px-1 pt-1 text-[10px] font-normal uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-            Other Statistics
-          </p>
-        )}
-        {selectedStatId && variant !== "mobile" && additionalFilteredRows.length > 0 && (
-          <div className="mb-2 rounded-lg border border-slate-200/70 bg-slate-100/80 px-3 py-1.5 text-[11px] font-light text-slate-400 dark:border-slate-700/70 dark:bg-slate-700/30 dark:text-slate-500">
-            Shift+click another stat to show secondary on map
-          </div>
-        )}
-        {additionalFilteredRows.length === 0 ? (
-          <p className="px-1 pt-2 text-xs text-slate-500 dark:text-slate-400">
-            {effectiveNormalizedQuery
-              ? "No statistics match your search."
-              : "No statistics to display for the current selection."}
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {additionalFilteredRows.map((row) => (
-              <StatListItem
-                key={row.id}
-                row={row}
-                isSelected={displayStatId === row.id}
-                isSecondary={secondaryStatId === row.id}
-                onStatSelect={onStatSelect}
-                categoryLabel={!categoryFilter && row.category ? getCategoryLabel(row.category) : null}
-              />
-            ))}
-          </ul>
-        )}
+        <div data-ne-tour-target={MAP_TOUR_TARGETS.sidebarOtherStats}>
+          {selectedStatRow && (
+            <p className="mb-1 px-1 pt-1 text-[10px] font-normal uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+              Other Statistics
+            </p>
+          )}
+          {selectedStatId && variant !== "mobile" && additionalFilteredRows.length > 0 && (
+            <div className="mb-2 rounded-lg border border-slate-200/70 bg-slate-100/80 px-3 py-1.5 text-[11px] font-light text-slate-400 dark:border-slate-700/70 dark:bg-slate-700/30 dark:text-slate-500">
+              Shift+click another stat to show secondary on map
+            </div>
+          )}
+          {additionalFilteredRows.length === 0 ? (
+            <p className="px-1 pt-2 text-xs text-slate-500 dark:text-slate-400">
+              {effectiveNormalizedQuery
+                ? "No statistics match your search."
+                : "No statistics to display for the current selection."}
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {additionalFilteredRows.map((row) => (
+                <StatListItem
+                  key={row.id}
+                  row={row}
+                  isSelected={displayStatId === row.id}
+                  isSecondary={secondaryStatId === row.id}
+                  onStatSelect={onStatSelect}
+                  categoryLabel={!categoryFilter && row.category ? getCategoryLabel(row.category) : null}
+                />
+              ))}
+            </ul>
+          )}
 
-        {/* Footer: show hidden stat count when a category filter is active */}
-        {categoryFilter && hiddenByCategoryCount > 0 && onClearCategory && (
-          <button
-            type="button"
-            className="block w-full text-left text-xs font-normal text-brand-300 hover:text-brand-800 dark:text-brand-400 dark:hover:text-brand-200 px-1 pb-4 pt-3 transition-colors"
-            onClick={onClearCategory}
-          >
-            {hiddenByCategoryCount} more stat{hiddenByCategoryCount === 1 ? "" : "s"} available (Clear Category)
-          </button>
-        )}
+          {/* Footer: show hidden stat count when a category filter is active */}
+          {categoryFilter && hiddenByCategoryCount > 0 && onClearCategory && (
+            <button
+              type="button"
+              className="block w-full text-left text-xs font-normal text-brand-300 hover:text-brand-800 dark:text-brand-400 dark:hover:text-brand-200 px-1 pb-4 pt-3 transition-colors"
+              onClick={onClearCategory}
+            >
+              {hiddenByCategoryCount} more stat{hiddenByCategoryCount === 1 ? "" : "s"} available (Clear Category)
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

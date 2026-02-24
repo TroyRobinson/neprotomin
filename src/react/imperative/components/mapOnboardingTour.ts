@@ -31,7 +31,6 @@ const DEFAULT_PREFERRED_CHANGE_OPTION_LABEL = "Population (Change '21-23)";
 type OnboardingStep =
   | "chip"
   | "change"
-  | "showingTrigger"
   | "showingExtremas"
   | "showingOrganizations"
   | "showingAreas"
@@ -39,6 +38,12 @@ type OnboardingStep =
   | "searchMenu"
   | "sidebarStatDetails"
   | "advancedStats"
+  | "sidebarAddAreas"
+  | "sidebarDemographicsExpand"
+  | "sidebarOtherStats"
+  | "sidebarOrgsTab"
+  | "sidebarCategoryFilter"
+  | "tourFinale"
   | "myLocation"
   | "legend"
   | "brandLogo";
@@ -248,6 +253,54 @@ export const createMapOnboardingTour = ({
     return isVisibleTarget(target) ? target : null;
   };
 
+  const getSidebarAddAreasTarget = (): HTMLElement | null => {
+    const target =
+      container.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarAddAreas)) ??
+      targetRoot.ownerDocument?.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarAddAreas)) ??
+      null;
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getSidebarDemographicsExpandTarget = (): HTMLElement | null => {
+    const target =
+      container.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarDemographicsExpand)) ??
+      targetRoot.ownerDocument?.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarDemographicsExpand)) ??
+      null;
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getSidebarOtherStatsTarget = (): HTMLElement | null => {
+    const target =
+      container.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarOtherStats)) ??
+      targetRoot.ownerDocument?.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarOtherStats)) ??
+      null;
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getSidebarOrgsTabTarget = (): HTMLElement | null => {
+    const target =
+      container.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarOrgsTab)) ??
+      targetRoot.ownerDocument?.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarOrgsTab)) ??
+      null;
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getSidebarCategoryFilterTarget = (): HTMLElement | null => {
+    const target =
+      container.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarCategoryFilter)) ??
+      targetRoot.ownerDocument?.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarCategoryFilter)) ??
+      null;
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getSidebarCategoryMenuTarget = (): HTMLElement | null => {
+    const target =
+      container.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarCategoryMenu)) ??
+      targetRoot.ownerDocument?.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarCategoryMenu)) ??
+      null;
+    return isVisibleTarget(target) ? target : null;
+  };
+
   const getAdvancedStatsPrimaryTarget = (): HTMLElement | null =>
     getSidebarStatVizTarget() ?? getSidebarAdvancedToggleTarget();
 
@@ -393,6 +446,24 @@ export const createMapOnboardingTour = ({
     return true;
   };
 
+  const openSidebarOrgsTab = (): boolean => {
+    const orgsBtn = getSidebarOrgsTabTarget() as HTMLButtonElement | null;
+    if (!orgsBtn) return false;
+    if (!orgsBtn.className.includes("border-brand-500")) {
+      orgsBtn.click();
+    }
+    return orgsBtn.className.includes("border-brand-500");
+  };
+
+  const openSidebarCategoryMenu = (): boolean => {
+    const categoryBtn = getSidebarCategoryFilterTarget() as HTMLButtonElement | null;
+    if (!categoryBtn) return false;
+    if (!getSidebarCategoryMenuTarget()) {
+      categoryBtn.click();
+    }
+    return Boolean(getSidebarCategoryMenuTarget());
+  };
+
   const applyAdvancedStatsPreset = () => {
     window.dispatchEvent(
       new CustomEvent(MAP_TOUR_APPLY_STATE_EVENT, {
@@ -413,6 +484,8 @@ export const createMapOnboardingTour = ({
     onboardingStep = null;
     onboardingForceStart = false;
     stepOverlay.classList.add("hidden");
+    highlightBox.classList.remove("hidden");
+    highlightBox.style.position = "absolute";
     secondaryHighlightBox.classList.add("hidden");
     secondaryHighlightBox.style.position = "absolute";
     stepOverlay.style.zIndex = "14";
@@ -429,6 +502,7 @@ export const createMapOnboardingTour = ({
   };
 
   const positionTourStep = (target: HTMLElement) => {
+    highlightBox.classList.remove("hidden");
     const containerRect = container.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
     const pad = 6;
@@ -448,7 +522,12 @@ export const createMapOnboardingTour = ({
       targetOutsideContainer &&
       (onboardingStep === "brandLogo" ||
         onboardingStep === "sidebarStatDetails" ||
-        onboardingStep === "advancedStats");
+        onboardingStep === "advancedStats" ||
+        onboardingStep === "sidebarAddAreas" ||
+        onboardingStep === "sidebarDemographicsExpand" ||
+        onboardingStep === "sidebarOtherStats" ||
+        onboardingStep === "sidebarOrgsTab" ||
+        onboardingStep === "sidebarCategoryFilter");
     if (useViewportHighlight) {
       stepOverlay.style.zIndex = "45";
       highlightBox.style.position = "fixed";
@@ -533,7 +612,6 @@ export const createMapOnboardingTour = ({
       addAvoidRectFor(sharePanel);
     }
     if (
-      onboardingStep === "showingTrigger" ||
       onboardingStep === "showingExtremas" ||
       onboardingStep === "showingOrganizations" ||
       onboardingStep === "showingAreas"
@@ -545,6 +623,9 @@ export const createMapOnboardingTour = ({
     }
     if (onboardingStep === "advancedStats") {
       addAvoidRectFor(getAdvancedStatsSecondaryTarget());
+    }
+    if (onboardingStep === "sidebarCategoryFilter") {
+      addAvoidRectFor(getSidebarCategoryMenuTarget());
     }
 
     const toCardRect = (left: number, top: number): LocalRect => ({
@@ -653,16 +734,43 @@ export const createMapOnboardingTour = ({
     onboardingCardPosition = currentStep ? { step: currentStep, left: best.left, top: best.top } : null;
   };
 
+  const positionFinalTourStep = () => {
+    highlightBox.classList.add("hidden");
+    secondaryHighlightBox.classList.add("hidden");
+    stepOverlay.style.zIndex = "14";
+    stepCard.style.visibility = "hidden";
+    const containerRect = container.getBoundingClientRect();
+    const insetPad = 8;
+    stepCard.style.maxWidth = `${Math.max(220, Math.min(352, containerRect.width - insetPad * 2))}px`;
+    const cardRect = stepCard.getBoundingClientRect();
+    const left = Math.max(
+      insetPad,
+      Math.min((containerRect.width - cardRect.width) / 2, containerRect.width - cardRect.width - insetPad),
+    );
+    const top = Math.max(
+      insetPad,
+      Math.min(containerRect.height - cardRect.height - 18, containerRect.height - cardRect.height - insetPad),
+    );
+    stepCard.style.left = `${left}px`;
+    stepCard.style.top = `${top}px`;
+    stepCard.style.visibility = "visible";
+    onboardingCardPosition = null;
+  };
+
   const renderTourCard = (
-    message: string,
+    message: string | Node,
     primary: { label: string; onClick: () => void },
     secondary?: { label: string; onClick: () => void; tone?: "neutral" | "primary" },
   ) => {
     stepCard.replaceChildren();
-    const copy = document.createElement("p");
-    copy.className = "text-xs leading-5 text-slate-700 dark:text-slate-200";
-    copy.textContent = message;
-    stepCard.appendChild(copy);
+    if (typeof message === "string") {
+      const copy = document.createElement("p");
+      copy.className = "text-xs leading-5 text-slate-700 dark:text-slate-200";
+      copy.textContent = message;
+      stepCard.appendChild(copy);
+    } else {
+      stepCard.appendChild(message);
+    }
 
     const actions = document.createElement("div");
     actions.className = "mt-3 flex items-center justify-end gap-2";
@@ -746,35 +854,6 @@ export const createMapOnboardingTour = ({
         onClick: () => {
           setTourLock(null);
           closeSelectedStatDropdown();
-          showShowingTriggerStep();
-        },
-      },
-      { label: "Dismiss", onClick: dismissTour },
-    );
-    positionTourStep(target);
-  };
-
-  const showShowingTriggerStep = (attempt = 0) => {
-    clearOnboardingRetry();
-    setTourLock(null);
-    closeSelectedStatDropdown();
-    const target = getShowingChipTarget();
-    if (!target) {
-      if (attempt < (onboardingForceStart ? 120 : 16)) {
-        onboardingRetryTimer = window.setTimeout(() => showShowingTriggerStep(attempt + 1), 120);
-      } else {
-        showChangeStep();
-      }
-      return;
-    }
-    onboardingStep = "showingTrigger";
-    stepOverlay.classList.remove("hidden");
-    renderTourCard(
-      "Click the Showing... button to change your map's appearance.",
-      {
-        label: "Next",
-        onClick: () => {
-          if (!openShowingPanel()) return;
           showShowingExtremasStep();
         },
       },
@@ -785,11 +864,13 @@ export const createMapOnboardingTour = ({
 
   const showShowingExtremasStep = (attempt = 0) => {
     clearOnboardingRetry();
+    setTourLock(null);
+    closeSelectedStatDropdown();
     if (!openShowingPanel()) {
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShowingExtremasStep(attempt + 1), 100);
       } else {
-        showShowingTriggerStep();
+        showChangeStep();
       }
       return;
     }
@@ -798,7 +879,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShowingExtremasStep(attempt + 1), 100);
       } else {
-        showShowingTriggerStep();
+        showChangeStep();
       }
       return;
     }
@@ -819,7 +900,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShowingOrganizationsStep(attempt + 1), 100);
       } else {
-        showShowingTriggerStep();
+        showShowingExtremasStep();
       }
       return;
     }
@@ -828,7 +909,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShowingOrganizationsStep(attempt + 1), 100);
       } else {
-        showShowingTriggerStep();
+        showShowingExtremasStep();
       }
       return;
     }
@@ -849,7 +930,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShowingAreasStep(attempt + 1), 100);
       } else {
-        showShowingTriggerStep();
+        showShowingOrganizationsStep();
       }
       return;
     }
@@ -858,7 +939,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShowingAreasStep(attempt + 1), 100);
       } else {
-        showShowingTriggerStep();
+        showShowingOrganizationsStep();
       }
       return;
     }
@@ -989,10 +1070,150 @@ export const createMapOnboardingTour = ({
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       "Switch on the Advanced Stats toggle or click a zip on the map to see visualizations for the selected area(s). Hover over the graph to see details.",
-      { label: "Done", onClick: dismissTour },
+      { label: "Next", onClick: () => showSidebarAddAreasStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
     positionTourStep(target);
+  };
+
+  const showSidebarAddAreasStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    if (attempt === 0) {
+      applyAdvancedStatsPreset();
+    }
+    openSidebarPanel();
+    const target = getSidebarAddAreasTarget();
+    if (!target) {
+      if (attempt < 28) {
+        onboardingRetryTimer = window.setTimeout(() => showSidebarAddAreasStep(attempt + 1), 120);
+      } else {
+        showAdvancedStatsStep();
+      }
+      return;
+    }
+    onboardingStep = "sidebarAddAreas";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "Hover over the Add ZIPs/counties menu to type in additional locations, or shift+click areas on the map, to compare areas you care about.",
+      { label: "Next", onClick: () => showSidebarDemographicsExpandStep() },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showSidebarDemographicsExpandStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    openSidebarPanel();
+    const target = getSidebarDemographicsExpandTarget();
+    if (!target) {
+      if (attempt < 28) {
+        onboardingRetryTimer = window.setTimeout(() => showSidebarDemographicsExpandStep(attempt + 1), 120);
+      } else {
+        showSidebarAddAreasStep();
+      }
+      return;
+    }
+    onboardingStep = "sidebarDemographicsExpand";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "Expand the demographics bar to see a breakdown for the area(s) you've got selected.",
+      { label: "Next", onClick: () => showSidebarOtherStatsStep() },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showSidebarOtherStatsStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    openSidebarPanel();
+    const target = getSidebarOtherStatsTarget();
+    if (!target) {
+      if (attempt < 28) {
+        onboardingRetryTimer = window.setTimeout(() => showSidebarOtherStatsStep(attempt + 1), 120);
+      } else {
+        showSidebarDemographicsExpandStep();
+      }
+      return;
+    }
+    onboardingStep = "sidebarOtherStats";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "Explore other statistics. Shift+click a statistic in the list to see it overlayed on your first stat.",
+      { label: "Next", onClick: () => showSidebarOrgsTabStep() },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showSidebarOrgsTabStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    openSidebarPanel();
+    openSidebarOrgsTab();
+    const target = getSidebarOrgsTabTarget();
+    if (!target) {
+      if (attempt < 28) {
+        onboardingRetryTimer = window.setTimeout(() => showSidebarOrgsTabStep(attempt + 1), 120);
+      } else {
+        showSidebarOtherStatsStep();
+      }
+      return;
+    }
+    onboardingStep = "sidebarOrgsTab";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "Switch to the Orgs tab to see organizations and details listed out. Toggle switch to change visibility on map. Orgs are grouped by any selected areas and can be filtered by hours of operation.",
+      { label: "Next", onClick: () => showSidebarCategoryFilterStep() },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showSidebarCategoryFilterStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    openSidebarPanel();
+    openSidebarOrgsTab();
+    if (!openSidebarCategoryMenu()) {
+      if (attempt < 28) {
+        onboardingRetryTimer = window.setTimeout(() => showSidebarCategoryFilterStep(attempt + 1), 120);
+      } else {
+        showSidebarOrgsTabStep();
+      }
+      return;
+    }
+    const target = getSidebarCategoryFilterTarget();
+    if (!target) {
+      if (attempt < 28) {
+        onboardingRetryTimer = window.setTimeout(() => showSidebarCategoryFilterStep(attempt + 1), 120);
+      } else {
+        showSidebarOrgsTabStep();
+      }
+      return;
+    }
+    onboardingStep = "sidebarCategoryFilter";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "Categories filter will filter both organizations and statistics, in the sidebar and on the map, so you can see related efforts to certain types of needs.",
+      { label: "Next", onClick: () => showTourFinaleStep() },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showTourFinaleStep = () => {
+    clearOnboardingRetry();
+    onboardingStep = "tourFinale";
+    stepOverlay.classList.remove("hidden");
+    const copy = document.createElement("p");
+    copy.className = "text-xs leading-5 text-slate-700 dark:text-slate-200";
+    copy.append("Thank you for exploring with us! If you have any questions or ideas, please reach out to ");
+    const emailLink = document.createElement("a");
+    emailLink.href = "mailto:troy.robinson@9bcorp.com";
+    emailLink.className = "font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700";
+    emailLink.textContent = "troy.robinson@9bcorp.com";
+    copy.append(emailLink);
+    copy.append(".");
+    renderTourCard(copy, { label: "Done", onClick: dismissTour }, { label: "Dismiss", onClick: dismissTour });
+    positionFinalTourStep();
   };
 
   const showMyLocationStep = (attempt = 0) => {
@@ -1064,8 +1285,6 @@ export const createMapOnboardingTour = ({
         return getSelectedStatChipTarget();
       case "change":
         return getChangeOptionTarget();
-      case "showingTrigger":
-        return getShowingChipTarget();
       case "showingExtremas":
         return getShowingExtremasTarget();
       case "showingOrganizations":
@@ -1080,6 +1299,18 @@ export const createMapOnboardingTour = ({
         return getSidebarStatDetailsTarget();
       case "advancedStats":
         return getAdvancedStatsPrimaryTarget();
+      case "sidebarAddAreas":
+        return getSidebarAddAreasTarget();
+      case "sidebarDemographicsExpand":
+        return getSidebarDemographicsExpandTarget();
+      case "sidebarOtherStats":
+        return getSidebarOtherStatsTarget();
+      case "sidebarOrgsTab":
+        return getSidebarOrgsTabTarget();
+      case "sidebarCategoryFilter":
+        return getSidebarCategoryFilterTarget();
+      case "tourFinale":
+        return null;
       case "myLocation":
         return getMyLocationTarget();
       case "legend":
@@ -1128,8 +1359,27 @@ export const createMapOnboardingTour = ({
       if (currentStep === "share") {
         openSharePanel();
       }
-      if (currentStep === "sidebarStatDetails" || currentStep === "advancedStats") {
+      if (
+        currentStep === "sidebarStatDetails" ||
+        currentStep === "advancedStats" ||
+        currentStep === "sidebarAddAreas" ||
+        currentStep === "sidebarDemographicsExpand" ||
+        currentStep === "sidebarOtherStats" ||
+        currentStep === "sidebarOrgsTab" ||
+        currentStep === "sidebarCategoryFilter"
+      ) {
         openSidebarPanel();
+      }
+      if (currentStep === "sidebarOrgsTab") {
+        openSidebarOrgsTab();
+      }
+      if (currentStep === "sidebarCategoryFilter") {
+        openSidebarOrgsTab();
+        openSidebarCategoryMenu();
+      }
+      if (currentStep === "tourFinale") {
+        positionFinalTourStep();
+        return;
       }
       const target = targetForStep(currentStep);
       if (target) {

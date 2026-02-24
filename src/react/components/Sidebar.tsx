@@ -1517,6 +1517,7 @@ export const Sidebar = ({
       <div className={`border-b border-slate-200 dark:border-slate-700 pb-1 flex items-end gap-2 px-4 ${variant === "desktop" ? "pt-2" : "pt-3"}`}>
           <button
             type="button"
+            data-ne-tour-target={MAP_TOUR_TARGETS.sidebarOrgsTab}
             className={tabClasses(activeTab === "orgs")}
             onClick={() => handleTabChange("orgs")}
           >
@@ -1594,6 +1595,7 @@ export const Sidebar = ({
               <div className="relative" ref={categoryDropdownRef}>
                 <button
                   type="button"
+                  data-ne-tour-target={MAP_TOUR_TARGETS.sidebarCategoryFilter}
                   onClick={() => {
                     setPendingCategorySwitch(null);
                     setCategoryDropdownOpen((prev) => !prev);
@@ -1615,7 +1617,10 @@ export const Sidebar = ({
                   </svg>
                 </button>
                 {categoryDropdownOpen && (
-                  <div className="absolute right-0 top-full z-50 mt-1 w-40 overflow-hidden rounded-md border border-slate-200 bg-white text-slate-700 shadow-lg dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                  <div
+                    data-ne-tour-target={MAP_TOUR_TARGETS.sidebarCategoryMenu}
+                    className="absolute right-0 top-full z-50 mt-1 w-40 overflow-hidden rounded-md border border-slate-200 bg-white text-slate-700 shadow-lg dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  >
                     <button
                       type="button"
                       onClick={() => {

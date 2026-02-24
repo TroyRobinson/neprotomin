@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { CombinedDemographicsSnapshot, BreakdownGroup } from "../hooks/useDemographics";
 import { getCountyIdByName } from "../../lib/countyCentroids";
+import { MAP_TOUR_TARGETS } from "../imperative/constants/mapTourTargets";
 
 type SupportedAreaKind = "ZIP" | "COUNTY";
 
@@ -446,6 +447,7 @@ export const DemographicsBar = ({
                   )}
                   {showAddAreaTrigger && (
                     <span
+                      data-ne-tour-target={MAP_TOUR_TARGETS.sidebarAddAreas}
                       className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[2px] text-[9px] font-normal uppercase tracking-wide text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
                       onMouseEnter={openSelectedAreasAddInput}
                     >
@@ -576,6 +578,7 @@ export const DemographicsBar = ({
               </button>
             )}
             <span
+              data-ne-tour-target={MAP_TOUR_TARGETS.sidebarDemographicsExpand}
               className={`inline-flex h-5 w-5 items-center justify-center text-slate-400 transition-transform dark:text-slate-500 ${
                 isExpanded ? "rotate-180" : ""
               }`}
