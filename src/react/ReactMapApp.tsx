@@ -313,7 +313,16 @@ export const ReactMapApp = () => {
   const [legendRangeMode, setLegendRangeMode] = useState<"dynamic" | "scoped" | "global">("scoped");
   const [mapSettingsOpen, setMapSettingsOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
+  const [helpMenuMode, setHelpMenuMode] = useState<"menu" | "feedback">("menu");
+  const [feedbackDraft, setFeedbackDraft] = useState("");
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [feedbackSubmitError, setFeedbackSubmitError] = useState<string | null>(null);
+  const [feedbackSubmitSuccess, setFeedbackSubmitSuccess] = useState<string | null>(null);
   const helpMenuRef = useRef<HTMLDivElement | null>(null);
+  const closeHelpMenu = useCallback(() => {
+    setHelpMenuOpen(false);
+    setHelpMenuMode("menu");
+  }, []);
   const [viewportHeight, setViewportHeight] = useState(() => {
     if (typeof window === "undefined") return 0;
     const viewport = window.visualViewport;
@@ -335,11 +344,11 @@ export const ReactMapApp = () => {
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (helpMenuRef.current?.contains(target)) return;
-      setHelpMenuOpen(false);
+      closeHelpMenu();
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      setHelpMenuOpen(false);
+      closeHelpMenu();
     };
     window.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("keydown", onKeyDown);
@@ -347,7 +356,7 @@ export const ReactMapApp = () => {
       window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [helpMenuOpen]);
+  }, [closeHelpMenu, helpMenuOpen]);
 
   const [userLocation, setUserLocation] = useState<{ lng: number; lat: number } | null>(null);
   const [userLocationSource, setUserLocationSource] = useState<"device" | "search" | null>(null);
@@ -2301,14 +2310,83 @@ export const ReactMapApp = () => {
   }, [collapseSheet, isMobile]);
 
   const handleStartTourFromHelpMenu = useCallback(() => {
-    setHelpMenuOpen(false);
+    closeHelpMenu();
     mapControllerRef.current?.startOnboardingTour();
-  }, []);
+  }, [closeHelpMenu]);
 
   const handleSubmitFeedbackFromHelpMenu = useCallback(() => {
-    // Placeholder action until a dedicated feedback flow is wired.
-    setHelpMenuOpen(false);
+    setHelpMenuOpen(true);
+    setHelpMenuMode("feedback");
+    setFeedbackSubmitError(null);
+    setFeedbackSubmitSuccess(null);
   }, []);
+
+  const handleBackFromFeedback = useCallback(() => {
+    setHelpMenuMode("menu");
+  }, []);
+
+  const handleCancelFeedback = useCallback(() => {
+    closeHelpMenu();
+    setFeedbackDraft("");
+    setFeedbackSubmitError(null);
+    setFeedbackSubmitSuccess(null);
+  }, [closeHelpMenu]);
+
+  const handleFeedbackSubmit = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    if (isSubmittingFeedback) return;
+    const message = feedbackDraft.trim();
+    if (!message) {
+      setFeedbackSubmitError("Please enter feedback before submitting.");
+      setFeedbackSubmitSuccess(null);
+      return;
+    }
+    const username =
+      user && !user.isGuest
+        ? typeof user.email === "string" && user.email.trim().length > 0
+          ? user.email.trim()
+          : user.id
+        : "Not logged in";
+    const query = window.location.search && window.location.search.trim().length > 0 ? window.location.search : "";
+
+    try {
+      setIsSubmittingFeedback(true);
+      setFeedbackSubmitError(null);
+      setFeedbackSubmitSuccess(null);
+      const response = await fetch("/api/feedback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        // Include key request context so support can reproduce user issues quickly.
+        body: JSON.stringify({
+          message,
+          username,
+          userId: user?.id ?? null,
+          userEmail: user && !user.isGuest ? user.email ?? null : null,
+          pageUrl: window.location.href,
+          urlParams: query,
+          source: "Map help menu",
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const serverMessage =
+          payload && typeof payload === "object" && typeof (payload as { error?: unknown }).error === "string"
+            ? (payload as { error: string }).error
+            : "Unable to send feedback right now.";
+        throw new Error(serverMessage);
+      }
+      setFeedbackSubmitSuccess("Feedback sent. Thank you.");
+      setFeedbackDraft("");
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : "Unable to send feedback right now.";
+      setFeedbackSubmitError(messageText);
+      setFeedbackSubmitSuccess(null);
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  }, [feedbackDraft, isSubmittingFeedback, user]);
 
   const handleOrganizationCreated = useCallback(
     (organization: { id: string; latitude: number; longitude: number }) => {
@@ -3771,6 +3849,9 @@ export const ReactMapApp = () => {
     viewportHeight,
   ]);
 
+  const isHelpMenuVisible = helpMenuOpen && helpMenuMode === "menu";
+  const isHelpFeedbackVisible = helpMenuOpen && helpMenuMode === "feedback";
+
   return (
     <div
       className="app-shell relative flex flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950"
@@ -3994,13 +4075,20 @@ export const ReactMapApp = () => {
                 <div
                   ref={helpMenuRef}
                   className="pointer-events-auto relative"
-                  onMouseEnter={() => setHelpMenuOpen(true)}
-                  onMouseLeave={() => setHelpMenuOpen(false)}
+                  onMouseEnter={() => {
+                    if (helpMenuMode !== "menu") return;
+                    setHelpMenuOpen(true);
+                  }}
+                  onMouseLeave={() => {
+                    if (helpMenuMode !== "menu") return;
+                    closeHelpMenu();
+                  }}
                   onFocusCapture={() => setHelpMenuOpen(true)}
                   onBlurCapture={(event) => {
                     const next = event.relatedTarget;
                     if (next instanceof Node && event.currentTarget.contains(next)) return;
-                    setHelpMenuOpen(false);
+                    if (helpMenuMode === "feedback") return;
+                    closeHelpMenu();
                   }}
                 >
                   <button
@@ -4014,26 +4102,33 @@ export const ReactMapApp = () => {
                     aria-label="Help"
                     aria-haspopup="menu"
                     aria-expanded={helpMenuOpen}
-                    onClick={() => setHelpMenuOpen((prev) => !prev)}
+                    onClick={() => {
+                      if (helpMenuOpen && helpMenuMode === "feedback") {
+                        closeHelpMenu();
+                        return;
+                      }
+                      setHelpMenuMode("menu");
+                      setHelpMenuOpen((prev) => !prev);
+                    }}
                   >
                     ?
                   </button>
                   <div
                     className={[
                       "absolute bottom-0 right-full z-10 h-24 w-2",
-                      helpMenuOpen ? "pointer-events-auto" : "pointer-events-none",
+                      isHelpMenuVisible ? "pointer-events-auto" : "pointer-events-none",
                     ].join(" ")}
                     aria-hidden="true"
                   />
                   <div
                     className={[
-                      "absolute bottom-0 right-full mr-2 w-44 rounded-xl p-2 shadow-lg transition",
+                      "absolute bottom-0 right-full mr-2 w-44 origin-bottom-right rounded-xl p-2 shadow-lg transition-all duration-200 ease-out",
                       helpMenuOpen
                         ? "border border-slate-100 bg-slate-50 ring-1 ring-slate-100"
                         : "border border-white/60 bg-white/18 ring-1 ring-white/45 backdrop-blur-md dark:border-slate-500/35 dark:bg-slate-900/22 dark:ring-white/8",
-                      helpMenuOpen
-                        ? "pointer-events-auto translate-x-0 opacity-100"
-                        : "pointer-events-none translate-x-1 opacity-0",
+                      isHelpMenuVisible
+                        ? "pointer-events-auto translate-x-0 scale-100 opacity-100"
+                        : "pointer-events-none translate-x-1 scale-95 opacity-0",
                     ].join(" ")}
                     role="menu"
                     aria-label="Help menu"
@@ -4054,6 +4149,68 @@ export const ReactMapApp = () => {
                     >
                       Start Tour
                     </button>
+                  </div>
+                  <div
+                    className={[
+                      "fixed bottom-16 right-16 z-40 max-w-[calc(100vw-5rem)] origin-bottom-right rounded-2xl border border-slate-100 bg-slate-50 p-3 shadow-xl ring-1 ring-slate-100 transition-all duration-200 ease-out",
+                      isHelpFeedbackVisible
+                        ? "pointer-events-auto translate-x-0 scale-100 opacity-100"
+                        : "pointer-events-none translate-x-1 scale-95 opacity-0",
+                    ].join(" ")}
+                    role="dialog"
+                    aria-label="Submit Feedback"
+                    aria-modal="false"
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        className="rounded-md px-2 py-1 text-sm text-slate-700 transition hover:bg-white focus-visible:bg-white dark:text-slate-200 dark:hover:bg-white dark:hover:text-slate-900 dark:focus-visible:bg-white dark:focus-visible:text-slate-900"
+                        onClick={handleBackFromFeedback}
+                      >
+                        Back
+                      </button>
+                      <h3 className="text-base font-medium text-slate-800">Submit Feedback</h3>
+                    </div>
+                    <textarea
+                      value={feedbackDraft}
+                      onChange={(event) => {
+                        if (feedbackSubmitError) {
+                          setFeedbackSubmitError(null);
+                        }
+                        if (feedbackSubmitSuccess) {
+                          setFeedbackSubmitSuccess(null);
+                        }
+                        setFeedbackDraft(event.target.value);
+                      }}
+                      rows={5}
+                      placeholder="Write your issue, question, idea, comment, etc."
+                      disabled={isSubmittingFeedback}
+                      className="w-[24rem] max-w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500 dark:focus:ring-brand-500/30"
+                    />
+                    {feedbackSubmitError ? (
+                      <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{feedbackSubmitError}</p>
+                    ) : null}
+                    {feedbackSubmitSuccess ? (
+                      <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">{feedbackSubmitSuccess}</p>
+                    ) : null}
+                    <div className="mt-3 flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-white focus-visible:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                        onClick={handleCancelFeedback}
+                        disabled={isSubmittingFeedback}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-md border border-brand-600 bg-brand-600 px-3 py-1.5 text-sm text-white transition hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-brand-500 dark:bg-brand-500 dark:hover:bg-brand-400"
+                        onClick={handleFeedbackSubmit}
+                        disabled={isSubmittingFeedback || feedbackDraft.trim().length === 0}
+                      >
+                        {isSubmittingFeedback ? "Submitting..." : "Submit"}
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <button
