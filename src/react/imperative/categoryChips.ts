@@ -27,7 +27,7 @@ const ORGS_CHIP_OFF_CLASSES =
   SHOWING_PANEL_ACTION_CLASSES;
 
 const EXTREMAS_CHIP_ON_CLASSES =
-  "border-[0.5px] border-slate-200 bg-slate-50 text-slate-700 shadow-floating hover:bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-black";
+  "border-[0.5px] border-slate-200 bg-white text-slate-700 shadow-floating hover:bg-white dark:border-slate-600 dark:bg-black dark:text-slate-200 dark:hover:bg-black";
 
 const EXTREMAS_CHIP_OFF_CLASSES = ORGS_CHIP_OFF_CLASSES;
 
