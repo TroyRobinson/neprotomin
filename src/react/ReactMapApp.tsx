@@ -39,6 +39,11 @@ import { useCensusImportQueue } from "./hooks/useCensusImportQueue";
 import { getPerformanceTier } from "../lib/device";
 import { REDUCED_DATA_LOADING_KEY, readBoolSetting, writeBoolSetting } from "../lib/settings";
 import { getStatDisplayName, UNDEFINED_STAT_ATTRIBUTE } from "../types/stat";
+import {
+  MAP_TOUR_ADVANCED_STATS_PRESET,
+  MAP_TOUR_APPLY_STATE_EVENT,
+  type MapTourApplyStateDetail,
+} from "./imperative/constants/mapTourEvents";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type ScreenName = "map" | "report" | "roadmap" | "data" | "queue" | "addOrg" | "admin";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
@@ -2191,6 +2196,48 @@ export const ReactMapApp = () => {
     // Clear all URL params to reset to base state
     window.history.replaceState(null, "", window.location.pathname);
   };
+
+  useEffect(() => {
+    const applyTourState = (detail: MapTourApplyStateDetail) => {
+      setActiveScreen("map");
+      setSelectedStatId(detail.statId);
+      setSecondaryStatId(null);
+      setShowAdvanced(detail.showAdvanced);
+      setSidebarTab(detail.sidebarTab);
+      setSidebarCollapsed(detail.sidebarCollapsed);
+      setSidebarInsightsState({
+        statVizVisible: detail.sidebarInsights.statVizVisible,
+        statVizCollapsed: detail.sidebarInsights.statVizCollapsed,
+        demographicsVisible: detail.sidebarInsights.demographicsVisible,
+        demographicsExpanded: detail.sidebarInsights.demographicsExpanded,
+      });
+      setBoundaryMode("zips");
+      setBoundaryControlMode("auto");
+      applyAreaSelection("ZIP", {
+        selected: detail.selectedZips,
+        pinned: [],
+        transient: [],
+      });
+      applyAreaSelection("COUNTY", {
+        selected: detail.selectedCounties,
+        pinned: [],
+        transient: [],
+      });
+      setSelectedOrgIds([]);
+      setSelectedOrgIdsFromMap(false);
+      mapControllerRef.current?.setCamera(detail.lng, detail.lat, detail.zoom, { animate: false });
+    };
+
+    const handleTourApplyState = (event: Event) => {
+      const custom = event as CustomEvent<MapTourApplyStateDetail | undefined>;
+      applyTourState(custom.detail ?? MAP_TOUR_ADVANCED_STATS_PRESET);
+    };
+
+    window.addEventListener(MAP_TOUR_APPLY_STATE_EVENT, handleTourApplyState as EventListener);
+    return () => {
+      window.removeEventListener(MAP_TOUR_APPLY_STATE_EVENT, handleTourApplyState as EventListener);
+    };
+  }, []);
 
   const handleOpenAddOrganization = useCallback(() => {
     setActiveScreen("addOrg");

@@ -23,6 +23,7 @@ import type { AreaId } from "../../types/areas";
 import type { TimeSelection } from "../lib/timeFilters";
 import { formatTimeSelection } from "../lib/timeFilters";
 import { db } from "../../lib/reactDb";
+import { MAP_TOUR_TARGETS } from "../imperative/constants/mapTourTargets";
 
 // ============================================================================
 // Enable Features
@@ -1561,6 +1562,7 @@ export const Sidebar = ({
                 role="switch"
                 aria-checked={showAdvanced}
                 aria-label="Advanced areas data"
+                data-ne-tour-target={MAP_TOUR_TARGETS.sidebarAdvancedToggle}
                 title="Advanced areas data"
                 tabIndex={0}
                 className={`relative inline-flex h-3 w-6 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 ${

@@ -4,6 +4,7 @@ import { track } from "@vercel/analytics";
 import { db } from "../../lib/reactDb";
 import { isAdminEmail } from "../../lib/admin";
 import { themeController } from "../imperative/theme";
+import { MAP_TOUR_TARGETS } from "../imperative/constants/mapTourTargets";
 import { useCensusImportQueue } from "../hooks/useCensusImportQueue";
 import { QueueListIcon } from "@heroicons/react/24/outline";
 
@@ -500,6 +501,7 @@ export const TopBar = ({
             <a
               href="#"
               onClick={handleBrandClick}
+              data-ne-tour-target={MAP_TOUR_TARGETS.brandLogo}
               className="flex shrink-0 items-center gap-3 text-sm font-medium text-slate-500 dark:text-slate-400 -ml-2"
             >
               <img src="/icons/NE_Logos_Logomark_Prp.svg" alt="NourishED" className="h-9 w-9 rounded-lg shadow-floating" />

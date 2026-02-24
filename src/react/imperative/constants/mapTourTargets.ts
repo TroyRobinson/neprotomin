@@ -10,6 +10,10 @@ export const MAP_TOUR_LOCKS = {
 } as const;
 
 export const MAP_TOUR_TARGETS = {
+  brandLogo: "map-brand-logo",
+  sidebarStatDetails: "map-sidebar-stat-details",
+  sidebarAdvancedToggle: "map-sidebar-advanced-toggle",
+  sidebarStatViz: "map-sidebar-stat-viz",
   primaryStatChip: "map-primary-stat-chip",
   primaryStatMenu: "map-primary-stat-menu",
   primaryStatOption: "map-primary-stat-option",

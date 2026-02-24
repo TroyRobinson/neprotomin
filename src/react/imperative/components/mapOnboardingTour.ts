@@ -6,6 +6,10 @@ import {
   MAP_TOUR_TARGET_ATTR,
   MAP_TOUR_TARGETS,
 } from "../constants/mapTourTargets";
+import {
+  MAP_TOUR_ADVANCED_STATS_PRESET,
+  MAP_TOUR_APPLY_STATE_EVENT,
+} from "../constants/mapTourEvents";
 
 export interface MapOnboardingTourController {
   start: () => void;
@@ -33,8 +37,11 @@ type OnboardingStep =
   | "showingAreas"
   | "share"
   | "searchMenu"
+  | "sidebarStatDetails"
+  | "advancedStats"
   | "myLocation"
-  | "legend";
+  | "legend"
+  | "brandLogo";
 
 const targetSelector = (target: string): string => `[${MAP_TOUR_TARGET_ATTR}="${target}"]`;
 
@@ -106,10 +113,14 @@ export const createMapOnboardingTour = ({
   const highlightBox = document.createElement("div");
   highlightBox.className = "absolute rounded-2xl border-2 border-brand-400/90";
   highlightBox.style.boxShadow = "0 0 0 4px rgba(142, 144, 196, 0.2)";
+  const secondaryHighlightBox = document.createElement("div");
+  secondaryHighlightBox.className = "absolute hidden rounded-2xl border-2 border-brand-400/90";
+  secondaryHighlightBox.style.boxShadow = "0 0 0 4px rgba(142, 144, 196, 0.2)";
   const stepCard = document.createElement("div");
   stepCard.className =
     "pointer-events-auto absolute max-w-[22rem] rounded-xl border border-slate-200 bg-white/95 p-3.5 shadow-xl backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95";
   stepOverlay.appendChild(highlightBox);
+  stepOverlay.appendChild(secondaryHighlightBox);
   stepOverlay.appendChild(stepCard);
   container.appendChild(stepOverlay);
 
@@ -205,6 +216,49 @@ export const createMapOnboardingTour = ({
     return isVisibleTarget(target) ? target : null;
   };
 
+  const getBrandLogoTarget = (): HTMLElement | null => {
+    const target =
+      container.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.brandLogo)) ??
+      targetRoot.ownerDocument?.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.brandLogo)) ??
+      null;
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getSidebarStatDetailsTarget = (): HTMLElement | null => {
+    const target =
+      container.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarStatDetails)) ??
+      targetRoot.ownerDocument?.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarStatDetails)) ??
+      null;
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getSidebarAdvancedToggleTarget = (): HTMLElement | null => {
+    const target =
+      container.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarAdvancedToggle)) ??
+      targetRoot.ownerDocument?.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarAdvancedToggle)) ??
+      null;
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getSidebarStatVizTarget = (): HTMLElement | null => {
+    const target =
+      container.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarStatViz)) ??
+      targetRoot.ownerDocument?.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarStatViz)) ??
+      null;
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getAdvancedStatsPrimaryTarget = (): HTMLElement | null =>
+    getSidebarStatVizTarget() ?? getSidebarAdvancedToggleTarget();
+
+  const getAdvancedStatsSecondaryTarget = (): HTMLElement | null => {
+    const primary = getAdvancedStatsPrimaryTarget();
+    const toggle = getSidebarAdvancedToggleTarget();
+    if (!toggle) return null;
+    if (primary === toggle) return null;
+    return toggle;
+  };
+
   const getSharePanelTarget = (): HTMLElement | null => {
     const shareBtn = getShareChipTarget();
     if (!shareBtn) return null;
@@ -219,18 +273,26 @@ export const createMapOnboardingTour = ({
     return isVisibleTarget(target) ? target : null;
   };
 
+  const getSidebarToggleButton = (): HTMLButtonElement | null => {
+    const doc = targetRoot.ownerDocument;
+    if (!doc) return null;
+    return (
+      Array.from(doc.querySelectorAll<HTMLButtonElement>("button[title]")).find((button) => {
+        const title = (button.getAttribute("title") ?? "").trim().toLowerCase();
+        return (
+          title.includes("sidebar") &&
+          (title.includes("expand") || title.includes("collapse")) &&
+          isVisibleTarget(button)
+        );
+      }) ?? null
+    );
+  };
+
   const getSearchBarTarget = (): HTMLElement | null => {
     const doc = targetRoot.ownerDocument;
     if (!doc) return null;
     const input = doc.querySelector<HTMLInputElement>('input[placeholder="Stats, orgs, cities, zips, addresses..."]');
-    const menuBtn = Array.from(doc.querySelectorAll<HTMLButtonElement>("button[title]")).find((button) => {
-      const title = (button.getAttribute("title") ?? "").trim().toLowerCase();
-      return (
-        title.includes("sidebar") &&
-        (title.includes("expand") || title.includes("collapse")) &&
-        isVisibleTarget(button)
-      );
-    });
+    const menuBtn = getSidebarToggleButton();
     const visibleInput = input && isVisibleTarget(input) ? input : null;
     const visibleMenuBtn = menuBtn && isVisibleTarget(menuBtn) ? menuBtn : null;
     if (visibleInput && visibleMenuBtn) {
@@ -321,6 +383,24 @@ export const createMapOnboardingTour = ({
     }
   };
 
+  const openSidebarPanel = (): boolean => {
+    const sidebarBtn = getSidebarToggleButton();
+    if (!sidebarBtn) return false;
+    const title = (sidebarBtn.getAttribute("title") ?? "").trim().toLowerCase();
+    if (title.includes("expand")) {
+      sidebarBtn.click();
+    }
+    return true;
+  };
+
+  const applyAdvancedStatsPreset = () => {
+    window.dispatchEvent(
+      new CustomEvent(MAP_TOUR_APPLY_STATE_EVENT, {
+        detail: MAP_TOUR_ADVANCED_STATS_PRESET,
+      }),
+    );
+  };
+
   const setTourLock = (lock: string | null) => {
     if (!lock) {
       targetRoot.removeAttribute(MAP_TOUR_LOCK_ATTR);
@@ -333,6 +413,9 @@ export const createMapOnboardingTour = ({
     onboardingStep = null;
     onboardingForceStart = false;
     stepOverlay.classList.add("hidden");
+    secondaryHighlightBox.classList.add("hidden");
+    secondaryHighlightBox.style.position = "absolute";
+    stepOverlay.style.zIndex = "14";
     clearOnboardingRetry();
     if (onboardingPositionRaf !== null) {
       cancelAnimationFrame(onboardingPositionRaf);
@@ -356,10 +439,52 @@ export const createMapOnboardingTour = ({
     const highlightWidth = Math.max(40, targetRect.width + pad * 2);
     const highlightHeight = Math.max(30, targetRect.height + pad * 2);
 
-    highlightBox.style.left = `${highlightLeft}px`;
-    highlightBox.style.top = `${highlightTop}px`;
+    const targetOutsideContainer =
+      targetRect.left < containerRect.left ||
+      targetRect.right > containerRect.right ||
+      targetRect.top < containerRect.top ||
+      targetRect.bottom > containerRect.bottom;
+    const useViewportHighlight =
+      targetOutsideContainer &&
+      (onboardingStep === "brandLogo" ||
+        onboardingStep === "sidebarStatDetails" ||
+        onboardingStep === "advancedStats");
+    if (useViewportHighlight) {
+      stepOverlay.style.zIndex = "45";
+      highlightBox.style.position = "fixed";
+      highlightBox.style.left = `${Math.max(4, targetRect.left - pad)}px`;
+      highlightBox.style.top = `${Math.max(4, targetRect.top - pad)}px`;
+    } else {
+      stepOverlay.style.zIndex = "14";
+      highlightBox.style.position = "absolute";
+      highlightBox.style.left = `${highlightLeft}px`;
+      highlightBox.style.top = `${highlightTop}px`;
+    }
     highlightBox.style.width = `${highlightWidth}px`;
     highlightBox.style.height = `${highlightHeight}px`;
+
+    const secondaryTarget = onboardingStep === "advancedStats" ? getAdvancedStatsSecondaryTarget() : null;
+    if (secondaryTarget) {
+      const secondaryRect = secondaryTarget.getBoundingClientRect();
+      const secondaryLeft = secondaryRect.left - containerRect.left - pad;
+      const secondaryTop = secondaryRect.top - containerRect.top - pad;
+      const secondaryWidth = Math.max(36, secondaryRect.width + pad * 2);
+      const secondaryHeight = Math.max(24, secondaryRect.height + pad * 2);
+      secondaryHighlightBox.classList.remove("hidden");
+      if (useViewportHighlight) {
+        secondaryHighlightBox.style.position = "fixed";
+        secondaryHighlightBox.style.left = `${Math.max(4, secondaryRect.left - pad)}px`;
+        secondaryHighlightBox.style.top = `${Math.max(4, secondaryRect.top - pad)}px`;
+      } else {
+        secondaryHighlightBox.style.position = "absolute";
+        secondaryHighlightBox.style.left = `${secondaryLeft}px`;
+        secondaryHighlightBox.style.top = `${secondaryTop}px`;
+      }
+      secondaryHighlightBox.style.width = `${secondaryWidth}px`;
+      secondaryHighlightBox.style.height = `${secondaryHeight}px`;
+    } else {
+      secondaryHighlightBox.classList.add("hidden");
+    }
 
     stepCard.style.visibility = "hidden";
     stepCard.style.left = `${insetPad}px`;
@@ -417,6 +542,9 @@ export const createMapOnboardingTour = ({
     }
     if (onboardingStep === "showingAreas") {
       addAvoidRectFor(getShowingAreasMenuTarget());
+    }
+    if (onboardingStep === "advancedStats") {
+      addAvoidRectFor(getAdvancedStatsSecondaryTarget());
     }
 
     const toCardRect = (left: number, top: number): LocalRect => ({
@@ -708,7 +836,7 @@ export const createMapOnboardingTour = ({
     setTourLock(MAP_TOUR_LOCKS.showingPanel);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Organizations shows organization points on the map (sourced from Google and ProPublica). Zoom in and hover or click them to see their details.",
+      "Organizations shows organization points on the map (sourced from Google and ProPublica). Click to turn on and then zoom in to org clusters and hover on or click org dots to see their details.",
       { label: "Next", onClick: () => showShowingAreasStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -783,7 +911,7 @@ export const createMapOnboardingTour = ({
         onClick: () => {
           setTourLock(null);
           closeSharePanel();
-          showSearchMenuStep();
+          showMyLocationStep();
         },
       },
       { label: "Dismiss", onClick: dismissTour },
@@ -800,7 +928,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showSearchMenuStep(attempt + 1), 120);
       } else {
-        showShareStep();
+        showBrandLogoStep();
       }
       return;
     }
@@ -808,7 +936,60 @@ export const createMapOnboardingTour = ({
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       "The search bar allows you to pull up just the statistics or organizations you need or learn about specific zips, addresses, etc. Click the menu button to open the sidebar.",
-      { label: "Next", onClick: () => showMyLocationStep() },
+      {
+        label: "Next",
+        onClick: () => {
+          if (!openSidebarPanel()) return;
+          showSidebarStatDetailsStep();
+        },
+      },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showSidebarStatDetailsStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    openSidebarPanel();
+    const target = getSidebarStatDetailsTarget();
+    if (!target) {
+      if (attempt < 28) {
+        onboardingRetryTimer = window.setTimeout(() => showSidebarStatDetailsStep(attempt + 1), 120);
+      } else {
+        showSearchMenuStep();
+      }
+      return;
+    }
+    onboardingStep = "sidebarStatDetails";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "In our sidebar, see our Statistic's details, including options to drill down on aspects of your selected stat.",
+      { label: "Next", onClick: () => showAdvancedStatsStep() },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showAdvancedStatsStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    if (attempt === 0) {
+      applyAdvancedStatsPreset();
+    }
+    openSidebarPanel();
+    const target = getAdvancedStatsPrimaryTarget();
+    if (!target) {
+      if (attempt < 28) {
+        onboardingRetryTimer = window.setTimeout(() => showAdvancedStatsStep(attempt + 1), 120);
+      } else {
+        showSidebarStatDetailsStep();
+      }
+      return;
+    }
+    onboardingStep = "advancedStats";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "Switch on the Advanced Stats toggle or click a zip on the map to see visualizations for the selected area(s). Hover over the graph to see details.",
+      { label: "Done", onClick: dismissTour },
       { label: "Dismiss", onClick: dismissTour },
     );
     positionTourStep(target);
@@ -821,7 +1002,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showMyLocationStep(attempt + 1), 120);
       } else {
-        showSearchMenuStep();
+        showShareStep();
       }
       return;
     }
@@ -850,7 +1031,28 @@ export const createMapOnboardingTour = ({
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       "The legend shows the range of data for the current stat, represented by the color intensities (choropleth) on the map. Click for map settings and to replay this tour.",
-      { label: "Done", onClick: dismissTour },
+      { label: "Next", onClick: () => showBrandLogoStep() },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showBrandLogoStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    const target = getBrandLogoTarget();
+    if (!target) {
+      if (attempt < 24) {
+        onboardingRetryTimer = window.setTimeout(() => showBrandLogoStep(attempt + 1), 120);
+      } else {
+        showSearchMenuStep();
+      }
+      return;
+    }
+    onboardingStep = "brandLogo";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "Click the NE logo to refresh the map & everything back to defaults.",
+      { label: "Next", onClick: () => showSearchMenuStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
     positionTourStep(target);
@@ -874,10 +1076,16 @@ export const createMapOnboardingTour = ({
         return getShareChipTarget();
       case "searchMenu":
         return getSearchBarTarget();
+      case "sidebarStatDetails":
+        return getSidebarStatDetailsTarget();
+      case "advancedStats":
+        return getAdvancedStatsPrimaryTarget();
       case "myLocation":
         return getMyLocationTarget();
       case "legend":
         return getLegendTarget();
+      case "brandLogo":
+        return getBrandLogoTarget();
       default:
         return null;
     }
@@ -920,6 +1128,9 @@ export const createMapOnboardingTour = ({
       if (currentStep === "share") {
         openSharePanel();
       }
+      if (currentStep === "sidebarStatDetails" || currentStep === "advancedStats") {
+        openSidebarPanel();
+      }
       const target = targetForStep(currentStep);
       if (target) {
         positionTourStep(target);
@@ -927,11 +1138,26 @@ export const createMapOnboardingTour = ({
     });
   };
 
+  const advanceSearchMenuOnSidebarToggleClick = (event: MouseEvent) => {
+    if (onboardingStep !== "searchMenu") return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest("button[title]");
+    if (!(button instanceof HTMLButtonElement)) return;
+    const title = (button.getAttribute("title") ?? "").trim().toLowerCase();
+    if (!title.includes("sidebar") || (!title.includes("expand") && !title.includes("collapse"))) return;
+    window.setTimeout(() => {
+      if (onboardingStep !== "searchMenu") return;
+      showSidebarStatDetailsStep();
+    }, 90);
+  };
+
   dismissWelcomeBtn.addEventListener("click", dismissTour);
   startTourBtn.addEventListener("click", startTourFlowFromBanner);
   window.addEventListener("resize", refresh);
   window.addEventListener("pointerup", refresh, true);
   window.addEventListener("keyup", refresh, true);
+  window.addEventListener("click", advanceSearchMenuOnSidebarToggleClick, true);
 
   if (!onboardingDismissed) {
     showWelcomeToast();
@@ -948,6 +1174,7 @@ export const createMapOnboardingTour = ({
     window.removeEventListener("resize", refresh);
     window.removeEventListener("pointerup", refresh, true);
     window.removeEventListener("keyup", refresh, true);
+    window.removeEventListener("click", advanceSearchMenuOnSidebarToggleClick, true);
     hideTourStep();
     welcomeToast.remove();
     stepOverlay.remove();
