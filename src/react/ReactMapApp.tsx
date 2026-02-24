@@ -2018,6 +2018,18 @@ export const ReactMapApp = () => {
           buckets.set("ZIP", zipBucket);
         }
       }
+      // Fall back to statewide ZIP time-series when scoped ZIP series are unavailable.
+      if (!buckets.has("ZIP")) {
+        const statewideScopeEntry = byParent.get(FALLBACK_ZIP_SCOPE);
+        const statewideZipSeries = statewideScopeEntry?.get("ZIP");
+        if (statewideZipSeries && statewideZipSeries.length > 0) {
+          const zipBucket = new Map<string, SeriesEntry>();
+          mergeSeriesInto(zipBucket, statewideZipSeries);
+          if (zipBucket.size > 0) {
+            buckets.set("ZIP", zipBucket);
+          }
+        }
+      }
 
       for (const scope of expandedCountyScopes) {
         const scopeEntry = byParent.get(scope);
