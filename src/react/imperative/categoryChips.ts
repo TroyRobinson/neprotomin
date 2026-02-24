@@ -344,6 +344,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   // Orgs chip now lives inside the Showing tooltip panel (desktop only).
   const orgsChipBtn = document.createElement("button");
   orgsChipBtn.type = "button";
+  orgsChipBtn.setAttribute(MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS.showingOrganizations);
   // Match org cluster color: peach accent family when on, subdued neutral when off.
   orgsChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${ORGS_CHIP_ON_CLASSES}`;
   const orgsLabel = document.createElement("span");
@@ -369,6 +370,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
 
   const extremasChipBtn = document.createElement("button");
   extremasChipBtn.type = "button";
+  extremasChipBtn.setAttribute(MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS.showingExtremas);
   extremasChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${EXTREMAS_CHIP_ON_CLASSES}`;
   const extremasLabel = document.createElement("span");
   extremasLabel.textContent = "Extremas";
@@ -497,6 +499,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   areasChipContainer.className = "relative pointer-events-auto w-full";
   areasChipContainer.style.display = isMobile ? "none" : "";
   areasChipBtn.type = "button";
+  areasChipBtn.setAttribute(MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS.showingAreas);
   areasChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${SHOWING_PANEL_ACTION_CLASSES} w-full justify-between pr-2`;
   areasChipBtn.setAttribute("aria-haspopup", "listbox");
   areasChipBtn.setAttribute("aria-expanded", "false");
@@ -1026,6 +1029,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   showingChipContainer.style.display = isMobile ? "none" : "";
 
   showingChipBtn.type = "button";
+  showingChipBtn.setAttribute(MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS.showingChip);
   showingChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${SHOWING_CHIP_CLASSES} pr-2`;
   showingChipBtn.setAttribute("aria-haspopup", "dialog");
   showingChipBtn.setAttribute("aria-expanded", "false");

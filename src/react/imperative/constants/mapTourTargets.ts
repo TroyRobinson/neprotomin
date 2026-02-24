@@ -7,5 +7,8 @@ export const MAP_TOUR_TARGETS = {
   primaryStatMenu: "map-primary-stat-menu",
   primaryStatOption: "map-primary-stat-option",
   primaryStatDeselect: "map-primary-stat-deselect",
+  showingChip: "map-showing-chip",
+  showingOrganizations: "map-showing-organizations",
+  showingExtremas: "map-showing-extremas",
+  showingAreas: "map-showing-areas",
 } as const;
-

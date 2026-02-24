@@ -22,7 +22,13 @@ interface MapOnboardingTourOptions {
 const DEFAULT_DISMISSED_STORAGE_KEY = "ne.map.onboarding.dismissed.v1";
 const DEFAULT_PREFERRED_CHANGE_OPTION_LABEL = "Population (Change '21-23)";
 
-type OnboardingStep = "chip" | "change";
+type OnboardingStep =
+  | "chip"
+  | "change"
+  | "showingTrigger"
+  | "showingExtremas"
+  | "showingOrganizations"
+  | "showingAreas";
 
 const targetSelector = (target: string): string => `[${MAP_TOUR_TARGET_ATTR}="${target}"]`;
 
@@ -31,6 +37,12 @@ const createNoopController = (): MapOnboardingTourController => ({
   refresh: () => {},
   destroy: () => {},
 });
+
+const isVisibleTarget = (target: HTMLElement | null): target is HTMLElement => {
+  if (!target) return false;
+  if (target.classList.contains("hidden")) return false;
+  return target.getClientRects().length > 0;
+};
 
 export const createMapOnboardingTour = ({
   container,
@@ -114,15 +126,18 @@ export const createMapOnboardingTour = ({
     welcomeToast.classList.add("hidden");
   };
 
-  const getSelectedStatChipTarget = (): HTMLElement | null =>
-    targetRoot.querySelector(targetSelector(MAP_TOUR_TARGETS.primaryStatChip));
+  const getSelectedStatChipTarget = (): HTMLElement | null => {
+    const target = targetRoot.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.primaryStatChip));
+    return isVisibleTarget(target) ? target : null;
+  };
 
   const getChangeOptionTarget = (): HTMLElement | null => {
     const optionEls = Array.from(
       targetRoot.querySelectorAll<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.primaryStatOption)),
-    );
+    ).filter((option) => isVisibleTarget(option));
     if (optionEls.length === 0) {
-      return targetRoot.querySelector(targetSelector(MAP_TOUR_TARGETS.primaryStatMenu));
+      const menuTarget = targetRoot.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.primaryStatMenu));
+      return isVisibleTarget(menuTarget) ? menuTarget : null;
     }
     const normalizedPreferred = preferredChangeOptionLabel.toLowerCase();
     const exact = optionEls.find(
@@ -137,20 +152,59 @@ export const createMapOnboardingTour = ({
     );
   };
 
+  const getShowingChipTarget = (): HTMLElement | null => {
+    const target = targetRoot.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.showingChip));
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getShowingExtremasTarget = (): HTMLElement | null => {
+    const target = targetRoot.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.showingExtremas));
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getShowingOrganizationsTarget = (): HTMLElement | null => {
+    const target = targetRoot.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.showingOrganizations));
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getShowingAreasTarget = (): HTMLElement | null => {
+    const target = targetRoot.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.showingAreas));
+    return isVisibleTarget(target) ? target : null;
+  };
+
   const openSelectedStatDropdown = (): boolean => {
     const chipBtn = getSelectedStatChipTarget() as HTMLButtonElement | null;
     if (!chipBtn) return false;
     if (chipBtn.getAttribute("aria-expanded") !== "true") {
       chipBtn.click();
     }
-    return true;
+    return chipBtn.getAttribute("aria-expanded") === "true";
   };
 
   const closeSelectedStatDropdown = () => {
-    const chipBtn = getSelectedStatChipTarget() as HTMLButtonElement | null;
+    const chipBtn = targetRoot.querySelector<HTMLButtonElement>(targetSelector(MAP_TOUR_TARGETS.primaryStatChip));
     if (!chipBtn) return;
     if (chipBtn.getAttribute("aria-expanded") === "true") {
       chipBtn.click();
+    }
+  };
+
+  const openShowingPanel = (): boolean => {
+    const showingBtn = getShowingChipTarget() as HTMLButtonElement | null;
+    if (!showingBtn) return false;
+    if (showingBtn.getAttribute("aria-expanded") !== "true") {
+      showingBtn.click();
+    }
+    return showingBtn.getAttribute("aria-expanded") === "true";
+  };
+
+  const closeShowingPanel = () => {
+    const showingBtn = targetRoot.querySelector<HTMLButtonElement>(targetSelector(MAP_TOUR_TARGETS.showingChip));
+    if (!showingBtn) return;
+    if (showingBtn.getAttribute("aria-expanded") !== "true") return;
+    showingBtn.click();
+    if (showingBtn.getAttribute("aria-expanded") === "true") {
+      showingBtn.click();
     }
   };
 
@@ -164,6 +218,7 @@ export const createMapOnboardingTour = ({
       onboardingPositionRaf = null;
     }
     closeSelectedStatDropdown();
+    closeShowingPanel();
   };
 
   const positionTourStep = (target: HTMLElement) => {
@@ -246,7 +301,6 @@ export const createMapOnboardingTour = ({
     clearOnboardingRetry();
     const target = getSelectedStatChipTarget();
     if (!target) {
-      // Force-start retries longer so initial stat selection has time to render.
       const maxAttempts = onboardingForceStart ? 200 : 20;
       if (attempt < maxAttempts) {
         onboardingRetryTimer = window.setTimeout(() => showChipStep(attempt + 1), onboardingForceStart ? 250 : 120);
@@ -288,8 +342,152 @@ export const createMapOnboardingTour = ({
     }
     onboardingStep = "change";
     stepOverlay.classList.remove("hidden");
-    renderTourCard("You can even see change over time mapped out.", { label: "Done", onClick: dismissTour });
+    renderTourCard(
+      "You can even see change over time mapped out.",
+      {
+        label: "Next",
+        onClick: () => {
+          closeSelectedStatDropdown();
+          showShowingTriggerStep();
+        },
+      },
+      { label: "Dismiss", onClick: dismissTour },
+    );
     positionTourStep(target);
+  };
+
+  const showShowingTriggerStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    closeSelectedStatDropdown();
+    const target = getShowingChipTarget();
+    if (!target) {
+      if (attempt < (onboardingForceStart ? 120 : 16)) {
+        onboardingRetryTimer = window.setTimeout(() => showShowingTriggerStep(attempt + 1), 120);
+      } else {
+        showChangeStep();
+      }
+      return;
+    }
+    onboardingStep = "showingTrigger";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "Click the Showing... button to change your map's appearance.",
+      {
+        label: "Next",
+        onClick: () => {
+          if (!openShowingPanel()) return;
+          showShowingExtremasStep();
+        },
+      },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showShowingExtremasStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    if (!openShowingPanel()) {
+      if (attempt < 24) {
+        onboardingRetryTimer = window.setTimeout(() => showShowingExtremasStep(attempt + 1), 100);
+      } else {
+        showShowingTriggerStep();
+      }
+      return;
+    }
+    const target = getShowingExtremasTarget();
+    if (!target) {
+      if (attempt < 24) {
+        onboardingRetryTimer = window.setTimeout(() => showShowingExtremasStep(attempt + 1), 100);
+      } else {
+        showShowingTriggerStep();
+      }
+      return;
+    }
+    onboardingStep = "showingExtremas";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "Extremas are currently showing the highest and lowest values for various statistics on the map. Hover them on the map to see the greatest values for all Oklahoma, OKC, or Tulsa.",
+      { label: "Next", onClick: () => showShowingOrganizationsStep() },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showShowingOrganizationsStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    if (!openShowingPanel()) {
+      if (attempt < 24) {
+        onboardingRetryTimer = window.setTimeout(() => showShowingOrganizationsStep(attempt + 1), 100);
+      } else {
+        showShowingTriggerStep();
+      }
+      return;
+    }
+    const target = getShowingOrganizationsTarget();
+    if (!target) {
+      if (attempt < 24) {
+        onboardingRetryTimer = window.setTimeout(() => showShowingOrganizationsStep(attempt + 1), 100);
+      } else {
+        showShowingTriggerStep();
+      }
+      return;
+    }
+    onboardingStep = "showingOrganizations";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "Organizations shows organization points on the map (sourced from Google and ProPublica). Zoom in and hover or click them to see their details.",
+      { label: "Next", onClick: () => showShowingAreasStep() },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showShowingAreasStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    if (!openShowingPanel()) {
+      if (attempt < 24) {
+        onboardingRetryTimer = window.setTimeout(() => showShowingAreasStep(attempt + 1), 100);
+      } else {
+        showShowingTriggerStep();
+      }
+      return;
+    }
+    const target = getShowingAreasTarget();
+    if (!target) {
+      if (attempt < 24) {
+        onboardingRetryTimer = window.setTimeout(() => showShowingAreasStep(attempt + 1), 100);
+      } else {
+        showShowingTriggerStep();
+      }
+      return;
+    }
+    onboardingStep = "showingAreas";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "Areas determines the boundaries of your map areas, which defaults to changing as you zoom in. You can also fix it to ZIP, County, and more modes coming soon.",
+      { label: "Done", onClick: dismissTour },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const targetForStep = (step: OnboardingStep): HTMLElement | null => {
+    switch (step) {
+      case "chip":
+        return getSelectedStatChipTarget();
+      case "change":
+        return getChangeOptionTarget();
+      case "showingTrigger":
+        return getShowingChipTarget();
+      case "showingExtremas":
+        return getShowingExtremasTarget();
+      case "showingOrganizations":
+        return getShowingOrganizationsTarget();
+      case "showingAreas":
+        return getShowingAreasTarget();
+      default:
+        return null;
+    }
   };
 
   const startTourFlowFromBanner = () => {
@@ -299,7 +497,6 @@ export const createMapOnboardingTour = ({
   };
 
   const start = () => {
-    // Force-start should work even when user previously dismissed the tour.
     onboardingDismissed = false;
     hideTourStep();
     onboardingForceStart = false;
@@ -308,19 +505,23 @@ export const createMapOnboardingTour = ({
 
   const refresh = () => {
     if (!onboardingStep) return;
+    const currentStep = onboardingStep;
     if (onboardingPositionRaf !== null) {
       cancelAnimationFrame(onboardingPositionRaf);
     }
     onboardingPositionRaf = requestAnimationFrame(() => {
       onboardingPositionRaf = null;
-      if (onboardingStep === "chip") {
-        const target = getSelectedStatChipTarget();
-        if (target) positionTourStep(target);
-        return;
+      if (!currentStep) return;
+      if (
+        currentStep === "showingExtremas" ||
+        currentStep === "showingOrganizations" ||
+        currentStep === "showingAreas"
+      ) {
+        openShowingPanel();
       }
-      if (onboardingStep === "change") {
-        const target = getChangeOptionTarget();
-        if (target) positionTourStep(target);
+      const target = targetForStep(currentStep);
+      if (target) {
+        positionTourStep(target);
       }
     });
   };
@@ -349,4 +550,3 @@ export const createMapOnboardingTour = ({
 
   return { start, refresh, destroy };
 };
-
