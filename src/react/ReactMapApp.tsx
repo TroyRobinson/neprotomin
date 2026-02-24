@@ -312,6 +312,8 @@ export const ReactMapApp = () => {
   }));
   const [legendRangeMode, setLegendRangeMode] = useState<"dynamic" | "scoped" | "global">("scoped");
   const [mapSettingsOpen, setMapSettingsOpen] = useState(false);
+  const [helpMenuOpen, setHelpMenuOpen] = useState(false);
+  const helpMenuRef = useRef<HTMLDivElement | null>(null);
   const [viewportHeight, setViewportHeight] = useState(() => {
     if (typeof window === "undefined") return 0;
     const viewport = window.visualViewport;
@@ -326,6 +328,27 @@ export const ReactMapApp = () => {
       setStatDataSubscriptionEnabled(true);
     };
   }, [activeScreen]);
+
+  useEffect(() => {
+    if (!helpMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (helpMenuRef.current?.contains(target)) return;
+      setHelpMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setHelpMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [helpMenuOpen]);
+
   const [userLocation, setUserLocation] = useState<{ lng: number; lat: number } | null>(null);
   const [userLocationSource, setUserLocationSource] = useState<"device" | "search" | null>(null);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
@@ -2277,6 +2300,16 @@ export const ReactMapApp = () => {
     }
   }, [collapseSheet, isMobile]);
 
+  const handleStartTourFromHelpMenu = useCallback(() => {
+    setHelpMenuOpen(false);
+    mapControllerRef.current?.startOnboardingTour();
+  }, []);
+
+  const handleSubmitFeedbackFromHelpMenu = useCallback(() => {
+    // Placeholder action until a dedicated feedback flow is wired.
+    setHelpMenuOpen(false);
+  }, []);
+
   const handleOrganizationCreated = useCallback(
     (organization: { id: string; latitude: number; longitude: number }) => {
       setActiveScreen("map");
@@ -2795,7 +2828,7 @@ export const ReactMapApp = () => {
       "min-w-[2.5rem] flex-1 w-full", // Fill available space but maintain minimum width for icon
       userLocationError
         ? "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
-        : "border border-slate-200 bg-white text-slate-700 hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white",
+        : "border-[0.5px] border-white/60 bg-white/18 text-slate-700 ring-1 ring-white/45 backdrop-blur-md hover:border-brand-200/70 hover:bg-white/30 hover:text-brand-700 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-200 dark:ring-white/8 dark:hover:border-brand-400/50 dark:hover:bg-slate-900/38 dark:hover:text-white",
     ].join(" ");
     btn.disabled = isRequestingLocation;
     btn.setAttribute(
@@ -3954,7 +3987,75 @@ export const ReactMapApp = () => {
             />
             {/* Desktop-only overlay still shows the location button inline */}
             {!isMobile && (
-              <div className={["pointer-events-none absolute right-4 z-30"].join(" ")} style={{ bottom: 16 }}>
+              <div
+                className={["pointer-events-none absolute right-4 z-30 flex flex-col items-end gap-2"].join(" ")}
+                style={{ bottom: 16 }}
+              >
+                <div
+                  ref={helpMenuRef}
+                  className="pointer-events-auto relative"
+                  onMouseEnter={() => setHelpMenuOpen(true)}
+                  onMouseLeave={() => setHelpMenuOpen(false)}
+                  onFocusCapture={() => setHelpMenuOpen(true)}
+                  onBlurCapture={(event) => {
+                    const next = event.relatedTarget;
+                    if (next instanceof Node && event.currentTarget.contains(next)) return;
+                    setHelpMenuOpen(false);
+                  }}
+                >
+                  <button
+                    type="button"
+                    className={[
+                      "inline-flex h-10 w-10 items-center justify-center rounded-full text-base font-semibold shadow-sm transition",
+                      helpMenuOpen
+                        ? "border border-slate-100 bg-slate-50 text-slate-800 ring-1 ring-slate-100"
+                        : "border-[0.5px] border-white/60 bg-white/18 text-slate-700 ring-1 ring-white/45 backdrop-blur-md hover:border-brand-200/70 hover:bg-white/30 hover:text-brand-700 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-200 dark:ring-white/8 dark:hover:border-brand-400/50 dark:hover:bg-slate-900/38 dark:hover:text-white",
+                    ].join(" ")}
+                    aria-label="Help"
+                    aria-haspopup="menu"
+                    aria-expanded={helpMenuOpen}
+                    onClick={() => setHelpMenuOpen((prev) => !prev)}
+                  >
+                    ?
+                  </button>
+                  <div
+                    className={[
+                      "absolute bottom-0 right-full z-10 h-24 w-2",
+                      helpMenuOpen ? "pointer-events-auto" : "pointer-events-none",
+                    ].join(" ")}
+                    aria-hidden="true"
+                  />
+                  <div
+                    className={[
+                      "absolute bottom-0 right-full mr-2 w-44 rounded-xl p-2 shadow-lg transition",
+                      helpMenuOpen
+                        ? "border border-slate-100 bg-slate-50 ring-1 ring-slate-100"
+                        : "border border-white/60 bg-white/18 ring-1 ring-white/45 backdrop-blur-md dark:border-slate-500/35 dark:bg-slate-900/22 dark:ring-white/8",
+                      helpMenuOpen
+                        ? "pointer-events-auto translate-x-0 opacity-100"
+                        : "pointer-events-none translate-x-1 opacity-0",
+                    ].join(" ")}
+                    role="menu"
+                    aria-label="Help menu"
+                  >
+                    <button
+                      type="button"
+                      className="block w-full rounded-md px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-white focus-visible:bg-white dark:text-slate-200 dark:hover:bg-white dark:hover:text-slate-900 dark:focus-visible:bg-white dark:focus-visible:text-slate-900"
+                      role="menuitem"
+                      onClick={handleSubmitFeedbackFromHelpMenu}
+                    >
+                      Submit Feedback
+                    </button>
+                    <button
+                      type="button"
+                      className="mt-1 block w-full rounded-md px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-white focus-visible:bg-white dark:text-slate-200 dark:hover:bg-white dark:hover:text-slate-900 dark:focus-visible:bg-white dark:focus-visible:text-slate-900"
+                      role="menuitem"
+                      onClick={handleStartTourFromHelpMenu}
+                    >
+                      Start Tour
+                    </button>
+                  </div>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -3974,7 +4075,7 @@ export const ReactMapApp = () => {
                     "pointer-events-auto inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
                     userLocationError
                       ? "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
-                      : "border border-slate-200 bg-white text-slate-700 hover:border-brand-200 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white",
+                      : "border-[0.5px] border-white/60 bg-white/18 text-slate-700 ring-1 ring-white/45 backdrop-blur-md hover:border-brand-200/70 hover:bg-white/30 hover:text-brand-700 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-200 dark:ring-white/8 dark:hover:border-brand-400/50 dark:hover:bg-slate-900/38 dark:hover:text-white",
                   ].join(" ")}
                   aria-label={isRequestingLocation ? "Locating..." : userLocationError ? userLocationError : userLocation ? "Zoom" : "My Location"}
                 >
