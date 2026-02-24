@@ -47,6 +47,7 @@ import { ensureOrganizationLayers } from "./layers/organizations";
 import { setClusterHighlight as extSetClusterHighlight, setClusterHighlights as extSetClusterHighlights } from "./organizationsHighlight";
 import { wireVisibleIds } from "./visibilityTracker";
 import { getAreaRegistryEntry, type AreaLayerIds } from "./areas/registry";
+import { MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS } from "./constants/mapTourTargets";
 import {
   ensureZctasForViewport,
   ensureZctaChunks,
@@ -1672,6 +1673,7 @@ export const createMapView = ({
   choroplethLegend = createChoroplethLegend(isMobile, () => {
     try { onLegendSettingsClick?.(); } catch {}
   });
+  choroplethLegend.pill.setAttribute(MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS.legend);
   legendRowEl.appendChild(choroplethLegend.element);
   // Only render the org legend on non-mobile to reduce visual noise
   if (!isMobile) {

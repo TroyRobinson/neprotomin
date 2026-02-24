@@ -11,4 +11,6 @@ export const MAP_TOUR_TARGETS = {
   showingOrganizations: "map-showing-organizations",
   showingExtremas: "map-showing-extremas",
   showingAreas: "map-showing-areas",
+  shareChip: "map-share-chip",
+  legend: "map-legend",
 } as const;

@@ -1078,6 +1078,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   exportChipContainer.style.display = isMobile ? "none" : "";
 
   exportChipBtn.type = "button";
+  exportChipBtn.setAttribute(MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS.shareChip);
   exportChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${SHOWING_CHIP_CLASSES} pr-2`;
   exportChipBtn.setAttribute("aria-haspopup", "dialog");
   exportChipBtn.setAttribute("aria-expanded", "false");

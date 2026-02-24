@@ -28,7 +28,11 @@ type OnboardingStep =
   | "showingTrigger"
   | "showingExtremas"
   | "showingOrganizations"
-  | "showingAreas";
+  | "showingAreas"
+  | "share"
+  | "searchMenu"
+  | "myLocation"
+  | "legend";
 
 const targetSelector = (target: string): string => `[${MAP_TOUR_TARGET_ATTR}="${target}"]`;
 
@@ -43,6 +47,8 @@ const isVisibleTarget = (target: HTMLElement | null): target is HTMLElement => {
   if (target.classList.contains("hidden")) return false;
   return target.getClientRects().length > 0;
 };
+
+type LocalRect = { left: number; top: number; right: number; bottom: number };
 
 export const createMapOnboardingTour = ({
   container,
@@ -172,6 +178,75 @@ export const createMapOnboardingTour = ({
     return isVisibleTarget(target) ? target : null;
   };
 
+  const getShareChipTarget = (): HTMLElement | null => {
+    const target = targetRoot.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.shareChip));
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getLegendTarget = (): HTMLElement | null => {
+    const target =
+      container.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.legend)) ??
+      targetRoot.ownerDocument?.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.legend)) ??
+      null;
+    return isVisibleTarget(target) ? target : null;
+  };
+
+  const getSharePanelTarget = (): HTMLElement | null => {
+    const shareBtn = getShareChipTarget();
+    if (!shareBtn) return null;
+    const panel = shareBtn.parentElement
+      ? shareBtn.parentElement.querySelector<HTMLElement>('[role="dialog"][aria-label="Share options"]')
+      : null;
+    return isVisibleTarget(panel) ? panel : null;
+  };
+
+  const getSearchBarTarget = (): HTMLElement | null => {
+    const doc = targetRoot.ownerDocument;
+    if (!doc) return null;
+    const input = doc.querySelector<HTMLInputElement>('input[placeholder="Stats, orgs, cities, zips, addresses..."]');
+    const menuBtn = Array.from(doc.querySelectorAll<HTMLButtonElement>("button[title]")).find((button) => {
+      const title = (button.getAttribute("title") ?? "").trim().toLowerCase();
+      return (
+        title.includes("sidebar") &&
+        (title.includes("expand") || title.includes("collapse")) &&
+        isVisibleTarget(button)
+      );
+    });
+    const visibleInput = input && isVisibleTarget(input) ? input : null;
+    const visibleMenuBtn = menuBtn && isVisibleTarget(menuBtn) ? menuBtn : null;
+    if (visibleInput && visibleMenuBtn) {
+      let row: HTMLElement | null = visibleInput.parentElement;
+      while (row && !row.contains(visibleMenuBtn)) {
+        row = row.parentElement;
+      }
+      if (isVisibleTarget(row)) return row;
+    }
+    return visibleInput ?? visibleMenuBtn ?? null;
+  };
+
+  const getMyLocationTarget = (): HTMLElement | null => {
+    const doc = targetRoot.ownerDocument;
+    if (!doc) return null;
+    const candidates = Array.from(doc.querySelectorAll<HTMLButtonElement>("button"));
+    for (const button of candidates) {
+      if (!isVisibleTarget(button)) continue;
+      const ariaLabel = (button.getAttribute("aria-label") ?? "").trim();
+      const text = (button.textContent ?? "").trim();
+      if (ariaLabel === "Zoom to location") continue;
+      if (
+        ariaLabel === "My Location" ||
+        ariaLabel === "Locating..." ||
+        ariaLabel === "Zoom" ||
+        text === "My Location" ||
+        text === "Locating..." ||
+        text === "Zoom"
+      ) {
+        return button;
+      }
+    }
+    return null;
+  };
+
   const openSelectedStatDropdown = (): boolean => {
     const chipBtn = getSelectedStatChipTarget() as HTMLButtonElement | null;
     if (!chipBtn) return false;
@@ -208,6 +283,25 @@ export const createMapOnboardingTour = ({
     }
   };
 
+  const openSharePanel = (): boolean => {
+    const shareBtn = getShareChipTarget() as HTMLButtonElement | null;
+    if (!shareBtn) return false;
+    if (shareBtn.getAttribute("aria-expanded") !== "true") {
+      shareBtn.click();
+    }
+    return shareBtn.getAttribute("aria-expanded") === "true";
+  };
+
+  const closeSharePanel = () => {
+    const shareBtn = targetRoot.querySelector<HTMLButtonElement>(targetSelector(MAP_TOUR_TARGETS.shareChip));
+    if (!shareBtn) return;
+    if (shareBtn.getAttribute("aria-expanded") !== "true") return;
+    shareBtn.click();
+    if (shareBtn.getAttribute("aria-expanded") === "true") {
+      shareBtn.click();
+    }
+  };
+
   const hideTourStep = () => {
     onboardingStep = null;
     onboardingForceStart = false;
@@ -219,6 +313,7 @@ export const createMapOnboardingTour = ({
     }
     closeSelectedStatDropdown();
     closeShowingPanel();
+    closeSharePanel();
   };
 
   const positionTourStep = (target: HTMLElement) => {
@@ -243,17 +338,94 @@ export const createMapOnboardingTour = ({
     stepCard.style.maxWidth = `${Math.max(220, Math.min(352, containerRect.width - insetPad * 2))}px`;
 
     const cardRect = stepCard.getBoundingClientRect();
-    let cardTop = highlightTop + highlightHeight + 10;
-    if (cardTop + cardRect.height > containerRect.height - insetPad) {
-      cardTop = Math.max(insetPad, highlightTop - cardRect.height - 10);
-    }
-    let cardLeft = highlightLeft;
-    if (cardLeft + cardRect.width > containerRect.width - insetPad) {
-      cardLeft = Math.max(insetPad, containerRect.width - cardRect.width - insetPad);
+    const cardWidth = cardRect.width;
+    const cardHeight = cardRect.height;
+
+    const clampLeft = (left: number): number => {
+      const maxLeft = Math.max(insetPad, containerRect.width - cardWidth - insetPad);
+      return Math.min(Math.max(left, insetPad), maxLeft);
+    };
+    const clampTop = (top: number): number => {
+      const maxTop = Math.max(insetPad, containerRect.height - cardHeight - insetPad);
+      return Math.min(Math.max(top, insetPad), maxTop);
+    };
+
+    const getLocalRect = (rect: DOMRect): LocalRect => ({
+      left: rect.left - containerRect.left,
+      top: rect.top - containerRect.top,
+      right: rect.right - containerRect.left,
+      bottom: rect.bottom - containerRect.top,
+    });
+
+    // Always avoid covering the highlighted target itself when placing the card.
+    const avoidRects: LocalRect[] = [
+      {
+        left: highlightLeft,
+        top: highlightTop,
+        right: highlightLeft + highlightWidth,
+        bottom: highlightTop + highlightHeight,
+      },
+    ];
+    if (onboardingStep === "share") {
+      const sharePanel = getSharePanelTarget();
+      if (sharePanel) {
+        avoidRects.push(getLocalRect(sharePanel.getBoundingClientRect()));
+      }
     }
 
-    stepCard.style.left = `${cardLeft}px`;
-    stepCard.style.top = `${cardTop}px`;
+    const toCardRect = (left: number, top: number): LocalRect => ({
+      left,
+      top,
+      right: left + cardWidth,
+      bottom: top + cardHeight,
+    });
+
+    const intersectionArea = (a: LocalRect, b: LocalRect): number => {
+      const overlapLeft = Math.max(a.left, b.left);
+      const overlapTop = Math.max(a.top, b.top);
+      const overlapRight = Math.min(a.right, b.right);
+      const overlapBottom = Math.min(a.bottom, b.bottom);
+      if (overlapRight <= overlapLeft || overlapBottom <= overlapTop) return 0;
+      return (overlapRight - overlapLeft) * (overlapBottom - overlapTop);
+    };
+
+    const scoreCandidate = (left: number, top: number): number => {
+      if (avoidRects.length === 0) return 0;
+      const card = toCardRect(left, top);
+      return avoidRects.reduce((sum, avoid) => sum + intersectionArea(card, avoid), 0);
+    };
+
+    const candidates: Array<{ left: number; top: number }> = [];
+    const addCandidate = (left: number, top: number) => {
+      candidates.push({ left: clampLeft(left), top: clampTop(top) });
+    };
+
+    addCandidate(highlightLeft, highlightTop + highlightHeight + 10);
+    addCandidate(highlightLeft, highlightTop - cardHeight - 10);
+    addCandidate(highlightLeft + highlightWidth + 10, highlightTop);
+    addCandidate(highlightLeft - cardWidth - 10, highlightTop);
+
+    for (const avoid of avoidRects) {
+      addCandidate(highlightLeft, avoid.bottom + 10);
+      addCandidate(highlightLeft, avoid.top - cardHeight - 10);
+      addCandidate(avoid.right + 10, highlightTop);
+      addCandidate(avoid.left - cardWidth - 10, highlightTop);
+    }
+
+    let best = candidates[0] ?? { left: clampLeft(highlightLeft), top: clampTop(highlightTop + highlightHeight + 10) };
+    let bestScore = scoreCandidate(best.left, best.top);
+    for (let i = 1; i < candidates.length; i += 1) {
+      const next = candidates[i];
+      const nextScore = scoreCandidate(next.left, next.top);
+      if (nextScore < bestScore) {
+        best = next;
+        bestScore = nextScore;
+        if (bestScore === 0) break;
+      }
+    }
+
+    stepCard.style.left = `${best.left}px`;
+    stepCard.style.top = `${best.top}px`;
     stepCard.style.visibility = "visible";
   };
 
@@ -465,6 +637,112 @@ export const createMapOnboardingTour = ({
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       "Areas determines the boundaries of your map areas, which defaults to changing as you zoom in. You can also fix it to ZIP, County, and more modes coming soon.",
+      {
+        label: "Next",
+        onClick: () => {
+          closeShowingPanel();
+          showShareStep();
+        },
+      },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showShareStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    closeShowingPanel();
+    if (!openSharePanel()) {
+      if (attempt < 24) {
+        onboardingRetryTimer = window.setTimeout(() => showShareStep(attempt + 1), 100);
+      } else {
+        showShowingAreasStep();
+      }
+      return;
+    }
+    const target = getShareChipTarget();
+    if (!target) {
+      if (attempt < 24) {
+        onboardingRetryTimer = window.setTimeout(() => showShareStep(attempt + 1), 100);
+      } else {
+        showShowingAreasStep();
+      }
+      return;
+    }
+    onboardingStep = "share";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "Hover over Share to reveal its menu. When you have the map the way you want, copy the URL link, screenshot, or data to present to others you work with.",
+      {
+        label: "Next",
+        onClick: () => {
+          closeSharePanel();
+          showSearchMenuStep();
+        },
+      },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showSearchMenuStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    closeSharePanel();
+    const target = getSearchBarTarget();
+    if (!target) {
+      if (attempt < 24) {
+        onboardingRetryTimer = window.setTimeout(() => showSearchMenuStep(attempt + 1), 120);
+      } else {
+        showShareStep();
+      }
+      return;
+    }
+    onboardingStep = "searchMenu";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "The search bar allows you to pull up just the statistics or organizations you need or learn about specific zips, addresses, etc. Click the menu button to open the sidebar.",
+      { label: "Next", onClick: () => showMyLocationStep() },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showMyLocationStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    const target = getMyLocationTarget();
+    if (!target) {
+      if (attempt < 24) {
+        onboardingRetryTimer = window.setTimeout(() => showMyLocationStep(attempt + 1), 120);
+      } else {
+        showSearchMenuStep();
+      }
+      return;
+    }
+    onboardingStep = "myLocation";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "The My Location button will zoom to where you are now.",
+      { label: "Next", onClick: () => showLegendStep() },
+      { label: "Dismiss", onClick: dismissTour },
+    );
+    positionTourStep(target);
+  };
+
+  const showLegendStep = (attempt = 0) => {
+    clearOnboardingRetry();
+    const target = getLegendTarget();
+    if (!target) {
+      if (attempt < 24) {
+        onboardingRetryTimer = window.setTimeout(() => showLegendStep(attempt + 1), 120);
+      } else {
+        showMyLocationStep();
+      }
+      return;
+    }
+    onboardingStep = "legend";
+    stepOverlay.classList.remove("hidden");
+    renderTourCard(
+      "The legend shows the range of data for the current stat, represented by the color intensities (choropleth) on the map.",
       { label: "Done", onClick: dismissTour },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -485,6 +763,14 @@ export const createMapOnboardingTour = ({
         return getShowingOrganizationsTarget();
       case "showingAreas":
         return getShowingAreasTarget();
+      case "share":
+        return getShareChipTarget();
+      case "searchMenu":
+        return getSearchBarTarget();
+      case "myLocation":
+        return getMyLocationTarget();
+      case "legend":
+        return getLegendTarget();
       default:
         return null;
     }
@@ -518,6 +804,9 @@ export const createMapOnboardingTour = ({
         currentStep === "showingAreas"
       ) {
         openShowingPanel();
+      }
+      if (currentStep === "share") {
+        openSharePanel();
       }
       const target = targetForStep(currentStep);
       if (target) {
