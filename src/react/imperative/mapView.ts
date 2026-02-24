@@ -533,6 +533,8 @@ export const createMapView = ({
 
   let selectedCategory: string | null = null;
   let extremasVisible = getDomainDefaults().defaultExtremasVisible;
+  let runMapScreenshotCopy: (() => Promise<void>) | null = null;
+  let runMapScreenshotDownload: (() => Promise<void>) | null = null;
   const categoryChips = createCategoryChips({
     isMobile,
     onChange: (categoryId) => {
@@ -582,6 +584,14 @@ export const createMapView = ({
     },
     onTimeChipClick: () => { try { onTimeChipClick?.(); } catch {} },
     onTimeChipClear: () => { try { onTimeChipClear?.(); } catch {} },
+    onExportScreenshotCopy: async () => {
+      if (!runMapScreenshotCopy) throw new Error("Map export (copy) is not ready yet");
+      return runMapScreenshotCopy();
+    },
+    onExportScreenshotDownload: async () => {
+      if (!runMapScreenshotDownload) throw new Error("Map export (download) is not ready yet");
+      return runMapScreenshotDownload();
+    },
     onAreasModeChange: (mode) => {
       if (mode !== "auto") {
         setBoundaryMode(mode);
@@ -600,6 +610,32 @@ export const createMapView = ({
   container.appendChild(categoryChips.element);
   categoryChips.setAreasMode(initialAreasMode);
   categoryChips.setExtremasVisible(extremasVisible);
+
+  // Temporary export feedback banner shown for clipboard copy actions.
+  const exportToastEl = document.createElement("div");
+  exportToastEl.className =
+    "pointer-events-none absolute left-1/2 z-[30] hidden -translate-x-1/2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-lg backdrop-blur-md";
+  exportToastEl.style.top = isMobile ? "0.75rem" : "3.25rem";
+  exportToastEl.setAttribute("role", "status");
+  exportToastEl.setAttribute("aria-live", "polite");
+  container.appendChild(exportToastEl);
+  let exportToastHideTimer: number | null = null;
+  const showExportToast = (message: string, tone: "success" | "error" = "success") => {
+    exportToastEl.textContent = message;
+    exportToastEl.classList.remove("hidden");
+    exportToastEl.className =
+      "pointer-events-none absolute left-1/2 z-[30] -translate-x-1/2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-lg backdrop-blur-md " +
+      (tone === "success"
+        ? "border-emerald-200/80 bg-emerald-50/90 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-900/55 dark:text-emerald-200"
+        : "border-rose-200/80 bg-rose-50/90 text-rose-800 dark:border-rose-500/40 dark:bg-rose-900/55 dark:text-rose-200");
+    if (exportToastHideTimer !== null) {
+      window.clearTimeout(exportToastHideTimer);
+    }
+    exportToastHideTimer = window.setTimeout(() => {
+      exportToastHideTimer = null;
+      exportToastEl.classList.add("hidden");
+    }, 1800);
+  };
 
   // Loading indicator: bottom-center pill on desktop, top-right spinner on mobile
   const loadingIndicator = createMapLoadingIndicator({ isMobile });
@@ -1130,9 +1166,84 @@ export const createMapView = ({
     zoom: initialMapPosition?.zoom ?? OKLAHOMA_DEFAULT_ZOOM,
     attributionControl: false,
     fadeDuration: 0,
+    // Required for reliable canvas readback when exporting screenshots.
+    canvasContextAttributes: { preserveDrawingBuffer: true },
     boxZoom: false,
     maxBounds: OKLAHOMA_MAX_BOUNDS,
   });
+
+  const waitForExportFrame = () =>
+    new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+
+  const mapCanvasToPngBlob = async (): Promise<Blob> => {
+    await waitForExportFrame();
+    const canvas = map.getCanvas();
+    const blob = await new Promise<Blob | null>((resolve, reject) => {
+      try {
+        canvas.toBlob((nextBlob) => resolve(nextBlob), "image/png");
+      } catch (error) {
+        reject(error);
+      }
+    });
+    if (!blob) {
+      throw new Error("Canvas export returned no image data");
+    }
+    return blob;
+  };
+
+  const downloadExportBlob = (blob: Blob) => {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ne-map-${stamp}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 0);
+  };
+
+  const canWriteClipboardImage = () =>
+    typeof window !== "undefined" &&
+    window.isSecureContext &&
+    typeof ClipboardItem !== "undefined" &&
+    typeof navigator !== "undefined" &&
+    typeof navigator.clipboard?.write === "function";
+
+  const copyExportBlobToClipboard = async (blob: Blob) => {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        [blob.type || "image/png"]: blob,
+      }),
+    ]);
+  };
+
+  runMapScreenshotCopy = async () => {
+    try { map.triggerRepaint(); } catch {}
+    const blob = await mapCanvasToPngBlob();
+    if (!canWriteClipboardImage()) {
+      showExportToast("Clipboard image copy is not supported in this browser", "error");
+      throw new Error("Clipboard image write unsupported");
+    }
+    try {
+      await copyExportBlobToClipboard(blob);
+      showExportToast("Screenshot copied to clipboard", "success");
+    } catch (error) {
+      console.warn("Clipboard image write failed", error);
+      showExportToast("Couldn't copy screenshot to clipboard", "error");
+      throw error;
+    }
+  };
+
+  runMapScreenshotDownload = async () => {
+    try { map.triggerRepaint(); } catch {}
+    const blob = await mapCanvasToPngBlob();
+    downloadExportBlob(blob);
+  };
 
   if (poiDebugEnabled && typeof window !== "undefined") {
     (window as any).__poiDebugSnapshot = () => ({
@@ -5222,6 +5333,11 @@ export const createMapView = ({
     destroy: () => {
       clearZipPreviewHover();
       clearCountyPreviewHover();
+      if (exportToastHideTimer !== null) {
+        window.clearTimeout(exportToastHideTimer);
+        exportToastHideTimer = null;
+      }
+      exportToastEl.remove();
       hideOrgHoverTooltip();
       if (orgHoverTooltipRaf !== null) {
         cancelAnimationFrame(orgHoverTooltipRaf);

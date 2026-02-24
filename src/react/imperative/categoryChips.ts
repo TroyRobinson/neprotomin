@@ -80,6 +80,36 @@ const SETTINGS_ICON = `
   </svg>
 `;
 
+const EXPORT_ICON = `
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" class="h-3.5 w-3.5">
+    <path
+      d="M10 3.5v7m0 0L7.25 7.75M10 10.5l2.75-2.75M4 12.75v1.25A1.5 1.5 0 005.5 15.5h9A1.5 1.5 0 0016 14v-1.25"
+      stroke="currentColor"
+      stroke-width="1.4"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </svg>
+`;
+
+const IMAGE_ICON = `
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" class="h-3.5 w-3.5">
+    <path
+      d="M4.75 4.75h10.5a1 1 0 011 1v8.5a1 1 0 01-1 1H4.75a1 1 0 01-1-1v-8.5a1 1 0 011-1Z"
+      stroke="currentColor"
+      stroke-width="1.25"
+    />
+    <circle cx="7.25" cy="8" r="1.1" fill="currentColor" />
+    <path
+      d="m5.75 13 2.55-2.8a.8.8 0 011.17-.03l1.46 1.52.95-.95a.8.8 0 011.15.02L14.25 13"
+      stroke="currentColor"
+      stroke-width="1.25"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </svg>
+`;
+
 const CHECK_ICON = `
   <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-3.5 w-3.5">
     <path
@@ -176,6 +206,8 @@ interface CategoryChipsOptions {
   onTimeChipClick?: () => void;
   onTimeChipClear?: () => void;
   onAreasModeChange?: (mode: AreasChipMode) => void;
+  onExportScreenshotCopy?: () => Promise<void> | void;
+  onExportScreenshotDownload?: () => Promise<void> | void;
   /** Called when the sidebar expand button is clicked */
   onSidebarExpand?: () => void;
 }
@@ -238,6 +270,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   let searchInput: HTMLInputElement | null = null;
   let removeSearchOutsideHandler: (() => void) | null = null;
   let removeShowingOutsideHandler: (() => void) | null = null;
+  let removeExportOutsideHandler: (() => void) | null = null;
   let orgsChipVisible = false;
   let extremasVisible = true;
   let timeFilterAvailable = false;
@@ -523,10 +556,45 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   let showingPanelOpen = false;
   let showingPanelPinned = false;
 
+  const exportChipContainer = document.createElement("div");
+  const exportChipBtn = document.createElement("button");
+  const exportChipIcon = document.createElement("span");
+  const exportChipLabel = document.createElement("span");
+  const exportChipChevron = document.createElement("span");
+  const exportChipBridge = document.createElement("div");
+  const exportChipPanel = document.createElement("div");
+  const exportChipStack = document.createElement("div");
+  const exportScreenshotCopyBtn = document.createElement("button");
+  const exportScreenshotCopyBtnLabel = document.createElement("span");
+  const exportScreenshotDownloadBtn = document.createElement("button");
+  const exportScreenshotDownloadBtnLabel = document.createElement("span");
+  let exportPanelOpen = false;
+  let exportPanelPinned = false;
+  let exportActionBusy: "copy" | "download" | null = null;
+
   const clearShowingOutsideHandler = () => {
     if (!removeShowingOutsideHandler) return;
     removeShowingOutsideHandler();
     removeShowingOutsideHandler = null;
+  };
+
+  const clearExportOutsideHandler = () => {
+    if (!removeExportOutsideHandler) return;
+    removeExportOutsideHandler();
+    removeExportOutsideHandler = null;
+  };
+
+  // Flip the dropdown to open leftward when it would overflow the viewport on the right.
+  const positionChipPanel = (panelEl: HTMLDivElement) => {
+    panelEl.style.left = "0";
+    panelEl.style.right = "auto";
+    if (typeof window === "undefined") return;
+    const rect = panelEl.getBoundingClientRect();
+    const viewportPadding = 8;
+    if (rect.width > 0 && rect.right > window.innerWidth - viewportPadding) {
+      panelEl.style.left = "auto";
+      panelEl.style.right = "0";
+    }
   };
 
   const closeShowingPanel = (config: { force?: boolean } = {}) => {
@@ -550,6 +618,26 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     closeAreasMenu();
   };
 
+  const closeExportPanel = (config: { force?: boolean } = {}) => {
+    const force = config.force === true;
+    if (!exportPanelOpen) {
+      if (force) {
+        exportPanelPinned = false;
+        exportChipBridge.style.display = "none";
+        clearExportOutsideHandler();
+      }
+      return;
+    }
+    if (exportPanelPinned && !force) return;
+    exportPanelOpen = false;
+    exportPanelPinned = false;
+    exportChipBridge.style.display = "none";
+    exportChipPanel.classList.add("hidden");
+    exportChipBtn.setAttribute("aria-expanded", "false");
+    exportChipChevron.firstElementChild?.classList.remove("rotate-180");
+    clearExportOutsideHandler();
+  };
+
   const openShowingPanel = (config: { pinned?: boolean } = {}) => {
     const pinned = config.pinned === true;
     showingPanelPinned = pinned;
@@ -557,6 +645,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       showingPanelOpen = true;
       showingChipBridge.style.display = "";
       showingChipPanel.classList.remove("hidden");
+      positionChipPanel(showingChipPanel);
       showingChipBtn.setAttribute("aria-expanded", "true");
       showingChipChevron.firstElementChild?.classList.add("rotate-180");
     }
@@ -569,6 +658,31 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       };
       document.addEventListener("pointerdown", handlePointerDown, true);
       removeShowingOutsideHandler = () => {
+        document.removeEventListener("pointerdown", handlePointerDown, true);
+      };
+    }
+  };
+
+  const openExportPanel = (config: { pinned?: boolean } = {}) => {
+    const pinned = config.pinned === true;
+    exportPanelPinned = pinned;
+    if (!exportPanelOpen) {
+      exportPanelOpen = true;
+      exportChipBridge.style.display = "";
+      exportChipPanel.classList.remove("hidden");
+      positionChipPanel(exportChipPanel);
+      exportChipBtn.setAttribute("aria-expanded", "true");
+      exportChipChevron.firstElementChild?.classList.add("rotate-180");
+    }
+    clearExportOutsideHandler();
+    if (pinned) {
+      const handlePointerDown = (event: PointerEvent) => {
+        const target = event.target as Node | null;
+        if (target && exportChipContainer.contains(target)) return;
+        closeExportPanel({ force: true });
+      };
+      document.addEventListener("pointerdown", handlePointerDown, true);
+      removeExportOutsideHandler = () => {
         document.removeEventListener("pointerdown", handlePointerDown, true);
       };
     }
@@ -595,6 +709,77 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     event.preventDefault();
     closeShowingPanel({ force: true });
     showingChipBtn.blur();
+  };
+
+  const handleExportPointerEnter = () => openExportPanel();
+  const handleExportPointerLeave = () => closeExportPanel();
+  const handleExportFocusIn = () => openExportPanel();
+  const handleExportFocusOut = (event: FocusEvent) => {
+    const next = event.relatedTarget as Node | null;
+    if (next && exportChipContainer.contains(next)) return;
+    closeExportPanel();
+  };
+  const handleExportClick = (event: MouseEvent) => {
+    event.preventDefault();
+    if (exportPanelOpen && exportPanelPinned) {
+      closeExportPanel({ force: true });
+      return;
+    }
+    openExportPanel({ pinned: true });
+  };
+  const handleExportKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    closeExportPanel({ force: true });
+    exportChipBtn.blur();
+  };
+
+  const setExportActionBusy = (action: "copy" | "download" | null) => {
+    exportActionBusy = action;
+    const isBusy = action !== null;
+    exportScreenshotCopyBtn.disabled = isBusy;
+    exportScreenshotDownloadBtn.disabled = isBusy;
+    exportScreenshotCopyBtn.classList.toggle("opacity-70", isBusy);
+    exportScreenshotCopyBtn.classList.toggle("cursor-wait", isBusy);
+    exportScreenshotDownloadBtn.classList.toggle("opacity-70", isBusy);
+    exportScreenshotDownloadBtn.classList.toggle("cursor-wait", isBusy);
+    exportScreenshotCopyBtnLabel.textContent = action === "copy" ? "Screenshot: Copying..." : "Screenshot: Copy";
+    exportScreenshotDownloadBtnLabel.textContent =
+      action === "download" ? "Screenshot: Downloading..." : "Screenshot: Download";
+  };
+  const handleExportScreenshotCopyClick = async (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (exportActionBusy) return;
+    if (!options.onExportScreenshotCopy) {
+      console.warn("Map screenshot copy export unavailable");
+      return;
+    }
+    setExportActionBusy("copy");
+    try {
+      await options.onExportScreenshotCopy();
+    } catch (error) {
+      console.warn("Map screenshot copy export failed", error);
+    } finally {
+      setExportActionBusy(null);
+    }
+  };
+  const handleExportScreenshotDownloadClick = async (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (exportActionBusy) return;
+    if (!options.onExportScreenshotDownload) {
+      console.warn("Map screenshot download export unavailable");
+      return;
+    }
+    setExportActionBusy("download");
+    try {
+      await options.onExportScreenshotDownload();
+    } catch (error) {
+      console.warn("Map screenshot download failed", error);
+    } finally {
+      setExportActionBusy(null);
+    }
   };
 
   const getShowingSummaryState = (): {
@@ -744,6 +929,91 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   showingChipBtn.addEventListener("click", handleShowingClick);
   showingChipBtn.addEventListener("keydown", handleShowingKeyDown);
 
+  exportChipContainer.className = "relative pointer-events-auto";
+  exportChipContainer.style.display = isMobile ? "none" : "";
+
+  exportChipBtn.type = "button";
+  exportChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${SHOWING_CHIP_CLASSES} pr-2`;
+  exportChipBtn.setAttribute("aria-haspopup", "dialog");
+  exportChipBtn.setAttribute("aria-expanded", "false");
+  exportChipBtn.setAttribute("aria-label", "Export options");
+
+  exportChipIcon.className = "flex items-center text-slate-400 dark:text-slate-500";
+  exportChipIcon.innerHTML = EXPORT_ICON;
+  exportChipLabel.className = "whitespace-nowrap";
+  exportChipLabel.textContent = "Export";
+  exportChipChevron.className = "flex items-center text-slate-400 dark:text-slate-500";
+  exportChipChevron.innerHTML = CHEVRON_DOWN_ICON;
+
+  exportChipBtn.appendChild(exportChipIcon);
+  exportChipBtn.appendChild(exportChipLabel);
+  exportChipBtn.appendChild(exportChipChevron);
+
+  // Invisible hover bridge prevents collapse while moving from chip to panel.
+  exportChipBridge.className = "pointer-events-auto absolute left-0 top-full z-10 h-2 min-w-[12rem]";
+  exportChipBridge.style.display = "none";
+
+  exportChipPanel.className =
+    "absolute left-0 top-full z-20 mt-1 hidden min-w-[12rem] rounded-xl border border-slate-200/80 bg-white/90 p-1.5 shadow-lg backdrop-blur-md dark:border-slate-700/80 dark:bg-slate-900/90";
+  exportChipPanel.setAttribute("role", "dialog");
+  exportChipPanel.setAttribute("aria-label", "Export options");
+
+  exportChipStack.className = "flex flex-col gap-1.5";
+  exportScreenshotCopyBtn.type = "button";
+  exportScreenshotCopyBtn.className =
+    `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES} w-full justify-between px-2.5`;
+  exportScreenshotCopyBtn.title = "Copy a map screenshot to the clipboard";
+  const exportScreenshotCopyBtnLeft = document.createElement("span");
+  exportScreenshotCopyBtnLeft.className = "flex items-center gap-1.5";
+  const exportScreenshotCopyBtnIcon = document.createElement("span");
+  exportScreenshotCopyBtnIcon.className = "flex items-center text-slate-500 dark:text-slate-400";
+  exportScreenshotCopyBtnIcon.innerHTML = IMAGE_ICON;
+  exportScreenshotCopyBtnLeft.appendChild(exportScreenshotCopyBtnIcon);
+  exportScreenshotCopyBtnLabel.className = "whitespace-nowrap";
+  exportScreenshotCopyBtnLabel.textContent = "Screenshot: Copy";
+  exportScreenshotCopyBtnLeft.appendChild(exportScreenshotCopyBtnLabel);
+  exportScreenshotCopyBtn.appendChild(exportScreenshotCopyBtnLeft);
+  const exportScreenshotCopyBtnArrow = document.createElement("span");
+  exportScreenshotCopyBtnArrow.className = "flex items-center text-slate-400 dark:text-slate-500";
+  exportScreenshotCopyBtnArrow.innerHTML = ARROW_ICON;
+  exportScreenshotCopyBtn.appendChild(exportScreenshotCopyBtnArrow);
+  exportScreenshotCopyBtn.addEventListener("click", handleExportScreenshotCopyClick);
+  exportChipStack.appendChild(exportScreenshotCopyBtn);
+
+  exportScreenshotDownloadBtn.type = "button";
+  exportScreenshotDownloadBtn.className =
+    `${CATEGORY_CHIP_CLASSES} ${CATEGORY_CHIP_NEUTRAL_CLASSES} w-full justify-between px-2.5`;
+  exportScreenshotDownloadBtn.title = "Download a PNG screenshot of the map";
+  const exportScreenshotDownloadBtnLeft = document.createElement("span");
+  exportScreenshotDownloadBtnLeft.className = "flex items-center gap-1.5";
+  const exportScreenshotDownloadBtnIcon = document.createElement("span");
+  exportScreenshotDownloadBtnIcon.className = "flex items-center text-slate-500 dark:text-slate-400";
+  exportScreenshotDownloadBtnIcon.innerHTML = IMAGE_ICON;
+  exportScreenshotDownloadBtnLeft.appendChild(exportScreenshotDownloadBtnIcon);
+  exportScreenshotDownloadBtnLabel.className = "whitespace-nowrap";
+  exportScreenshotDownloadBtnLabel.textContent = "Screenshot: Download";
+  exportScreenshotDownloadBtnLeft.appendChild(exportScreenshotDownloadBtnLabel);
+  exportScreenshotDownloadBtn.appendChild(exportScreenshotDownloadBtnLeft);
+  const exportScreenshotDownloadBtnArrow = document.createElement("span");
+  exportScreenshotDownloadBtnArrow.className = "flex items-center text-slate-400 dark:text-slate-500";
+  exportScreenshotDownloadBtnArrow.innerHTML = ARROW_ICON;
+  exportScreenshotDownloadBtn.appendChild(exportScreenshotDownloadBtnArrow);
+  exportScreenshotDownloadBtn.addEventListener("click", handleExportScreenshotDownloadClick);
+  exportChipStack.appendChild(exportScreenshotDownloadBtn);
+  exportChipPanel.appendChild(exportChipStack);
+
+  exportChipContainer.appendChild(exportChipBtn);
+  exportChipContainer.appendChild(exportChipBridge);
+  exportChipContainer.appendChild(exportChipPanel);
+  list.appendChild(exportChipContainer);
+
+  exportChipContainer.addEventListener("pointerenter", handleExportPointerEnter);
+  exportChipContainer.addEventListener("pointerleave", handleExportPointerLeave);
+  exportChipContainer.addEventListener("focusin", handleExportFocusIn);
+  exportChipContainer.addEventListener("focusout", handleExportFocusOut);
+  exportChipBtn.addEventListener("click", handleExportClick);
+  exportChipBtn.addEventListener("keydown", handleExportKeyDown);
+
   areasChipBtn.addEventListener("click", () => {
     if (areasMenuOpen) closeAreasMenu();
     else openAreasMenu();
@@ -848,8 +1118,13 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     }
     if (showingChipContainer.style.display !== "none") {
       if (showingChipContainer.parentElement !== list) list.appendChild(showingChipContainer);
-      // Keep the combined Showing chip fixed as the right-most trailing control.
+      // Keep the combined Showing chip as a trailing control before Export.
       list.appendChild(showingChipContainer);
+    }
+    if (exportChipContainer.style.display !== "none") {
+      if (exportChipContainer.parentElement !== list) list.appendChild(exportChipContainer);
+      // Export is the right-most trailing control.
+      list.appendChild(exportChipContainer);
     }
   };
 
@@ -945,9 +1220,11 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     if (isMobile) {
       // Showing chip is desktop-only; on mobile we show only the time chip when available.
       showingChipContainer.style.display = "none";
+      exportChipContainer.style.display = "none";
       const showTime = orgsChipVisible && timeFilterAvailable;
       timeOpenChipBtn.style.display = showTime ? "" : "none";
       closeShowingPanel({ force: true });
+      closeExportPanel({ force: true });
       closeAreasMenu();
       return;
     }
@@ -957,6 +1234,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     const showShowingChip = !searchExpanded;
     showingChipContainer.style.display = showShowingChip ? "" : "none";
     if (!showShowingChip) closeShowingPanel({ force: true });
+    exportChipContainer.style.display = showShowingChip ? "" : "none";
+    if (!showShowingChip) closeExportPanel({ force: true });
 
     // Desktop UX: keep the map chip row cleaner by hiding the time chip entirely.
     timeOpenChipBtn.style.display = "none";
@@ -1688,12 +1967,21 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     showingChipContainer.removeEventListener("focusout", handleShowingFocusOut);
     showingChipBtn.removeEventListener("click", handleShowingClick);
     showingChipBtn.removeEventListener("keydown", handleShowingKeyDown);
+    exportChipContainer.removeEventListener("pointerenter", handleExportPointerEnter);
+    exportChipContainer.removeEventListener("pointerleave", handleExportPointerLeave);
+    exportChipContainer.removeEventListener("focusin", handleExportFocusIn);
+    exportChipContainer.removeEventListener("focusout", handleExportFocusOut);
+    exportChipBtn.removeEventListener("click", handleExportClick);
+    exportChipBtn.removeEventListener("keydown", handleExportKeyDown);
+    exportScreenshotCopyBtn.removeEventListener("click", handleExportScreenshotCopyClick);
+    exportScreenshotDownloadBtn.removeEventListener("click", handleExportScreenshotDownloadClick);
     extremasChipBtn.removeEventListener("click", handleExtremasChipClick);
     cleanupStatEntries();
     if (secondaryChipEntry) {
       secondaryChipEntry.btn.removeEventListener("click", secondaryChipEntry.handleClick);
     }
     clearShowingOutsideHandler();
+    clearExportOutsideHandler();
     if (removeSearchOutsideHandler) {
       removeSearchOutsideHandler();
       removeSearchOutsideHandler = null;
