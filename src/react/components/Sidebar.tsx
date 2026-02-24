@@ -140,6 +140,8 @@ interface SidebarProps {
   forceHideOrgsNonce?: number;
   // When incremented, force switch to Orgs tab and show orgs toggle
   forceShowOrgsNonce?: number;
+  // When incremented, force org pins on but keep the current tab
+  forceShowOrgsKeepTabNonce?: number;
   // Time selection for filtering organizations by availability
   timeSelection?: TimeSelection | null;
   // Callback to clear the time filter
@@ -223,6 +225,7 @@ export const Sidebar = ({
   className = "",
   forceHideOrgsNonce,
   forceShowOrgsNonce,
+  forceShowOrgsKeepTabNonce,
   timeSelection,
   onClearTimeFilter,
   onChangeTimeFilter,
@@ -1199,6 +1202,18 @@ export const Sidebar = ({
     lastForceShowNonceRef.current = forceShowOrgsNonce;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forceShowOrgsNonce]);
+
+  // Respond to external force-show requests that should not change the active tab.
+  const lastForceShowKeepTabNonceRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (typeof forceShowOrgsKeepTabNonce !== "number") return;
+    if (lastForceShowKeepTabNonceRef.current === forceShowOrgsKeepTabNonce) return;
+    if (lastForceShowKeepTabNonceRef.current !== undefined) {
+      setKeepOrgsOnMap(true);
+    }
+    lastForceShowKeepTabNonceRef.current = forceShowOrgsKeepTabNonce;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceShowOrgsKeepTabNonce]);
 
   useEffect(() => {
     if (!onTabChange) return;

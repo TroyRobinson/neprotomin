@@ -344,7 +344,8 @@ export const ReactMapApp = () => {
       if (!orgPinsVisibleRef.current) {
         foodAutoEnabledOrgsRef.current = true;
         setOrgPinsVisible(true);
-        setForceShowOrgsNonce((n) => n + 1);
+        // Keep the current sidebar tab (e.g., Stats) while restoring org pins.
+        setForceShowOrgsKeepTabNonce((n) => n + 1);
       } else {
         foodAutoEnabledOrgsRef.current = false;
       }
@@ -2148,6 +2149,7 @@ export const ReactMapApp = () => {
   // Nonce to force Sidebar switch to Statistics and hide orgs toggle
   const [forceHideOrgsNonce, setForceHideOrgsNonce] = useState(0);
   const [forceShowOrgsNonce, setForceShowOrgsNonce] = useState(0);
+  const [forceShowOrgsKeepTabNonce, setForceShowOrgsKeepTabNonce] = useState(0);
 
   const handleBrandClick = () => {
     // Reset all URL-driven state to defaults
@@ -3749,6 +3751,7 @@ export const ReactMapApp = () => {
                 onAddAreas={handleAddAreas}
                 forceHideOrgsNonce={forceHideOrgsNonce}
                 forceShowOrgsNonce={forceShowOrgsNonce}
+                forceShowOrgsKeepTabNonce={forceShowOrgsKeepTabNonce}
                 timeSelection={timeSelection}
                 onClearTimeFilter={handleClearTimeFilter}
                 onChangeTimeFilter={handleChangeTimeFilter}
@@ -4028,6 +4031,7 @@ export const ReactMapApp = () => {
                     onAddAreas={handleAddAreas}
                     forceHideOrgsNonce={forceHideOrgsNonce}
                     forceShowOrgsNonce={forceShowOrgsNonce}
+                    forceShowOrgsKeepTabNonce={forceShowOrgsKeepTabNonce}
                     timeSelection={timeSelection}
                     onClearTimeFilter={handleClearTimeFilter}
                     onChangeTimeFilter={handleChangeTimeFilter}
