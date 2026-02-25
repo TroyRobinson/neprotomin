@@ -43,7 +43,9 @@ import {
   MAP_TOUR_ADVANCED_STATS_PRESET,
   MAP_TOUR_APPLY_STATE_EVENT,
   MAP_TOUR_OPEN_FEEDBACK_EVENT,
+  MAP_TOUR_SET_STAT_EVENT,
   type MapTourApplyStateDetail,
+  type MapTourSetStatDetail,
 } from "./imperative/constants/mapTourEvents";
 type SupportedAreaKind = "ZIP" | "COUNTY";
 type ScreenName = "map" | "report" | "roadmap" | "data" | "queue" | "addOrg" | "admin";
@@ -2257,6 +2259,25 @@ export const ReactMapApp = () => {
       setActiveScreen("map");
       setSelectedStatId(detail.statId);
       setSecondaryStatId(null);
+      // Tour presets should start from a neutral filter state so map layers are deterministic.
+      setCategoryFilterWithSync(null);
+      setTimeSelection(null);
+      if (typeof detail.orgPinsVisible === "boolean") {
+        setOrgPinsVisible(detail.orgPinsVisible);
+      }
+      if (typeof detail.extremasVisible === "boolean") {
+        setExtremasVisible(detail.extremasVisible);
+      }
+      if (detail.areasMode) {
+        if (detail.areasMode === "auto") {
+          setBoundaryControlMode("auto");
+          setBoundaryMode("zips");
+        } else {
+          setBoundaryControlMode("manual");
+          setBoundaryMode(detail.areasMode);
+        }
+      }
+      setActiveOrganizationId(null);
       setShowAdvanced(detail.showAdvanced);
       setSidebarTab(detail.sidebarTab);
       setSidebarCollapsed(detail.sidebarCollapsed);
@@ -2266,8 +2287,6 @@ export const ReactMapApp = () => {
         demographicsVisible: detail.sidebarInsights.demographicsVisible,
         demographicsExpanded: detail.sidebarInsights.demographicsExpanded,
       });
-      setBoundaryMode("zips");
-      setBoundaryControlMode("auto");
       applyAreaSelection("ZIP", {
         selected: detail.selectedZips,
         pinned: [],
@@ -2301,9 +2320,19 @@ export const ReactMapApp = () => {
       applyTourState(custom.detail ?? MAP_TOUR_ADVANCED_STATS_PRESET);
     };
 
+    const handleTourSetStat = (event: Event) => {
+      const custom = event as CustomEvent<MapTourSetStatDetail | undefined>;
+      const statId = custom.detail?.statId?.trim();
+      if (!statId) return;
+      setSelectedStatId(statId);
+      setSecondaryStatId(null);
+    };
+
     window.addEventListener(MAP_TOUR_APPLY_STATE_EVENT, handleTourApplyState as EventListener);
+    window.addEventListener(MAP_TOUR_SET_STAT_EVENT, handleTourSetStat as EventListener);
     return () => {
       window.removeEventListener(MAP_TOUR_APPLY_STATE_EVENT, handleTourApplyState as EventListener);
+      window.removeEventListener(MAP_TOUR_SET_STAT_EVENT, handleTourSetStat as EventListener);
     };
   }, []);
 

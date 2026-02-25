@@ -9,7 +9,11 @@ import {
 import {
   MAP_TOUR_ADVANCED_STATS_PRESET,
   MAP_TOUR_APPLY_STATE_EVENT,
+  MAP_TOUR_EXTREMAS_PRESET,
   MAP_TOUR_OPEN_FEEDBACK_EVENT,
+  MAP_TOUR_ORGS_PRESET,
+  MAP_TOUR_SET_STAT_EVENT,
+  type MapTourApplyStateDetail,
 } from "../constants/mapTourEvents";
 
 export interface MapOnboardingTourController {
@@ -31,6 +35,9 @@ interface MapOnboardingTourOptions {
 
 const DEFAULT_DISMISSED_STORAGE_KEY = "ne.map.onboarding.dismissed.v1";
 const DEFAULT_PREFERRED_CHANGE_OPTION_LABEL = "Population (Change '21-23)";
+const TOUR_DEFAULT_STAT_ID = "8807bf0b-5a85-4a73-82f2-cd18c8140072";
+const TOUR_CHANGE_OVER_TIME_STAT_ID = "0a7081d7-1374-41a8-bd48-41bb3933957e";
+const TOUR_STATE_SETTLE_MS = 220;
 const TOUR_HIGHLIGHT_BORDER_COLOR = "#f15b41";
 const TOUR_HIGHLIGHT_GLOW_RGBA = "241, 91, 65";
 const TOUR_HIGHLIGHT_BASE_SHADOW = `0 0 0 4px rgba(${TOUR_HIGHLIGHT_GLOW_RGBA}, 0.22)`;
@@ -42,7 +49,6 @@ const TOUR_DISMISS_BUTTON_CLASS =
   "rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:text-slate-300 dark:hover:border-red-400/40 dark:hover:bg-red-500/10 dark:hover:text-red-200";
 
 type OnboardingStep =
-  | "chip"
   | "change"
   | "showingExtremas"
   | "showingOrganizations"
@@ -62,7 +68,6 @@ type OnboardingStep =
   | "brandLogo";
 
 const TOUR_STEP_SEQUENCE: readonly OnboardingStep[] = [
-  "chip",
   "change",
   "showingExtremas",
   "showingOrganizations",
@@ -124,8 +129,12 @@ export const createMapOnboardingTour = ({
   let restartHintFadeTimer: number | null = null;
   let helpMenuSuppressed = false;
   let onboardingForceStart = false;
+  let shareStepAutoCopyTriggered = false;
+  let myLocationStepAutoTriggered = false;
+  let brandLogoStepAutoTriggered = false;
   let autoPromptEnabled = initialAutoPromptEnabled;
   let onboardingDismissed = false;
+  let tourSelectedStatId: string | null = null;
   try {
     onboardingDismissed = window.localStorage.getItem(dismissedStorageKey) === "1";
   } catch {}
@@ -445,6 +454,15 @@ export const createMapOnboardingTour = ({
     return isVisibleTarget(panel) ? panel : null;
   };
 
+  const triggerShareLinkCopy = (): boolean => {
+    const panel = getSharePanelTarget();
+    if (!panel) return false;
+    const copyBtn = panel.querySelector<HTMLButtonElement>('button[title="Copy the current page URL and parameters"]');
+    if (!copyBtn || copyBtn.disabled) return false;
+    copyBtn.click();
+    return true;
+  };
+
   const getPrimaryStatMenuTarget = (): HTMLElement | null => {
     const target = targetRoot.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.primaryStatMenu));
     return isVisibleTarget(target) ? target : null;
@@ -531,6 +549,16 @@ export const createMapOnboardingTour = ({
     return showingBtn.getAttribute("aria-expanded") === "true";
   };
 
+  const ensureShowingOrganizationsVisible = (visible: boolean): boolean => {
+    const btn = getShowingOrganizationsTarget() as HTMLButtonElement | null;
+    if (!btn) return false;
+    const shouldBe = visible ? "true" : "false";
+    if (btn.getAttribute("aria-pressed") !== shouldBe) {
+      btn.click();
+    }
+    return btn.getAttribute("aria-pressed") === shouldBe;
+  };
+
   const closeShowingPanel = () => {
     const showingBtn = targetRoot.querySelector<HTMLButtonElement>(targetSelector(MAP_TOUR_TARGETS.showingChip));
     if (!showingBtn) return;
@@ -570,6 +598,16 @@ export const createMapOnboardingTour = ({
     return true;
   };
 
+  const closeSidebarPanel = (): boolean => {
+    const sidebarBtn = getSidebarToggleButton();
+    if (!sidebarBtn) return false;
+    const title = (sidebarBtn.getAttribute("title") ?? "").trim().toLowerCase();
+    if (title.includes("collapse")) {
+      sidebarBtn.click();
+    }
+    return true;
+  };
+
   const openSidebarOrgsTab = (): boolean => {
     const orgsBtn = getSidebarOrgsTabTarget() as HTMLButtonElement | null;
     if (!orgsBtn) return false;
@@ -588,10 +626,24 @@ export const createMapOnboardingTour = ({
     return Boolean(getSidebarCategoryMenuTarget());
   };
 
-  const applyAdvancedStatsPreset = () => {
+  const applyTourState = (detail: MapTourApplyStateDetail) => {
     window.dispatchEvent(
       new CustomEvent(MAP_TOUR_APPLY_STATE_EVENT, {
-        detail: MAP_TOUR_ADVANCED_STATS_PRESET,
+        detail,
+      }),
+    );
+  };
+
+  const applyAdvancedStatsPreset = () => {
+    applyTourState(MAP_TOUR_ADVANCED_STATS_PRESET);
+  };
+
+  const applyTourStat = (statId: string) => {
+    if (tourSelectedStatId === statId) return;
+    tourSelectedStatId = statId;
+    window.dispatchEvent(
+      new CustomEvent(MAP_TOUR_SET_STAT_EVENT, {
+        detail: { statId },
       }),
     );
   };
@@ -626,6 +678,7 @@ export const createMapOnboardingTour = ({
     onboardingCardPosition = null;
     setTourLock(null);
     setHelpMenuSuppressed(false);
+    applyTourStat(TOUR_DEFAULT_STAT_ID);
     closeSelectedStatDropdown();
     closeShowingPanel();
     closeSharePanel();
@@ -1113,42 +1166,10 @@ export const createMapOnboardingTour = ({
     next();
   };
 
-  const showChipStep = (attempt = 0) => {
-    clearOnboardingRetry();
-    setHelpMenuSuppressed(false);
-    const target = getSelectedStatChipTarget();
-    if (!target) {
-      const maxAttempts = onboardingForceStart ? 200 : 20;
-      if (attempt < maxAttempts) {
-        onboardingRetryTimer = window.setTimeout(() => showChipStep(attempt + 1), onboardingForceStart ? 250 : 120);
-      } else {
-        const forceWelcome = onboardingForceStart;
-        onboardingForceStart = false;
-        showWelcomeToast({ force: forceWelcome });
-      }
-      return;
-    }
-    onboardingStep = "chip";
-    onboardingForceStart = false;
-    stepOverlay.classList.remove("hidden");
-    renderTourCard(
-      "This is your currently selected statistic, defaulting to Population. Click for quick access to variations of the stat.",
-      {
-        label: "Next",
-        onClick: () => {
-          if (!openSelectedStatDropdown()) {
-            return;
-          }
-          showChangeStep();
-        },
-      },
-      { label: "Dismiss", onClick: dismissTour },
-    );
-    positionTourStep(target);
-  };
-
   const showChangeStep = (attempt = 0) => {
     clearOnboardingRetry();
+    applyTourStat(TOUR_CHANGE_OVER_TIME_STAT_ID);
+    openSelectedStatDropdown();
     const target = getChangeOptionTarget();
     if (!target) {
       if (attempt < (onboardingForceStart ? 120 : 12)) {
@@ -1162,7 +1183,7 @@ export const createMapOnboardingTour = ({
     setTourLock(MAP_TOUR_LOCKS.primaryStatMenu);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "You can even see change over time mapped out. Try it now! Click to switch the map stat.",
+      "Change your statistic on map. For example, population change over time.",
       {
         label: "Next",
         onClick: () => {
@@ -1178,6 +1199,12 @@ export const createMapOnboardingTour = ({
 
   const showShowingExtremasStep = (attempt = 0) => {
     clearOnboardingRetry();
+    applyTourStat(TOUR_DEFAULT_STAT_ID);
+    if (attempt === 0) {
+      applyTourState(MAP_TOUR_EXTREMAS_PRESET);
+      onboardingRetryTimer = window.setTimeout(() => showShowingExtremasStep(1), TOUR_STATE_SETTLE_MS);
+      return;
+    }
     setTourLock(null);
     closeSelectedStatDropdown();
     if (!openShowingPanel()) {
@@ -1201,7 +1228,7 @@ export const createMapOnboardingTour = ({
     setTourLock(MAP_TOUR_LOCKS.showingPanel);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Extremas are currently showing the highest and lowest values for various statistics on the map. Hover them on the map to see the greatest values for all Oklahoma, OKC, or Tulsa.",
+      "Extremas are currently showing the highest and lowest value locations for different statistics. Hover them on the map now to explore",
       { label: "Next", onClick: () => showShowingOrganizationsStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -1210,7 +1237,22 @@ export const createMapOnboardingTour = ({
 
   const showShowingOrganizationsStep = (attempt = 0) => {
     clearOnboardingRetry();
+    if (attempt === 0) {
+      applyTourState(MAP_TOUR_ORGS_PRESET);
+      onboardingRetryTimer = window.setTimeout(() => showShowingOrganizationsStep(1), TOUR_STATE_SETTLE_MS);
+      return;
+    }
     if (!openShowingPanel()) {
+      if (attempt < 24) {
+        onboardingRetryTimer = window.setTimeout(() => showShowingOrganizationsStep(attempt + 1), 100);
+      } else {
+        skipToNextStep("showingOrganizations", showShowingAreasStep);
+      }
+      return;
+    }
+    // Ensure organizations are actually toggled on before showing this step.
+    // This guards against occasional async state ordering where preset apply lags.
+    if (!ensureShowingOrganizationsVisible(true)) {
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShowingOrganizationsStep(attempt + 1), 100);
       } else {
@@ -1231,8 +1273,14 @@ export const createMapOnboardingTour = ({
     setTourLock(MAP_TOUR_LOCKS.showingPanel);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Organizations shows organization points on the map (sourced from Google and ProPublica). Click to turn on and then zoom in to org clusters and hover on or click org dots to see their details.",
-      { label: "Next", onClick: () => showShowingAreasStep() },
+      "Organizations appear as orange clusters and points on the map.",
+      {
+        label: "Next",
+        onClick: () => {
+          ensureShowingOrganizationsVisible(false);
+          showShowingAreasStep();
+        },
+      },
       { label: "Dismiss", onClick: dismissTour },
     );
     positionTourStep(target);
@@ -1240,6 +1288,9 @@ export const createMapOnboardingTour = ({
 
   const showShowingAreasStep = (attempt = 0) => {
     clearOnboardingRetry();
+    if (attempt === 0) {
+      ensureShowingOrganizationsVisible(false);
+    }
     if (!openShowingPanel()) {
       if (attempt < 24) {
         onboardingRetryTimer = window.setTimeout(() => showShowingAreasStep(attempt + 1), 100);
@@ -1261,7 +1312,7 @@ export const createMapOnboardingTour = ({
     setTourLock(MAP_TOUR_LOCKS.showingPanel);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Areas determines the boundaries of your map areas, which defaults to changing as you zoom in. You can also fix it to ZIP, County, and more modes coming soon.",
+      "Switch to ZIP or County boundaries only. Otherwise current zoom level controls this setting.",
       {
         label: "Next",
         onClick: () => {
@@ -1277,6 +1328,9 @@ export const createMapOnboardingTour = ({
 
   const showShareStep = (attempt = 0) => {
     clearOnboardingRetry();
+    if (attempt === 0) {
+      shareStepAutoCopyTriggered = false;
+    }
     setTourLock(null);
     closeShowingPanel();
     if (!openSharePanel()) {
@@ -1300,10 +1354,11 @@ export const createMapOnboardingTour = ({
     setTourLock(MAP_TOUR_LOCKS.sharePanel);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Hover over Share to reveal its menu. When you have the map the way you want, copy the URL link, screenshot, or data to present to others you work with.",
+      "Share your current map setup with others!",
       {
         label: "Next",
         onClick: () => {
+          shareStepAutoCopyTriggered = false;
           setTourLock(null);
           closeSharePanel();
           showMyLocationStep();
@@ -1311,6 +1366,18 @@ export const createMapOnboardingTour = ({
       },
       { label: "Dismiss", onClick: dismissTour },
     );
+    if (!shareStepAutoCopyTriggered) {
+      if (triggerShareLinkCopy()) {
+        shareStepAutoCopyTriggered = true;
+      } else {
+        window.setTimeout(() => {
+          if (onboardingStep !== "share" || shareStepAutoCopyTriggered) return;
+          if (triggerShareLinkCopy()) {
+            shareStepAutoCopyTriggered = true;
+          }
+        }, 80);
+      }
+    }
     positionTourStep(target);
   };
 
@@ -1318,6 +1385,7 @@ export const createMapOnboardingTour = ({
     clearOnboardingRetry();
     setTourLock(null);
     closeSharePanel();
+    closeSidebarPanel();
     const target = getSearchBarTarget();
     if (!target) {
       if (attempt < 24) {
@@ -1330,7 +1398,7 @@ export const createMapOnboardingTour = ({
     onboardingStep = "searchMenu";
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "The search bar allows you to pull up just the statistics or organizations you need or learn about specific zips, addresses, etc. Click the menu button to open the sidebar.",
+      "Search for stats, orgs, zips, or addresses. Click the three-lined hamburger menu icon now to browse options.",
       {
         label: "Next",
         onClick: () => {
@@ -1358,7 +1426,7 @@ export const createMapOnboardingTour = ({
     onboardingStep = "sidebarStatDetails";
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "In our sidebar, see our Statistic's details, including options to drill down on aspects of your selected stat.",
+      "Learn more about the active stat and click stat modification options.",
       { label: "Next", onClick: () => showAdvancedStatsStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -1369,6 +1437,8 @@ export const createMapOnboardingTour = ({
     clearOnboardingRetry();
     if (attempt === 0) {
       applyAdvancedStatsPreset();
+      onboardingRetryTimer = window.setTimeout(() => showAdvancedStatsStep(1), TOUR_STATE_SETTLE_MS);
+      return;
     }
     openSidebarPanel();
     const target = getAdvancedStatsPrimaryTarget();
@@ -1394,6 +1464,8 @@ export const createMapOnboardingTour = ({
     clearOnboardingRetry();
     if (attempt === 0) {
       applyAdvancedStatsPreset();
+      onboardingRetryTimer = window.setTimeout(() => showSidebarAddAreasStep(1), TOUR_STATE_SETTLE_MS);
+      return;
     }
     openSidebarPanel();
     const target = getSidebarAddAreasTarget();
@@ -1541,6 +1613,9 @@ export const createMapOnboardingTour = ({
 
   const showMyLocationStep = (attempt = 0) => {
     clearOnboardingRetry();
+    if (attempt === 0) {
+      myLocationStepAutoTriggered = false;
+    }
     setHelpMenuSuppressed(true);
     const target = getMyLocationTarget();
     if (!target) {
@@ -1553,8 +1628,12 @@ export const createMapOnboardingTour = ({
     }
     onboardingStep = "myLocation";
     stepOverlay.classList.remove("hidden");
+    if (!myLocationStepAutoTriggered && target instanceof HTMLButtonElement) {
+      target.click();
+      myLocationStepAutoTriggered = true;
+    }
     renderTourCard(
-      "The My Location button will zoom to where you are now.",
+      "Zoom to your current location",
       { label: "Next", onClick: () => showLegendStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -1576,7 +1655,7 @@ export const createMapOnboardingTour = ({
     onboardingStep = "legend";
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "The legend shows the range of data for the current stat, represented by the color intensities (choropleth) on the map. Click for advanced map settings.",
+      "Shows the highest and lowest values possible for your active statistic.",
       { label: "Next", onClick: () => showBrandLogoStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -1585,6 +1664,9 @@ export const createMapOnboardingTour = ({
 
   const showBrandLogoStep = (attempt = 0) => {
     clearOnboardingRetry();
+    if (attempt === 0) {
+      brandLogoStepAutoTriggered = false;
+    }
     setHelpMenuSuppressed(false);
     const target = getBrandLogoTarget();
     if (!target) {
@@ -1597,8 +1679,12 @@ export const createMapOnboardingTour = ({
     }
     onboardingStep = "brandLogo";
     stepOverlay.classList.remove("hidden");
+    if (!brandLogoStepAutoTriggered) {
+      target.click();
+      brandLogoStepAutoTriggered = true;
+    }
     renderTourCard(
-      "Click the NE logo to refresh the map & everything back to defaults.",
+      "Click the NE App's logo in the top left corner to refresh the map & everything back to defaults.",
       { label: "Next", onClick: () => showSearchMenuStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -1607,9 +1693,6 @@ export const createMapOnboardingTour = ({
 
   const showStepByKey = (step: OnboardingStep) => {
     switch (step) {
-      case "chip":
-        showChipStep();
-        return;
       case "change":
         showChangeStep();
         return;
@@ -1676,8 +1759,6 @@ export const createMapOnboardingTour = ({
 
   const targetForStep = (step: OnboardingStep): HTMLElement | null => {
     switch (step) {
-      case "chip":
-        return getSelectedStatChipTarget();
       case "change":
         return getChangeOptionTarget();
       case "showingExtremas":
@@ -1722,7 +1803,7 @@ export const createMapOnboardingTour = ({
     hideRestartHintToast();
     hideWelcomeToast();
     onboardingForceStart = true;
-    showChipStep();
+    showChangeStep();
   };
 
   const start = () => {
@@ -1731,7 +1812,7 @@ export const createMapOnboardingTour = ({
     clearOnboardingDismissed();
     hideTourStep();
     onboardingForceStart = true;
-    showChipStep();
+    showChangeStep();
   };
 
   const showIntro = () => {
@@ -1823,12 +1904,40 @@ export const createMapOnboardingTour = ({
     }, 90);
   };
 
+  const jumpToOrganizationsStepOnClick = (event: MouseEvent) => {
+    if (!onboardingStep || onboardingStep === "showingOrganizations") return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const orgButton = target.closest(targetSelector(MAP_TOUR_TARGETS.showingOrganizations));
+    if (!orgButton) return;
+    window.setTimeout(() => {
+      if (!onboardingStep || onboardingStep === "showingOrganizations") return;
+      showShowingOrganizationsStep();
+    }, 0);
+  };
+
+  const jumpToAreasStepOnOptionClick = (event: MouseEvent) => {
+    if (!onboardingStep || onboardingStep === "showingAreas") return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const option = target.closest<HTMLElement>("[data-areas-mode]");
+    if (!option) return;
+    const inAreasMenu = option.closest(targetSelector(MAP_TOUR_TARGETS.showingAreasMenu));
+    if (!inAreasMenu) return;
+    window.setTimeout(() => {
+      if (!onboardingStep || onboardingStep === "showingAreas") return;
+      showShowingAreasStep();
+    }, 0);
+  };
+
   dismissWelcomeBtn.addEventListener("click", dismissTour);
   startTourBtn.addEventListener("click", startTourFlowFromBanner);
   window.addEventListener("resize", refresh);
   window.addEventListener("pointerup", refresh, true);
   window.addEventListener("keyup", refresh, true);
   window.addEventListener("click", advanceSearchMenuOnSidebarToggleClick, true);
+  window.addEventListener("click", jumpToOrganizationsStepOnClick, true);
+  window.addEventListener("click", jumpToAreasStepOnOptionClick, true);
 
   if (autoPromptEnabled && !onboardingDismissed) {
     showWelcomeToast();
@@ -1848,6 +1957,8 @@ export const createMapOnboardingTour = ({
     window.removeEventListener("pointerup", refresh, true);
     window.removeEventListener("keyup", refresh, true);
     window.removeEventListener("click", advanceSearchMenuOnSidebarToggleClick, true);
+    window.removeEventListener("click", jumpToOrganizationsStepOnClick, true);
+    window.removeEventListener("click", jumpToAreasStepOnOptionClick, true);
     hideTourStep();
     welcomeToast.remove();
     restartHintToast.remove();
