@@ -4023,9 +4023,12 @@ export const ReactMapApp = () => {
               initialMapPosition={initialMapPosition}
               zoomOutRequestNonce={zoomOutNonce}
               clearMapCategoryNonce={clearMapCategoryNonce}
-              onRequestHideOrgs={() => {
+              onRequestHideOrgs={(nextVisible) => {
                 setOrgPinsVisible((prev) => {
-                  const next = !prev;
+                  const next = typeof nextVisible === "boolean" ? nextVisible : !prev;
+                  if (next === prev) {
+                    return prev;
+                  }
                   if (next) {
                     setForceShowOrgsNonce((n) => n + 1);
                   } else {

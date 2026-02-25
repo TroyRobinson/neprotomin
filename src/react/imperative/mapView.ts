@@ -102,7 +102,7 @@ interface MapViewOptions {
   ) => void;
   isMobile?: boolean;
   onLocationSearch?: (query: string) => void;
-  onRequestHideOrgs?: () => void;
+  onRequestHideOrgs?: (nextVisible: boolean) => void;
   onExtremasVisibilityChange?: (visible: boolean) => void;
   onTimeChipClick?: () => void;
   onTimeChipClear?: () => void;
@@ -589,7 +589,9 @@ export const createMapView = ({
         onSecondaryStatChange(secondaryStatId);
       }
     },
-    onOrgsChipClose: () => { try { onRequestHideOrgs?.(); } catch {} },
+    onOrgsChipClose: (nextVisible) => {
+      try { onRequestHideOrgs?.(nextVisible); } catch {}
+    },
     onExtremasToggle: () => {
       const next = !extremasVisible;
       if (typeof onExtremasVisibilityChange === "function") {

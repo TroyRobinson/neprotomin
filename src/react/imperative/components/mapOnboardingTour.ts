@@ -289,6 +289,11 @@ export const createMapOnboardingTour = ({
     return isVisibleTarget(target) ? target : null;
   };
 
+  // This toggle may live in a hidden panel; query without visibility checks for reliable cleanup.
+  const getShowingOrganizationsButton = (): HTMLButtonElement | null => {
+    return targetRoot.querySelector<HTMLButtonElement>(targetSelector(MAP_TOUR_TARGETS.showingOrganizations));
+  };
+
   const getShowingAreasTarget = (): HTMLElement | null => {
     const target = targetRoot.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.showingAreas));
     return isVisibleTarget(target) ? target : null;
@@ -550,7 +555,7 @@ export const createMapOnboardingTour = ({
   };
 
   const ensureShowingOrganizationsVisible = (visible: boolean): boolean => {
-    const btn = getShowingOrganizationsTarget() as HTMLButtonElement | null;
+    const btn = getShowingOrganizationsButton();
     if (!btn) return false;
     const shouldBe = visible ? "true" : "false";
     if (btn.getAttribute("aria-pressed") !== shouldBe) {
@@ -657,6 +662,9 @@ export const createMapOnboardingTour = ({
   };
 
   const hideTourStep = () => {
+    if (onboardingStep === "showingOrganizations") {
+      ensureShowingOrganizationsVisible(false);
+    }
     highlightFlashAnimation?.cancel();
     secondaryHighlightFlashAnimation?.cancel();
     highlightFlashAnimation = null;
@@ -1162,6 +1170,9 @@ export const createMapOnboardingTour = ({
   // If a step target never appears, continue forward so the tour never gets stuck in a loop.
   const skipToNextStep = (step: OnboardingStep, next: () => void) => {
     console.warn(`[tour] Skipping step "${step}" because its target is unavailable.`);
+    if (step === "showingOrganizations") {
+      ensureShowingOrganizationsVisible(false);
+    }
     setTourLock(null);
     next();
   };
@@ -1751,6 +1762,9 @@ export const createMapOnboardingTour = ({
 
   const showPreviousStep = () => {
     if (!onboardingStep) return;
+    if (onboardingStep === "showingOrganizations") {
+      ensureShowingOrganizationsVisible(false);
+    }
     const currentIndex = TOUR_STEP_SEQUENCE.indexOf(onboardingStep);
     if (currentIndex <= 0) return;
     const previous = TOUR_STEP_SEQUENCE[currentIndex - 1];

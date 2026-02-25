@@ -21,7 +21,7 @@ interface MapLibreMapProps {
   // When incremented, explicitly clear the map's category chips
   clearMapCategoryNonce?: number;
   // Request from map chip to toggle organization pin visibility.
-  onRequestHideOrgs?: () => void;
+  onRequestHideOrgs?: (nextVisible?: boolean) => void;
   onExtremasVisibleChange?: (visible: boolean) => void;
   onTimeChipClick?: () => void;
   boundaryMode?: BoundaryMode;
@@ -273,8 +273,8 @@ export const MapLibreMap = ({
       onOrganizationClick: (id, meta) => onOrganizationClickRef.current?.(id, meta),
       onClusterClick: (ids, meta) => onClusterClickRef.current?.(ids, meta),
       isMobile,
-      onRequestHideOrgs: () => {
-        try { onRequestHideOrgs?.(); } catch {}
+      onRequestHideOrgs: (nextVisible) => {
+        try { onRequestHideOrgs?.(nextVisible); } catch {}
       },
       onExtremasVisibilityChange: (visible) => {
         try { onExtremasVisibleChangeRef.current?.(visible); } catch {}

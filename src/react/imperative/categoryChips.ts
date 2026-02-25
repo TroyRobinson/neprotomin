@@ -246,7 +246,7 @@ interface CategoryChipsOptions {
   onSecondaryStatChange?: (statId: string | null) => void;
   isMobile?: boolean;
   onSearch?: (query: string) => void;
-  onOrgsChipClose?: () => void;
+  onOrgsChipClose?: (nextVisible: boolean) => void;
   onExtremasToggle?: () => void;
   onTimeChipClick?: () => void;
   onTimeChipClear?: () => void;
@@ -367,7 +367,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   orgsChipBtn.appendChild(orgsClose);
   updateOrgsChipState();
   orgsChipBtn.addEventListener("click", () => {
-    options.onOrgsChipClose?.();
+    options.onOrgsChipClose?.(!orgsChipVisible);
   });
 
   const extremasChipBtn = document.createElement("button");
