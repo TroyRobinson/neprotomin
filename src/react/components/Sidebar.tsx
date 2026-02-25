@@ -924,6 +924,7 @@ export const Sidebar = ({
       <div className="flex items-center justify-between">
         <button
           type="button"
+          data-ne-tour-target={MAP_TOUR_TARGETS.sidebarHoursFilter}
           onClick={onChangeTimeFilter}
           disabled={!onChangeTimeFilter}
           className={`-mx-2 -my-1 flex flex-1 items-center gap-2 rounded-md px-2 py-1 text-left disabled:cursor-default ${

@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import type { CombinedDemographicsSnapshot, BreakdownGroup } from "../hooks/useDemographics";
 import { getCountyIdByName } from "../../lib/countyCentroids";
 import { MAP_TOUR_TARGETS } from "../imperative/constants/mapTourTargets";
+import { MAP_TOUR_CLOSE_ADD_AREAS_EVENT } from "../imperative/constants/mapTourEvents";
 
 type SupportedAreaKind = "ZIP" | "COUNTY";
 
@@ -342,6 +343,19 @@ export const DemographicsBar = ({
   }, [clearSelectedAreasTooltipClose]);
 
   useEffect(() => {
+    const closeAddAreasFromTour = () => {
+      clearSelectedAreasTooltipClose();
+      setShowSelectedAreasTooltip(false);
+      setAddInputOpen(false);
+      setAddInputValue("");
+    };
+    window.addEventListener(MAP_TOUR_CLOSE_ADD_AREAS_EVENT, closeAddAreasFromTour as EventListener);
+    return () => {
+      window.removeEventListener(MAP_TOUR_CLOSE_ADD_AREAS_EVENT, closeAddAreasFromTour as EventListener);
+    };
+  }, [clearSelectedAreasTooltipClose]);
+
+  useEffect(() => {
     if (!showSelectedAreasTooltip || !addInputOpen) return;
     const rafId = requestAnimationFrame(() => {
       addInputRef.current?.focus();
@@ -472,8 +486,21 @@ export const DemographicsBar = ({
                   {showAddAreaTrigger && (
                     <span
                       data-ne-tour-target={MAP_TOUR_TARGETS.sidebarAddAreas}
-                      className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[2px] text-[9px] font-normal uppercase tracking-wide text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                      role="button"
+                      tabIndex={0}
+                      className="inline-flex cursor-pointer items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[2px] text-[9px] font-normal uppercase tracking-wide text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
                       onMouseEnter={openSelectedAreasAddInput}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openSelectedAreasAddInput();
+                      }}
+                      onFocus={openSelectedAreasAddInput}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openSelectedAreasAddInput();
+                      }}
                     >
                       {addAreaTriggerLabel}
                     </span>

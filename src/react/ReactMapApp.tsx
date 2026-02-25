@@ -43,8 +43,11 @@ import {
   MAP_TOUR_ADVANCED_STATS_PRESET,
   MAP_TOUR_APPLY_STATE_EVENT,
   MAP_TOUR_OPEN_FEEDBACK_EVENT,
+  MAP_TOUR_RESET_TO_DEFAULTS_EVENT,
+  MAP_TOUR_SET_CAMERA_EVENT,
   MAP_TOUR_SET_STAT_EVENT,
   type MapTourApplyStateDetail,
+  type MapTourSetCameraDetail,
   type MapTourSetStatDetail,
 } from "./imperative/constants/mapTourEvents";
 type SupportedAreaKind = "ZIP" | "COUNTY";
@@ -2212,7 +2215,7 @@ export const ReactMapApp = () => {
   const [forceShowOrgsNonce, setForceShowOrgsNonce] = useState(0);
   const [forceShowOrgsKeepTabNonce, setForceShowOrgsKeepTabNonce] = useState(0);
 
-  const handleBrandClick = () => {
+  const handleBrandClick = useCallback(() => {
     // Reset all URL-driven state to defaults
     setIsDefaultStatAutoSelected(false);
     setSelectedStatId(null);
@@ -2252,7 +2255,7 @@ export const ReactMapApp = () => {
     }
     // Clear all URL params to reset to base state
     window.history.replaceState(null, "", window.location.pathname);
-  };
+  }, [applyAreaSelection, domainDefaults.defaultExtremasVisible, domainDefaults.defaultOrgPinsVisible, setCategoryFilterWithSync]);
 
   useEffect(() => {
     const applyTourState = (detail: MapTourApplyStateDetail) => {
@@ -2322,19 +2325,47 @@ export const ReactMapApp = () => {
 
     const handleTourSetStat = (event: Event) => {
       const custom = event as CustomEvent<MapTourSetStatDetail | undefined>;
-      const statId = custom.detail?.statId?.trim();
-      if (!statId) return;
-      setSelectedStatId(statId);
-      setSecondaryStatId(null);
+      const detail = custom.detail;
+      if (!detail) return;
+      const statId = detail.statId?.trim();
+      if (statId) {
+        setSelectedStatId(statId);
+        setSecondaryStatId(null);
+      }
+      if ("secondaryStatId" in detail) {
+        const nextSecondary =
+          typeof detail.secondaryStatId === "string" ? detail.secondaryStatId.trim() : null;
+        setSecondaryStatId(nextSecondary && nextSecondary.length > 0 ? nextSecondary : null);
+      }
+    };
+
+    const handleTourSetCamera = (event: Event) => {
+      const custom = event as CustomEvent<MapTourSetCameraDetail | undefined>;
+      const detail = custom.detail;
+      if (!detail) return;
+      mapControllerRef.current?.setCamera(detail.lng, detail.lat, detail.zoom, { animate: false });
     };
 
     window.addEventListener(MAP_TOUR_APPLY_STATE_EVENT, handleTourApplyState as EventListener);
     window.addEventListener(MAP_TOUR_SET_STAT_EVENT, handleTourSetStat as EventListener);
+    window.addEventListener(MAP_TOUR_SET_CAMERA_EVENT, handleTourSetCamera as EventListener);
     return () => {
       window.removeEventListener(MAP_TOUR_APPLY_STATE_EVENT, handleTourApplyState as EventListener);
       window.removeEventListener(MAP_TOUR_SET_STAT_EVENT, handleTourSetStat as EventListener);
+      window.removeEventListener(MAP_TOUR_SET_CAMERA_EVENT, handleTourSetCamera as EventListener);
     };
   }, []);
+
+  useEffect(() => {
+    const handleTourResetToDefaults = () => {
+      handleBrandClick();
+    };
+
+    window.addEventListener(MAP_TOUR_RESET_TO_DEFAULTS_EVENT, handleTourResetToDefaults as EventListener);
+    return () => {
+      window.removeEventListener(MAP_TOUR_RESET_TO_DEFAULTS_EVENT, handleTourResetToDefaults as EventListener);
+    };
+  }, [handleBrandClick]);
 
   const handleOpenAddOrganization = useCallback(() => {
     setActiveScreen("addOrg");

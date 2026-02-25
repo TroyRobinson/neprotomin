@@ -18,6 +18,7 @@ export const MAP_TOUR_TARGETS = {
   sidebarDemographicsExpand: "map-sidebar-demographics-expand",
   sidebarOtherStats: "map-sidebar-other-stats",
   sidebarOrgsTab: "map-sidebar-orgs-tab",
+  sidebarHoursFilter: "map-sidebar-hours-filter",
   sidebarCategoryFilter: "map-sidebar-category-filter",
   sidebarCategoryMenu: "map-sidebar-category-menu",
   primaryStatChip: "map-primary-stat-chip",
