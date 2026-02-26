@@ -2,10 +2,30 @@
 export const DEFAULT_PRIMARY_STAT_ID = "8383685c-2741-40a2-96ff-759c42ddd586";
 export const DEFAULT_POPULATION_STAT_ID = "8807bf0b-5a85-4a73-82f2-cd18c8140072";
 
+const FOOD_DOMAIN_METADATA = {
+  title: "Oklahoma Food Map",
+  description:
+    "Oklahoma Food Map helps Oklahomans to 1. Find food resources, 2. Understand neighborhood needs, and 3. Share new locations & contributions -- a passion project by Neighborhood Explorer.",
+} as const;
+
+const DEFAULT_DOMAIN_METADATA = {
+  title: "Neighborhood Explorer Oklahoma",
+  description: "Mapping out a better tomorrow for our neighborhoods.",
+} as const;
+
 export const isFoodMapDomain = (): boolean => {
   if (typeof window === "undefined") return false;
   const hostname = window.location.hostname.toLowerCase();
   return hostname === "okfoodmap.com" || hostname.endsWith(".okfoodmap.com");
+};
+
+export type DomainMetadata = {
+  title: string;
+  description: string;
+};
+
+export const getDomainMetadata = (): DomainMetadata => {
+  return isFoodMapDomain() ? FOOD_DOMAIN_METADATA : DEFAULT_DOMAIN_METADATA;
 };
 
 export type DomainDefaults = {

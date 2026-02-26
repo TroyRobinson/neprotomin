@@ -449,6 +449,7 @@ export const DemographicsBar = ({
             </span>
             {(showSelectedPill || showAddAreaTrigger) && (
               <div
+                data-ne-tour-target={MAP_TOUR_TARGETS.sidebarAddAreas}
                 className="relative inline-flex"
                 onMouseEnter={() => {
                   clearSelectedAreasTooltipClose();
@@ -485,7 +486,6 @@ export const DemographicsBar = ({
                   )}
                   {showAddAreaTrigger && (
                     <span
-                      data-ne-tour-target={MAP_TOUR_TARGETS.sidebarAddAreas}
                       role="button"
                       tabIndex={0}
                       className="inline-flex cursor-pointer items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[2px] text-[9px] font-normal uppercase tracking-wide text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"

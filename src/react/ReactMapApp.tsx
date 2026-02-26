@@ -2283,8 +2283,12 @@ export const ReactMapApp = () => {
       setActiveScreen("map");
       setSelectedStatId(detail.statId);
       setSecondaryStatId(null);
-      // Tour presets should start from a neutral filter state so map layers are deterministic.
-      setCategoryFilterWithSync(null);
+      // Tour presets can optionally pin a category filter; otherwise use neutral state.
+      setCategoryFilterWithSync(
+        typeof detail.categoryFilter === "string" && detail.categoryFilter.trim().length > 0
+          ? detail.categoryFilter.trim().toLowerCase()
+          : null,
+      );
       setTimeSelection(null);
       if (typeof detail.orgPinsVisible === "boolean") {
         setOrgPinsVisible(detail.orgPinsVisible);
@@ -2321,8 +2325,12 @@ export const ReactMapApp = () => {
         pinned: [],
         transient: [],
       });
-      setSelectedOrgIds([]);
+      const selectedOrgIds = Array.isArray(detail.selectedOrganizationIds)
+        ? detail.selectedOrganizationIds.filter((id) => typeof id === "string" && id.length > 0)
+        : [];
+      setSelectedOrgIds(selectedOrgIds);
       setSelectedOrgIdsFromMap(false);
+      setActiveOrganizationId(selectedOrgIds.length === 1 ? selectedOrgIds[0] : null);
       const controller = mapControllerRef.current;
       controller?.setCamera(detail.lng, detail.lat, detail.zoom, { animate: false });
       // Force map transient-selection layers to match tour-selected areas even when

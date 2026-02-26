@@ -5,6 +5,7 @@ import { ReactMapApp } from "./ReactMapApp";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { CensusImportQueueProvider } from "./hooks/useCensusImportQueue";
 import { initCrashLog, logCrash } from "./lib/crashLog";
+import { getDomainMetadata } from "./lib/domains";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "../style.css";
 
@@ -45,8 +46,28 @@ const markIgnoredIndexedDbClosingError = () => {
   }
 };
 
+const applyDomainMetadata = () => {
+  const metadata = getDomainMetadata();
+  document.title = metadata.title;
+  const metaTags: Array<[selector: string, content: string]> = [
+    ['meta[name="title"]', metadata.title],
+    ['meta[name="description"]', metadata.description],
+    ['meta[property="og:title"]', metadata.title],
+    ['meta[property="og:description"]', metadata.description],
+    ['meta[name="twitter:title"]', metadata.title],
+    ['meta[name="twitter:description"]', metadata.description],
+  ];
+  for (const [selector, content] of metaTags) {
+    const tag = document.querySelector(selector);
+    if (tag instanceof HTMLMetaElement) {
+      tag.content = content;
+    }
+  }
+};
+
 // Install global crash handlers so errors are captured even if the UI is destroyed
 initCrashLog();
+applyDomainMetadata();
 
 window.onerror = (_msg, source, line, col, error) => {
   if (isBenignIndexedDbClosingError(error ?? _msg)) {

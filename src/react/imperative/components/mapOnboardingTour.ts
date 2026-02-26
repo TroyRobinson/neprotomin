@@ -7,12 +7,18 @@ import {
   MAP_TOUR_TARGETS,
 } from "../constants/mapTourTargets";
 import {
+  MAP_TOUR_ADD_AREAS_PRESET,
   MAP_TOUR_ADVANCED_STATS_PRESET,
   MAP_TOUR_APPLY_STATE_EVENT,
   MAP_TOUR_CLOSE_ADD_AREAS_EVENT,
+  MAP_TOUR_DEMOGRAPHICS_PRESET,
   MAP_TOUR_EXTREMAS_PRESET,
   MAP_TOUR_OPEN_FEEDBACK_EVENT,
+  MAP_TOUR_OTHER_STATS_PRESET,
   MAP_TOUR_ORGS_PRESET,
+  MAP_TOUR_SHOWING_AREAS_PRESET,
+  MAP_TOUR_SIDEBAR_CATEGORY_PRESET,
+  MAP_TOUR_SIDEBAR_ORGS_PRESET,
   MAP_TOUR_RESET_TO_DEFAULTS_EVENT,
   MAP_TOUR_SET_CAMERA_EVENT,
   MAP_TOUR_SET_STAT_EVENT,
@@ -40,11 +46,19 @@ const DEFAULT_DISMISSED_STORAGE_KEY = "ne.map.onboarding.dismissed.v1";
 const DEFAULT_PREFERRED_CHANGE_OPTION_LABEL = "Population (Change '21-23)";
 const TOUR_DEFAULT_STAT_ID = "8807bf0b-5a85-4a73-82f2-cd18c8140072";
 const TOUR_CHANGE_OVER_TIME_STAT_ID = "0a7081d7-1374-41a8-bd48-41bb3933957e";
+const TOUR_SHARE_STAT_ID = "4c3df0b2-53b4-4697-a1cf-50c9214b2731";
+const TOUR_MY_LOCATION_STAT_ID = "ed615d44-6bc0-43d7-9408-b191315d9070";
 const TOUR_SIDEBAR_STAT_DETAILS_ID = "ce870153-e57c-4c7b-97b9-14af9072dbd3";
-const TOUR_SECONDARY_STAT_ID = "662e2b23-4b55-4f47-a4cd-0e3054891b1f";
-const TOUR_SHOWING_AREAS_LAT = 35.5719;
-const TOUR_SHOWING_AREAS_LNG = -97.2857;
-const TOUR_SHOWING_AREAS_ZOOM = 8.79;
+const TOUR_OTHER_STATS_SECONDARY_STAT_ID = "78b293e5-061e-471b-b48e-0d187e82ed55";
+const TOUR_SIDEBAR_STAT_DETAILS_LAT = 35.4606;
+const TOUR_SIDEBAR_STAT_DETAILS_LNG = -100.0266;
+const TOUR_SIDEBAR_STAT_DETAILS_ZOOM = 6.61;
+const TOUR_SHARE_LAT = 35.3393;
+const TOUR_SHARE_LNG = -97.4195;
+const TOUR_SHARE_ZOOM = 6.39;
+const TOUR_POST_RESET_LAT = 35.6846;
+const TOUR_POST_RESET_LNG = -97.4293;
+const TOUR_POST_RESET_ZOOM = 6.88;
 const TOUR_STATE_SETTLE_MS = 220;
 const TOUR_HIGHLIGHT_BORDER_COLOR = "#f15b41";
 const TOUR_HIGHLIGHT_GLOW_RGBA = "241, 91, 65";
@@ -134,8 +148,9 @@ type TourCardContent =
   | string
   | Node
   | {
-      body: string | Node;
+      body?: string | Node;
       action?: string | Node;
+      note?: string | Node;
     };
 
 export const createMapOnboardingTour = ({
@@ -440,7 +455,6 @@ export const createMapOnboardingTour = ({
     if (!target) return;
     target.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true, view: window }));
     target.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false, cancelable: true, view: window }));
-    target.click();
   };
 
   const getSidebarDemographicsToggleButton = (): HTMLDivElement | null => {
@@ -627,6 +641,16 @@ export const createMapOnboardingTour = ({
 
   const ensureShowingOrganizationsVisible = (visible: boolean): boolean => {
     const btn = getShowingOrganizationsButton();
+    if (!btn) return false;
+    const shouldBe = visible ? "true" : "false";
+    if (btn.getAttribute("aria-pressed") !== shouldBe) {
+      btn.click();
+    }
+    return btn.getAttribute("aria-pressed") === shouldBe;
+  };
+
+  const ensureShowingExtremasVisible = (visible: boolean): boolean => {
+    const btn = getShowingExtremasTarget() as HTMLButtonElement | null;
     if (!btn) return false;
     const shouldBe = visible ? "true" : "false";
     if (btn.getAttribute("aria-pressed") !== shouldBe) {
@@ -1219,7 +1243,9 @@ export const createMapOnboardingTour = ({
     if (typeof message === "string" || message instanceof Node) {
       appendCardText(message, "text-xs leading-5 text-slate-700 dark:text-slate-200");
     } else {
-      appendCardText(message.body, "text-xs leading-5 text-slate-700 dark:text-slate-200");
+      if (message.body) {
+        appendCardText(message.body, "text-xs leading-5 text-slate-700 dark:text-slate-200");
+      }
       if (message.action) {
         const callout = document.createElement("div");
         callout.className = "mt-3 flex items-start gap-2 rounded-lg bg-slate-50/90 px-2.5 py-2 dark:bg-slate-800/70";
@@ -1237,6 +1263,9 @@ export const createMapOnboardingTour = ({
         callout.appendChild(icon);
         callout.appendChild(actionText);
         stepCard.appendChild(callout);
+      }
+      if (message.note) {
+        appendCardText(message.note, "mt-2 text-xs leading-5 text-slate-700 dark:text-slate-200");
       }
     }
 
@@ -1308,6 +1337,17 @@ export const createMapOnboardingTour = ({
     setOnboardingDismissed();
   };
 
+  const completeTourAndResetMapView = () => {
+    completeTour();
+    resetAppToDefaults();
+    clearOnboardingRetry();
+    onboardingRetryTimer = window.setTimeout(() => {
+      onboardingRetryTimer = null;
+      applyTourStat(TOUR_DEFAULT_STAT_ID);
+      applyTourCamera(TOUR_POST_RESET_LAT, TOUR_POST_RESET_LNG, TOUR_POST_RESET_ZOOM);
+    }, TOUR_STATE_SETTLE_MS);
+  };
+
   const dismissTour = () => {
     completeTour();
     showRestartHintToast();
@@ -1358,7 +1398,8 @@ export const createMapOnboardingTour = ({
     renderTourCard(
       {
         body: "Change the version of your mapped statistic.",
-        action: "Switching to see areas of OK gaining & losing people.",
+        action:
+          "See areas of OK gaining (blue) & losing (red) the most residents, loading in now.",
       },
       {
         label: "Next",
@@ -1404,7 +1445,11 @@ export const createMapOnboardingTour = ({
     setTourLock(MAP_TOUR_LOCKS.showingPanel);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "For various statistics, see the highest and lowest points ~ Extremas. Hover your mouse over the red or green triangles on the map now.",
+      {
+        body: "Extremas are currently showing the highest and lowest value locations for different statistics.",
+        action:
+          "Hover your mouse over the two red triangles on Oklahoma county to see the most pressing issues among the highest OK population.",
+      },
       { label: "Next", onClick: () => showShowingOrganizationsStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -1449,7 +1494,11 @@ export const createMapOnboardingTour = ({
     setTourLock(MAP_TOUR_LOCKS.showingPanel);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Organizations appear as orange clusters and points on the map. Hover the single circles with your mouse to see org details or click clusters to zoom in.",
+      {
+        body: "Organizations appear as orange number clusters or single circles on the map.",
+        action:
+          "Hover or click the orange circles to see which orgs are closest to these blue ZIP-areas with high SNAP Food need.",
+      },
       {
         label: "Next",
         onClick: () => {
@@ -1465,10 +1514,12 @@ export const createMapOnboardingTour = ({
     clearOnboardingRetry();
     if (attempt === 0) {
       ensureShowingOrganizationsVisible(false);
-      applyTourCamera(TOUR_SHOWING_AREAS_LAT, TOUR_SHOWING_AREAS_LNG, TOUR_SHOWING_AREAS_ZOOM);
+      applyTourState(MAP_TOUR_SHOWING_AREAS_PRESET);
       if (onboardingStep === "showingOrganizations") {
         closeSidebarPanel();
       }
+      onboardingRetryTimer = window.setTimeout(() => showShowingAreasStep(1), TOUR_STATE_SETTLE_MS);
+      return;
     }
     if (!openShowingPanel()) {
       if (attempt < 24) {
@@ -1491,7 +1542,11 @@ export const createMapOnboardingTour = ({
     setTourLock(MAP_TOUR_LOCKS.showingPanel);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Zoom into the map to see ZIP area boundaries appear automatically, or you can specify only ZIP, County, etc.",
+      {
+        body: "See map boundaries update by zoom level or fix to ZIP, county, etc.",
+        action:
+          "Zoom in to Payne county or select Areas: ZIP to see which ZIPs are hardest hit by Payne's exceeding rent burden.",
+      },
       {
         label: "Next",
         onClick: () => {
@@ -1509,6 +1564,12 @@ export const createMapOnboardingTour = ({
     clearOnboardingRetry();
     if (attempt === 0) {
       shareStepAutoCopyTriggered = false;
+      applyTourStat(TOUR_SHARE_STAT_ID);
+      applyTourCamera(TOUR_SHARE_LAT, TOUR_SHARE_LNG, TOUR_SHARE_ZOOM);
+      if (openShowingPanel()) {
+        ensureShowingExtremasVisible(false);
+        closeShowingPanel();
+      }
     }
     setTourLock(null);
     closeShowingPanel();
@@ -1533,7 +1594,11 @@ export const createMapOnboardingTour = ({
     setTourLock(MAP_TOUR_LOCKS.sharePanel);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Share your current map with others!",
+      {
+        body: "Share your current map with others! Embed in your website, etc.",
+        action:
+          "Paste this marriage % map (command/control+v) into a doc, presentation, etc.).",
+      },
       {
         label: "Next",
         onClick: () => {
@@ -1577,7 +1642,10 @@ export const createMapOnboardingTour = ({
     onboardingStep = "searchMenu";
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Search for stats, orgs, zips, or addresses. Click the three-lined hamburger menu icon now to browse options.",
+      {
+        body: "Search for stats, orgs, zips, or addresses.",
+        action: "Click the three-lined hamburger menu icon now to browse options.",
+      },
       {
         label: "Next",
         onClick: () => {
@@ -1593,6 +1661,13 @@ export const createMapOnboardingTour = ({
   const showSidebarStatDetailsStep = (attempt = 0) => {
     clearOnboardingRetry();
     applyTourStat(TOUR_SIDEBAR_STAT_DETAILS_ID);
+    if (attempt === 0) {
+      applyTourCamera(
+        TOUR_SIDEBAR_STAT_DETAILS_LAT,
+        TOUR_SIDEBAR_STAT_DETAILS_LNG,
+        TOUR_SIDEBAR_STAT_DETAILS_ZOOM,
+      );
+    }
     openSidebarPanel();
     const target = getSidebarStatDetailsTarget();
     if (!target) {
@@ -1606,7 +1681,11 @@ export const createMapOnboardingTour = ({
     onboardingStep = "sidebarStatDetails";
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Learn more about the active stat and click stat modification options, e.g. see specific degree types.",
+      {
+        body: "Learn more about & adjust the active stat (e.g. High School Graduation).",
+        action:
+          'Click "Other Degrees: Graduate..." plus "Options: Change \'21-23" on to see which areas are getting the most new graduate degrees relative to size recently.',
+      },
       { label: "Next", onClick: () => showAdvancedStatsStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -1633,7 +1712,10 @@ export const createMapOnboardingTour = ({
     onboardingStep = "advancedStats";
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Advanced stats mode to see charts for your selected area(s). Hover over the graph to see details.",
+      {
+        body: "Advanced stats mode to see charts for your selected map area(s).",
+        action: "Hover over the graph to see how quickly population is increasing for 73108.",
+      },
       { label: "Next", onClick: () => showSidebarAddAreasStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -1643,7 +1725,7 @@ export const createMapOnboardingTour = ({
   const showSidebarAddAreasStep = (attempt = 0) => {
     clearOnboardingRetry();
     if (attempt === 0) {
-      applyAdvancedStatsPreset();
+      applyTourState(MAP_TOUR_ADD_AREAS_PRESET);
       onboardingRetryTimer = window.setTimeout(() => showSidebarAddAreasStep(1), TOUR_STATE_SETTLE_MS);
       return;
     }
@@ -1661,7 +1743,11 @@ export const createMapOnboardingTour = ({
     stepOverlay.classList.remove("hidden");
     expandSidebarAddAreasDropdown(target);
     renderTourCard(
-      "Add additional areas to compare, or just shift+click areas on the map!",
+      {
+        body: "Add additional areas to compare.",
+        action: "Type a zip or shift+click one on the map! Like 73129 just added.",
+        note: "Why is one area growing and its neighbor dropping?",
+      },
       {
         label: "Next",
         onClick: () => {
@@ -1676,6 +1762,12 @@ export const createMapOnboardingTour = ({
 
   const showSidebarDemographicsExpandStep = (attempt = 0) => {
     clearOnboardingRetry();
+    if (attempt === 0) {
+      closeSidebarAddAreasDropdown();
+      applyTourState(MAP_TOUR_DEMOGRAPHICS_PRESET);
+      onboardingRetryTimer = window.setTimeout(() => showSidebarDemographicsExpandStep(1), TOUR_STATE_SETTLE_MS);
+      return;
+    }
     closeSidebarAddAreasDropdown();
     openSidebarPanel();
     const target = getSidebarDemographicsExpandTarget();
@@ -1691,7 +1783,11 @@ export const createMapOnboardingTour = ({
     stepOverlay.classList.remove("hidden");
     ensureSidebarDemographicsExpanded(true);
     renderTourCard(
-      "Expand to see demographic breakdown of your selected area(s). Hover bars with your mouse to see details.",
+      {
+        body: "Expand to see demographic breakdown of your selected area(s).",
+        action:
+          "Hover bars with your mouse to see the largest ethnicities, income levels, etc. for this fast growing area of the city",
+      },
       {
         label: "Next",
         onClick: () => {
@@ -1706,6 +1802,11 @@ export const createMapOnboardingTour = ({
 
   const showSidebarOtherStatsStep = (attempt = 0) => {
     clearOnboardingRetry();
+    if (attempt === 0) {
+      applyTourState(MAP_TOUR_OTHER_STATS_PRESET);
+      onboardingRetryTimer = window.setTimeout(() => showSidebarOtherStatsStep(1), TOUR_STATE_SETTLE_MS);
+      return;
+    }
     openSidebarPanel();
     const target = getSidebarOtherStatsTarget();
     if (!target) {
@@ -1718,9 +1819,14 @@ export const createMapOnboardingTour = ({
     }
     onboardingStep = "sidebarOtherStats";
     stepOverlay.classList.remove("hidden");
-    applyTourSecondaryStat(TOUR_SECONDARY_STAT_ID);
+    applyTourSecondaryStat(TOUR_OTHER_STATS_SECONDARY_STAT_ID);
     renderTourCard(
-      "Click to explore other statistics on the map. Or shift+click a statistic in the list to see it on top of your selected stat, e.g. Median Age.",
+      {
+        body: "More statistics to explore (e.g. Households Receiving SNAP showing) or layer...",
+        action:
+          'We\'ve also shift+clicked the "Has Disability" stat to layer (green dots) over our SNAP statistic.',
+        note: "Which areas have both high food and disability needs?",
+      },
       {
         label: "Next",
         onClick: () => {
@@ -1735,6 +1841,11 @@ export const createMapOnboardingTour = ({
 
   const showSidebarOrgsTabStep = (attempt = 0) => {
     clearOnboardingRetry();
+    if (attempt === 0) {
+      applyTourState(MAP_TOUR_SIDEBAR_ORGS_PRESET);
+      onboardingRetryTimer = window.setTimeout(() => showSidebarOrgsTabStep(1), TOUR_STATE_SETTLE_MS);
+      return;
+    }
     applyTourSecondaryStat(null);
     openSidebarPanel();
     openSidebarOrgsTab();
@@ -1751,7 +1862,11 @@ export const createMapOnboardingTour = ({
     stepOverlay.classList.remove("hidden");
     ensureShowingOrganizationsVisible(true);
     renderTourCard(
-      "Switch to see organizations in the sidebar and/or on the map, grouped by selected area(s).",
+      {
+        body: "Switch to the organizations tab to browse organizations involved in your current map view",
+        action:
+          "Click an org card in the list to see its location among these areas of high SNAP need & population",
+      },
       { label: "Next", onClick: () => showSidebarHoursFilterStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -1774,7 +1889,9 @@ export const createMapOnboardingTour = ({
     onboardingStep = "sidebarHoursFilter";
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Filter orgs (e.g. food banks) by hours of operation.",
+      {
+        action: "Filter orgs (e.g. food banks) by hours of operation.",
+      },
       { label: "Next", onClick: () => showSidebarCategoryFilterStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -1783,6 +1900,16 @@ export const createMapOnboardingTour = ({
 
   const showSidebarCategoryFilterStep = (attempt = 0) => {
     clearOnboardingRetry();
+    if (attempt === 0) {
+      applyTourState(MAP_TOUR_SIDEBAR_CATEGORY_PRESET);
+      onboardingRetryTimer = window.setTimeout(() => showSidebarCategoryFilterStep(1), TOUR_STATE_SETTLE_MS);
+      return;
+    }
+    if (attempt === 1) {
+      applyTourState(MAP_TOUR_SIDEBAR_CATEGORY_PRESET);
+      onboardingRetryTimer = window.setTimeout(() => showSidebarCategoryFilterStep(2), TOUR_STATE_SETTLE_MS);
+      return;
+    }
     openSidebarPanel();
     openSidebarOrgsTab();
     if (!openSidebarCategoryMenu()) {
@@ -1805,7 +1932,11 @@ export const createMapOnboardingTour = ({
     onboardingStep = "sidebarCategoryFilter";
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Filter both organizations and statistics so you can see related efforts to certain types of needs.",
+      {
+        body: "Filter both orgs and stats so you can see org efforts related to certain types of needs.",
+        action: "Drag map to see sidebar update with just Edu orgs in view.",
+        note: "Which organizations are concentrated around areas of lowest high school graduation?",
+      },
       { label: "Next", onClick: () => showTourFinaleStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -1831,7 +1962,7 @@ export const createMapOnboardingTour = ({
     copy.append(".");
     renderTourCard(
       copy,
-      { label: "Done", onClick: completeTour },
+      { label: "Done", onClick: completeTourAndResetMapView },
       { label: "Dismiss", onClick: dismissTour },
       { label: "Submit Feedback", onClick: openFeedbackFromTour },
     );
@@ -1842,6 +1973,7 @@ export const createMapOnboardingTour = ({
     clearOnboardingRetry();
     if (attempt === 0) {
       myLocationStepAutoTriggered = false;
+      applyTourStat(TOUR_MY_LOCATION_STAT_ID);
       // Prevent stale Share UI while My Location target is still resolving.
       onboardingStep = "myLocation";
       stepOverlay.classList.add("hidden");
@@ -1864,7 +1996,10 @@ export const createMapOnboardingTour = ({
       myLocationStepAutoTriggered = true;
     }
     renderTourCard(
-      "Zoom to your current location.",
+      {
+        body: "Zoom to your current location.",
+        action: "What do you notice about the income level of individuals in or around your location?",
+      },
       { label: "Next", onClick: () => showLegendStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
@@ -1915,7 +2050,10 @@ export const createMapOnboardingTour = ({
       brandLogoStepAutoTriggered = true;
     }
     renderTourCard(
-      "Click the NE App's logo in the top left corner to refresh the map & everything back to defaults.",
+      {
+        body: "Reset the map and UI back to defaults.",
+        action: "Clicked the NE App's logo in the top left corner to refresh.",
+      },
       { label: "Next", onClick: () => showSearchMenuStep() },
       { label: "Dismiss", onClick: dismissTour },
     );
