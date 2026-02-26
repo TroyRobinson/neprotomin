@@ -203,6 +203,11 @@ export const ReactMapApp = () => {
   const { isRunning: isCensusImportRunning } = useCensusImportQueue();
   // Parse initial map state from URL once (must be first to be available for other initializers)
   const [initialMapState] = useState(() => getMapStateFromUrl());
+  const [isEmbedMode] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const raw = (new URLSearchParams(window.location.search).get("embed") || "").trim().toLowerCase();
+    return raw === "1" || raw === "true";
+  });
   const pendingUrlTourIntroRef = useRef<boolean>(initialMapState.startTour);
   const initialMapPosition = initialMapState.position;
   // Initialize boundary state from URL areasMode
@@ -534,6 +539,17 @@ export const ReactMapApp = () => {
   }, [activeScreen, authReady, user, showAdvanced]);
 
   useEffect(() => {
+    if (!isEmbedMode) return;
+    if (activeScreen !== "map") {
+      setActiveScreen("map");
+    }
+  }, [activeScreen, isEmbedMode]);
+
+  useEffect(() => {
+    if (isEmbedMode) {
+      setTopBarHeight(0);
+      return;
+    }
     if (typeof window === "undefined") return;
     const header = document.querySelector<HTMLElement>("[data-role='topbar']");
     if (!header) return;
@@ -552,7 +568,7 @@ export const ReactMapApp = () => {
       resizeObserver.disconnect();
       window.removeEventListener("resize", updateHeight);
     };
-  }, []);
+  }, [isEmbedMode]);
 
   const zipSelection = areaSelections.ZIP;
   const countySelection = areaSelections.COUNTY;
@@ -961,10 +977,11 @@ export const ReactMapApp = () => {
     return sheetPeekOffset + adjustment;
   }, [isMobile, sheetState, sheetDragOffset, sheetPartialOffset, sheetPeekOffset]);
 
-  const showMobileSheet = isMobile && activeScreen === "map";
+  const showMobileSheet = isMobile && activeScreen === "map" && !isEmbedMode;
 
   const legendInset = useMemo(() => {
     if (!isMobile) return 16;
+    if (isEmbedMode) return 16;
     // Attach just above the sheet in peek state with a small gap
     if (sheetState === "peek" && !isDraggingSheet) {
       // The sheet wrapper is at topBarHeight, and the sheet itself has translateY
@@ -979,7 +996,7 @@ export const ReactMapApp = () => {
     }
     // Otherwise, keep safely near bottom; it will be hidden when dragging/expanded
     return 16;
-  }, [isMobile, sheetState, isDraggingSheet, sheetTranslateY, viewportHeight, topBarHeight]);
+  }, [isMobile, isEmbedMode, sheetState, isDraggingSheet, sheetTranslateY, viewportHeight, topBarHeight]);
 
   // Update legend position - use bottom positioning (simpler and accounts for legend row height)
   useEffect(() => {
@@ -1054,6 +1071,10 @@ export const ReactMapApp = () => {
   // Check if welcome modal should be shown on food-map domains only.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (isEmbedMode) {
+      setShowWelcomeModal(false);
+      return;
+    }
 
     if (!isFoodDomain) {
       setShowWelcomeModal(false);
@@ -1073,7 +1094,7 @@ export const ReactMapApp = () => {
         setShowWelcomeModal(true);
       }
     } catch {}
-  }, [isFoodDomain]);
+  }, [isFoodDomain, isEmbedMode]);
 
   // Track map interaction: detect when user pans/zooms away from initial position
   useEffect(() => {
@@ -2908,12 +2929,12 @@ export const ReactMapApp = () => {
   const handleMapControllerReady = useCallback((controller: MapViewController | null) => {
     mapControllerRef.current = controller;
     // Sync initial sidebar expand button visibility
-    controller?.setSidebarExpandVisible(sidebarCollapsed);
+    controller?.setSidebarExpandVisible(isEmbedMode ? false : sidebarCollapsed);
     if (controller && pendingUrlTourIntroRef.current && activeScreen === "map") {
       controller.showOnboardingTourIntro();
       pendingUrlTourIntroRef.current = false;
     }
-  }, [activeScreen, sidebarCollapsed]);
+  }, [activeScreen, isEmbedMode, sidebarCollapsed]);
 
   useEffect(() => {
     if (!pendingUrlTourIntroRef.current) return;
@@ -2937,7 +2958,7 @@ export const ReactMapApp = () => {
 
   // Show/hide sidebar expand button on map when sidebar collapses/expands
   useEffect(() => {
-    mapControllerRef.current?.setSidebarExpandVisible(sidebarCollapsed);
+    mapControllerRef.current?.setSidebarExpandVisible(isEmbedMode ? false : sidebarCollapsed);
     // Resize map to fill the space when sidebar collapses/expands
     mapControllerRef.current?.resize();
     // Trigger one more resize shortly after width change settles
@@ -2945,21 +2966,24 @@ export const ReactMapApp = () => {
       mapControllerRef.current?.resize();
     }, 200);
     return () => window.clearTimeout(timeoutId);
-  }, [sidebarCollapsed, isMobile]);
+  }, [isEmbedMode, sidebarCollapsed, isMobile]);
 
   const desktopLayoutVars = {
-    "--desktop-sidebar-width": "24rem",
-    "--map-chips-left-offset": "calc(var(--desktop-sidebar-width) + 0.25rem)",
+    "--desktop-sidebar-width": isEmbedMode ? "0rem" : "24rem",
+    "--map-chips-left-offset": isEmbedMode
+      ? "0.75rem"
+      : "calc(var(--desktop-sidebar-width) + 0.25rem)",
   } as CSSProperties;
 
   // Keep the combined legend row visible - always on desktop, only in peek on mobile
   useEffect(() => {
     const controller = mapControllerRef.current;
     if (!controller) return;
-    // Show on desktop always, or on mobile when sheet is in peek and not dragging
-    const shouldShow = !isMobile || (sheetState === "peek" && !isDraggingSheet);
+    // Show on desktop always, or on mobile when sheet is in peek and not dragging.
+    // In embed mode, keep the legend row visible at all times.
+    const shouldShow = isEmbedMode ? true : !isMobile || (sheetState === "peek" && !isDraggingSheet);
     try { controller.setLegendVisible(shouldShow); } catch {}
-  }, [isMobile, sheetState, isDraggingSheet]);
+  }, [isEmbedMode, isMobile, sheetState, isDraggingSheet]);
 
   // Inject/update the My Location button into the legend row (right side) - mobile only
   useEffect(() => {
@@ -3930,32 +3954,34 @@ export const ReactMapApp = () => {
       className="app-shell relative flex flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950"
       style={desktopLayoutVars}
     >
-      <TopBar
-        onBrandClick={handleBrandClick}
-        onNavigate={handleTopBarNavigate}
-        active={
-          activeScreen === "report"
-            ? "report"
-            : activeScreen === "roadmap"
-            ? "roadmap"
-            : activeScreen === "data"
-            ? "data"
-            : activeScreen === "queue"
-            ? "queue"
-            : activeScreen === "admin"
-            ? "admin"
-            : "map"
-        }
-        onOpenAuth={() => setAuthOpen(true)}
-        isMobile={isMobile}
-        onMobileLocationSearch={handleMobileLocationSearch}
-        onAddOrganization={handleOpenAddOrganization}
-        expandMobileSearch={expandMobileSearch}
-      />
+      {!isEmbedMode && (
+        <TopBar
+          onBrandClick={handleBrandClick}
+          onNavigate={handleTopBarNavigate}
+          active={
+            activeScreen === "report"
+              ? "report"
+              : activeScreen === "roadmap"
+              ? "roadmap"
+              : activeScreen === "data"
+              ? "data"
+              : activeScreen === "queue"
+              ? "queue"
+              : activeScreen === "admin"
+              ? "admin"
+              : "map"
+          }
+          onOpenAuth={() => setAuthOpen(true)}
+          isMobile={isMobile}
+          onMobileLocationSearch={handleMobileLocationSearch}
+          onAddOrganization={handleOpenAddOrganization}
+          expandMobileSearch={expandMobileSearch}
+        />
+      )}
       <div className="relative flex flex-1 flex-col overflow-hidden">
         <main className="relative flex flex-1 flex-col overflow-hidden md:flex-row">
           {/* Desktop sidebar — left of map */}
-          {!isMobile && (
+          {!isMobile && !isEmbedMode && (
             <div
               className={[
                 "shrink-0",
@@ -4114,7 +4140,7 @@ export const ReactMapApp = () => {
                 track("map_interaction", { type: "drag", device: isMobile ? "mobile" : "desktop" });
                 if (isMobile) collapseSheet();
               }}
-              timeFilterAvailable={hasAnyHoursInSource}
+              timeFilterAvailable={isEmbedMode ? false : hasAnyHoursInSource}
               isMobile={isMobile}
               legendInset={legendInset}
               onControllerReady={handleMapControllerReady}
@@ -4138,10 +4164,10 @@ export const ReactMapApp = () => {
               }}
               onExportCsvAreasDownload={handleExport}
               exportCsvAreasAvailable={canExportAreasCsvFromMap}
-              onLegendSettingsClick={() => setMapSettingsOpen(true)}
+              onLegendSettingsClick={isEmbedMode ? undefined : () => setMapSettingsOpen(true)}
               onSidebarExpand={() => setSidebarCollapsed(false)}
               legendRangeMode={legendRangeMode}
-              onboardingTourAutoPromptEnabled={shouldAutoPromptOnboardingTour}
+              onboardingTourAutoPromptEnabled={isEmbedMode ? false : shouldAutoPromptOnboardingTour}
               visibleStatIds={visibleStatIds}
             />
             {/* Desktop-only overlay still shows the location button inline */}
@@ -4150,67 +4176,68 @@ export const ReactMapApp = () => {
                 className={["pointer-events-none absolute right-4 z-30 flex flex-col items-end gap-2"].join(" ")}
                 style={{ bottom: 16 }}
               >
-                <div
-                  ref={helpMenuRef}
-                  className="pointer-events-auto relative"
-                  onMouseEnter={() => {
-                    if (helpMenuMode !== "menu") return;
-                    setHelpMenuOpen(true);
-                  }}
-                  onMouseLeave={() => {
-                    if (helpMenuMode !== "menu") return;
-                    closeHelpMenu();
-                  }}
-                  onFocusCapture={() => setHelpMenuOpen(true)}
-                  onBlurCapture={(event) => {
-                    const next = event.relatedTarget;
-                    if (next instanceof Node && event.currentTarget.contains(next)) return;
-                    if (helpMenuMode === "feedback") return;
-                    closeHelpMenu();
-                  }}
-                >
-                  <button
-                    type="button"
-                    className={[
-                      "inline-flex h-10 w-10 items-center justify-center rounded-full text-base font-semibold shadow-sm transition",
-                      helpMenuOpen
-                        ? "border border-slate-100 bg-slate-50 text-slate-800 ring-1 ring-slate-100 dark:border-slate-600 dark:bg-slate-900/95 dark:text-slate-100 dark:ring-white/10"
-                        : "border-[0.5px] border-white/60 bg-white/18 text-slate-700 ring-1 ring-white/45 backdrop-blur-md hover:border-brand-200/70 hover:bg-white/30 hover:text-brand-700 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-200 dark:ring-white/8 dark:hover:border-brand-400/50 dark:hover:bg-slate-900/38 dark:hover:text-white",
-                    ].join(" ")}
-                    aria-label="Help"
-                    aria-haspopup="menu"
-                    aria-expanded={helpMenuOpen}
-                    onClick={() => {
-                      if (helpMenuOpen && helpMenuMode === "feedback") {
-                        closeHelpMenu();
-                        return;
-                      }
-                      setHelpMenuMode("menu");
-                      setHelpMenuOpen((prev) => !prev);
+                {!isEmbedMode && (
+                  <div
+                    ref={helpMenuRef}
+                    className="pointer-events-auto relative"
+                    onMouseEnter={() => {
+                      if (helpMenuMode !== "menu") return;
+                      setHelpMenuOpen(true);
+                    }}
+                    onMouseLeave={() => {
+                      if (helpMenuMode !== "menu") return;
+                      closeHelpMenu();
+                    }}
+                    onFocusCapture={() => setHelpMenuOpen(true)}
+                    onBlurCapture={(event) => {
+                      const next = event.relatedTarget;
+                      if (next instanceof Node && event.currentTarget.contains(next)) return;
+                      if (helpMenuMode === "feedback") return;
+                      closeHelpMenu();
                     }}
                   >
-                    ?
-                  </button>
-                  <div
-                    className={[
-                      "absolute bottom-0 right-full z-10 h-24 w-2",
-                      isHelpMenuVisible ? "pointer-events-auto" : "pointer-events-none",
-                    ].join(" ")}
-                    aria-hidden="true"
-                  />
-                  <div
-                    className={[
-                      "absolute bottom-0 right-full mr-2 w-44 origin-bottom-right rounded-xl p-2 shadow-lg transition-all duration-200 ease-out",
-                      helpMenuOpen
-                        ? "border border-slate-100 bg-slate-50 ring-1 ring-slate-100 dark:border-slate-600 dark:bg-slate-900/95 dark:ring-white/10"
-                        : "border border-white/60 bg-white/18 ring-1 ring-white/45 backdrop-blur-md dark:border-slate-500/35 dark:bg-slate-900/22 dark:ring-white/8",
-                      isHelpMenuVisible
-                        ? "pointer-events-auto translate-x-0 scale-100 opacity-100"
-                        : "pointer-events-none translate-x-1 scale-95 opacity-0",
-                    ].join(" ")}
-                    role="menu"
-                    aria-label="Help menu"
-                  >
+                    <button
+                      type="button"
+                      className={[
+                        "inline-flex h-10 w-10 items-center justify-center rounded-full text-base font-semibold shadow-sm transition",
+                        helpMenuOpen
+                          ? "border border-slate-100 bg-slate-50 text-slate-800 ring-1 ring-slate-100 dark:border-slate-600 dark:bg-slate-900/95 dark:text-slate-100 dark:ring-white/10"
+                          : "border-[0.5px] border-white/60 bg-white/18 text-slate-700 ring-1 ring-white/45 backdrop-blur-md hover:border-brand-200/70 hover:bg-white/30 hover:text-brand-700 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-200 dark:ring-white/8 dark:hover:border-brand-400/50 dark:hover:bg-slate-900/38 dark:hover:text-white",
+                      ].join(" ")}
+                      aria-label="Help"
+                      aria-haspopup="menu"
+                      aria-expanded={helpMenuOpen}
+                      onClick={() => {
+                        if (helpMenuOpen && helpMenuMode === "feedback") {
+                          closeHelpMenu();
+                          return;
+                        }
+                        setHelpMenuMode("menu");
+                        setHelpMenuOpen((prev) => !prev);
+                      }}
+                    >
+                      ?
+                    </button>
+                    <div
+                      className={[
+                        "absolute bottom-0 right-full z-10 h-24 w-2",
+                        isHelpMenuVisible ? "pointer-events-auto" : "pointer-events-none",
+                      ].join(" ")}
+                      aria-hidden="true"
+                    />
+                    <div
+                      className={[
+                        "absolute bottom-0 right-full mr-2 w-44 origin-bottom-right rounded-xl p-2 shadow-lg transition-all duration-200 ease-out",
+                        helpMenuOpen
+                          ? "border border-slate-100 bg-slate-50 ring-1 ring-slate-100 dark:border-slate-600 dark:bg-slate-900/95 dark:ring-white/10"
+                          : "border border-white/60 bg-white/18 ring-1 ring-white/45 backdrop-blur-md dark:border-slate-500/35 dark:bg-slate-900/22 dark:ring-white/8",
+                        isHelpMenuVisible
+                          ? "pointer-events-auto translate-x-0 scale-100 opacity-100"
+                          : "pointer-events-none translate-x-1 scale-95 opacity-0",
+                      ].join(" ")}
+                      role="menu"
+                      aria-label="Help menu"
+                    >
                     <button
                       type="button"
                       className="block w-full rounded-md px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-white focus-visible:bg-white dark:text-slate-100 dark:hover:bg-slate-800 dark:hover:text-white dark:focus-visible:bg-slate-800 dark:focus-visible:text-white"
@@ -4286,8 +4313,9 @@ export const ReactMapApp = () => {
                         {isSubmittingFeedback ? "Submitting..." : "Submit"}
                       </button>
                     </div>
+                    </div>
                   </div>
-                </div>
+                )}
                 <button
                   type="button"
                   onClick={() => {

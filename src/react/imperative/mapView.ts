@@ -681,6 +681,83 @@ export const createMapView = ({
     }, 1800);
   };
 
+  // Manual-copy fallback for blocked clipboard writes in embed export.
+  const exportManualCopyBackdropEl = document.createElement("div");
+  exportManualCopyBackdropEl.className =
+    "absolute inset-0 z-[40] hidden flex items-center justify-center bg-slate-900/40 p-3";
+  exportManualCopyBackdropEl.setAttribute("role", "dialog");
+  exportManualCopyBackdropEl.setAttribute("aria-modal", "true");
+  exportManualCopyBackdropEl.setAttribute("aria-label", "Copy embed HTML manually");
+
+  const exportManualCopyCardEl = document.createElement("div");
+  exportManualCopyCardEl.className =
+    "w-full max-w-xl rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900";
+  const exportManualCopyTitleEl = document.createElement("h3");
+  exportManualCopyTitleEl.className = "text-sm font-semibold text-slate-800 dark:text-slate-100";
+  exportManualCopyTitleEl.textContent = "Copy embed HTML manually";
+  const exportManualCopyHintEl = document.createElement("p");
+  exportManualCopyHintEl.className = "mt-1 text-xs text-slate-500 dark:text-slate-400";
+  exportManualCopyHintEl.textContent = "Clipboard is unavailable. Select and copy this snippet.";
+  const exportManualCopyTextarea = document.createElement("textarea");
+  exportManualCopyTextarea.className =
+    "mt-3 h-40 w-full rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-2 text-xs text-slate-800 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100";
+  exportManualCopyTextarea.readOnly = true;
+  exportManualCopyTextarea.setAttribute("aria-label", "Embed HTML snippet");
+  const exportManualCopyActionsEl = document.createElement("div");
+  exportManualCopyActionsEl.className = "mt-3 flex justify-end gap-2";
+  const exportManualCopySelectBtn = document.createElement("button");
+  exportManualCopySelectBtn.type = "button";
+  exportManualCopySelectBtn.className =
+    "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800";
+  exportManualCopySelectBtn.textContent = "Select";
+  const exportManualCopyCloseBtn = document.createElement("button");
+  exportManualCopyCloseBtn.type = "button";
+  exportManualCopyCloseBtn.className =
+    "rounded-md border border-brand-500 bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600";
+  exportManualCopyCloseBtn.textContent = "Close";
+
+  exportManualCopyActionsEl.appendChild(exportManualCopySelectBtn);
+  exportManualCopyActionsEl.appendChild(exportManualCopyCloseBtn);
+  exportManualCopyCardEl.appendChild(exportManualCopyTitleEl);
+  exportManualCopyCardEl.appendChild(exportManualCopyHintEl);
+  exportManualCopyCardEl.appendChild(exportManualCopyTextarea);
+  exportManualCopyCardEl.appendChild(exportManualCopyActionsEl);
+  exportManualCopyBackdropEl.appendChild(exportManualCopyCardEl);
+  container.appendChild(exportManualCopyBackdropEl);
+
+  const closeExportManualCopyDialog = () => {
+    exportManualCopyBackdropEl.classList.add("hidden");
+  };
+  const openExportManualCopyDialog = (text: string) => {
+    exportManualCopyTextarea.value = text;
+    exportManualCopyBackdropEl.classList.remove("hidden");
+    window.setTimeout(() => {
+      exportManualCopyTextarea.focus();
+      exportManualCopyTextarea.select();
+    }, 0);
+  };
+  const handleExportManualCopyBackdropClick = (event: MouseEvent) => {
+    if (event.target !== exportManualCopyBackdropEl) return;
+    closeExportManualCopyDialog();
+  };
+  const handleExportManualCopyKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    closeExportManualCopyDialog();
+  };
+  const handleExportManualCopySelectClick = () => {
+    exportManualCopyTextarea.focus();
+    exportManualCopyTextarea.select();
+  };
+  const handleExportManualCopyCloseClick = () => {
+    closeExportManualCopyDialog();
+  };
+
+  exportManualCopyBackdropEl.addEventListener("click", handleExportManualCopyBackdropClick);
+  exportManualCopyBackdropEl.addEventListener("keydown", handleExportManualCopyKeyDown);
+  exportManualCopySelectBtn.addEventListener("click", handleExportManualCopySelectClick);
+  exportManualCopyCloseBtn.addEventListener("click", handleExportManualCopyCloseClick);
+
   // Loading indicator: bottom-center pill on desktop, top-right spinner on mobile
   const loadingIndicator = createMapLoadingIndicator({ isMobile });
   container.appendChild(loadingIndicator.element);
@@ -1275,6 +1352,7 @@ export const createMapView = ({
     ]);
   };
 
+  const EMBED_SANITIZE_QUERY_KEYS = ["tour", "statsDebug", "statsDebugAnalytics"];
   const canWriteTextClipboard = () =>
     typeof window !== "undefined" &&
     window.isSecureContext &&
@@ -1287,6 +1365,19 @@ export const createMapView = ({
       .replaceAll('"', "&quot;")
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;");
+
+  const buildSanitizedEmbedUrl = () => {
+    const url = new URL(window.location.href);
+    url.hash = "";
+    EMBED_SANITIZE_QUERY_KEYS.forEach((key) => {
+      url.searchParams.delete(key);
+    });
+    url.searchParams.set("embed", "1");
+    return url.toString();
+  };
+
+  const buildEmbedHtml = (url: string) =>
+    `<iframe src="${encodeHtmlAttribute(url)}" width="100%" height="600" style="border:0;" loading="lazy" title="Neighborhood Explorer map"></iframe>`;
 
   runMapLinkCopy = async () => {
     if (!canWriteTextClipboard()) {
@@ -1305,19 +1396,20 @@ export const createMapView = ({
   };
 
   runMapEmbedCopy = async () => {
+    const embedUrl = buildSanitizedEmbedUrl();
+    const embedHtml = buildEmbedHtml(embedUrl);
     if (!canWriteTextClipboard()) {
-      showExportToast("Clipboard copy is not supported in this browser", "error");
-      throw new Error("Clipboard text write unsupported");
+      openExportManualCopyDialog(embedHtml);
+      showExportToast("Clipboard unavailable - manual copy opened", "error");
+      return;
     }
-    const currentUrl = typeof window !== "undefined" ? window.location.href : "";
-    const embedHtml = `<iframe src="${encodeHtmlAttribute(currentUrl)}" width="100%" height="600" style="border:0;" loading="lazy" title="Neighborhood Explorer map"></iframe>`;
     try {
       await navigator.clipboard.writeText(embedHtml);
       showExportToast("Embed HTML copied", "success");
     } catch (error) {
       console.warn("Clipboard text write failed", error);
-      showExportToast("Couldn't copy embed HTML", "error");
-      throw error;
+      openExportManualCopyDialog(embedHtml);
+      showExportToast("Couldn't access clipboard - manual copy opened", "error");
     }
   };
 
@@ -5457,6 +5549,11 @@ export const createMapView = ({
         exportToastHideTimer = null;
       }
       exportToastEl.remove();
+      exportManualCopyBackdropEl.removeEventListener("click", handleExportManualCopyBackdropClick);
+      exportManualCopyBackdropEl.removeEventListener("keydown", handleExportManualCopyKeyDown);
+      exportManualCopySelectBtn.removeEventListener("click", handleExportManualCopySelectClick);
+      exportManualCopyCloseBtn.removeEventListener("click", handleExportManualCopyCloseClick);
+      exportManualCopyBackdropEl.remove();
       hideOrgHoverTooltip();
       if (orgHoverTooltipRaf !== null) {
         cancelAnimationFrame(orgHoverTooltipRaf);

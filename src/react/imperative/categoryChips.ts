@@ -303,6 +303,11 @@ const toggleCloseIcon = (closeIcon: HTMLSpanElement, show: boolean) => {
 
 export const createCategoryChips = (options: CategoryChipsOptions = {}): CategoryChipsController => {
   const isMobile = options.isMobile ?? false;
+  const isEmbedMode = (() => {
+    if (typeof window === "undefined") return false;
+    const raw = (new URLSearchParams(window.location.search).get("embed") || "").trim().toLowerCase();
+    return raw === "1" || raw === "true";
+  })();
   const wrapper = document.createElement("div");
   wrapper.className =
     "pointer-events-none absolute left-4 top-4 z-10 flex flex-nowrap items-center gap-2";
@@ -863,7 +868,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     exportScreenshotDownloadBtn.classList.toggle("cursor-wait", isBusy);
     exportCsvAreasDownloadBtn.classList.toggle("opacity-70", isBusy);
     exportCsvAreasDownloadBtn.classList.toggle("cursor-wait", isBusy);
-    exportLinkCopyBtnLabel.textContent = action === "link" ? "Link: Copying..." : "Link: Copy";
+    exportLinkCopyBtnLabel.textContent = action === "link" ? "URL Link: Copying..." : "URL Link: Copy";
     exportEmbedCopyBtnLabel.textContent = action === "embed" ? "Embed: Copying..." : "Embed: Copy";
     exportScreenshotCopyBtnLabel.textContent = action === "copy" ? "Screenshot: Copying..." : "Screenshot: Copy";
     exportScreenshotDownloadBtnLabel.textContent =
@@ -1154,7 +1159,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   exportLinkCopyBtnIcon.innerHTML = LINK_ICON;
   exportLinkCopyBtnLeft.appendChild(exportLinkCopyBtnIcon);
   exportLinkCopyBtnLabel.className = "whitespace-nowrap";
-  exportLinkCopyBtnLabel.textContent = "Link: Copy";
+  exportLinkCopyBtnLabel.textContent = "URL Link: Copy";
   exportLinkCopyBtnLeft.appendChild(exportLinkCopyBtnLabel);
   exportLinkCopyBtn.appendChild(exportLinkCopyBtnLeft);
   const exportLinkCopyBtnArrow = document.createElement("span");
@@ -1802,7 +1807,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   const renderSelectedStatYearChip = (selectedLabel: string | null) => {
     const normalizedLabel = selectedLabel?.toLowerCase() ?? "";
     const shouldShow =
-      !isMobile &&
+      (!isMobile || isEmbedMode) &&
       Boolean(selectedStatId) &&
       Boolean(selectedLabel) &&
       !normalizedLabel.includes("change");
@@ -2046,8 +2051,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   };
 
   const renderStatChips = () => {
-    // On mobile, we no longer show the active-stat chip at all
-    if (isMobile) {
+    // Default mobile UX hides selected-stat chips, except in embed mode.
+    if (isMobile && !isEmbedMode) {
       statWrapper.classList.add("hidden");
       // Clean up any previously-added entries just in case
       cleanupStatEntries();
@@ -2130,8 +2135,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   };
 
   const updateStatSelectionStyles = () => {
-    // On mobile, we suppress the stat chip entirely
-    if (isMobile) {
+    // Default mobile UX suppresses stat chips, except in embed mode.
+    if (isMobile && !isEmbedMode) {
       statWrapper.classList.add("hidden");
       return;
     }
