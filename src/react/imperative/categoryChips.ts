@@ -381,7 +381,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   extremasChipBtn.setAttribute(MAP_TOUR_TARGET_ATTR, MAP_TOUR_TARGETS.showingExtremas);
   extremasChipBtn.className = `${CATEGORY_CHIP_CLASSES} ${EXTREMAS_CHIP_ON_CLASSES}`;
   const extremasLabel = document.createElement("span");
-  extremasLabel.textContent = "Extremas";
+  extremasLabel.textContent = "Stat Extremes";
   extremasLabel.className = "whitespace-nowrap";
   const extremasBadge = document.createElement("span");
   extremasBadge.innerHTML = EXTREMAS_BADGE_ICON;
@@ -1022,7 +1022,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       const extremasToken = document.createElement("span");
       extremasToken.className = "inline-flex items-center gap-1.5";
       const extremasText = document.createElement("span");
-      extremasText.textContent = "Extremas";
+      extremasText.textContent = "Extremes";
       const extremasGlyph = document.createElement("span");
       extremasGlyph.className = "flex items-center";
       extremasGlyph.innerHTML = EXTREMAS_BADGE_ICON;
