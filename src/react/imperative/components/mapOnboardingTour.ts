@@ -130,6 +130,13 @@ const countProgressStepsThrough = (step: OnboardingStep | null): number => {
 
 type LocalRect = { left: number; top: number; right: number; bottom: number };
 type TourCardPosition = { step: OnboardingStep; left: number; top: number };
+type TourCardContent =
+  | string
+  | Node
+  | {
+      body: string | Node;
+      action?: string | Node;
+    };
 
 export const createMapOnboardingTour = ({
   container,
@@ -1191,19 +1198,46 @@ export const createMapOnboardingTour = ({
   };
 
   const renderTourCard = (
-    message: string | Node,
+    message: TourCardContent,
     primary: { label: string; onClick: () => void },
     secondary?: { label: string; onClick: () => void; tone?: "neutral" | "primary" },
     tertiary?: { label: string; onClick: () => void; tone?: "neutral" | "primary" },
   ) => {
     stepCard.replaceChildren();
-    if (typeof message === "string") {
-      const copy = document.createElement("p");
-      copy.className = "text-xs leading-5 text-slate-700 dark:text-slate-200";
-      copy.textContent = message;
-      stepCard.appendChild(copy);
+    const appendCardText = (content: string | Node, className: string) => {
+      if (typeof content === "string") {
+        const copy = document.createElement("p");
+        copy.className = className;
+        copy.textContent = content;
+        stepCard.appendChild(copy);
+        return;
+      }
+      stepCard.appendChild(content);
+    };
+
+    // Supports two-section step copy: general context + explicit user action callout.
+    if (typeof message === "string" || message instanceof Node) {
+      appendCardText(message, "text-xs leading-5 text-slate-700 dark:text-slate-200");
     } else {
-      stepCard.appendChild(message);
+      appendCardText(message.body, "text-xs leading-5 text-slate-700 dark:text-slate-200");
+      if (message.action) {
+        const callout = document.createElement("div");
+        callout.className = "mt-3 flex items-start gap-2 rounded-lg bg-slate-50/90 px-2.5 py-2 dark:bg-slate-800/70";
+        const icon = document.createElement("span");
+        icon.className = "mt-1 ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-slate-500 dark:text-slate-300";
+        icon.innerHTML =
+          '<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="h-4 w-4"><path d="M3 2.5 13 9l-4.05 1.35 1.95 4.7-1.8.8-1.95-4.7L4 13.9z"/></svg>';
+        const actionText = document.createElement("p");
+        actionText.className = "text-xs leading-5 text-slate-700 dark:text-slate-100";
+        if (typeof message.action === "string") {
+          actionText.textContent = message.action;
+        } else {
+          actionText.appendChild(message.action);
+        }
+        callout.appendChild(icon);
+        callout.appendChild(actionText);
+        stepCard.appendChild(callout);
+      }
     }
 
     const stepIndex = onboardingStep ? TOUR_STEP_SEQUENCE.indexOf(onboardingStep) : -1;
@@ -1322,7 +1356,10 @@ export const createMapOnboardingTour = ({
     setTourLock(MAP_TOUR_LOCKS.primaryStatMenu);
     stepOverlay.classList.remove("hidden");
     renderTourCard(
-      "Change your statistic version on map. For example, population change over time.",
+      {
+        body: "Change the version of your mapped statistic.",
+        action: "Switching to see areas of OK gaining & losing people.",
+      },
       {
         label: "Next",
         onClick: () => {
