@@ -551,6 +551,7 @@ export const createMapView = ({
   let selectedCategory: string | null = null;
   let extremasVisible = initialExtremasVisible ?? getDomainDefaults().defaultExtremasVisible;
   let runMapLinkCopy: (() => Promise<void>) | null = null;
+  let runMapEmbedCopy: (() => Promise<void>) | null = null;
   let runMapScreenshotCopy: (() => Promise<void>) | null = null;
   let runMapScreenshotDownload: (() => Promise<void>) | null = null;
   const categoryChips = createCategoryChips({
@@ -605,6 +606,10 @@ export const createMapView = ({
     onExportLinkCopy: async () => {
       if (!runMapLinkCopy) throw new Error("Map export (link copy) is not ready yet");
       return runMapLinkCopy();
+    },
+    onExportEmbedCopy: async () => {
+      if (!runMapEmbedCopy) throw new Error("Map export (embed copy) is not ready yet");
+      return runMapEmbedCopy();
     },
     onExportScreenshotCopy: async () => {
       if (!runMapScreenshotCopy) throw new Error("Map export (copy) is not ready yet");
@@ -1270,13 +1275,21 @@ export const createMapView = ({
     ]);
   };
 
+  const canWriteTextClipboard = () =>
+    typeof window !== "undefined" &&
+    window.isSecureContext &&
+    typeof navigator !== "undefined" &&
+    typeof navigator.clipboard?.writeText === "function";
+
+  const encodeHtmlAttribute = (value: string) =>
+    value
+      .replaceAll("&", "&amp;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+
   runMapLinkCopy = async () => {
-    const canWriteTextClipboard =
-      typeof window !== "undefined" &&
-      window.isSecureContext &&
-      typeof navigator !== "undefined" &&
-      typeof navigator.clipboard?.writeText === "function";
-    if (!canWriteTextClipboard) {
+    if (!canWriteTextClipboard()) {
       showExportToast("Clipboard copy is not supported in this browser", "error");
       throw new Error("Clipboard text write unsupported");
     }
@@ -1287,6 +1300,23 @@ export const createMapView = ({
     } catch (error) {
       console.warn("Clipboard text write failed", error);
       showExportToast("Couldn't copy link", "error");
+      throw error;
+    }
+  };
+
+  runMapEmbedCopy = async () => {
+    if (!canWriteTextClipboard()) {
+      showExportToast("Clipboard copy is not supported in this browser", "error");
+      throw new Error("Clipboard text write unsupported");
+    }
+    const currentUrl = typeof window !== "undefined" ? window.location.href : "";
+    const embedHtml = `<iframe src="${encodeHtmlAttribute(currentUrl)}" width="100%" height="600" style="border:0;" loading="lazy" title="Neighborhood Explorer map"></iframe>`;
+    try {
+      await navigator.clipboard.writeText(embedHtml);
+      showExportToast("Embed HTML copied", "success");
+    } catch (error) {
+      console.warn("Clipboard text write failed", error);
+      showExportToast("Couldn't copy embed HTML", "error");
       throw error;
     }
   };

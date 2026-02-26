@@ -252,6 +252,7 @@ interface CategoryChipsOptions {
   onTimeChipClear?: () => void;
   onAreasModeChange?: (mode: AreasChipMode) => void;
   onExportLinkCopy?: () => Promise<void> | void;
+  onExportEmbedCopy?: () => Promise<void> | void;
   onExportScreenshotCopy?: () => Promise<void> | void;
   onExportScreenshotDownload?: () => Promise<void> | void;
   onExportCsvAreasDownload?: () => Promise<void> | void;
@@ -622,6 +623,8 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   const exportChipStack = document.createElement("div");
   const exportLinkCopyBtn = document.createElement("button");
   const exportLinkCopyBtnLabel = document.createElement("span");
+  const exportEmbedCopyBtn = document.createElement("button");
+  const exportEmbedCopyBtnLabel = document.createElement("span");
   const exportScreenshotCopyBtn = document.createElement("button");
   const exportScreenshotCopyBtnLabel = document.createElement("span");
   const exportScreenshotDownloadBtn = document.createElement("button");
@@ -631,7 +634,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   const exportCsvAreasHelperText = document.createElement("div");
   let exportPanelOpen = false;
   let exportPanelPinned = false;
-  let exportActionBusy: "link" | "copy" | "download" | "csv" | null = null;
+  let exportActionBusy: "link" | "embed" | "copy" | "download" | "csv" | null = null;
 
   const clearShowingOutsideHandler = () => {
     if (!removeShowingOutsideHandler) return;
@@ -842,15 +845,18 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     }
   };
 
-  const setExportActionBusy = (action: "link" | "copy" | "download" | "csv" | null) => {
+  const setExportActionBusy = (action: "link" | "embed" | "copy" | "download" | "csv" | null) => {
     exportActionBusy = action;
     const isBusy = action !== null;
     exportLinkCopyBtn.disabled = isBusy;
+    exportEmbedCopyBtn.disabled = isBusy;
     exportScreenshotCopyBtn.disabled = isBusy;
     exportScreenshotDownloadBtn.disabled = isBusy;
     exportCsvAreasDownloadBtn.disabled = isBusy;
     exportLinkCopyBtn.classList.toggle("opacity-70", isBusy);
     exportLinkCopyBtn.classList.toggle("cursor-wait", isBusy);
+    exportEmbedCopyBtn.classList.toggle("opacity-70", isBusy);
+    exportEmbedCopyBtn.classList.toggle("cursor-wait", isBusy);
     exportScreenshotCopyBtn.classList.toggle("opacity-70", isBusy);
     exportScreenshotCopyBtn.classList.toggle("cursor-wait", isBusy);
     exportScreenshotDownloadBtn.classList.toggle("opacity-70", isBusy);
@@ -858,6 +864,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     exportCsvAreasDownloadBtn.classList.toggle("opacity-70", isBusy);
     exportCsvAreasDownloadBtn.classList.toggle("cursor-wait", isBusy);
     exportLinkCopyBtnLabel.textContent = action === "link" ? "Link: Copying..." : "Link: Copy";
+    exportEmbedCopyBtnLabel.textContent = action === "embed" ? "Embed: Copying..." : "Embed: Copy";
     exportScreenshotCopyBtnLabel.textContent = action === "copy" ? "Screenshot: Copying..." : "Screenshot: Copy";
     exportScreenshotDownloadBtnLabel.textContent =
       action === "download" ? "Screenshot: Downloading..." : "Screenshot: Download";
@@ -879,6 +886,23 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
       await options.onExportLinkCopy();
     } catch (error) {
       console.warn("Map link copy export failed", error);
+    } finally {
+      setExportActionBusy(null);
+    }
+  };
+  const handleExportEmbedCopyClick = async (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (exportActionBusy) return;
+    if (!options.onExportEmbedCopy) {
+      console.warn("Map embed copy export unavailable");
+      return;
+    }
+    setExportActionBusy("embed");
+    try {
+      await options.onExportEmbedCopy();
+    } catch (error) {
+      console.warn("Map embed copy export failed", error);
     } finally {
       setExportActionBusy(null);
     }
@@ -1139,6 +1163,27 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
   exportLinkCopyBtn.appendChild(exportLinkCopyBtnArrow);
   exportLinkCopyBtn.addEventListener("click", handleExportLinkCopyClick);
   exportChipStack.appendChild(exportLinkCopyBtn);
+
+  exportEmbedCopyBtn.type = "button";
+  exportEmbedCopyBtn.className =
+    `${CATEGORY_CHIP_CLASSES} ${EXPORT_PANEL_ACTION_CLASSES} w-full justify-between px-2.5`;
+  exportEmbedCopyBtn.title = "Copy embeddable iframe HTML for the current map view";
+  const exportEmbedCopyBtnLeft = document.createElement("span");
+  exportEmbedCopyBtnLeft.className = "flex items-center gap-1.5";
+  const exportEmbedCopyBtnIcon = document.createElement("span");
+  exportEmbedCopyBtnIcon.className = "flex items-center text-slate-500 dark:text-slate-400";
+  exportEmbedCopyBtnIcon.innerHTML = LINK_ICON;
+  exportEmbedCopyBtnLeft.appendChild(exportEmbedCopyBtnIcon);
+  exportEmbedCopyBtnLabel.className = "whitespace-nowrap";
+  exportEmbedCopyBtnLabel.textContent = "Embed: Copy";
+  exportEmbedCopyBtnLeft.appendChild(exportEmbedCopyBtnLabel);
+  exportEmbedCopyBtn.appendChild(exportEmbedCopyBtnLeft);
+  const exportEmbedCopyBtnArrow = document.createElement("span");
+  exportEmbedCopyBtnArrow.className = "flex items-center text-slate-400 dark:text-slate-500";
+  exportEmbedCopyBtnArrow.innerHTML = ARROW_ICON;
+  exportEmbedCopyBtn.appendChild(exportEmbedCopyBtnArrow);
+  exportEmbedCopyBtn.addEventListener("click", handleExportEmbedCopyClick);
+  exportChipStack.appendChild(exportEmbedCopyBtn);
 
   exportScreenshotCopyBtn.type = "button";
   exportScreenshotCopyBtn.className =
@@ -2220,6 +2265,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     exportChipBtn.removeEventListener("click", handleExportClick);
     exportChipBtn.removeEventListener("keydown", handleExportKeyDown);
     exportLinkCopyBtn.removeEventListener("click", handleExportLinkCopyClick);
+    exportEmbedCopyBtn.removeEventListener("click", handleExportEmbedCopyClick);
     exportScreenshotCopyBtn.removeEventListener("click", handleExportScreenshotCopyClick);
     exportScreenshotDownloadBtn.removeEventListener("click", handleExportScreenshotDownloadClick);
     exportCsvAreasDownloadBtn.removeEventListener("click", handleExportCsvAreasDownloadClick);
