@@ -837,7 +837,7 @@ export const createCategoryChips = (options: CategoryChipsOptions = {}): Categor
     exportCsvAreasHelperText.style.display = hasCallback ? "" : "none";
     exportCsvAreasDownloadBtn.setAttribute("aria-disabled", `${unavailable}`);
     exportCsvAreasDownloadBtn.title = unavailable
-      ? getExportCsvAreasUnavailableHelpText()
+      ? ""
       : "Download CSV for selected areas (same as sidebar export csv)";
     exportCsvAreasDownloadBtn.classList.toggle("opacity-60", unavailable && exportActionBusy !== "csv");
     exportCsvAreasDownloadBtn.classList.toggle("cursor-help", unavailable && exportActionBusy !== "csv");
