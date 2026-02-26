@@ -4174,7 +4174,7 @@ export const ReactMapApp = () => {
                     className={[
                       "inline-flex h-10 w-10 items-center justify-center rounded-full text-base font-semibold shadow-sm transition",
                       helpMenuOpen
-                        ? "border border-slate-100 bg-slate-50 text-slate-800 ring-1 ring-slate-100"
+                        ? "border border-slate-100 bg-slate-50 text-slate-800 ring-1 ring-slate-100 dark:border-slate-600 dark:bg-slate-900/95 dark:text-slate-100 dark:ring-white/10"
                         : "border-[0.5px] border-white/60 bg-white/18 text-slate-700 ring-1 ring-white/45 backdrop-blur-md hover:border-brand-200/70 hover:bg-white/30 hover:text-brand-700 dark:border-slate-500/35 dark:bg-slate-900/22 dark:text-slate-200 dark:ring-white/8 dark:hover:border-brand-400/50 dark:hover:bg-slate-900/38 dark:hover:text-white",
                     ].join(" ")}
                     aria-label="Help"
@@ -4202,7 +4202,7 @@ export const ReactMapApp = () => {
                     className={[
                       "absolute bottom-0 right-full mr-2 w-44 origin-bottom-right rounded-xl p-2 shadow-lg transition-all duration-200 ease-out",
                       helpMenuOpen
-                        ? "border border-slate-100 bg-slate-50 ring-1 ring-slate-100"
+                        ? "border border-slate-100 bg-slate-50 ring-1 ring-slate-100 dark:border-slate-600 dark:bg-slate-900/95 dark:ring-white/10"
                         : "border border-white/60 bg-white/18 ring-1 ring-white/45 backdrop-blur-md dark:border-slate-500/35 dark:bg-slate-900/22 dark:ring-white/8",
                       isHelpMenuVisible
                         ? "pointer-events-auto translate-x-0 scale-100 opacity-100"
@@ -4213,7 +4213,7 @@ export const ReactMapApp = () => {
                   >
                     <button
                       type="button"
-                      className="block w-full rounded-md px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-white focus-visible:bg-white dark:text-slate-200 dark:hover:bg-white dark:hover:text-slate-900 dark:focus-visible:bg-white dark:focus-visible:text-slate-900"
+                      className="block w-full rounded-md px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-white focus-visible:bg-white dark:text-slate-100 dark:hover:bg-slate-800 dark:hover:text-white dark:focus-visible:bg-slate-800 dark:focus-visible:text-white"
                       role="menuitem"
                       onClick={handleSubmitFeedbackFromHelpMenu}
                     >
@@ -4221,7 +4221,7 @@ export const ReactMapApp = () => {
                     </button>
                     <button
                       type="button"
-                      className="mt-1 block w-full rounded-md px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-white focus-visible:bg-white dark:text-slate-200 dark:hover:bg-white dark:hover:text-slate-900 dark:focus-visible:bg-white dark:focus-visible:text-slate-900"
+                      className="mt-1 block w-full rounded-md px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-white focus-visible:bg-white dark:text-slate-100 dark:hover:bg-slate-800 dark:hover:text-white dark:focus-visible:bg-slate-800 dark:focus-visible:text-white"
                       role="menuitem"
                       onClick={handleStartTourFromHelpMenu}
                     >
