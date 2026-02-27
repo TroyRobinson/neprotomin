@@ -3,7 +3,10 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import type { CombinedDemographicsSnapshot, BreakdownGroup } from "../hooks/useDemographics";
 import { getCountyIdByName } from "../../lib/countyCentroids";
 import { MAP_TOUR_TARGETS } from "../imperative/constants/mapTourTargets";
-import { MAP_TOUR_CLOSE_ADD_AREAS_EVENT } from "../imperative/constants/mapTourEvents";
+import {
+  MAP_TOUR_CLOSE_ADD_AREAS_EVENT,
+  MAP_TOUR_OPEN_ADD_AREAS_EVENT,
+} from "../imperative/constants/mapTourEvents";
 
 type SupportedAreaKind = "ZIP" | "COUNTY";
 
@@ -349,11 +352,19 @@ export const DemographicsBar = ({
       setAddInputOpen(false);
       setAddInputValue("");
     };
+    const openAddAreasFromTour = () => {
+      if (!onAddAreas || !addKind) return;
+      clearSelectedAreasTooltipClose();
+      setShowSelectedAreasTooltip(true);
+      setAddInputOpen(true);
+    };
     window.addEventListener(MAP_TOUR_CLOSE_ADD_AREAS_EVENT, closeAddAreasFromTour as EventListener);
+    window.addEventListener(MAP_TOUR_OPEN_ADD_AREAS_EVENT, openAddAreasFromTour as EventListener);
     return () => {
       window.removeEventListener(MAP_TOUR_CLOSE_ADD_AREAS_EVENT, closeAddAreasFromTour as EventListener);
+      window.removeEventListener(MAP_TOUR_OPEN_ADD_AREAS_EVENT, openAddAreasFromTour as EventListener);
     };
-  }, [clearSelectedAreasTooltipClose]);
+  }, [addKind, clearSelectedAreasTooltipClose, onAddAreas]);
 
   useEffect(() => {
     if (!showSelectedAreasTooltip || !addInputOpen) return;
@@ -562,9 +573,7 @@ export const DemographicsBar = ({
                             }
                           }}
                           placeholder={
-                            addKind === "ZIP"
-                              ? "Add ZIPs (comma/space)"
-                              : "Add counties (name or FIPS)"
+                            "Add ZIPs/Counties (comma/space)"
                           }
                           className="h-7 w-full rounded border border-slate-300 bg-white px-2 text-[11px] text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-brand-300 dark:focus:ring-brand-800/50"
                         />

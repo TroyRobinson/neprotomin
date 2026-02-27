@@ -3,6 +3,7 @@ export const MAP_TOUR_OPEN_FEEDBACK_EVENT = "ne:map-tour:open-feedback";
 export const MAP_TOUR_SET_STAT_EVENT = "ne:map-tour:set-stat";
 export const MAP_TOUR_SET_CAMERA_EVENT = "ne:map-tour:set-camera";
 export const MAP_TOUR_CLOSE_ADD_AREAS_EVENT = "ne:map-tour:close-add-areas";
+export const MAP_TOUR_OPEN_ADD_AREAS_EVENT = "ne:map-tour:open-add-areas";
 export const MAP_TOUR_RESET_TO_DEFAULTS_EVENT = "ne:map-tour:reset-to-defaults";
 
 export interface MapTourApplyStateDetail {
@@ -76,8 +77,8 @@ export const MAP_TOUR_DEMOGRAPHICS_PRESET: MapTourApplyStateDetail = {
 };
 
 export const MAP_TOUR_ADD_AREAS_PRESET: MapTourApplyStateDetail = {
-  lat: 35.4304,
-  lng: -97.5743,
+  lat: 35.482,
+  lng: -97.5958,
   zoom: 10.2,
   statId: "8807bf0b-5a85-4a73-82f2-cd18c8140072",
   showAdvanced: true,

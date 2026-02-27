@@ -11,6 +11,7 @@ import {
   MAP_TOUR_ADVANCED_STATS_PRESET,
   MAP_TOUR_APPLY_STATE_EVENT,
   MAP_TOUR_CLOSE_ADD_AREAS_EVENT,
+  MAP_TOUR_OPEN_ADD_AREAS_EVENT,
   MAP_TOUR_DEMOGRAPHICS_PRESET,
   MAP_TOUR_EXTREMAS_PRESET,
   MAP_TOUR_OPEN_FEEDBACK_EVENT,
@@ -83,7 +84,6 @@ type OnboardingStep =
   | "sidebarDemographicsExpand"
   | "sidebarOtherStats"
   | "sidebarOrgsTab"
-  | "sidebarHoursFilter"
   | "sidebarCategoryFilter"
   | "tourFinale"
   | "myLocation"
@@ -106,7 +106,6 @@ const TOUR_STEP_SEQUENCE: readonly OnboardingStep[] = [
   "sidebarDemographicsExpand",
   "sidebarOtherStats",
   "sidebarOrgsTab",
-  "sidebarHoursFilter",
   "sidebarCategoryFilter",
   "tourFinale",
 ];
@@ -498,14 +497,6 @@ export const createMapOnboardingTour = ({
     return isVisibleTarget(target) ? target : null;
   };
 
-  const getSidebarHoursFilterTarget = (): HTMLElement | null => {
-    const target =
-      container.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarHoursFilter)) ??
-      targetRoot.ownerDocument?.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarHoursFilter)) ??
-      null;
-    return isVisibleTarget(target) ? target : null;
-  };
-
   const getSidebarCategoryFilterTarget = (): HTMLElement | null => {
     const target =
       container.querySelector<HTMLElement>(targetSelector(MAP_TOUR_TARGETS.sidebarCategoryFilter)) ??
@@ -782,6 +773,10 @@ export const createMapOnboardingTour = ({
     window.dispatchEvent(new CustomEvent(MAP_TOUR_CLOSE_ADD_AREAS_EVENT));
   };
 
+  const openSidebarAddAreasInput = () => {
+    window.dispatchEvent(new CustomEvent(MAP_TOUR_OPEN_ADD_AREAS_EVENT));
+  };
+
   const resetAppToDefaults = () => {
     window.dispatchEvent(new CustomEvent(MAP_TOUR_RESET_TO_DEFAULTS_EVENT));
   };
@@ -987,7 +982,6 @@ export const createMapOnboardingTour = ({
         onboardingStep === "sidebarDemographicsExpand" ||
         onboardingStep === "sidebarOtherStats" ||
         onboardingStep === "sidebarOrgsTab" ||
-        onboardingStep === "sidebarHoursFilter" ||
         onboardingStep === "sidebarCategoryFilter");
     if (useViewportHighlight) {
       stepOverlay.style.zIndex = "45";
@@ -1339,6 +1333,7 @@ export const createMapOnboardingTour = ({
 
   const completeTourAndResetMapView = () => {
     completeTour();
+    showRestartHintToast();
     resetAppToDefaults();
     clearOnboardingRetry();
     onboardingRetryTimer = window.setTimeout(() => {
@@ -1397,9 +1392,8 @@ export const createMapOnboardingTour = ({
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       {
-        body: "Change the version of your mapped statistic.",
-        action:
-          "See areas of OK gaining (blue) & losing (red) the most residents, loading in now.",
+        action: "Switch the version of your mapped statistic. Change-over-time data loading in now...",
+        note: "See areas of OK gaining (blue) & losing (red) the most residents.",
       },
       {
         label: "Next",
@@ -1446,9 +1440,9 @@ export const createMapOnboardingTour = ({
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       {
-        body: "Extremas are currently showing the highest and lowest value locations for different statistics.",
+        body: "See the highest and lowest location extremes for featured statistics.",
         action:
-          "Hover your mouse over the two red triangles on Oklahoma county to see the most pressing issues among the highest OK population.",
+          "Hover your mouse over the two red triangles in Oklahoma county to see which issues are most extreme there in all of OK.",
       },
       { label: "Next", onClick: () => showShowingOrganizationsStep() },
       { label: "Dismiss", onClick: dismissTour },
@@ -1496,8 +1490,7 @@ export const createMapOnboardingTour = ({
     renderTourCard(
       {
         body: "Organizations appear as orange number clusters or single circles on the map.",
-        action:
-          "Hover or click the orange circles to see which orgs are closest to these blue ZIP-areas with high SNAP Food need.",
+        action: "Click the orange circles to see which non-profits are closest to these blue areas of high SNAP Food registration.",
       },
       {
         label: "Next",
@@ -1543,9 +1536,9 @@ export const createMapOnboardingTour = ({
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       {
-        body: "See map boundaries update by zoom level or fix to ZIP, county, etc.",
+        body: "See map boundaries update based on your zoom level or set to just ZIP, county, etc.",
         action:
-          "Zoom in to Payne county or select Areas: ZIP to see which ZIPs are hardest hit by Payne's exceeding rent burden.",
+          "Zoom into Payne county, or select \"Areas: ZIPs\", to see which ZIPs are hardest hit by Payne's exceeding rent burden.",
       },
       {
         label: "Next",
@@ -1595,9 +1588,9 @@ export const createMapOnboardingTour = ({
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       {
-        body: "Share your current map with others! Embed in your website, etc.",
+        body: "Share your current map view with others! Add to a presentation, embed a live map in your website, etc.",
         action:
-          "Paste this marriage % map (command/control+v) into a doc, presentation, etc.).",
+          "Paste this marriage map (command/control+v) into a doc, slide, social post, etc.",
       },
       {
         label: "Next",
@@ -1643,8 +1636,8 @@ export const createMapOnboardingTour = ({
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       {
-        body: "Search for stats, orgs, zips, or addresses.",
-        action: "Click the three-lined hamburger menu icon now to browse options.",
+        body: "Search for stats, orgs, zips, or addresses. Browse data.",
+        action: "Click the three-lined hamburger menu icon now to browse our current options.",
       },
       {
         label: "Next",
@@ -1742,6 +1735,11 @@ export const createMapOnboardingTour = ({
     onboardingStep = "sidebarAddAreas";
     stepOverlay.classList.remove("hidden");
     expandSidebarAddAreasDropdown(target);
+    openSidebarAddAreasInput();
+    window.setTimeout(() => {
+      if (onboardingStep !== "sidebarAddAreas") return;
+      openSidebarAddAreasInput();
+    }, 80);
     renderTourCard(
       {
         body: "Add additional areas to compare.",
@@ -1784,9 +1782,9 @@ export const createMapOnboardingTour = ({
     ensureSidebarDemographicsExpanded(true);
     renderTourCard(
       {
-        body: "Expand to see demographic breakdown of your selected area(s).",
+        body: "See demographic breakdown of your selected area(s).",
         action:
-          "Hover bars with your mouse to see the largest ethnicities, income levels, etc. for this fast growing area of the city",
+          "Hover bars with your mouse to see the largest ethnicities, income levels, etc. for this fast growing area of the city.",
       },
       {
         label: "Next",
@@ -1820,12 +1818,19 @@ export const createMapOnboardingTour = ({
     onboardingStep = "sidebarOtherStats";
     stepOverlay.classList.remove("hidden");
     applyTourSecondaryStat(TOUR_OTHER_STATS_SECONDARY_STAT_ID);
+    const note = document.createElement("p");
+    note.className = "mt-2 text-xs leading-5 text-slate-700 dark:text-slate-200";
+    note.append("Which areas have ");
+    const both = document.createElement("strong");
+    both.textContent = "both";
+    note.appendChild(both);
+    note.append(" high food and disability needs?");
     renderTourCard(
       {
-        body: "More statistics to explore (e.g. Households Receiving SNAP showing) or layer...",
+        body: "More statistics to explore (e.g. Households Receiving SNAP now showing) or layer...",
         action:
-          'We\'ve also shift+clicked the "Has Disability" stat to layer (green dots) over our SNAP statistic.',
-        note: "Which areas have both high food and disability needs?",
+          'Shift+clicking the "Has Disability" stat to layer (green dots) over our SNAP statistic.',
+        note,
       },
       {
         label: "Next",
@@ -1854,7 +1859,7 @@ export const createMapOnboardingTour = ({
       if (attempt < 28) {
         onboardingRetryTimer = window.setTimeout(() => showSidebarOrgsTabStep(attempt + 1), 120);
       } else {
-        skipToNextStep("sidebarOrgsTab", showSidebarHoursFilterStep);
+        skipToNextStep("sidebarOrgsTab", showSidebarCategoryFilterStep);
       }
       return;
     }
@@ -1863,34 +1868,9 @@ export const createMapOnboardingTour = ({
     ensureShowingOrganizationsVisible(true);
     renderTourCard(
       {
-        body: "Switch to the organizations tab to browse organizations involved in your current map view",
+        body: "Switch to the organizations tab to browse organizations involved in your current map view.",
         action:
-          "Click an org card in the list to see its location among these areas of high SNAP need & population",
-      },
-      { label: "Next", onClick: () => showSidebarHoursFilterStep() },
-      { label: "Dismiss", onClick: dismissTour },
-    );
-    positionTourStep(target);
-  };
-
-  const showSidebarHoursFilterStep = (attempt = 0) => {
-    clearOnboardingRetry();
-    openSidebarPanel();
-    openSidebarOrgsTab();
-    const target = getSidebarHoursFilterTarget();
-    if (!target) {
-      if (attempt < 28) {
-        onboardingRetryTimer = window.setTimeout(() => showSidebarHoursFilterStep(attempt + 1), 120);
-      } else {
-        skipToNextStep("sidebarHoursFilter", showSidebarCategoryFilterStep);
-      }
-      return;
-    }
-    onboardingStep = "sidebarHoursFilter";
-    stepOverlay.classList.remove("hidden");
-    renderTourCard(
-      {
-        action: "Filter orgs (e.g. food banks) by hours of operation.",
+          "Click an org card listed to see its location among these high SNAP populations.",
       },
       { label: "Next", onClick: () => showSidebarCategoryFilterStep() },
       { label: "Dismiss", onClick: dismissTour },
@@ -1933,9 +1913,9 @@ export const createMapOnboardingTour = ({
     stepOverlay.classList.remove("hidden");
     renderTourCard(
       {
-        body: "Filter both orgs and stats so you can see org efforts related to certain types of needs.",
-        action: "Drag map to see sidebar update with just Edu orgs in view.",
-        note: "Which organizations are concentrated around areas of lowest high school graduation?",
+        body: "Filter orgs and stats to see org efforts related to certain types of needs.",
+        action: "Drag map to see the sidebar show just the Education orgs within your map view.",
+        note: "Which Edu organizations are concentrated around the areas of lowest high school graduation?",
       },
       { label: "Next", onClick: () => showTourFinaleStep() },
       { label: "Dismiss", onClick: dismissTour },
@@ -1945,6 +1925,7 @@ export const createMapOnboardingTour = ({
 
   const showTourFinaleStep = () => {
     clearOnboardingRetry();
+    closeSidebarPanel();
     onboardingStep = "tourFinale";
     stepOverlay.classList.remove("hidden");
     const copy = document.createElement("p");
@@ -1963,7 +1944,7 @@ export const createMapOnboardingTour = ({
     renderTourCard(
       copy,
       { label: "Done", onClick: completeTourAndResetMapView },
-      { label: "Dismiss", onClick: dismissTour },
+      { label: "Back", onClick: showPreviousStep },
       { label: "Submit Feedback", onClick: openFeedbackFromTour },
     );
     positionFinalTourStep();
@@ -1997,8 +1978,8 @@ export const createMapOnboardingTour = ({
     }
     renderTourCard(
       {
-        body: "Zoom to your current location.",
-        action: "What do you notice about the income level of individuals in or around your location?",
+        action: "Zooming to your current location.",
+        note: "What do you notice about the income level of individuals in or around your location?",
       },
       { label: "Next", onClick: () => showLegendStep() },
       { label: "Dismiss", onClick: dismissTour },
@@ -2052,7 +2033,7 @@ export const createMapOnboardingTour = ({
     renderTourCard(
       {
         body: "Reset the map and UI back to defaults.",
-        action: "Clicked the NE App's logo in the top left corner to refresh.",
+        action: "Clicked the NE App's logo in the top left corner",
       },
       { label: "Next", onClick: () => showSearchMenuStep() },
       { label: "Dismiss", onClick: dismissTour },
@@ -2106,9 +2087,6 @@ export const createMapOnboardingTour = ({
         return;
       case "sidebarOrgsTab":
         showSidebarOrgsTabStep();
-        return;
-      case "sidebarHoursFilter":
-        showSidebarHoursFilterStep();
         return;
       case "sidebarCategoryFilter":
         showSidebarCategoryFilterStep();
@@ -2167,8 +2145,6 @@ export const createMapOnboardingTour = ({
         return getSidebarOtherStatsTarget();
       case "sidebarOrgsTab":
         return getSidebarOrgsTabTarget();
-      case "sidebarHoursFilter":
-        return getSidebarHoursFilterTarget();
       case "sidebarCategoryFilter":
         return getSidebarCategoryFilterTarget();
       case "tourFinale":
@@ -2268,7 +2244,6 @@ export const createMapOnboardingTour = ({
         currentStep === "sidebarDemographicsExpand" ||
         currentStep === "sidebarOtherStats" ||
         currentStep === "sidebarOrgsTab" ||
-        currentStep === "sidebarHoursFilter" ||
         currentStep === "sidebarCategoryFilter"
       ) {
         openSidebarPanel();
@@ -2276,7 +2251,7 @@ export const createMapOnboardingTour = ({
       if (currentStep === "sidebarDemographicsExpand") {
         ensureSidebarDemographicsExpanded(true);
       }
-      if (currentStep === "sidebarOrgsTab" || currentStep === "sidebarHoursFilter") {
+      if (currentStep === "sidebarOrgsTab") {
         openSidebarOrgsTab();
       }
       if (currentStep === "sidebarCategoryFilter") {
