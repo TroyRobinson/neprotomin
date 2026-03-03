@@ -1393,7 +1393,7 @@ export const createMapOnboardingTour = ({
     renderTourCard(
       {
         action: "Switch the version of your mapped statistic. Change-over-time data loading in now...",
-        note: "See areas of OK gaining (blue) & losing (red) the most residents.",
+        note: "See areas of OK gaining (indigo-blue color) & losing (plum purple color) the most residents.",
       },
       {
         label: "Next",
