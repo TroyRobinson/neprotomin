@@ -192,7 +192,7 @@ export const createMapOnboardingTour = ({
   welcomeToast.setAttribute("aria-label", "Welcome tour");
   welcomeToast.innerHTML = `
     <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">Welcome to Neighborhood Explorer</p>
-    <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">Would you like a quick tour?</p>
+    <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">Welcome, Neighbor! This map helps you learn more about what is happening in communities across Oklahoma. It includes information gathered from trusted public sources, purchased data, and contributions from local neighbors. You can explore different places in Oklahoma, see how things change over time, and focus on what matters to you. Whenever you are ready, you can take a quick tour to help you get started.</p>
   `;
 
   const welcomeActions = document.createElement("div");
