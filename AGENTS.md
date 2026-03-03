@@ -815,3 +815,56 @@ Fetch the URL for a topic to learn more about it.
 - [Presence, Cursors, and Activity](https://instantdb.com/docs/presence-and-topics.md): How to add ephemeral features like presence and cursors to your Instant app.
 - [Instant CLI](https://instantdb.com/docs/cli.md): How to use the Instant CLI to manage schema.
 - [Storage](https://instantdb.com/docs/storage.md): How to upload and serve files with Instant.
+
+<!-- BROWSETERM_MANAGED:AGENTS_APPEND:START sha256=4875b1b70c93af0083b7a1c38123c5ddf22fcb49efb8970880c6feceae42b046 v1 -->
+## BrowseTerm Integration
+
+When working in BrowseTerm terminals (as you are currently), follow these rules so BrowseTerm can coordinate multi-agent edits and task automation.
+
+### 1) Session Identity + Handoff Doc Naming
+
+- Session ID: `$BT_SESSION_ID` (example: `term_abc123`)
+- Tmux session name: `$BT_TMUX_SESSION_NAME` (example: `bt-term_abc123`)
+- For handoff docs intended for BrowseTerm auto-discovery, use:
+  `docs/handoff/${BT_SESSION_ID}_<description>.md`
+- Example:
+  `docs/handoff/term_abc123_refactor_auth.md`
+
+### 2) File Claims Before Editing (Hard Gate)
+
+- Before editing files, declare write targets via BrowseTerm orchestrator:
+  `agent_scripts/declare_files declare <id_kind> <id> <files...>`
+- Use:
+  `session $BT_SESSION_ID` for normal terminal tabs.
+- Use:
+  `task $BT_TASK_ID` for task terminals.
+- If you need more files later, declare again for the additional files before editing them.
+- Do not release claims automatically when done.
+- Release only when explicitly asked:
+  `agent_scripts/declare_files release <id_kind> <id>`
+
+If `agent_scripts/declare_files` is not available in the current repo, call it via the BrowseTerm repo path (or a PATH alias to it).
+
+### 2b) General Git Proceedures
+- When commiting changes, just commit files that you've worked on. If one of your files has changes you didn't make, pause your commiting, explain the situation & changes to the user, and ask how to proceed with commit(s).
+
+### 3) "Next Slice" Task Signal
+
+- To request task auto-advance from terminal/agent context:
+  `agent_scripts/next_slice <task_id>`
+- Include canonical task IDs when available. `BT_SESSION_ID` is automatically attached by the script.
+
+### 4) Blocked Claim Behavior
+
+- If declare is waiting, do not bypass with manual lock probing/release of other owners.
+- Report the blocking owner/file and ask whether to keep waiting.
+
+### 5) Recommended Quick Verification
+
+- `echo $BT_SESSION_ID $BT_TMUX_SESSION_NAME`
+- `curl -s http://localhost:3001/health`
+- `tmux list-sessions | grep bt-` 
+
+## General Proceedures
+- If you and the user went through multiple rounds of conversation/attempts (3+) to fix a single issue or get a feature working (frustration), when the user is finally in a happy spot, then explain to him how the user may have prompted you better in the first place (fixing the issue in one-shot) and also propose a concise change to agents.md to help you work better with the user in the future.
+<!-- BROWSETERM_MANAGED:AGENTS_APPEND:END sha256=4875b1b70c93af0083b7a1c38123c5ddf22fcb49efb8970880c6feceae42b046 v1 -->
