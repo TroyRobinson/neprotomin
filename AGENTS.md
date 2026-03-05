@@ -816,19 +816,21 @@ Fetch the URL for a topic to learn more about it.
 - [Instant CLI](https://instantdb.com/docs/cli.md): How to use the Instant CLI to manage schema.
 - [Storage](https://instantdb.com/docs/storage.md): How to upload and serve files with Instant.
 
-<!-- BROWSETERM_MANAGED:AGENTS_APPEND:START sha256=4875b1b70c93af0083b7a1c38123c5ddf22fcb49efb8970880c6feceae42b046 v1 -->
+<!-- BROWSETERM_MANAGED:AGENTS_APPEND:START sha256=cd9b9d35b07b0ff40f90b5541feff1afbb834f1cc809bd075f186d85ad801dd8 v1 -->
 ## BrowseTerm Integration
 
 When working in BrowseTerm terminals (as you are currently), follow these rules so BrowseTerm can coordinate multi-agent edits and task automation.
 
-### 1) Session Identity + Handoff Doc Naming
+### 1) Session/Task Identity + Handoff Doc Naming
 
 - Session ID: `$BT_SESSION_ID` (example: `term_abc123`)
 - Tmux session name: `$BT_TMUX_SESSION_NAME` (example: `bt-term_abc123`)
-- For handoff docs intended for BrowseTerm auto-discovery, use:
+- Terminal-tab handoff discovery uses session-prefixed filenames:
   `docs/handoff/${BT_SESSION_ID}_<description>.md`
-- Example:
-  `docs/handoff/term_abc123_refactor_auth.md`
+- Task-toggle handoff discovery uses short-task-id-prefixed filenames:
+  `docs/handoff/<short_task_id>_<description>.md`
+- `short_task_id` must match the task handoff discovery prefix (example: `l8bfpnwgmmdjn23u`).
+- If you need both terminal association and task-toggle discovery, create both filename variants for the same handoff content.
 
 ### 2) File Claims Before Editing (Hard Gate)
 
@@ -845,8 +847,8 @@ When working in BrowseTerm terminals (as you are currently), follow these rules 
 
 If `agent_scripts/declare_files` is not available in the current repo, call it via the BrowseTerm repo path (or a PATH alias to it).
 
-### 2b) General Git Proceedures
-- When commiting changes, just commit files that you've worked on. If one of your files has changes you didn't make, pause your commiting, explain the situation & changes to the user, and ask how to proceed with commit(s).
+### 2b) General Git Procedures
+- When committing changes, just commit files that you've worked on. If one of *your changed files* has changes you didn't make, pause committing, explain the situation and changes to the user, and ask how to proceed with commit(s) -- don't worry about other files you didn't edit; leave those as-is and commit your edited files.
 
 ### 3) "Next Slice" Task Signal
 
@@ -863,8 +865,16 @@ If `agent_scripts/declare_files` is not available in the current repo, call it v
 
 - `echo $BT_SESSION_ID $BT_TMUX_SESSION_NAME`
 - `curl -s http://localhost:3001/health`
-- `tmux list-sessions | grep bt-` 
+- `tmux list-sessions | grep bt-`
 
-## General Proceedures
-- If you and the user went through multiple rounds of conversation/attempts (3+) to fix a single issue or get a feature working (frustration), when the user is finally in a happy spot, then explain to him how the user may have prompted you better in the first place (fixing the issue in one-shot) and also propose a concise change to agents.md to help you work better with the user in the future.
-<!-- BROWSETERM_MANAGED:AGENTS_APPEND:END sha256=4875b1b70c93af0083b7a1c38123c5ddf22fcb49efb8970880c6feceae42b046 v1 -->
+## General Procedures
+- If you and the user went through multiple rounds of conversation/attempts (3+) to fix a single issue or get a feature working, when the user is finally in a happy spot, explain how the user could have prompted more effectively in the first place and propose a concise change to `AGENTS.md` to help future collaboration.
+- If the change the user requests is going to involve significant (possibly surprisingly large) complexity added to the codebase relative to the feature/fix benefit, warn the user first and ask whether they still want to implement it.
+- At the end of each message where repo files were edited, note the following:
+  Lines of code added:
+    - [line count added & line count total per file]
+  Commit: committed/uncommitted
+  Build: unbuilt/built
+  Restart: not-required/required*  *If dev server is involved.  
+
+<!-- BROWSETERM_MANAGED:AGENTS_APPEND:END sha256=cd9b9d35b07b0ff40f90b5541feff1afbb834f1cc809bd075f186d85ad801dd8 v1 -->
