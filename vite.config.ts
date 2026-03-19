@@ -19,7 +19,6 @@ export default defineConfig(async ({ mode }) => {
     server: {
       port: 5174,
       cors: true,
-      strictPort: true,
       proxy: {
         // Dev proxy to avoid browser CORS for NE API
         '/ne': {
