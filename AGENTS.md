@@ -816,10 +816,10 @@ Fetch the URL for a topic to learn more about it.
 - [Instant CLI](https://instantdb.com/docs/cli.md): How to use the Instant CLI to manage schema.
 - [Storage](https://instantdb.com/docs/storage.md): How to upload and serve files with Instant.
 
-<!-- BROWSETERM_MANAGED:AGENTS_APPEND:START sha256=cd9b9d35b07b0ff40f90b5541feff1afbb834f1cc809bd075f186d85ad801dd8 v1 -->
-## BrowseTerm Integration
+<!-- BROWSETERM_MANAGED:AGENTS_APPEND:START sha256=d0f69d8d50624a71083022976203e96ab347d7bd6d0c53a83f1c4ebbe9ba6a16 v1 -->
+## BrowseTerm Integration  
 
-When working in BrowseTerm terminals (as you are currently), follow these rules so BrowseTerm can coordinate multi-agent edits and task automation.
+BrowseTerm is the IDE that you're currently developing projects in (maybe a different project, maybe BrowseTerm itself). When working in terminals in BrowseTerm to build your current, respective project, follow these rules so BrowseTerm can coordinate multi-agent edits and task automation:
 
 ### 1) Session/Task Identity + Handoff Doc Naming
 
@@ -830,7 +830,7 @@ When working in BrowseTerm terminals (as you are currently), follow these rules 
 - Task-toggle handoff discovery uses short-task-id-prefixed filenames:
   `docs/handoff/<short_task_id>_<description>.md`
 - `short_task_id` must match the task handoff discovery prefix (example: `l8bfpnwgmmdjn23u`).
-- If you need both terminal association and task-toggle discovery, create both filename variants for the same handoff content.
+- If you need both terminal association and task-toggle discovery, ask me what to do.
 
 ### 2) File Claims Before Editing (Hard Gate)
 
@@ -841,14 +841,15 @@ When working in BrowseTerm terminals (as you are currently), follow these rules 
 - Use:
   `task $BT_TASK_ID` for task terminals.
 - If you need more files later, declare again for the additional files before editing them.
-- Do not release claims automatically when done.
-- Release only when explicitly asked:
+- Release claims automatically when finished working:
   `agent_scripts/declare_files release <id_kind> <id>`
+- If you've released claims and then the user has more revisions for you, be sure to *reclaim* files or expand file claims as-needed.
 
 If `agent_scripts/declare_files` is not available in the current repo, call it via the BrowseTerm repo path (or a PATH alias to it).
 
 ### 2b) General Git Procedures
 - When committing changes, just commit files that you've worked on. If one of *your changed files* has changes you didn't make, pause committing, explain the situation and changes to the user, and ask how to proceed with commit(s) -- don't worry about other files you didn't edit; leave those as-is and commit your edited files.
+- When the user has given you positive feedback on your work, go ahead and commit changes so far before proceeding to any additional requests by the user.
 
 ### 3) "Next Slice" Task Signal
 
@@ -869,12 +870,13 @@ If `agent_scripts/declare_files` is not available in the current repo, call it v
 
 ## General Procedures
 - If you and the user went through multiple rounds of conversation/attempts (3+) to fix a single issue or get a feature working, when the user is finally in a happy spot, explain how the user could have prompted more effectively in the first place and propose a concise change to `AGENTS.md` to help future collaboration.
+- If you start servers on your own (e.g. for troubleshooting a bug or feature, etc.), when you've finished changes, ask the user if you should end that additional server or keep it open for more evaluation.
 - If the change the user requests is going to involve significant (possibly surprisingly large) complexity added to the codebase relative to the feature/fix benefit, warn the user first and ask whether they still want to implement it.
 - At the end of each message where repo files were edited, note the following:
   Lines of code added:
     - [line count added & line count total per file]
   Commit: committed/uncommitted
   Build: unbuilt/built
-  Restart: not-required/required*  *If dev server is involved.  
+  Restart: not-required/required-emoji*  *If dev server is involved.  
 
-<!-- BROWSETERM_MANAGED:AGENTS_APPEND:END sha256=cd9b9d35b07b0ff40f90b5541feff1afbb834f1cc809bd075f186d85ad801dd8 v1 -->
+<!-- BROWSETERM_MANAGED:AGENTS_APPEND:END sha256=d0f69d8d50624a71083022976203e96ab347d7bd6d0c53a83f1c4ebbe9ba6a16 v1 -->

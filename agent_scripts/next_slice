@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: agent_scripts/next_slice <task_id>" >&2
+  exit 1
+fi
+
+task_id="$1"
+server_url="${BT_SERVER_URL:-http://localhost:3001}"
+endpoint="${server_url%/}/tasks/next-slice"
+requested_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+session_id="${BT_SESSION_ID:-}"
+
+json_escape() {
+  local value="$1"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '%s' "$value"
+}
+
+payload="{\"taskId\":\"$(json_escape "$task_id")\",\"requestedAt\":\"$(json_escape "$requested_at")\""
+if [[ -n "$session_id" ]]; then
+  payload+=",\"sessionId\":\"$(json_escape "$session_id")\""
+fi
+payload+="}"
+
+response_file="$(mktemp)"
+if ! http_code="$(
+  curl -sS \
+    -o "$response_file" \
+    -w "%{http_code}" \
+    -X POST "$endpoint" \
+    -H "Content-Type: application/json" \
+    --data "$payload"
+)"; then
+  echo "next_slice failed: could not reach $endpoint" >&2
+  rm -f "$response_file"
+  exit 1
+fi
+
+if [[ "$http_code" != "200" ]]; then
+  echo "next_slice failed (HTTP $http_code)" >&2
+  if [[ -s "$response_file" ]]; then
+    cat "$response_file" >&2
+  fi
+  rm -f "$response_file"
+  exit 1
+fi
+
+if ! grep -q '"ok":true' "$response_file"; then
+  echo "next_slice failed: unexpected response" >&2
+  if [[ -s "$response_file" ]]; then
+    cat "$response_file" >&2
+  fi
+  rm -f "$response_file"
+  exit 1
+fi
+
+rm -f "$response_file"
+echo "next_slice accepted for task $task_id"
