@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { Suspense } from "react";
 import { Analytics } from "@vercel/analytics/react";
+import Clarity from "@microsoft/clarity";
 import { ReactMapApp } from "./ReactMapApp";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { CensusImportQueueProvider } from "./hooks/useCensusImportQueue";
@@ -68,6 +69,11 @@ const applyDomainMetadata = () => {
 // Install global crash handlers so errors are captured even if the UI is destroyed
 initCrashLog();
 applyDomainMetadata();
+
+// Initialize Microsoft Clarity
+if (typeof window !== "undefined") {
+  Clarity.init("vyx3mkj88q");
+}
 
 window.onerror = (_msg, source, line, col, error) => {
   if (isBenignIndexedDbClosingError(error ?? _msg)) {
