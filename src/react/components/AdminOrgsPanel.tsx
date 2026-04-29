@@ -21,7 +21,7 @@ const DEFAULT_IMPORT_LIMIT = 300;
 
 const formatCategoryLabelForImport = (category: string): string => {
   const aliases: Record<string, string> = {
-    education: "Edu",
+    education: "Education",
     health: "Health",
     economy: "Economy",
     food: "Food",

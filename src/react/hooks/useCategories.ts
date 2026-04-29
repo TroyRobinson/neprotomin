@@ -53,10 +53,11 @@ export function useCategories(): UseCategoriesResult {
     const rows: CategoryRow[] = [];
     for (const row of data.categories) {
       if (!row?.id || typeof row.slug !== "string") continue;
+      const slug = row.slug as Category;
       rows.push({
         id: row.id,
-        slug: row.slug as Category,
-        label: typeof row.label === "string" ? row.label : row.slug,
+        slug,
+        label: typeof row.label === "string" && row.label.trim() ? row.label.trim() : row.slug,
         sortOrder: typeof row.sortOrder === "number" ? row.sortOrder : 999,
         active: row.active !== false,
         forStats: row.forStats === true,
