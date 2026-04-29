@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  agent_scripts/respond <task_id> <status> <message...>
+  agent_scripts/respond <task_id> <status> --stdin
+  agent_scripts/respond <task_id> <status> --message-file <path>
+EOF
+}
+
+if [[ $# -lt 2 ]]; then
+  usage
+  exit 1
+fi
+
+task_id="$1"
+status="$2"
+shift 2
+server_url="${BT_SERVER_URL:-http://localhost:3001}"
+endpoint="${server_url%/}/tasks/respond"
+fallback_endpoint="${server_url%/}/tasks/report-state"
+reported_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+session_id="${BT_SESSION_ID:-}"
+
+message=""
+
+case "$status" in
+  next_slice|committed|review_needed|planned|info|blocked)
+    ;;
+  *)
+    echo "respond failed: status must be one of next_slice, committed, review_needed, planned, info, blocked" >&2
+    exit 1
+    ;;
+esac
+
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    --stdin)
+      if [[ $# -ne 1 ]]; then
+        echo "respond failed: --stdin does not accept additional arguments" >&2
+        exit 1
+      fi
+      message="$(cat)"
+      ;;
+    --message-file)
+      if [[ $# -ne 2 ]]; then
+        echo "respond failed: --message-file requires exactly one path" >&2
+        exit 1
+      fi
+      if [[ ! -f "$2" ]]; then
+        echo "respond failed: message file not found: $2" >&2
+        exit 1
+      fi
+      message="$(cat "$2")"
+      ;;
+    *)
+      message="$*"
+      ;;
+  esac
+fi
+
+if [[ -z "${message// }" ]]; then
+  echo "respond failed: message must be non-empty" >&2
+  exit 1
+fi
+
+json_escape() {
+  local value="$1"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '%s' "$value"
+}
+
+payload="{\"taskId\":\"$(json_escape "$task_id")\",\"status\":\"$(json_escape "$status")\",\"message\":\"$(json_escape "$message")\",\"reportedAt\":\"$(json_escape "$reported_at")\""
+if [[ -n "$session_id" ]]; then
+  payload+=",\"sessionId\":\"$(json_escape "$session_id")\""
+fi
+payload+="}"
+
+post_payload() {
+  local url="$1"
+  curl -sS \
+    -o "$response_file" \
+    -w "%{http_code}" \
+    -X POST "$url" \
+    -H "Content-Type: application/json" \
+    --data "$payload"
+}
+
+response_file="$(mktemp)"
+if ! http_code="$(post_payload "$endpoint")"; then
+  echo "respond failed: could not reach $endpoint" >&2
+  rm -f "$response_file"
+  exit 1
+fi
+
+if [[ "$http_code" == "404" ]]; then
+  if ! http_code="$(post_payload "$fallback_endpoint")"; then
+    echo "respond failed: could not reach $fallback_endpoint" >&2
+    rm -f "$response_file"
+    exit 1
+  fi
+fi
+
+if [[ "$http_code" != "200" ]]; then
+  echo "respond failed (HTTP $http_code)" >&2
+  if [[ -s "$response_file" ]]; then
+    cat "$response_file" >&2
+  fi
+  rm -f "$response_file"
+  exit 1
+fi
+
+if ! grep -q '"ok":true' "$response_file"; then
+  echo "respond failed: unexpected response" >&2
+  if [[ -s "$response_file" ]]; then
+    cat "$response_file" >&2
+  fi
+  rm -f "$response_file"
+  exit 1
+fi
+
+rm -f "$response_file"
+echo "respond accepted for task $task_id ($status)"

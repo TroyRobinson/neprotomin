@@ -240,47 +240,10 @@ if [[ "$action" == "declare" ]]; then
     rm -f "$response_file"
     exit 1
   fi
+  details="$(describe_wait_status "$response_file")"
+  echo "declare_files blocked for ${id_kind}:${owner_id}${details}" >&2
   rm -f "$response_file"
-
-  status_endpoint="${server_url%/}/orchestrator/claim-status/$id_kind/$owner_id"
-  wait_started_at="$(date +%s)"
-  next_heartbeat_at=$((wait_started_at + 10))
-  while true; do
-    poll_file="$(mktemp)"
-    if ! http_code="$(request "GET" "$status_endpoint" "" "$poll_file")"; then
-      echo "declare_files failed: could not reach $status_endpoint" >&2
-      rm -f "$poll_file"
-      exit 1
-    fi
-    if [[ "$http_code" != "200" ]]; then
-      echo "declare_files failed while polling (HTTP $http_code)" >&2
-      if [[ -s "$poll_file" ]]; then
-        cat "$poll_file" >&2
-      fi
-      rm -f "$poll_file"
-      exit 1
-    fi
-    if grep -q '"status":"go"' "$poll_file"; then
-      rm -f "$poll_file"
-      echo "declare_files granted for ${id_kind}:${owner_id}"
-      exit 0
-    fi
-    if ! grep -q '"status":"wait"' "$poll_file"; then
-      echo "declare_files failed: unexpected claim-status response" >&2
-      cat "$poll_file" >&2
-      rm -f "$poll_file"
-      exit 1
-    fi
-    now="$(date +%s)"
-    if (( now >= next_heartbeat_at )); then
-      elapsed=$((now - wait_started_at))
-      details="$(describe_wait_status "$poll_file")"
-      echo "declare_files waiting (${elapsed}s) for ${id_kind}:${owner_id}${details}" >&2
-      next_heartbeat_at=$((now + 10))
-    fi
-    rm -f "$poll_file"
-    sleep 2
-  done
+  exit 2
 fi
 
 if [[ $# -ne 0 ]]; then

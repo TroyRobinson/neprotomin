@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  agent_scripts/set_context_agents_append --stdin
+  agent_scripts/set_context_agents_append --message-file <path>
+EOF
+}
+
+if [[ $# -lt 1 ]]; then
+  usage
+  exit 1
+fi
+
+server_url="${BT_SERVER_URL:-http://localhost:3001}"
+endpoint="${server_url%/}/settings/context/agents-md-append"
+append=""
+settings_file="${BT_SETTINGS_FILE:-$HOME/.browseterm/settings.json}"
+
+case "$1" in
+  --stdin)
+    if [[ $# -ne 1 ]]; then
+      echo "set_context_agents_append failed: --stdin does not accept additional arguments" >&2
+      exit 1
+    fi
+    append="$(cat)"
+    ;;
+  --message-file)
+    if [[ $# -ne 2 ]]; then
+      echo "set_context_agents_append failed: --message-file requires exactly one path" >&2
+      exit 1
+    fi
+    if [[ ! -f "$2" ]]; then
+      echo "set_context_agents_append failed: file not found: $2" >&2
+      exit 1
+    fi
+    append="$(cat "$2")"
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
+
+append_file="$(mktemp)"
+response_file="$(mktemp)"
+cleanup() {
+  rm -f "$append_file" "$response_file"
+}
+trap cleanup EXIT
+printf '%s' "$append" > "$append_file"
+
+json_escape() {
+  local value="$1"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '%s' "$value"
+}
+
+payload="{\"append\":\"$(json_escape "$append")\"}"
+
+http_code="$(
+  curl -sS \
+    -o "$response_file" \
+    -w "%{http_code}" \
+    -X PUT "$endpoint" \
+    -H "Content-Type: application/json" \
+    --data "$payload"
+)"
+
+if [[ "$http_code" != "200" ]]; then
+  if [[ "$http_code" == "404" ]]; then
+    if SETTINGS_FILE="$settings_file" APPEND_FILE="$append_file" node --input-type=module -e '
+import fs from "node:fs";
+const settingsFile = process.env.SETTINGS_FILE;
+const appendFile = process.env.APPEND_FILE;
+if (!settingsFile || !appendFile) process.exit(1);
+const append = fs.readFileSync(appendFile, "utf8");
+const raw = fs.readFileSync(settingsFile, "utf8");
+const data = JSON.parse(raw);
+data.state ??= {};
+data.state.context ??= {};
+data.state.ui ??= {};
+data.state.context.agentsMdAppend = append;
+data.state.ui.pendingContextAgentsMdAppendRestartNotice =
+  "Context Settings were updated on disk because the running BrowseTerm instance had not loaded live context-append updates yet. Restart BrowseTerm to refresh the live Context Settings view.";
+fs.writeFileSync(settingsFile, JSON.stringify(data));
+' 2>/dev/null; then
+      echo "context agentsMdAppend updated in settings file; restart BrowseTerm to refresh the live Context Settings view"
+      exit 0
+    fi
+  fi
+  echo "set_context_agents_append failed (HTTP $http_code)" >&2
+  if [[ -s "$response_file" ]]; then
+    cat "$response_file" >&2
+  fi
+  exit 1
+fi
+
+if ! grep -q '"ok":true' "$response_file"; then
+  echo "set_context_agents_append failed: unexpected response" >&2
+  if [[ -s "$response_file" ]]; then
+    cat "$response_file" >&2
+  fi
+  exit 1
+fi
+
+echo "context agentsMdAppend updated"
