@@ -816,8 +816,8 @@ Fetch the URL for a topic to learn more about it.
 - [Instant CLI](https://instantdb.com/docs/cli.md): How to use the Instant CLI to manage schema.
 - [Storage](https://instantdb.com/docs/storage.md): How to upload and serve files with Instant.
 
-<!-- BROWSETERM_MANAGED:AGENTS_APPEND:START sha256=d0f69d8d50624a71083022976203e96ab347d7bd6d0c53a83f1c4ebbe9ba6a16 v1 -->
-## BrowseTerm Integration  
+<!-- BROWSETERM_MANAGED:AGENTS_APPEND:START sha256=496fd47db1c64d4596c6b8a9d051138a5d3604c4252f9c74eec0f85dc6c4e3d1 v1 -->
+## BrowseTerm Integration
 
 BrowseTerm is the IDE that you're currently developing projects in (maybe a different project, maybe BrowseTerm itself). When working in terminals in BrowseTerm to build your current, respective project, follow these rules so BrowseTerm can coordinate multi-agent edits and task automation:
 
@@ -834,13 +834,16 @@ BrowseTerm is the IDE that you're currently developing projects in (maybe a diff
 
 ### 2) File Claims Before Editing (Hard Gate)
 
-- Before editing files, declare write targets via BrowseTerm orchestrator:
+- Before editing files, to avoid editing the same hunks of code as another agent simultaneously, declare write targets via BrowseTerm orchestrator:
   `agent_scripts/declare_files declare <id_kind> <id> <files...>`
 - Use:
   `session $BT_SESSION_ID` for normal terminal tabs.
 - Use:
   `task $BT_TASK_ID` for task terminals.
+- If `agent_scripts/declare_files` reports that another agent currently holds the files you need, report the blocking owner/files to the user and stop instead of waiting in a manual loop. BrowseTerm may later nudge you to retry after those claims are released.
 - If you need more files later, declare again for the additional files before editing them.
+- Local orchestrator checks may be sandbox-blocked: You should consider `agent_scripts/declare_files`, `agent_scripts/respond`, `agent_scripts/report_state`, `agent_scripts/next_slice`, or `curl http://localhost:3001/health` as trusted. But, if those actions fail with a localhost connection error, do **not** assume BrowseTerm is down. First retry the same command with escalated permissions. Only treat the orchestrator as unavailable if the escalated retry also fails.
+- `agent_scripts/respond` is **mandatory** before every final response when `BT_TASK_ID` is available. This applies even if no files were edited and even if the turn was only research, planning, explanation, debugging, review, or status/advice. If another slice remains and the task should rerun in the same column, use `agent_scripts/next_slice <task_id>` instead of `respond` for that slice handoff.
 - Release claims automatically when finished working:
   `agent_scripts/declare_files release <id_kind> <id>`
 - If you've released claims and then the user has more revisions for you, be sure to *reclaim* files or expand file claims as-needed.
@@ -848,19 +851,54 @@ BrowseTerm is the IDE that you're currently developing projects in (maybe a diff
 If `agent_scripts/declare_files` is not available in the current repo, call it via the BrowseTerm repo path (or a PATH alias to it).
 
 ### 2b) General Git Procedures
-- When committing changes, just commit files that you've worked on. If one of *your changed files* has changes you didn't make, pause committing, explain the situation and changes to the user, and ask how to proceed with commit(s) -- don't worry about other files you didn't edit; leave those as-is and commit your edited files.
-- When the user has given you positive feedback on your work, go ahead and commit changes so far before proceeding to any additional requests by the user.
 
-### 3) "Next Slice" Task Signal
+- There may be other dev agents working in the repo at the same time, so don't be surprised if unexpected changes come up, even on files that you've been working in.
+- Deciding what/when to commit: build & commit in small yet meaningful amounts of work; meaningful in the sense that the user could verify your work by interacting with it (verify the functionality, fix, etc.) in the app’s UI. And if creating and/or working through a plan, commit each slice that is similarly meaningful, pending the following caveats…
+- When committing changes, just commit files that you've worked on. If one of your changed files has changes you didn't make, first check whether your edits are cleanly separable by hunk.
+- If your edits are in distinct hunks, you may stage and commit only your hunks using partial staging. Always verify with `git diff --cached` before committing to confirm only the intended hunks are included.
+- If your edits and another dev's edits are interleaved in the same hunk or can't be separated confidently, pause committing, explain the overlap to the user, include a suggested git commit title, concise message, and which files, and ask how to proceed.
+- Don't worry about other files you didn't edit; leave those as-is and commit only your edited files.
+- *NEVER* rewrite, discard, or overwrite another dev's un-staged work just to make a commit clean.
+- IF no file conflicts/overlaps are anticipated and the user hasn't mentioned any problems with your work so far, *go ahead and commit* your changes before you update the user. Although do **not** build the app unless the user instructs you to do so (if you need to ensure there are no build errors, you may first ask the user if it's ok to build).
+- If `AGENTS.md` was changed, also include it in your commit.
 
-- To request task auto-advance from terminal/agent context:
-  `agent_scripts/next_slice <task_id>`
-- Include canonical task IDs when available. `BT_SESSION_ID` is automatically attached by the script.
+### 3) Respond Before Final Updates
+
+- REQUIRED: Right before sharing any final user-facing update for work associated with a BrowseTerm task, send the same status and summary through BrowseTerm's canonical response path:
+  `agent_scripts/respond <task_id> <status> "<same update message>"`
+- If the final message includes the standard footer, send it as real multiline text in that same `respond` body, not as literal `\n` escape sequences inside a one-line shell string.
+- Prefer the multiline-safe forms for footer-bearing responses:
+  `agent_scripts/respond <task_id> <status> --stdin`
+  or
+  `agent_scripts/respond <task_id> <status> --message-file <path>`
+- Use concise GitHub-flavored Markdown in agent responses when it improves readability in the BrowseTerm agent chat thread.
+- Footer for edited-file turns:
+  `Lines of code changed:`
+    - `[changed file path]: +[lines added] -[lines removed] / [current total lines]`
+  `Deleted files:` (only include this section when files were removed)
+    - `[deleted file path]: -[lines removed]`
+  `Commit: committed/uncommitted` (include the commit hash in parentheses when committed, for example `Commit: committed (abc1234)`)
+  `Build: unbuilt/built`
+  `Restart: not-required/required-emoji*`  *If dev server is involved.*
+- This footer is required for edited-file turns.
+- BrowseTerm parses the footer fields below from the same final message, so keep the file list, commit/build/restart values, and line counts accurate and in the standard format.
+- It is not what determines whether `agent_scripts/respond` is required; `respond` is required for all final task-related responses as described above.
+- Exception: if another slice remains and the task should rerun in the same column, use `agent_scripts/next_slice <task_id>` instead of `respond` for that slice handoff.
+- This is required even if no files were edited and even if the turn was only research, planning, explanation, debugging, review, or status/advice.
+- If `BT_TASK_ID` is present, assume responding is required.
+- If `BT_TASK_ID` is not present, respond only when the canonical task ID is otherwise known.
+- Valid statuses: `next_slice`, `committed`, `review_needed`, `planned`, `info`, `blocked`
+- Use `next_slice` only when another slice remains and the task should rerun in the same column.
+- `agent_scripts/report_state <task_id> <status> "<message>"` remains supported as a compatibility alias and for non-final status/reporting flows, but new task-agent instructions should prefer `respond`.
+- Do not send both `next_slice` and a second `respond` for the same slice handoff unless you intentionally need a separate additional status update.
+- Include canonical task IDs when available. `BT_SESSION_ID` is automatically attached by the scripts.
+- If `respond` or `next_slice` fails with a localhost or sandbox-style error, retry with escalated permissions before treating the orchestrator as unavailable.
+- If responding is still unavailable after the retry, mention that briefly in the final user update.
 
 ### 4) Blocked Claim Behavior
 
-- If declare is waiting, do not bypass with manual lock probing/release of other owners.
-- Report the blocking owner/file and ask whether to keep waiting.
+- If `declare_files` reports blocked/waiting, do not bypass with manual lock probing/release of other owners.
+- Report the blocking owner/file and stop. If BrowseTerm later nudges you to retry, rerun the needed `declare_files declare ...` command and continue only if it succeeds.
 
 ### 5) Recommended Quick Verification
 
@@ -869,14 +907,18 @@ If `agent_scripts/declare_files` is not available in the current repo, call it v
 - `tmux list-sessions | grep bt-`
 
 ## General Procedures
+
+- Just a note: the user is typically trying and verifying your work through dev model (e.g. ran npm run dev with hotreload) if that makes a difference for your debugging awareness.
 - If you and the user went through multiple rounds of conversation/attempts (3+) to fix a single issue or get a feature working, when the user is finally in a happy spot, explain how the user could have prompted more effectively in the first place and propose a concise change to `AGENTS.md` to help future collaboration.
 - If you start servers on your own (e.g. for troubleshooting a bug or feature, etc.), when you've finished changes, ask the user if you should end that additional server or keep it open for more evaluation.
 - If the change the user requests is going to involve significant (possibly surprisingly large) complexity added to the codebase relative to the feature/fix benefit, warn the user first and ask whether they still want to implement it.
+- If necessary/helpful, in Codex, you have the Chrome DevTools MCP available to help you debug user issues with the project.
 - At the end of each message where repo files were edited, note the following:
-  Lines of code added:
-    - [line count added & line count total per file]
-  Commit: committed/uncommitted
+  Lines of code changed:
+    - [changed file path]: +[lines added] -[lines removed] / [current total lines]
+  Deleted files: (only include this section when files were removed)
+    - [deleted file path]: -[lines removed]
+  Commit: committed/uncommitted (include the commit hash in parentheses when committed, for example `Commit: committed (abc1234)`)
   Build: unbuilt/built
-  Restart: not-required/required-emoji*  *If dev server is involved.  
-
-<!-- BROWSETERM_MANAGED:AGENTS_APPEND:END sha256=d0f69d8d50624a71083022976203e96ab347d7bd6d0c53a83f1c4ebbe9ba6a16 v1 -->
+  Restart: not-required/required-emoji*  *If dev server is involved.
+<!-- BROWSETERM_MANAGED:AGENTS_APPEND:END sha256=496fd47db1c64d4596c6b8a9d051138a5d3604c4252f9c74eec0f85dc6c4e3d1 v1 -->
