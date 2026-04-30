@@ -24,23 +24,26 @@ import type { TimeSelection } from "../lib/timeFilters";
 import { formatTimeSelection } from "../lib/timeFilters";
 import { db } from "../../lib/reactDb";
 import { MAP_TOUR_TARGETS } from "../imperative/constants/mapTourTargets";
+import {
+  abbreviateCategoryFilterLabel,
+  areaKey,
+  type SupportedAreaKind,
+} from "./sidebarDisplay";
+import {
+  buildMapsUrl,
+  formatAnnualRevenueLabel,
+  formatHoursLines,
+  formatShortAddress,
+} from "./sidebarOrgDisplay";
 
 // ============================================================================
 // Enable Features
 // ============================================================================
 const ENABLE_DEMOGRAPHICS_SECTION = true;
-const CATEGORY_FILTER_LABEL_MAX_CHARS = 6;
 const LINE_COLORS_ZIP = ["#3a519d", "#784578", "#1e98ac"];
 const LINE_COLORS_COUNTY = ["#3a519d", "#784578", "#1e98ac"];
 const MAX_LINE_AREA_SERIES = 6;
 
-const abbreviateCategoryFilterLabel = (label: string): string => {
-  const trimmed = label.trim();
-  if (trimmed.length <= CATEGORY_FILTER_LABEL_MAX_CHARS) return trimmed;
-  return `${trimmed.slice(0, CATEGORY_FILTER_LABEL_MAX_CHARS - 2)}..`;
-};
-
-type SupportedAreaKind = "ZIP" | "COUNTY";
 type SelectedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
 type PinnedAreasMap = Partial<Record<SupportedAreaKind, string[]>>;
 type StatSummaryEntry = {
@@ -166,8 +169,6 @@ interface SidebarProps {
 }
 
 type TabType = "stats" | "orgs";
-
-const areaKey = (kind: SupportedAreaKind, id: string): string => `${kind}:${id}`;
 
 export const Sidebar = ({
   organizations = { inSelection: [], all: [], totalSourceCount: 0 },
@@ -1985,181 +1986,6 @@ interface OrganizationListItemProps {
   selectionStyleVariant?: "default" | "searchResults";
   getCategoryLabel: (slug: string) => string;
 }
-
-const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
-
-/**
- * Detects if the user is on a mobile device and returns platform info.
- */
-const getMobilePlatform = (): { isMobile: boolean; isIOS: boolean; isAndroid: boolean } => {
-  if (typeof window === "undefined") {
-    return { isMobile: false, isIOS: false, isAndroid: false };
-  }
-  
-  const ua = navigator.userAgent;
-  const isIOS = /iPhone|iPad|iPod/i.test(ua);
-  const isAndroid = /Android/i.test(ua);
-  const isMobile = isIOS || isAndroid || 
-    /webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua) ||
-    (window.matchMedia && window.matchMedia("(max-width: 768px)").matches);
-  
-  return { isMobile, isIOS, isAndroid };
-};
-
-/**
- * Builds a maps URL from organization address components.
- * On mobile: opens native maps app (Apple Maps on iOS, Google Maps on Android).
- * On desktop: opens Google Maps web.
- */
-const buildMapsUrl = (org: Organization): string | null => {
-  const segments = [
-    org.address,
-    org.city,
-    org.state,
-    org.postalCode,
-  ].filter((part): part is string => typeof part === "string" && part.trim().length > 0);
-  
-  if (segments.length === 0) return null;
-  
-  const { isMobile, isIOS, isAndroid } = getMobilePlatform();
-  const query = encodeURIComponent(segments.join(", "));
-  
-  // On mobile, use platform-specific URL schemes to open native maps app
-  if (isMobile) {
-    // iOS: Use Apple Maps URL scheme
-    if (isIOS) {
-      // If we have coordinates, use them for precise location
-      if (typeof org.latitude === "number" && typeof org.longitude === "number" && 
-          isFinite(org.latitude) && isFinite(org.longitude)) {
-        return `http://maps.apple.com/?ll=${org.latitude},${org.longitude}`;
-      }
-      // Otherwise, use address query
-      return `http://maps.apple.com/?q=${query}`;
-    }
-    
-    // Android: Use geo: URI scheme (opens Google Maps)
-    if (isAndroid) {
-      // If we have coordinates, use them for precise location
-      if (typeof org.latitude === "number" && typeof org.longitude === "number" && 
-          isFinite(org.latitude) && isFinite(org.longitude)) {
-        return `geo:${org.latitude},${org.longitude}`;
-      }
-      // Otherwise, use address query
-      return `geo:0,0?q=${query}`;
-    }
-    
-    // Other mobile devices: try geo: URI as fallback
-    if (typeof org.latitude === "number" && typeof org.longitude === "number" && 
-        isFinite(org.latitude) && isFinite(org.longitude)) {
-      return `geo:${org.latitude},${org.longitude}`;
-    }
-    return `geo:0,0?q=${query}`;
-  }
-  
-  // On desktop, use Google Maps web
-  return `https://www.google.com/maps/search/?api=1&query=${query}`;
-};
-
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-const stripAddressTail = (value: string): string =>
-  value
-    // Remove trailing country markers
-    .replace(/,\s*(?:USA|United States(?: of America)?)\.?$/i, "")
-    // Remove trailing state + zip (e.g., ", OK 74145" or ", OK")
-    .replace(/,\s*[A-Z]{2}(?:\s*\d{5}(?:-\d{4})?)?$/i, "")
-    .trim()
-    // Collapse duplicate whitespace that can appear after replacements
-    .replace(/\s{2,}/g, " ");
-
-const formatShortAddress = (org: Organization): string | null => {
-  const street = typeof org.address === "string" ? org.address.trim() : "";
-  const city = typeof org.city === "string" ? org.city.trim() : "";
-
-  if (!street && !city) {
-    return null;
-  }
-
-  if (street && city) {
-    const cityPattern = new RegExp(`,\\s*${escapeRegExp(city)}(?:,.*)?$`, "i");
-    const streetWithoutCity = street.replace(cityPattern, "").trim();
-    const baseStreet = streetWithoutCity.length > 0 ? streetWithoutCity : street;
-    const cleanedStreet = stripAddressTail(baseStreet).replace(/,\s*$/, "").trim();
-
-    if (cleanedStreet.length === 0) {
-      return city;
-    }
-
-    return `${cleanedStreet}, ${city}`;
-  }
-
-  if (street) {
-    return stripAddressTail(street);
-  }
-
-  return city;
-};
-
-const COMPACT_CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
-const formatAnnualRevenueLabel = (org: Organization): string | null => {
-  const amount = typeof org.annualRevenue === "number" ? org.annualRevenue : null;
-  if (!amount || !Number.isFinite(amount) || amount <= 0) return null;
-  const amountLabel = COMPACT_CURRENCY_FORMATTER.format(amount);
-  const year =
-    typeof org.annualRevenueTaxPeriod === "number" &&
-    Number.isFinite(org.annualRevenueTaxPeriod) &&
-    org.annualRevenueTaxPeriod >= 1900 &&
-    org.annualRevenueTaxPeriod <= 2500
-      ? org.annualRevenueTaxPeriod
-      : null;
-  return year ? `${amountLabel} (${year})` : amountLabel;
-};
-
-const formatHoursLines = (hours: OrganizationHours | null | undefined): string[] => {
-  if (!hours) return [];
-  if (Array.isArray(hours.weekdayText) && hours.weekdayText.length > 0) {
-    return hours.weekdayText;
-  }
-
-  if (!Array.isArray(hours.periods) || hours.periods.length === 0) {
-    return [];
-  }
-
-  const map = new Map<number, string[]>();
-  for (const period of hours.periods) {
-    if (typeof period?.day !== "number") continue;
-    const dayIndex = Math.min(Math.max(period.day, 0), DAY_LABELS.length - 1);
-    const segments: string[] = [];
-    const open = period.openTime ?? null;
-    const close = period.closeTime ?? null;
-    if (open && close) {
-      segments.push(`${open} – ${close}${period.isOvernight ? " (+1)" : ""}`);
-    } else if (open) {
-      segments.push(`Opens ${open}`);
-    } else if (close) {
-      segments.push(`Closes ${close}`);
-    } else {
-      segments.push("Closed");
-    }
-
-    const existing = map.get(dayIndex) ?? [];
-    existing.push(...segments);
-    map.set(dayIndex, existing);
-  }
-
-  const lines: string[] = [];
-  for (const [dayIndex, segments] of map.entries()) {
-    const label = DAY_LABELS[dayIndex] ?? `Day ${dayIndex}`;
-    lines.push(`${label}: ${segments.join(", ")}`);
-  }
-  return lines;
-};
 
 const renderHours = (hours: OrganizationHours | null | undefined) => {
   const lines = formatHoursLines(hours);

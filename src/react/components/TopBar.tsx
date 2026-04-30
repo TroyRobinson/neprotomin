@@ -51,7 +51,12 @@ const LogoutIcon = () => (
 );
 
 const SearchIcon = () => (
-  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px] text-slate-400 dark:text-slate-500">
+  <svg
+    viewBox="0 0 20 20"
+    fill="currentColor"
+    aria-hidden="true"
+    className="h-3.5 w-3.5 translate-x-[0.2px] -translate-y-[0.2px] text-slate-400 dark:text-slate-500"
+  >
     <path
       fillRule="evenodd"
       d="M9 3.5a5.5 5.5 0 013.894 9.394l3.703 3.703a.75.75 0 11-1.06 1.06l-3.703-3.703A5.5 5.5 0 119 3.5zm0 1.5a4 4 0 100 8 4 4 0 000-8z"
@@ -62,7 +67,10 @@ const SearchIcon = () => (
 
 const HamburgerIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
-    <path fill="currentColor" d="M4 7a1 1 0 011-1h14a1 1 0 110 2H5a1 1 0 01-1-1zm0 5a1 1 0 011-1h14a1 1 0 110 2H5a1 1 0 01-1-1zm0 5a1 1 0 011-1h14a1 1 0 110 2H5a1 1 0 01-1-1z" />
+    <path
+      fill="currentColor"
+      d="M4 7a1 1 0 011-1h14a1 1 0 110 2H5a1 1 0 01-1-1zm0 5a1 1 0 011-1h14a1 1 0 110 2H5a1 1 0 01-1-1zm0 5a1 1 0 011-1h14a1 1 0 110 2H5a1 1 0 01-1-1z"
+    />
   </svg>
 );
 
@@ -85,7 +93,12 @@ const PlusIcon = ({ className = "h-6 w-6" }: { className?: string }) => (
 );
 
 const ArrowRightIcon = () => (
-  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-4 w-4">
+  <svg
+    viewBox="0 0 20 20"
+    fill="currentColor"
+    aria-hidden="true"
+    className="h-4 w-4"
+  >
     <path
       fillRule="evenodd"
       d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z"
@@ -95,7 +108,12 @@ const ArrowRightIcon = () => (
 );
 
 const ChevronDownIcon = () => (
-  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-4 w-4">
+  <svg
+    viewBox="0 0 20 20"
+    fill="currentColor"
+    aria-hidden="true"
+    className="h-4 w-4"
+  >
     <path
       fillRule="evenodd"
       d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z"
@@ -130,7 +148,10 @@ const guessQueueTitle = (text: string): string => {
   return trimmed.slice(bestIndex + bestDelim.length).trim();
 };
 
-const getQueueItemTitle = (item: { statLabel?: string; variable: string }): string => {
+const getQueueItemTitle = (item: {
+  statLabel?: string;
+  variable: string;
+}): string => {
   if (item.statLabel && item.statLabel.trim()) {
     const guessed = guessQueueTitle(item.statLabel);
     return guessed || item.statLabel.trim();
@@ -148,12 +169,17 @@ const getNeHomeRedirectState = (): boolean => {
 
 const setNeHomeRedirectState = (disabled: boolean): void => {
   if (typeof window === "undefined") return;
-  localStorage.setItem(NE_HOME_REDIRECT_STORAGE_KEY, disabled ? "true" : "false");
+  localStorage.setItem(
+    NE_HOME_REDIRECT_STORAGE_KEY,
+    disabled ? "true" : "false",
+  );
 };
 
 interface TopBarProps {
   onBrandClick?: () => void;
-  onNavigate?: (screen: "map" | "report" | "roadmap" | "data" | "queue" | "admin") => void;
+  onNavigate?: (
+    screen: "map" | "report" | "roadmap" | "data" | "queue" | "admin",
+  ) => void;
   active?: "map" | "report" | "roadmap" | "data" | "queue" | "admin";
   onOpenAuth?: () => void;
   isMobile?: boolean;
@@ -180,7 +206,9 @@ export const TopBar = ({
   // Default to collapsed (icon button) on mobile; will be updated by ResizeObserver based on screen width
   const [isMobileSearchExpanded, setIsMobileSearchExpanded] = useState(false);
   const [isMobileSearchFocused, setIsMobileSearchFocused] = useState(false);
-  const [neHomeRedirectDisabled, setNeHomeRedirectDisabled] = useState(getNeHomeRedirectState);
+  const [neHomeRedirectDisabled, setNeHomeRedirectDisabled] = useState(
+    getNeHomeRedirectState,
+  );
   const [showLocationTextMobile, setShowLocationTextMobile] = useState(true);
   const [showThemeButtonMobile, setShowThemeButtonMobile] = useState(true);
   // Desktop "More" dropdown state
@@ -223,7 +251,10 @@ export const TopBar = ({
   useEffect(() => {
     if (!isImportQueueOpen) return;
     const handleClickOutside = (event: globalThis.MouseEvent) => {
-      if (importQueueRef.current && !importQueueRef.current.contains(event.target as Node)) {
+      if (
+        importQueueRef.current &&
+        !importQueueRef.current.contains(event.target as Node)
+      ) {
         setIsImportQueueOpen(false);
       }
     };
@@ -253,7 +284,7 @@ export const TopBar = ({
       // Collapse the search UI into an icon when the mobile row gets narrow.
       const width = node.getBoundingClientRect().width;
       const shouldBeCompact = width < MOBILE_SEARCH_AUTO_EXPAND_THRESHOLD;
-      
+
       setIsCompactMobileSearch((prev) => {
         const next = shouldBeCompact;
         // When transitioning to/from compact mode, update expanded state:
@@ -275,13 +306,13 @@ export const TopBar = ({
         // When staying in compact mode, don't change expanded state (user may have manually expanded it)
         return next;
       });
-      
+
       // Hide Location text when mobile container is narrow to ensure theme button always fits
       // Fixed elements: brand button (~48px) + gap (12px) + search icon (~44px) + gap (12px) + theme button (~44px) + gap (12px) + hamburger (~44px) + gaps = ~212px
       // Location icon button needs ~44px, text adds ~80px
       // Hide text earlier (at ~340px) to ensure theme button always has room
       setShowLocationTextMobile(width >= 340);
-      
+
       // Hide theme button when space is very tight to ensure Location and Hamburger buttons always fit
       // Minimum needed: brand (~48px) + search icon (~44px) + location icon (~44px) + hamburger (~44px) + gaps (~36px) = ~216px
       // Hide theme button when width is less than ~260px to provide buffer
@@ -304,12 +335,12 @@ export const TopBar = ({
   // Focus input when mobile search becomes expanded (handles both prop-driven and internal state changes)
   useEffect(() => {
     if (!isMobile || !isMobileSearchExpanded) return;
-    
+
     // Wait for React to render the input before focusing
     // Use multiple attempts with increasing delays to ensure it works
     const attemptFocus = (attempt = 0) => {
       if (attempt > 5) return; // Max 5 attempts
-      
+
       const input = mobileSearchInputRef.current;
       if (input && document.activeElement !== input) {
         // Ensure the input is visible
@@ -331,14 +362,14 @@ export const TopBar = ({
         setTimeout(() => attemptFocus(attempt + 1), 50);
       }
     };
-    
+
     // Start attempts after a short delay to allow React to render
     const timeoutId = setTimeout(() => {
       requestAnimationFrame(() => {
         attemptFocus(0);
       });
     }, 100);
-    
+
     return () => clearTimeout(timeoutId);
   }, [isMobile, isMobileSearchExpanded]);
 
@@ -364,7 +395,11 @@ export const TopBar = ({
     if (!isMoreMenuOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
       const menu = moreMenuRef.current;
-      if (menu && event.target instanceof Node && !menu.contains(event.target)) {
+      if (
+        menu &&
+        event.target instanceof Node &&
+        !menu.contains(event.target)
+      ) {
         setIsMoreMenuOpen(false);
       }
     };
@@ -400,10 +435,16 @@ export const TopBar = ({
   };
 
   const trackNavItem = (item: string, destination: "internal" | "external") => {
-    track("topbar_nav_click", { item, destination, device: isMobile ? "mobile" : "desktop" });
+    track("topbar_nav_click", {
+      item,
+      destination,
+      device: isMobile ? "mobile" : "desktop",
+    });
   };
 
-  const handleNavigate = (screen: "map" | "report" | "roadmap" | "data" | "queue" | "admin") => {
+  const handleNavigate = (
+    screen: "map" | "report" | "roadmap" | "data" | "queue" | "admin",
+  ) => {
     setIsMobileMenuOpen(false);
     const labelMap: Record<typeof screen, string> = {
       map: "Food Map",
@@ -473,18 +514,25 @@ export const TopBar = ({
   const { data: queueData } = db.useQuery(queueQuery);
   const pendingQueueCount = queueData?.organizations?.length ?? 0;
   const showQueueBadge = pendingQueueCount > 0;
-  const queueBadgeLabel = pendingQueueCount > 99 ? "99+" : pendingQueueCount.toString();
+  const queueBadgeLabel =
+    pendingQueueCount > 99 ? "99+" : pendingQueueCount.toString();
 
   const importQueueTotal = importQueueItems.length;
   const importQueueActiveCount = importQueueItems.filter(
     (item) => item.status === "pending" || item.status === "running",
   ).length;
-  const importQueueCompletedCount = importQueueItems.filter((item) => item.status === "success").length;
+  const importQueueCompletedCount = importQueueItems.filter(
+    (item) => item.status === "success",
+  ).length;
   const importQueueProgress =
-    importQueueTotal === 0 ? 0 : Math.round((importQueueCompletedCount / importQueueTotal) * 100);
+    importQueueTotal === 0
+      ? 0
+      : Math.round((importQueueCompletedCount / importQueueTotal) * 100);
   const showImportQueueBadge = importQueueActiveCount > 0;
-  const importQueueBadgeLabel = importQueueActiveCount > 99 ? "99+" : importQueueActiveCount.toString();
-  const showImportQueue = showQueueLink && (showImportQueueBadge || isImportRunning);
+  const importQueueBadgeLabel =
+    importQueueActiveCount > 99 ? "99+" : importQueueActiveCount.toString();
+  const showImportQueue =
+    showQueueLink && (showImportQueueBadge || isImportRunning);
   const showGroupingNote =
     isImportRunning &&
     (importDerivedStatusLabel?.toLowerCase().startsWith("grouping") ?? false);
@@ -504,99 +552,108 @@ export const TopBar = ({
               data-ne-tour-target={MAP_TOUR_TARGETS.brandLogo}
               className="flex shrink-0 items-center gap-3 text-sm font-medium text-slate-500 dark:text-slate-400 -ml-2"
             >
-              <img src="/icons/NE_Logos_Logomark_Prp.svg" alt="NourishED" className="h-9 w-9 rounded-lg shadow-floating" />
+              <img
+                src="/icons/NE_Logos_Logomark_Prp.svg"
+                alt="NourishED"
+                className="h-9 w-9 shadow-floating"
+              />
             </a>
-            <div className="relative flex min-w-0 flex-1 items-center overflow-hidden">
-              <nav className="hidden min-w-0 items-center gap-2 sm:flex">
-                <a
-                  href="#map"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    trackNavItem("Food Map", "internal");
-                    onNavigate?.("map");
-                  }}
-                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap ${
-                    active === "map"
-                      ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                      : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                  }`}
-                  aria-current={active === "map" ? "page" : undefined}
-                >
-                  Map
-                </a>
-                {ENABLE_REPORT_MENU && showReportLink && (
-                  <a
-                    href="#report"
-                    onMouseEnter={() => {
-                      import("../components/ReportScreen");
-                    }}
-                    onFocus={() => {
-                      import("../components/ReportScreen");
-                    }}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      trackNavItem("Report", "internal");
-                      onNavigate?.("report");
-                    }}
-                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-                      active === "report"
-                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                        : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                    }`}
-                    aria-current={active === "report" ? "page" : undefined}
-                  >
-                    Report
-                  </a>
-                )}
-                {showAdminLink && (
-                  <a
-                    href="#admin"
-                    onMouseEnter={() => {
-                      import("../components/AdminScreen");
-                    }}
-                    onFocus={() => {
-                      import("../components/AdminScreen");
-                    }}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      trackNavItem("Admin", "internal");
-                      onNavigate?.("admin");
-                    }}
-                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-                      active === "admin"
-                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                        : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                    }`}
-                    aria-current={active === "admin" ? "page" : undefined}
-                  >
-                    Admin
-                  </a>
-                )}
-                <a
-                  href="https://www.neighborhoodexplorer.org/statistics/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                  onClick={() => trackNavItem("All Stats", "external")}
-                >
-                  All Stats
-                </a>
-                <a
-                  href="https://www.neighborhoodexp.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                  onClick={() => trackNavItem("About", "external")}
-                >
-                  About
-                </a>
-                {/* "More" dropdown containing Queue, Roadmap, Orgs, Research */}
-                <div className="relative" ref={moreMenuRef}>
+            <div className="relative flex min-w-0 flex-1 items-center">
+              <div className="relative flex min-w-0 max-w-full items-center gap-2">
+                <div className="relative min-w-0 overflow-hidden">
+                  <nav className="hidden min-w-0 items-center gap-2 sm:flex">
+                    <a
+                      href="#map"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        trackNavItem("Food Map", "internal");
+                        onNavigate?.("map");
+                      }}
+                      className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap ${
+                        active === "map"
+                          ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                          : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      }`}
+                      aria-current={active === "map" ? "page" : undefined}
+                    >
+                      Map
+                    </a>
+                    {ENABLE_REPORT_MENU && showReportLink && (
+                      <a
+                        href="#report"
+                        onMouseEnter={() => {
+                          import("../components/ReportScreen");
+                        }}
+                        onFocus={() => {
+                          import("../components/ReportScreen");
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          trackNavItem("Report", "internal");
+                          onNavigate?.("report");
+                        }}
+                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                          active === "report"
+                            ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                            : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                        }`}
+                        aria-current={active === "report" ? "page" : undefined}
+                      >
+                        Report
+                      </a>
+                    )}
+                    {showAdminLink && (
+                      <a
+                        href="#admin"
+                        onMouseEnter={() => {
+                          import("../components/AdminScreen");
+                        }}
+                        onFocus={() => {
+                          import("../components/AdminScreen");
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          trackNavItem("Admin", "internal");
+                          onNavigate?.("admin");
+                        }}
+                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                          active === "admin"
+                            ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                            : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                        }`}
+                        aria-current={active === "admin" ? "page" : undefined}
+                      >
+                        Admin
+                      </a>
+                    )}
+                    <a
+                      href="https://www.neighborhoodexplorer.org/statistics/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      onClick={() => trackNavItem("All Stats", "external")}
+                    >
+                      All Stats
+                    </a>
+                    <a
+                      href="https://www.neighborhoodexp.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      onClick={() => trackNavItem("About", "external")}
+                    >
+                      About
+                    </a>
+                  </nav>
+                </div>
+                <div className="relative shrink-0" ref={moreMenuRef}>
                   <button
                     type="button"
                     onClick={() => setIsMoreMenuOpen((prev) => !prev)}
                     className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
-                      isMoreMenuOpen || active === "queue" || active === "roadmap"
+                      isMoreMenuOpen ||
+                      active === "queue" ||
+                      active === "roadmap"
                         ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
                         : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                     }`}
@@ -609,7 +666,9 @@ export const TopBar = ({
                         {queueBadgeLabel}
                       </span>
                     )}
-                    <span className={`transition-transform duration-150 ${isMoreMenuOpen ? "rotate-180" : ""}`}>
+                    <span
+                      className={`transition-transform duration-150 ${isMoreMenuOpen ? "rotate-180" : ""}`}
+                    >
                       <ChevronDownIcon />
                     </span>
                   </button>
@@ -693,18 +752,19 @@ export const TopBar = ({
                     </div>
                   )}
                 </div>
-              </nav>
-              {/* Gradient fade overlay for truncating links */}
-              <div 
+              </div>
+              <div
                 className="pointer-events-none absolute right-0 top-0 h-full w-56 dark:hidden"
                 style={{
-                  background: 'linear-gradient(to left, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.65) 15%, rgba(255, 255, 255, 0.45) 35%, rgba(255, 255, 255, 0.25) 55%, rgba(255, 255, 255, 0.1) 75%, rgba(255, 255, 255, 0.05) 90%, transparent 100%)'
+                  background:
+                    "linear-gradient(to left, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.65) 15%, rgba(255, 255, 255, 0.45) 35%, rgba(255, 255, 255, 0.25) 55%, rgba(255, 255, 255, 0.1) 75%, rgba(255, 255, 255, 0.05) 90%, transparent 100%)",
                 }}
               />
-              <div 
-                className="pointer-events-none absolute right-0 top-0 h-full w-56 hidden dark:block"
+              <div
+                className="pointer-events-none absolute right-0 top-0 hidden h-full w-56 dark:block"
                 style={{
-                  background: 'linear-gradient(to left, rgba(17, 26, 20, 0.8) 0%, rgba(17, 26, 20, 0.65) 15%, rgba(17, 26, 20, 0.45) 35%, rgba(17, 26, 20, 0.25) 55%, rgba(17, 26, 20, 0.1) 75%, rgba(17, 26, 20, 0.05) 90%, transparent 100%)'
+                  background:
+                    "linear-gradient(to left, rgba(17, 26, 20, 0.8) 0%, rgba(17, 26, 20, 0.65) 15%, rgba(17, 26, 20, 0.45) 35%, rgba(17, 26, 20, 0.25) 55%, rgba(17, 26, 20, 0.1) 75%, rgba(17, 26, 20, 0.05) 90%, transparent 100%)",
                 }}
               />
             </div>
@@ -714,13 +774,15 @@ export const TopBar = ({
             <div
               className="pointer-events-none absolute -left-12 top-0 h-full w-12 dark:hidden"
               style={{
-                background: "linear-gradient(to right, transparent 0%, rgba(255, 255, 255, 0.8) 100%)",
+                background:
+                  "linear-gradient(to right, transparent 0%, rgba(255, 255, 255, 0.8) 100%)",
               }}
             />
             <div
               className="pointer-events-none absolute -left-12 top-0 hidden h-full w-12 dark:block"
               style={{
-                background: "linear-gradient(to right, transparent 0%, rgba(15, 23, 42, 0.8) 100%)",
+                background:
+                  "linear-gradient(to right, transparent 0%, rgba(15, 23, 42, 0.8) 100%)",
               }}
             />
             <a
@@ -745,18 +807,24 @@ export const TopBar = ({
                 window.location.assign(nextNeHomeUrl);
               }}
               className="relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 dark:text-slate-300"
-              title={neHomeRedirectDisabled ? "Make map the default homepage" : "Open original homepage in a new tab"}
-            >
-              <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+              title={
                 neHomeRedirectDisabled
-                  ? "bg-slate-300 dark:bg-slate-600"
-                  : "bg-brand-400 dark:bg-brand-500"
-              }`}>
-                <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition ${
+                  ? "Make map the default homepage"
+                  : "Open original homepage in a new tab"
+              }
+            >
+              <span
+                className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
                   neHomeRedirectDisabled
-                    ? "translate-x-1.5"
-                    : "translate-x-3"
-                }`} />
+                    ? "bg-slate-300 dark:bg-slate-600"
+                    : "bg-brand-400 dark:bg-brand-500"
+                }`}
+              >
+                <span
+                  className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition ${
+                    neHomeRedirectDisabled ? "translate-x-1.5" : "translate-x-3"
+                  }`}
+                />
               </span>
               <span className="whitespace-nowrap text-slate-400 dark:text-slate-500">
                 {neHomeRedirectDisabled ? "Home: Original" : "Home: Map"}
@@ -824,7 +892,9 @@ export const TopBar = ({
                             type="button"
                             onClick={() =>
                               setImportQueueItems((prev) =>
-                                prev.filter((item) => item.status !== "success"),
+                                prev.filter(
+                                  (item) => item.status !== "success",
+                                ),
                               )
                             }
                             className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
@@ -854,9 +924,12 @@ export const TopBar = ({
                         </p>
                       ) : (
                         importQueueItems.map((item) => {
-                          const isCurrent = item.id === currentImportItemId && isImportRunning;
+                          const isCurrent =
+                            item.id === currentImportItemId && isImportRunning;
                           const yearRangeLabel =
-                            item.years > 1 ? `${item.year - item.years + 1} to ${item.year}` : item.year;
+                            item.years > 1
+                              ? `${item.year - item.years + 1} to ${item.year}`
+                              : item.year;
                           const subtitle = `${item.variable} · ${item.group} · ${yearRangeLabel}`;
                           const title = getQueueItemTitle(item);
                           return (
@@ -879,16 +952,21 @@ export const TopBar = ({
                                     <span className="text-brand-600 dark:text-brand-400">
                                       {isCurrent && importDerivedStatusLabel
                                         ? `Loading ${importDerivedStatusLabel}…`
-                                        : isCurrent && currentImportYearProcessing
+                                        : isCurrent &&
+                                            currentImportYearProcessing
                                           ? `Loading ${currentImportYearProcessing}…`
                                           : "Running…"}
                                     </span>
                                   )}
                                   {item.status === "success" && (
-                                    <span className="text-emerald-600 dark:text-emerald-400">Done</span>
+                                    <span className="text-emerald-600 dark:text-emerald-400">
+                                      Done
+                                    </span>
                                   )}
                                   {item.status === "error" && (
-                                    <span className="text-rose-600 dark:text-rose-400">Error</span>
+                                    <span className="text-rose-600 dark:text-rose-400">
+                                      Error
+                                    </span>
                                   )}
                                 </div>
                               </div>
@@ -911,7 +989,11 @@ export const TopBar = ({
               type="button"
               onClick={handleThemeToggle}
               className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              aria-label={
+                theme === "dark"
+                  ? "Switch to light theme"
+                  : "Switch to dark theme"
+              }
               aria-pressed={theme === "dark"}
             >
               {theme === "dark" ? <MoonIcon /> : <SunIcon />}
@@ -937,10 +1019,14 @@ export const TopBar = ({
           <button
             type="button"
             onClick={() => onBrandClick?.()}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg shadow-floating overflow-hidden"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center shadow-floating overflow-visible"
             aria-label="Return to home"
           >
-            <img src="/icons/NE_Logos_Logomark_Prp.svg" alt="NourishED" className="h-10 w-10" />
+            <img
+              src="/icons/NE_Logos_Logomark_Prp.svg"
+              alt="NourishED"
+              className="h-10 w-10"
+            />
           </button>
           <div className="flex min-w-0 flex-1 items-center gap-3">
             {isCompactMobileSearch && !isMobileSearchExpanded ? (
@@ -988,7 +1074,10 @@ export const TopBar = ({
                     // Use setTimeout to ensure the input is focused after the click
                     if (mobileSearchValue) {
                       setTimeout(() => {
-                        if (document.activeElement === e.currentTarget && mobileSearchValue) {
+                        if (
+                          document.activeElement === e.currentTarget &&
+                          mobileSearchValue
+                        ) {
                           e.currentTarget.select();
                         }
                       }, 0);
@@ -1027,7 +1116,11 @@ export const TopBar = ({
                   type="button"
                   onClick={handleThemeToggle}
                   className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
-                  aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+                  aria-label={
+                    theme === "dark"
+                      ? "Switch to light theme"
+                      : "Switch to dark theme"
+                  }
                   aria-pressed={theme === "dark"}
                 >
                   {theme === "dark" ? <MoonIcon /> : <SunIcon />}
@@ -1038,16 +1131,20 @@ export const TopBar = ({
                   type="button"
                   onClick={handleAddOrganization}
                   className={`inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 shadow-sm transition hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 dark:bg-brand-500/20 dark:text-brand-200 dark:hover:bg-brand-500/30 dark:focus:ring-offset-slate-900 ${
-                    showLocationTextMobile && (!isCompactMobileSearch || !isMobileSearchExpanded) && !isMobileSearchFocused
+                    showLocationTextMobile &&
+                    (!isCompactMobileSearch || !isMobileSearchExpanded) &&
+                    !isMobileSearchFocused
                       ? "gap-2 w-auto px-3"
                       : "w-11 px-0"
                   }`}
                   aria-label="Add organization"
                 >
                   <PlusIcon />
-                  {showLocationTextMobile && (!isCompactMobileSearch || !isMobileSearchExpanded) && !isMobileSearchFocused && (
-                    <span className="text-sm font-medium">Location</span>
-                  )}
+                  {showLocationTextMobile &&
+                    (!isCompactMobileSearch || !isMobileSearchExpanded) &&
+                    !isMobileSearchFocused && (
+                      <span className="text-sm font-medium">Location</span>
+                    )}
                 </button>
               )}
             </>
@@ -1070,7 +1167,11 @@ export const TopBar = ({
         <div className="fixed inset-0 z-50 bg-white/95 backdrop-blur-md dark:bg-slate-950/95">
           <div className="flex h-full flex-col">
             <div className="flex items-center justify-between px-6 pt-6">
-              <img src="/icons/NE_Logos_Logomark_Prp.svg" alt="NourishED" className="h-11 w-11 rounded-lg shadow-floating" />
+              <img
+                src="/icons/NE_Logos_Logomark_Prp.svg"
+                alt="NourishED"
+                className="h-11 w-11 shadow-floating"
+              />
               <button
                 type="button"
                 onClick={handleMobileMenuToggle}
