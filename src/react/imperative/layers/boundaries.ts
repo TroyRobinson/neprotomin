@@ -285,9 +285,6 @@ export const ensureBoundaryLayers = (
 
   if (!map.getSource(ZIP_CENTROIDS_SOURCE_ID)) {
     map.addSource(ZIP_CENTROIDS_SOURCE_ID, { type: "geojson", data: getZipCentroidFeatureCollection() });
-  } else {
-    const s = map.getSource(ZIP_CENTROIDS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    try { s?.setData(getZipCentroidFeatureCollection() as any); } catch {}
   }
 
   if (!map.getLayer(SECONDARY_STAT_LAYER_ID)) {
@@ -337,9 +334,6 @@ export const ensureBoundaryLayers = (
       type: "geojson",
       data: getCountyCentroidFeatureCollection(),
     });
-  } else {
-    const source = map.getSource(COUNTY_CENTROIDS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    try { source?.setData(getCountyCentroidFeatureCollection() as any); } catch {}
   }
 
   if (!map.getLayer(COUNTY_SECONDARY_LAYER_ID)) {
@@ -386,9 +380,6 @@ export const ensureBoundaryLayers = (
 
   if (!map.getSource(COUNTY_BOUNDARY_SOURCE_ID)) {
     map.addSource(COUNTY_BOUNDARY_SOURCE_ID, { type: "geojson", data: oklahomaCountyBoundaries });
-  } else {
-    const source = map.getSource(COUNTY_BOUNDARY_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    try { source?.setData(oklahomaCountyBoundaries as any); } catch {}
   }
 
   if (!map.getLayer(COUNTY_BOUNDARY_FILL_LAYER_ID)) {

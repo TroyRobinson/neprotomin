@@ -8,8 +8,8 @@ type WindowLike = {
 };
 
 function setWindowUrl(url: string) {
-  const u = new URL(url);
   const loc = (globalThis as any).window.location;
+  const u = new URL(url, loc.href);
   loc.href = u.toString();
   loc.search = u.search;
   loc.hostname = u.hostname;

@@ -18,7 +18,7 @@ Add an `Export` chip at the end of the desktop map chip row. On hover/click, it 
 ## Constraints / Notes
 
 - The map UI is mostly imperative DOM in `mapView` + `categoryChips`, so the export feature should follow that pattern.
-- Reliable WebGL canvas export usually requires `preserveDrawingBuffer: true` on the MapLibre map.
+- WebGL canvas export is most reliable with `preserveDrawingBuffer: true`, but the app now keeps that buffer off by default because retained buffers make WebGL startup heavier on older GPUs. For export debugging, opt in with `?mapCaptureBuffer=1` or `localStorage.setItem("ne.mapCaptureBuffer", "true")`.
 - Clipboard image write depends on browser support + secure context (`https` / localhost) + user gesture.
 - DOM screenshot libraries are not ideal here because WebGL map capture is less reliable than reading the MapLibre canvas directly.
 

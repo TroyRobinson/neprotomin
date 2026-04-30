@@ -157,9 +157,6 @@ export const ensureOrganizationLayers = (
       clusterMaxZoom: 14,
       clusterRadius: 50,
     });
-  } else {
-    const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    try { source?.setData(lastData as any); } catch {}
   }
 
   if (!map.getLayer(LAYER_CLUSTERS_ID)) {

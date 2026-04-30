@@ -62,9 +62,26 @@ import {
   type ZctaStateCode,
   type ZctaChunkSummary,
 } from "../../lib/zctaLoader";
+import { getZipCentroidFeatureCollection } from "../../lib/zipCentroids";
 import { normalizeScopeLabel, formatCountyScopeLabel } from "../../lib/scopeLabels";
 import { isLowMemoryDevice } from "../../lib/device";
 import { PREFETCH_RECENT_STATS_KEY, REDUCED_DATA_LOADING_KEY, readBoolSetting } from "../../lib/settings";
+import { boundsArea, intersectionArea } from "./lib/mapBounds";
+import { applyBasemapLabelTone, getMapStyle } from "./lib/mapStyle";
+import { formatOrgRevenueLine, preventTrailingWordOrphan } from "./lib/orgTooltipText";
+import {
+  STAT_EXTREME_BAD_COLOR,
+  STAT_EXTREME_BAD_ICON_ID,
+  STAT_EXTREME_GOOD_COLOR,
+  STAT_EXTREME_GOOD_ICON_ID,
+  STAT_EXTREME_ICON_SIZE,
+  STAT_EXTREME_NEUTRAL_COLOR,
+  STAT_EXTREME_NEUTRAL_ICON_ID,
+  createStatExtremeArrowImage,
+  createStatExtremeCombinedImage,
+  statExtremeCombinedIconId,
+  type ExtremaTone,
+} from "./lib/statExtremaIcons";
 export type { SelectedStatChipOption } from "./categoryChips";
 
 interface AreaSelectionChange {
@@ -158,128 +175,8 @@ export interface MapViewController {
   destroy: () => void;
 }
 
-type ThemeName = "light" | "dark";
-
-const MAP_STYLE_LIGHT = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
-const MAP_STYLE_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 const DEFAULT_GLOW_COLOR = "#f5c4ae";
 const SELECTED_GLOW_COLOR = "#8e90c4"; // Tailwind brand-500
-const BASEMAP_TEXT_OPACITY: Record<ThemeName, number> = {
-  light: 0.34,
-  dark: 0.46,
-};
-const STAT_EXTREME_GOOD_COLOR = "#6fc284";
-const STAT_EXTREME_BAD_COLOR = "#f15b41";
-const STAT_EXTREME_NEUTRAL_COLOR = "#f8d837";
-const STAT_EXTREME_GOOD_ICON_ID = "stat-extreme-triangle-good";
-const STAT_EXTREME_BAD_ICON_ID = "stat-extreme-triangle-bad";
-const STAT_EXTREME_NEUTRAL_ICON_ID = "stat-extreme-triangle-neutral";
-const STAT_EXTREME_ICON_SIZE = 1.08;
-// Combined icon: two stacked triangles (high↑ on top, low↓ on bottom) for co-located extrema.
-type ExtremaTone = "good" | "bad" | "neutral";
-const statExtremeCombinedIconId = (highTone: ExtremaTone, lowTone: ExtremaTone) =>
-  `stat-extreme-combined-${highTone}-${lowTone}`;
-
-const getMapStyle = (theme: ThemeName): string =>
-  theme === "dark" ? MAP_STYLE_DARK : MAP_STYLE_LIGHT;
-
-const CUSTOM_SOURCE_IDS = new Set<string>([
-  SOURCE_ID,
-  USER_LOCATION_SOURCE_ID,
-  BOUNDARY_SOURCE_ID,
-  ZIP_CENTROIDS_SOURCE_ID,
-  POINTS_OF_INTEREST_SOURCE_ID,
-  COUNTY_CENTROIDS_SOURCE_ID,
-  COUNTY_BOUNDARY_SOURCE_ID,
-]);
-
-const applyBasemapLabelTone = (map: maplibregl.Map, theme: ThemeName) => {
-  const style = map.getStyle() as
-    | {
-        layers?: Array<{
-          id: string;
-          type: string;
-          source?: string;
-          layout?: { "text-field"?: unknown };
-        }>;
-      }
-    | undefined;
-  if (!style?.layers?.length) return;
-  const targetOpacity = BASEMAP_TEXT_OPACITY[theme];
-  for (const layer of style.layers) {
-    // Keep app-owned symbol layers at full readability; only soften basemap labels.
-    if (layer.type !== "symbol") continue;
-    if (!layer.layout || !("text-field" in layer.layout)) continue;
-    if (typeof layer.source === "string" && CUSTOM_SOURCE_IDS.has(layer.source)) continue;
-    try {
-      map.setPaintProperty(layer.id, "text-opacity", targetOpacity);
-    } catch {}
-  }
-};
-
-const createStatExtremeArrowImage = (color: string): ImageData | null => {
-  if (typeof document === "undefined") return null;
-  const size = 20;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-  ctx.clearRect(0, 0, size, size);
-  // Straight-corner triangle marker for min/max indicators.
-  ctx.beginPath();
-  ctx.moveTo(size / 2, 3);
-  ctx.lineTo(size - 3, size - 4);
-  ctx.lineTo(3, size - 4);
-  ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.fill();
-
-  // White edge keeps markers readable over the choropleth.
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 1.6;
-  ctx.lineJoin = "miter";
-  ctx.lineCap = "butt";
-  ctx.stroke();
-
-  return ctx.getImageData(0, 0, size, size);
-};
-
-// Two stacked triangles on a single icon: high (↑) in topColor, low (↓) in bottomColor.
-const createStatExtremeCombinedImage = (topColor: string, bottomColor: string): ImageData | null => {
-  if (typeof document === "undefined") return null;
-  const w = 20;
-  const h = 30; // taller canvas to stack two triangles with a small gap
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  ctx.clearRect(0, 0, w, h);
-
-  const drawTriangle = (color: string, tipX: number, tipY: number, baseY: number) => {
-    const halfBase = 7;
-    ctx.beginPath();
-    ctx.moveTo(tipX, tipY);
-    ctx.lineTo(tipX - halfBase, baseY);
-    ctx.lineTo(tipX + halfBase, baseY);
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 1.4;
-    ctx.lineJoin = "miter";
-    ctx.stroke();
-  };
-
-  // High triangle pointing up (tip at top)
-  drawTriangle(topColor, w / 2, 2, 13);
-  // Low triangle pointing down (tip at bottom)
-  drawTriangle(bottomColor, w / 2, h - 2, h - 13);
-
-  return ctx.getImageData(0, 0, w, h);
-};
 
 import {
   SOURCE_ID,
@@ -366,26 +263,29 @@ const FALLBACK_ZIP_PARENT_AREA =
 
 const RECENT_STATS_STORAGE_KEY = "uiState.recentStats";
 const RECENT_STATS_MAX = 10;
+const MAP_CAPTURE_BUFFER_QUERY_PARAM = "mapCaptureBuffer";
+const MAP_CAPTURE_BUFFER_STORAGE_KEY = "ne.mapCaptureBuffer";
 
 const VIEWPORT_DOMINANCE_RATIO = 0.45;
 
-const boundsArea = (bounds: BoundsArray): number => {
-  const width = Math.max(0, bounds[1][0] - bounds[0][0]);
-  const height = Math.max(0, bounds[1][1] - bounds[0][1]);
-  return width * height;
-};
-
-const intersectionArea = (a: BoundsArray, b: BoundsArray): number => {
-  const minLng = Math.max(a[0][0], b[0][0]);
-  const minLat = Math.max(a[0][1], b[0][1]);
-  const maxLng = Math.min(a[1][0], b[1][0]);
-  const maxLat = Math.min(a[1][1], b[1][1]);
-  if (minLng >= maxLng || minLat >= maxLat) return 0;
-  return (maxLng - minLng) * (maxLat - minLat);
-};
-
 const emptyFC = (): FC => ({ type: "FeatureCollection", features: [] });
 const emptyPoiFC = (): PoiFeatureCollection => ({ type: "FeatureCollection", features: [] });
+
+const readTruthyFlag = (value: string | null): boolean =>
+  value === "1" || value === "true" || value === "yes";
+
+const shouldPreserveDrawingBufferForCapture = (): boolean => {
+  if (typeof window === "undefined") return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const byQuery = params.get(MAP_CAPTURE_BUFFER_QUERY_PARAM);
+    if (byQuery !== null) return readTruthyFlag(byQuery.trim().toLowerCase());
+    const byStorage = window.localStorage.getItem(MAP_CAPTURE_BUFFER_STORAGE_KEY);
+    return readTruthyFlag((byStorage ?? "").trim().toLowerCase());
+  } catch {
+    return false;
+  }
+};
 
 const readPoiDebugEnabled = (): boolean => {
   if (typeof window === "undefined") return false;
@@ -395,6 +295,19 @@ const readPoiDebugEnabled = (): boolean => {
     if (byQuery === "1" || byQuery === "true") return true;
     const byStorage = window.localStorage.getItem("ne.poiDebug");
     return byStorage === "1" || byStorage === "true";
+  } catch {
+    return false;
+  }
+};
+
+const readHoverDebugEnabled = (): boolean => {
+  if (typeof window === "undefined") return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const byQuery = params.get("hoverDebug");
+    if (byQuery !== null) return readTruthyFlag(byQuery.trim().toLowerCase());
+    const byStorage = window.localStorage.getItem("ne.hoverDebug");
+    return readTruthyFlag((byStorage ?? "").trim().toLowerCase());
   } catch {
     return false;
   }
@@ -430,42 +343,7 @@ const ORG_HOVER_TOOLTIP_ENTER_OFFSET_PX = 3;
 const ORG_HOVER_TOOLTIP_Y_OFFSET_PX = 10;
 const ORG_HOVER_TOOLTIP_ENTER_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 const ORG_HOVER_TOOLTIP_MAX_WIDTH_CH = 30;
-const ORG_REVENUE_FORMATTER = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-const formatOrgRevenueLine = (
-  annualRevenue: number | null | undefined,
-  annualRevenueTaxPeriod: number | null | undefined,
-): string | null => {
-  if (typeof annualRevenue !== "number" || !Number.isFinite(annualRevenue) || annualRevenue <= 0) return null;
-  const amountLabel = ORG_REVENUE_FORMATTER.format(annualRevenue);
-  const year =
-    typeof annualRevenueTaxPeriod === "number"
-      && Number.isFinite(annualRevenueTaxPeriod)
-      && annualRevenueTaxPeriod >= 1900
-      && annualRevenueTaxPeriod <= 2500
-      ? annualRevenueTaxPeriod
-      : null;
-  return year ? `Revenue ${amountLabel} (${year})` : `Revenue ${amountLabel}`;
-};
-const preventTrailingWordOrphan = (text: string): string => {
-  const normalized = text.trim().replace(/\s+/g, " ");
-  const words = normalized.split(" ");
-  if (words.length < 2) return normalized;
-  const lastWord = words[words.length - 1];
-  const shouldBindLastWord =
-    // Prevent common short business suffixes from dangling (e.g., "Inc", "LLC").
-    /^(inc|inc\.|llc|co|co\.|corp|corp\.|ltd|ltd\.|pllc|pc|lp|llp)$/i.test(lastWord)
-    || lastWord.length <= 4;
-  if (!shouldBindLastWord) return normalized;
-  const penultimateWord = words[words.length - 2];
-  words[words.length - 2] = `${penultimateWord}\u00A0${lastWord}`;
-  words.pop();
-  return words.join(" ");
-};
+const ORG_CLUSTER_COUNT_FORMATTER = new Intl.NumberFormat("en-US");
 
 const zipAreaEntry = getAreaRegistryEntry("ZIP");
 const countyAreaEntry = getAreaRegistryEntry("COUNTY");
@@ -543,6 +421,17 @@ export const createMapView = ({
     }
     console.log(`[poi-debug] ${event}`);
   };
+  const hoverDebugEnabled = readHoverDebugEnabled();
+  const mapCreatedAtMs = typeof performance !== "undefined" ? performance.now() : Date.now();
+  const hoverDebugLog = (event: string, details?: Record<string, unknown>) => {
+    if (!hoverDebugEnabled) return;
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const payload = { t: Math.round(now - mapCreatedAtMs), ...(details ?? {}) };
+    console.log(`[hover-debug] ${event}`, payload);
+  };
+  hoverDebugLog("enabled", {
+    hint: "Use window.__mapHoverDebugSnapshot() for current map hover readiness",
+  });
 
   const mapNode = document.createElement("div");
   mapNode.className = "absolute inset-0";
@@ -995,7 +884,10 @@ export const createMapView = ({
     try { updateChoroplethLegend(); } catch {}
     try { updateSecondaryStatOverlay(); } catch {}
     try { updateSecondaryChoroplethLegend(); } catch {}
-    try { updateStatExtremaArrows(); } catch {}
+    try {
+      updateStatExtremaArrows();
+      placeExtremaLayersAboveAreaGeometry();
+    } catch {}
 
     const zipEntry = getStatEntryByBoundary(selectedStatId, "ZIP");
     zipLabels?.setStatOverlay(selectedStatId, zipEntry?.data || null, zipEntry?.type || "count");
@@ -1034,6 +926,20 @@ export const createMapView = ({
       clearTimeout(handle as ReturnType<typeof setTimeout>);
     }
   };
+  let ensureDeferredRefreshHandle: number | ReturnType<typeof setTimeout> | null = null;
+  const scheduleEnsureDeferredRefresh = () => {
+    if (ensureDeferredRefreshHandle !== null) return;
+    ensureDeferredRefreshHandle = scheduleIdle(() => {
+      ensureDeferredRefreshHandle = null;
+      try { updateStatDataChoropleth(); } catch {}
+      try { updateSecondaryStatOverlay(); } catch {}
+      try { updateStatExtremaArrows(); } catch {}
+    }, 100);
+  };
+  destroyFns.push(() => {
+    cancelIdle(ensureDeferredRefreshHandle);
+    ensureDeferredRefreshHandle = null;
+  });
 
   let latestNeighborCountyIds: string[] = [];
   let activeZipParentCountyId: string | null = null;
@@ -1287,6 +1193,7 @@ export const createMapView = ({
     [-93.5, 37.8],  // NE: east of state line, north of Kansas border
   ];
 
+  const preserveDrawingBuffer = shouldPreserveDrawingBufferForCapture();
   const map = new maplibregl.Map({
     container: mapNode,
     style: getMapStyle(currentTheme),
@@ -1296,10 +1203,68 @@ export const createMapView = ({
     zoom: initialMapPosition?.zoom ?? OKLAHOMA_DEFAULT_ZOOM,
     attributionControl: false,
     fadeDuration: 0,
-    // Required for reliable canvas readback when exporting screenshots.
-    canvasContextAttributes: { preserveDrawingBuffer: true },
+    // Keep retained buffers opt-in: they improve screenshot readback but make WebGL startup heavier.
+    canvasContextAttributes: {
+      failIfMajorPerformanceCaveat: false,
+      powerPreference: "default",
+      preserveDrawingBuffer,
+    },
     boxZoom: false,
     maxBounds: OKLAHOMA_MAX_BOUNDS,
+  });
+
+  const graphicsContextOverlay = document.createElement("div");
+  graphicsContextOverlay.className =
+    "pointer-events-auto absolute inset-0 z-[35] hidden items-center justify-center bg-slate-50/95 px-6 text-center text-slate-700 backdrop-blur-sm dark:bg-slate-950/95 dark:text-slate-200";
+  const graphicsContextCard = document.createElement("div");
+  graphicsContextCard.className = "max-w-md";
+  const graphicsContextTitle = document.createElement("h2");
+  graphicsContextTitle.className = "text-base font-semibold text-slate-900 dark:text-slate-100";
+  graphicsContextTitle.textContent = "Map graphics paused";
+  const graphicsContextBody = document.createElement("p");
+  graphicsContextBody.className = "mt-2 text-sm leading-6";
+  graphicsContextBody.textContent =
+    "The browser lost the map graphics context. Reloading usually restores the map.";
+  const graphicsContextReloadButton = document.createElement("button");
+  graphicsContextReloadButton.type = "button";
+  graphicsContextReloadButton.className =
+    "mt-4 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800";
+  graphicsContextReloadButton.textContent = "Reload";
+  graphicsContextCard.appendChild(graphicsContextTitle);
+  graphicsContextCard.appendChild(graphicsContextBody);
+  graphicsContextCard.appendChild(graphicsContextReloadButton);
+  graphicsContextOverlay.appendChild(graphicsContextCard);
+  container.appendChild(graphicsContextOverlay);
+
+  const showGraphicsContextOverlay = () => {
+    graphicsContextOverlay.classList.remove("hidden");
+    graphicsContextOverlay.classList.add("flex");
+  };
+  const hideGraphicsContextOverlay = () => {
+    graphicsContextOverlay.classList.add("hidden");
+    graphicsContextOverlay.classList.remove("flex");
+  };
+  const handleGraphicsContextLost = (event: Event) => {
+    event.preventDefault();
+    showGraphicsContextOverlay();
+  };
+  const handleGraphicsContextRestored = () => {
+    hideGraphicsContextOverlay();
+    try { map.resize(); } catch {}
+    try { map.triggerRepaint(); } catch {}
+  };
+  const handleGraphicsContextReload = () => {
+    window.location.reload();
+  };
+  const mapCanvas = map.getCanvas();
+  mapCanvas.addEventListener("webglcontextlost", handleGraphicsContextLost, false);
+  mapCanvas.addEventListener("webglcontextrestored", handleGraphicsContextRestored, false);
+  graphicsContextReloadButton.addEventListener("click", handleGraphicsContextReload);
+  destroyFns.push(() => {
+    mapCanvas.removeEventListener("webglcontextlost", handleGraphicsContextLost, false);
+    mapCanvas.removeEventListener("webglcontextrestored", handleGraphicsContextRestored, false);
+    graphicsContextReloadButton.removeEventListener("click", handleGraphicsContextReload);
+    graphicsContextOverlay.remove();
   });
 
   const waitForExportFrame = () =>
@@ -1609,6 +1574,8 @@ export const createMapView = ({
   let lastData: FC = emptyFC();
   let orgPinsVisible: boolean = false;
   let zctaUpdateToken = 0;
+  let zctaSourceRevision = 0;
+  let lastSyncedZctaSourceRevision = -1;
   // Track boundary-source readiness so ZIP ensures wait until layers exist.
   let boundarySourceReady = false;
   let pendingZctaEnsure = false;
@@ -1634,8 +1601,23 @@ export const createMapView = ({
   const syncZctaSource = () => {
     const source = map.getSource(BOUNDARY_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     if (!source) return;
+    if (lastSyncedZctaSourceRevision === zctaSourceRevision) return;
     const collection = getZctaFeatureCollection(ZCTA_STATE);
+    hoverDebugLog("zcta-source-setData-start", {
+      revision: zctaSourceRevision,
+      features: collection.features.length,
+      loadedZctas: getLoadedZctaCount(ZCTA_STATE),
+    });
     source.setData(collection as any);
+    const centroidSource = map.getSource(ZIP_CENTROIDS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (centroidSource) {
+      centroidSource.setData(getZipCentroidFeatureCollection() as any);
+    }
+    lastSyncedZctaSourceRevision = zctaSourceRevision;
+    hoverDebugLog("sync-zcta-source", {
+      revision: zctaSourceRevision,
+      loadedZctas: getLoadedZctaCount(ZCTA_STATE),
+    });
   };
 
   const ensureZctasForCurrentView = async ({ force = false }: { force?: boolean } = {}) => {
@@ -1653,6 +1635,20 @@ export const createMapView = ({
       boundaryMode,
       loadedZctas: getLoadedZctaCount(ZCTA_STATE),
     });
+    const hasZipAnchors =
+      pinnedZips.size > 0 ||
+      transientZips.size > 0 ||
+      Boolean(hoveredZipFromToolbar || hoveredZipFromMap);
+    if (!force && boundaryMode !== "zips" && zoom < ZCTA_LOAD_MIN_ZOOM && !hasZipAnchors) {
+      const details = {
+        zoom: Number(zoom.toFixed(2)),
+        boundaryMode,
+        loadedZctas: getLoadedZctaCount(ZCTA_STATE),
+      };
+      poiDebugLog("zcta-ensure-skipped-low-zoom", details);
+      hoverDebugLog("zcta-ensure-skipped-low-zoom", details);
+      return;
+    }
     const requestId = ++zctaUpdateToken;
     let relevantChunks: ZctaChunkSummary[] = [];
     try {
@@ -1772,6 +1768,7 @@ export const createMapView = ({
 
     latestNeighborCountyIds = neighborCountyIds;
     pruneZctaChunks(ZCTA_STATE, keepChunkIds);
+    zctaSourceRevision += 1;
     poiDebugLog("zcta-ensure-post-prune", {
       zoom: Number(zoom.toFixed(2)),
       force,
@@ -3262,6 +3259,7 @@ export const createMapView = ({
 
     void ensureZctaChunks(ZCTA_STATE, chunkIds)
       .then(() => {
+        zctaSourceRevision += 1;
         syncZctaSource();
         refreshStatVisuals();
         poiDebugLog("poi-zip-ensure-complete", {
@@ -3510,9 +3508,91 @@ export const createMapView = ({
     return addedLayer;
   };
 
+  const EXTREMA_HOVER_LAYER_IDS = [
+    ZIP_STAT_EXTREME_HIGH_LAYER_ID,
+    ZIP_STAT_EXTREME_LOW_LAYER_ID,
+    COUNTY_STAT_EXTREME_HIGH_LAYER_ID,
+    COUNTY_STAT_EXTREME_LOW_LAYER_ID,
+    ZIP_POI_EXTREME_HIGH_LAYER_ID,
+    ZIP_POI_EXTREME_LOW_LAYER_ID,
+    ZIP_POI_COMBINED_LAYER_ID,
+    COUNTY_POI_EXTREME_HIGH_LAYER_ID,
+    COUNTY_POI_EXTREME_LOW_LAYER_ID,
+    COUNTY_POI_COMBINED_LAYER_ID,
+  ];
+
+  const ORGANIZATION_MARKER_LAYER_IDS = [
+    LAYER_CLUSTER_HIGHLIGHT_ID,
+    LAYER_CLUSTERS_ID,
+    LAYER_CLUSTER_COUNT_ID,
+    LAYER_HIGHLIGHT_ID,
+    LAYER_POINTS_ID,
+  ];
+
+  const moveAreaGeometryLayersBehindMapMarkers = () => {
+    const beforeLayer = [
+      SECONDARY_STAT_HOVER_LAYER_ID,
+      SECONDARY_STAT_LAYER_ID,
+      COUNTY_SECONDARY_HOVER_LAYER_ID,
+      COUNTY_SECONDARY_LAYER_ID,
+      ...ORGANIZATION_MARKER_LAYER_IDS,
+      ...EXTREMA_HOVER_LAYER_IDS,
+      USER_LOCATION_LAYER_ID,
+    ].find((layerId) => map.getLayer(layerId));
+    if (!beforeLayer) return;
+
+    const areaGeometryLayerIds = [
+      BOUNDARY_FILL_LAYER_ID,
+      BOUNDARY_STATDATA_FILL_LAYER_ID,
+      BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+      BOUNDARY_PINNED_FILL_LAYER_ID,
+      BOUNDARY_HOVER_FILL_LAYER_ID,
+      BOUNDARY_LINE_LAYER_ID,
+      BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+      BOUNDARY_PINNED_LINE_LAYER_ID,
+      BOUNDARY_HOVER_LINE_LAYER_ID,
+      COUNTY_BOUNDARY_FILL_LAYER_ID,
+      COUNTY_STATDATA_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_HIGHLIGHT_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_PINNED_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_HOVER_FILL_LAYER_ID,
+      COUNTY_BOUNDARY_LINE_LAYER_ID,
+      COUNTY_BOUNDARY_HIGHLIGHT_LINE_LAYER_ID,
+      COUNTY_BOUNDARY_PINNED_LINE_LAYER_ID,
+      COUNTY_BOUNDARY_HOVER_LINE_LAYER_ID,
+    ];
+
+    for (const layerId of areaGeometryLayerIds) {
+      if (!map.getLayer(layerId)) continue;
+      try {
+        map.moveLayer(layerId, beforeLayer);
+      } catch {}
+    }
+  };
+
+  const placeExtremaLayersAboveAreaGeometry = () => {
+    moveAreaGeometryLayersBehindMapMarkers();
+    const beforeLayer = ORGANIZATION_MARKER_LAYER_IDS.find((layerId) => map.getLayer(layerId))
+      ?? (map.getLayer(USER_LOCATION_LAYER_ID) ? USER_LOCATION_LAYER_ID : undefined);
+    for (const layerId of EXTREMA_HOVER_LAYER_IDS) {
+      if (!map.getLayer(layerId)) continue;
+      try {
+        if (beforeLayer) map.moveLayer(layerId, beforeLayer);
+        else map.moveLayer(layerId);
+      } catch {}
+    }
+  };
+
+  const hasExtremaHoverFeatureAtPoint = (point: maplibregl.PointLike): boolean => {
+    const layers = EXTREMA_HOVER_LAYER_IDS.filter((layerId) => map.getLayer(layerId));
+    if (layers.length === 0) return false;
+    return map.queryRenderedFeatures(point, { layers }).length > 0;
+  };
+
   const updateStatExtremaArrows = () => {
     if (!extremasVisible) {
       hideStatExtremaArrows();
+      moveAreaGeometryLayersBehindMapMarkers();
       syncHoverPillsForAreaHover();
       return;
     }
@@ -3550,7 +3630,9 @@ export const createMapView = ({
     };
 
     if (renderPoi) {
-      ensurePoiZipCentroidsLoaded();
+      if (showZipPoiLayers) {
+        ensurePoiZipCentroidsLoaded();
+      }
       updatePointsOfInterestSource();
       applyPoiLayerVisibility(showZipPoiLayers, showCountyPoiLayers);
       schedulePoiVisibilityReapply();
@@ -3569,6 +3651,7 @@ export const createMapView = ({
       setLayerState(ZIP_STAT_EXTREME_LOW_LAYER_ID, "zip", null, STAT_EXTREME_BAD_ICON_ID, false);
       setLayerState(COUNTY_STAT_EXTREME_HIGH_LAYER_ID, "county", null, STAT_EXTREME_GOOD_ICON_ID, false);
       setLayerState(COUNTY_STAT_EXTREME_LOW_LAYER_ID, "county", null, STAT_EXTREME_BAD_ICON_ID, false);
+      placeExtremaLayersAboveAreaGeometry();
       return;
     }
 
@@ -3631,10 +3714,27 @@ export const createMapView = ({
       lowIconId,
       showCountyStatLayers,
     );
+    placeExtremaLayersAboveAreaGeometry();
   };
 
+  const isStyleReadyForCustomLayers = () => {
+    const style = (map as unknown as { style?: { _loaded?: boolean } }).style;
+    return Boolean(style?._loaded);
+  };
+  let ensureSourcesRunCount = 0;
+
   const ensureSourcesAndLayers = () => {
-    if (!map.isStyleLoaded()) return;
+    if (!isStyleReadyForCustomLayers()) return;
+    ensureSourcesRunCount += 1;
+    if (ensureSourcesRunCount <= 12) {
+      const style = (map as unknown as { style?: { loaded?: () => boolean } }).style;
+      hoverDebugLog("ensure-sources", {
+        run: ensureSourcesRunCount,
+        orgFeatures: lastData.features.length,
+        boundaryMode,
+        styleLoaded: Boolean(style?.loaded?.()),
+      });
+    }
 
     applyBasemapLabelTone(map, currentTheme);
 
@@ -3686,6 +3786,7 @@ export const createMapView = ({
 
     const hasBoundarySource = Boolean(map.getSource(BOUNDARY_SOURCE_ID));
     if (!hasBoundarySource) {
+      lastSyncedZctaSourceRevision = -1;
       // Style swaps purge sources; remember to re-run ensures once rebuilt.
       if (boundarySourceReady) {
         pendingZctaEnsureForce = true;
@@ -3695,6 +3796,7 @@ export const createMapView = ({
     } else if (!boundarySourceReady) {
       // First time the source appears after a reset, replay any queued requests.
       boundarySourceReady = true;
+      lastSyncedZctaSourceRevision = -1;
       const shouldForce = pendingZctaEnsureForce;
       const shouldRun = pendingZctaEnsure;
       pendingZctaEnsure = false;
@@ -3759,13 +3861,9 @@ export const createMapView = ({
       try { map.triggerRepaint(); } catch {}
     }
     
-    // Deferred path: stat overlays (can wait, expensive)
-    // Use idle callback so map renders first, then overlays appear
-    scheduleIdle(() => {
-      try { updateStatDataChoropleth(); } catch {}
-      try { updateSecondaryStatOverlay(); } catch {}
-      try { updateStatExtremaArrows(); } catch {}
-    }, 100);
+    // Deferred path: stat overlays can wait, and repeated style/idle events should
+    // collapse into one refresh instead of queueing redundant work.
+    scheduleEnsureDeferredRefresh();
   };
 
   const syncAreaHoverCallbacksFromCurrentSources = () => {
@@ -3824,7 +3922,16 @@ export const createMapView = ({
     }
   };
 
-  map.once("load", () => {
+  let mapInteractionsWired = false;
+  const wireMapInteractions = () => {
+    if (mapInteractionsWired) return;
+    if (!isStyleReadyForCustomLayers()) return;
+    mapInteractionsWired = true;
+    hoverDebugLog("wire-interactions", {
+      ensureRuns: ensureSourcesRunCount,
+      orgFeatures: lastData.features.length,
+    });
+
     // Only reset to default if no initial position was provided from URL
     if (!initialMapPosition) {
       map.jumpTo({
@@ -3841,7 +3948,7 @@ export const createMapView = ({
     
     // Deferred: ZCTA loading (heavy, can wait for idle)
     scheduleIdle(() => {
-      void ensureZctasForCurrentView({ force: true });
+      void ensureZctasForCurrentView({ force: boundaryMode === "zips" });
     }, 50);
 
     zipFloatingTitle = createZipFloatingTitle({ map });
@@ -3866,12 +3973,28 @@ export const createMapView = ({
       refreshStatVisuals();
       onStatSelectionChange?.(selectedStatId);
     };
+
+    let zipExtremaHoverClearTimer: ReturnType<typeof setTimeout> | null = null;
+    let countyExtremaHoverClearTimer: ReturnType<typeof setTimeout> | null = null;
+    const cancelZipExtremaHoverClear = () => {
+      if (zipExtremaHoverClearTimer !== null) {
+        clearTimeout(zipExtremaHoverClearTimer);
+        zipExtremaHoverClearTimer = null;
+      }
+    };
+    const cancelCountyExtremaHoverClear = () => {
+      if (countyExtremaHoverClearTimer !== null) {
+        clearTimeout(countyExtremaHoverClearTimer);
+        countyExtremaHoverClearTimer = null;
+      }
+    };
     
     zipLabels = createZipLabels({
       map,
       stackedStatsMinZoom: ZIP_LABEL_STACK_MIN_ZOOM,
       onHoverPillChange: ({ areaId, pill }) => {
         cancelZipBoundaryLeaveClear?.();
+        cancelZipExtremaHoverClear();
         const prevArea = hoveredZipFromPill;
         const prevKey = hoveredZipPillKey;
         hoveredZipFromPill = areaId;
@@ -3895,6 +4018,7 @@ export const createMapView = ({
       stackedStatsMinZoom: COUNTY_LABEL_STACK_MIN_ZOOM,
       onHoverPillChange: ({ areaId, pill }) => {
         cancelCountyBoundaryLeaveClear?.();
+        cancelCountyExtremaHoverClear();
         const prevArea = hoveredCountyFromPill;
         const prevKey = hoveredCountyPillKey;
         hoveredCountyFromPill = areaId;
@@ -3914,6 +4038,144 @@ export const createMapView = ({
     zipLabels.setTheme(currentTheme);
     countyLabels.setTheme(currentTheme);
     syncHoverPillsForAreaHover();
+
+    const clearExtremaAreaHover = (kind: "ZIP" | "COUNTY") => {
+      if (kind === "ZIP") {
+        if (!hoveredZipFromMap && !hoveredZipPreviewFromMap && pendingZipHover === null) return;
+        hoveredZipFromMap = null;
+        pendingZipHover = null;
+        if (pendingHoverArea?.kind === "ZIP") pendingHoverArea = null;
+        clearZipPreviewHover();
+        zipSelection.updateHover();
+        zipLabels?.setHoveredZip(hoveredZipFromToolbar || hoveredZipFromPill || null);
+        syncLinkedExtremaHoverLabels();
+        syncAreaHoverCallbacksFromCurrentSources();
+        return;
+      }
+
+      if (!hoveredCountyFromMap && !hoveredCountyPreviewFromMap && pendingCountyHover === null) return;
+      hoveredCountyFromMap = null;
+      pendingCountyHover = null;
+      if (pendingHoverArea?.kind === "COUNTY") pendingHoverArea = null;
+      clearCountyPreviewHover();
+      countySelection.updateHover();
+      countyLabels?.setHoveredZip(hoveredCountyFromToolbar || hoveredCountyFromPill || null);
+      syncLinkedExtremaHoverLabels();
+      syncAreaHoverCallbacksFromCurrentSources();
+    };
+
+    const scheduleExtremaHoverClear = (kind: "ZIP" | "COUNTY") => {
+      if (kind === "ZIP") {
+        cancelZipExtremaHoverClear();
+        zipExtremaHoverClearTimer = setTimeout(() => {
+          zipExtremaHoverClearTimer = null;
+          if (hoveredZipFromPill) return;
+          clearExtremaAreaHover("ZIP");
+        }, 70);
+        return;
+      }
+
+      cancelCountyExtremaHoverClear();
+      countyExtremaHoverClearTimer = setTimeout(() => {
+        countyExtremaHoverClearTimer = null;
+        if (hoveredCountyFromPill) return;
+        clearExtremaAreaHover("COUNTY");
+      }, 70);
+      };
+
+      let extremaHoverDebugCount = 0;
+      const commitExtremaAreaHover = (kind: "ZIP" | "COUNTY", areaId: string | null) => {
+        if (!areaId) return;
+        if (extremaHoverDebugCount < 10) {
+          extremaHoverDebugCount += 1;
+          hoverDebugLog("extrema-hover", { kind, areaId });
+        }
+        if (orgHoverSuppressesAreaHover) setOrgHoverAreaSuppression(false);
+
+      if (kind === "ZIP") {
+        cancelZipExtremaHoverClear();
+        cancelZipBoundaryLeaveClear?.();
+        clearZipPreviewHover();
+        hoveredZipFromMap = areaId;
+        queuePendingMapHoverEcho(pendingMapZipHoverEchoCounts, areaId);
+        zipSelection.updateHover();
+        if (mapInMotion) {
+          pendingZipHover = areaId;
+          pendingHoverArea = { kind: "ZIP", id: areaId };
+        } else {
+          onZipHoverChange?.(areaId);
+          onAreaHoverChange?.({ kind: "ZIP", id: areaId });
+        }
+        return;
+      }
+
+      cancelCountyExtremaHoverClear();
+      cancelCountyBoundaryLeaveClear?.();
+      clearCountyPreviewHover();
+      hoveredCountyFromMap = areaId;
+      queuePendingMapHoverEcho(pendingMapCountyHoverEchoCounts, areaId);
+      countySelection.updateHover();
+      countyLabels?.setHoveredZip(areaId);
+      if (mapInMotion) {
+        pendingCountyHover = areaId;
+        pendingHoverArea = { kind: "COUNTY", id: areaId };
+      } else {
+        onCountyHoverChange?.(areaId);
+        onAreaHoverChange?.({ kind: "COUNTY", id: areaId });
+      }
+    };
+
+    const unwireExtremaHover = (() => {
+      const extremaHoverLayers = [
+        { layerId: ZIP_STAT_EXTREME_HIGH_LAYER_ID, kind: "ZIP" as const, property: "zip" },
+        { layerId: ZIP_STAT_EXTREME_LOW_LAYER_ID, kind: "ZIP" as const, property: "zip" },
+        { layerId: ZIP_POI_EXTREME_HIGH_LAYER_ID, kind: "ZIP" as const, property: "areaCode" },
+        { layerId: ZIP_POI_EXTREME_LOW_LAYER_ID, kind: "ZIP" as const, property: "areaCode" },
+        { layerId: ZIP_POI_COMBINED_LAYER_ID, kind: "ZIP" as const, property: "areaCode" },
+        { layerId: COUNTY_STAT_EXTREME_HIGH_LAYER_ID, kind: "COUNTY" as const, property: "county" },
+        { layerId: COUNTY_STAT_EXTREME_LOW_LAYER_ID, kind: "COUNTY" as const, property: "county" },
+        { layerId: COUNTY_POI_EXTREME_HIGH_LAYER_ID, kind: "COUNTY" as const, property: "areaCode" },
+        { layerId: COUNTY_POI_EXTREME_LOW_LAYER_ID, kind: "COUNTY" as const, property: "areaCode" },
+        { layerId: COUNTY_POI_COMBINED_LAYER_ID, kind: "COUNTY" as const, property: "areaCode" },
+      ];
+      const resolveAreaId = (
+        event: maplibregl.MapLayerMouseEvent,
+        layerId: string,
+        property: string,
+      ): string | null => {
+        const feature = event.features?.[0]
+          ?? map.queryRenderedFeatures(event.point, { layers: [layerId] })[0];
+        const value = feature?.properties?.[property];
+        return typeof value === "string" && value.length > 0 ? value : null;
+      };
+      const removers: Array<() => void> = [];
+      for (const spec of extremaHoverLayers) {
+        const onMouseEnter = (event: maplibregl.MapLayerMouseEvent) => {
+          map.getCanvas().style.cursor = "pointer";
+          commitExtremaAreaHover(spec.kind, resolveAreaId(event, spec.layerId, spec.property));
+        };
+        const onMouseMove = (event: maplibregl.MapLayerMouseEvent) => {
+          commitExtremaAreaHover(spec.kind, resolveAreaId(event, spec.layerId, spec.property));
+        };
+        const onMouseLeave = () => {
+          map.getCanvas().style.cursor = "pointer";
+          scheduleExtremaHoverClear(spec.kind);
+        };
+        map.on("mouseenter", spec.layerId, onMouseEnter);
+        map.on("mousemove", spec.layerId, onMouseMove);
+        map.on("mouseleave", spec.layerId, onMouseLeave);
+        removers.push(() => {
+          map.off("mouseenter", spec.layerId, onMouseEnter);
+          map.off("mousemove", spec.layerId, onMouseMove);
+          map.off("mouseleave", spec.layerId, onMouseLeave);
+        });
+      }
+      return () => {
+        cancelZipExtremaHoverClear();
+        cancelCountyExtremaHoverClear();
+        for (const remove of removers) remove();
+      };
+    })();
 
     const unwireCanvasDrag = (() => {
     let isDragging = false;
@@ -3936,15 +4198,27 @@ export const createMapView = ({
       // Track short, low‑movement taps on mobile to treat as a primary select
       let tapStart: { point: maplibregl.PointLike; time: number; id: string | null } | null = null;
       let consumedTap = false;
-      const onPointsMouseEnter = () => {
+      let hoveredPointId: string | null = null;
+      let cachedHoverClusterId: number | null = null;
+      let cachedHoverClusterOrgIds: string[] | null = null;
+      let clusterHoverRequestSeq = 0;
+      let pointHoverDebugCount = 0;
+      let clusterHoverDebugCount = 0;
+      const onPointsMouseEnter = (e: any) => {
         map.getCanvas().style.cursor = "pointer";
         setOrgHoverAreaSuppression(true);
+        hoverDebugLog("org-point-enter", {
+          features: e.features?.length ?? 0,
+          id: e.features?.[0]?.properties?.id ?? null,
+        });
+        onPointsMouseMove(e);
       };
       const onPointsMouseLeave = () => { 
         map.getCanvas().style.cursor = "pointer"; 
         hideOrgHoverTooltip();
         setOrgHoverAreaSuppression(false);
         // Clear hover - updateHighlight will restore selection if any
+        hoveredPointId = null;
         onHover(null); 
       };
       const onPointsMouseMove = (e: any) => { 
@@ -3965,13 +4239,21 @@ export const createMapView = ({
         const x = e.point?.x;
         const y = e.point?.y;
         if (typeof id === "string" && typeof name === "string" && typeof x === "number" && typeof y === "number") {
+          if (pointHoverDebugCount < 5) {
+            pointHoverDebugCount += 1;
+            hoverDebugLog("org-point-hover", { id, name });
+          }
           const shown = showOrgHoverTooltip(name, x, y, annualRevenue, annualRevenueTaxPeriod);
           if (!shown) hideOrgHoverTooltip();
         } else {
           hideOrgHoverTooltip();
         }
         // Update hover - this will call updateHighlight which handles hover vs selection
-        onHover(id || null); 
+        const nextId = id || null;
+        if (hoveredPointId !== nextId) {
+          hoveredPointId = nextId;
+          onHover(nextId);
+        }
       };
       const onPointsClick = (e: any) => {
         // Avoid duplicate open when a touch tap already handled selection
@@ -4051,44 +4333,108 @@ export const createMapView = ({
         } catch {}
       };
 
-      const onClustersMouseEnter = () => {
-        map.getCanvas().style.cursor = "pointer";
-        setOrgHoverAreaSuppression(true);
-      };
-      const onClustersMouseLeave = () => { 
-        map.getCanvas().style.cursor = "pointer"; 
+      const showClusterHoverTooltip = (feature: maplibregl.MapGeoJSONFeature | undefined, e: any) => {
+        const countRaw = feature?.properties?.point_count;
+        const count =
+          typeof countRaw === "number"
+            ? countRaw
+            : typeof countRaw === "string"
+            ? Number.parseInt(countRaw, 10)
+            : null;
+        const x = e.point?.x;
+        const y = e.point?.y;
+        if (
+          typeof count === "number" &&
+          Number.isFinite(count) &&
+          count > 0 &&
+          typeof x === "number" &&
+          typeof y === "number"
+        ) {
+          const label = `${ORG_CLUSTER_COUNT_FORMATTER.format(count)} organization${count === 1 ? "" : "s"}`;
+          const shown = showOrgHoverTooltip(label, x, y);
+          if (!shown) hideOrgHoverTooltip();
+          return;
+        }
         hideOrgHoverTooltip();
-        setOrgHoverAreaSuppression(false);
-        // Clear hover - selection will persist
-        hoverClusterId = null;
-        onHover(null); 
-        updateSelectedHighlights();
       };
-      const onClustersMouseMove = async (e: any) => {
+
+      const updateClusterHover = async (e: any) => {
         setOrgHoverAreaSuppression(true);
-        hideOrgHoverTooltip();
         const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_CLUSTERS_ID] });
         const feature = features[0];
         const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
         const clusterId = feature?.properties?.cluster_id as number | undefined;
         if (!feature || !source || clusterId === undefined) {
+          hideOrgHoverTooltip();
           setOrgHoverAreaSuppression(false);
           // If no cluster under cursor, clear hover (selection will persist)
           hoverClusterId = null;
+          cachedHoverClusterId = null;
+          cachedHoverClusterOrgIds = null;
           onHover(null);
           updateSelectedHighlights();
           return;
         }
+        showClusterHoverTooltip(feature, e);
         try {
           // Set hover cluster - updateSelectedHighlights will show both selected and hover
-          hoverClusterId = clusterId;
-          updateSelectedHighlights();
+          if (hoverClusterId !== clusterId) {
+            hoverClusterId = clusterId;
+            updateSelectedHighlights();
+          }
+          if (cachedHoverClusterId === clusterId && cachedHoverClusterOrgIds) {
+            onHover(cachedHoverClusterOrgIds);
+            if (clusterHoverDebugCount < 8) {
+              clusterHoverDebugCount += 1;
+              hoverDebugLog("cluster-hover-cache-hit", {
+                clusterId,
+                ids: cachedHoverClusterOrgIds.length,
+              });
+            }
+            return;
+          }
+          const requestSeq = ++clusterHoverRequestSeq;
+          const leavesStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+          if (clusterHoverDebugCount < 8) {
+            clusterHoverDebugCount += 1;
+            hoverDebugLog("cluster-hover-leaves-start", {
+              clusterId,
+              pointCount: feature.properties?.point_count ?? null,
+            });
+          }
           const leaves = await source.getClusterLeaves(clusterId, 1000, 0);
+          if (requestSeq !== clusterHoverRequestSeq && hoverClusterId !== clusterId) return;
           const ids = leaves
             .map((f: any) => f?.properties?.id)
             .filter((v: any): v is string => typeof v === "string");
+          cachedHoverClusterId = clusterId;
+          cachedHoverClusterOrgIds = ids;
+          hoverDebugLog("cluster-hover-leaves-end", {
+            clusterId,
+            ids: ids.length,
+            durationMs: Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - leavesStartedAt),
+          });
           onHover(ids);
         } catch {}
+      };
+      const onClustersMouseEnter = (e: any) => {
+        map.getCanvas().style.cursor = "pointer";
+        void updateClusterHover(e);
+      };
+      const onClustersMouseLeave = () => {
+        map.getCanvas().style.cursor = "pointer";
+        hideOrgHoverTooltip();
+        setOrgHoverAreaSuppression(false);
+        // Clear hover - selection will persist
+        hoverClusterId = null;
+        cachedHoverClusterId = null;
+        cachedHoverClusterOrgIds = null;
+        clusterHoverRequestSeq += 1;
+        onHover(null);
+        updateSelectedHighlights();
+      };
+      const onClustersMouseMove = async (e: any) => {
+        await updateClusterHover(e);
       };
       const onClustersClick = async (e: any) => {
         if (clusterConsumedTap) {
@@ -4419,7 +4765,7 @@ export const createMapView = ({
         // Disable hover on mobile when org pins are visible
         if (isMobile && orgPinsVisible) return;
         const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
-        if (orgFeatures.length > 0) {
+        if (orgFeatures.length > 0 && !hasExtremaHoverFeatureAtPoint(e.point)) {
           setOrgHoverAreaSuppression(true);
           clearZipHoverDwell();
           return;
@@ -4569,7 +4915,7 @@ export const createMapView = ({
         // Disable hover on mobile when org pins are visible
         if (isMobile && orgPinsVisible) return;
         const orgFeatures = map.queryRenderedFeatures(e.point, { layers: [LAYER_POINTS_ID, LAYER_CLUSTERS_ID] });
-        if (orgFeatures.length > 0) {
+        if (orgFeatures.length > 0 && !hasExtremaHoverFeatureAtPoint(e.point)) {
           setOrgHoverAreaSuppression(true);
           clearCountyHoverDwell();
           return;
@@ -4685,6 +5031,7 @@ export const createMapView = ({
     const previousDestroy = destroyFns.pop?.();
     const cleanup = () => {
       try { unwireCanvasDrag(); } catch {}
+      try { unwireExtremaHover(); } catch {}
       try { unwireOrganizations(); } catch {}
       try { unwireBoundaries(); } catch {}
       if (typeof previousDestroy === 'function') {
@@ -4692,21 +5039,61 @@ export const createMapView = ({
       }
     };
     destroyFns.push(cleanup);
+  };
+
+  wireMapInteractions();
+
+  map.on("style.load", () => {
+    hoverDebugLog("style-load");
+    ensureSourcesAndLayers();
+    wireMapInteractions();
   });
 
   map.on("load", () => {
+    hoverDebugLog("map-load");
     ensureSourcesAndLayers();
+    wireMapInteractions();
   });
 
   map.on("styledata", () => {
     ensureSourcesAndLayers();
+    wireMapInteractions();
   });
   map.on("idle", () => {
+    hoverDebugLog("map-idle", {
+      orgFeatures: lastData.features.length,
+      ensureRuns: ensureSourcesRunCount,
+    });
     ensureSourcesAndLayers();
+    wireMapInteractions();
     isTileLoading = false;
     applyCompositeLoading();
   });
   map.once("idle", () => updateVisibleZipSet());
+
+  if (hoverDebugEnabled && typeof window !== "undefined") {
+    (window as any).__mapHoverDebugSnapshot = () => ({
+      t: Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - mapCreatedAtMs),
+      styleReadyForCustomLayers: isStyleReadyForCustomLayers(),
+      styleLoaded: Boolean((map as unknown as { style?: { loaded?: () => boolean } }).style?.loaded?.()),
+      mapLoaded: Boolean(map.loaded?.()),
+      mapInteractionsWired,
+      ensureSourcesRunCount,
+      orgFeatures: lastData.features.length,
+      orgSourceReady: Boolean(map.getSource(SOURCE_ID)),
+      orgLayersReady: {
+        points: Boolean(map.getLayer(LAYER_POINTS_ID)),
+        clusters: Boolean(map.getLayer(LAYER_CLUSTERS_ID)),
+        clusterCount: Boolean(map.getLayer(LAYER_CLUSTER_COUNT_ID)),
+      },
+      orgPinsVisible,
+      boundaryMode,
+      extremasVisible,
+      selectedStatId,
+      loadedZctas: getLoadedZctaCount(ZCTA_STATE),
+      poi: lastPoiBuildSummary,
+    });
+  }
 
   // Track map tile loading state for the loading indicator.
   // Only show loading for actual tile fetches (basemap), not GeoJSON source updates.
@@ -5020,6 +5407,10 @@ export const createMapView = ({
 
   const setOrganizations = (organizations: Organization[]) => {
     allOrganizations = organizations;
+    hoverDebugLog("set-organizations", {
+      rows: organizations.length,
+      sourceReady: Boolean(map.getSource(SOURCE_ID)),
+    });
     applyData();
   };
 
@@ -5069,10 +5460,23 @@ export const createMapView = ({
     };
 
     lastData = fc;
+    hoverDebugLog("apply-org-data", {
+      all: allOrganizations.length,
+      filtered: filtered.length,
+      sourceReady: Boolean(map.getSource(SOURCE_ID)),
+    });
 
     const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     if (source) {
+      hoverDebugLog("org-source-setData-start", {
+        features: lastData.features.length,
+        pinsVisible: orgPinsVisible,
+      });
       source.setData(lastData);
+      hoverDebugLog("org-source-setData-end", {
+        features: lastData.features.length,
+        pinsVisible: orgPinsVisible,
+      });
     }
 
     if (activeId && !filtered.some((o) => o.id === activeId)) {
@@ -5321,6 +5725,13 @@ export const createMapView = ({
 
   const updateOrganizationPinsVisibility = () => {
     const visibility = orgPinsVisible ? "visible" : "none";
+    hoverDebugLog("org-pins-visibility", {
+      visible: orgPinsVisible,
+      features: lastData.features.length,
+      sourceReady: Boolean(map.getSource(SOURCE_ID)),
+      pointLayerReady: Boolean(map.getLayer(LAYER_POINTS_ID)),
+      clusterLayerReady: Boolean(map.getLayer(LAYER_CLUSTERS_ID)),
+    });
     if (!orgPinsVisible) {
       hideOrgHoverTooltip();
       setOrgHoverAreaSuppression(false);
@@ -5339,6 +5750,9 @@ export const createMapView = ({
     }
     if (map.getLayer(LAYER_CLUSTER_HIGHLIGHT_ID)) {
       map.setLayoutProperty(LAYER_CLUSTER_HIGHLIGHT_ID, "visibility", visibility);
+    }
+    if (orgPinsVisible) {
+      placeExtremaLayersAboveAreaGeometry();
     }
   };
 
@@ -5461,6 +5875,7 @@ export const createMapView = ({
     setOrganizationPinsVisible: (visible: boolean) => {
       if (orgPinsVisible === visible) return;
       orgPinsVisible = visible;
+      setOrgHoverAreaSuppression(false);
       updateOrganizationPinsVisibility();
       orgLegend?.setVisible(visible);
       try { categoryChips.setOrgsVisible(visible); } catch {}
@@ -5567,6 +5982,13 @@ export const createMapView = ({
         try {
           if ((window as any).__poiDebugSnapshot) {
             delete (window as any).__poiDebugSnapshot;
+          }
+        } catch {}
+      }
+      if (hoverDebugEnabled && typeof window !== "undefined") {
+        try {
+          if ((window as any).__mapHoverDebugSnapshot) {
+            delete (window as any).__mapHoverDebugSnapshot;
           }
         } catch {}
       }

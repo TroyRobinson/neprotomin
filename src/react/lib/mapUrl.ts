@@ -46,6 +46,14 @@ export interface MapState {
   sidebarInsights: SidebarInsightsState;
 }
 
+function replaceCurrentUrl(url: URL): void {
+  if (typeof window === "undefined") return;
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (next === current) return;
+  window.history.replaceState(null, "", next);
+}
+
 // Parse map position from current URL query params
 export function getMapPositionFromUrl(): MapPosition | null {
   if (typeof window === "undefined") return null;
@@ -88,8 +96,8 @@ export function updateUrlWithMapPosition(
   url.searchParams.set("lng", lng.toFixed(4));
   url.searchParams.set("z", zoom.toFixed(2));
 
-  // Use replaceState to avoid polluting browser history
-  window.history.replaceState(null, "", url.toString());
+  // Use replaceState to avoid polluting browser history.
+  replaceCurrentUrl(url);
 }
 
 // Clear map position params from URL
@@ -101,7 +109,7 @@ export function clearMapPositionFromUrl(): void {
   url.searchParams.delete("lng");
   url.searchParams.delete("z");
 
-  window.history.replaceState(null, "", url.toString());
+  replaceCurrentUrl(url);
 }
 
 // Get full map state from URL (position + stats + category + orgs + toggles + areas + selections)
@@ -312,7 +320,7 @@ export function updateUrlWithStatId(statId: string | null): void {
     url.searchParams.delete("stat");
   }
 
-  window.history.replaceState(null, "", url.toString());
+  replaceCurrentUrl(url);
 }
 
 // Update URL with full map state (position + stats + category + orgs + toggles + areas + selections)
@@ -444,5 +452,5 @@ export function updateUrlWithMapState(
     url.searchParams.delete("demoe");
   }
 
-  window.history.replaceState(null, "", url.toString());
+  replaceCurrentUrl(url);
 }

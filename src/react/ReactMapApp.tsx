@@ -32,6 +32,36 @@ import { parseFullAddress, geocodeAddress, looksLikeAddress } from "./lib/geocod
 import { normalizeForSearch, computeSimilarityFromNormalized } from "./lib/fuzzyMatch";
 import { getMapStateFromUrl, updateUrlWithMapState, type AreasMode } from "./lib/mapUrl";
 import { DEFAULT_POPULATION_STAT_ID, getDomainDefaults, isFoodMapDomain } from "./lib/domains";
+import {
+  hashForScreen,
+  isHashRoutedScreen,
+  isKnownScreenHash,
+  screenFromHash,
+  type ScreenName,
+} from "./lib/screenRouting";
+import {
+  DEFAULT_TOP_BAR_HEIGHT,
+  MOBILE_MAX_WIDTH_QUERY,
+  MOBILE_PARTIAL_FOCUS_ANCHOR,
+  MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX,
+  MOBILE_TAP_THRESHOLD,
+  calculateMobilePartialFocusOffsetScale,
+  calculateSheetPartialOffset,
+  calculateSheetPeekOffset,
+  calculateSheetTranslateY,
+  resolveSheetStateAfterDrag,
+  type MobileSheetState,
+} from "./lib/mobileSheet";
+import {
+  areaSelectionsEqual,
+  arraysEqual,
+  createEmptySelection,
+  dedupeIds,
+  normalizeAreaSelection,
+  type AreaSelectionMap,
+  type AreaSelectionSnapshot,
+  type AreaSelectionState,
+} from "./lib/areaSelection";
 import { useAuthSession } from "./hooks/useAuthSession";
 import { setStatDataSubscriptionEnabled } from "../state/statData";
 import { MapSettingsModal } from "./components/MapSettingsModal";
@@ -51,7 +81,6 @@ import {
   type MapTourSetStatDetail,
 } from "./imperative/constants/mapTourEvents";
 type SupportedAreaKind = "ZIP" | "COUNTY";
-type ScreenName = "map" | "report" | "roadmap" | "data" | "queue" | "addOrg" | "admin";
 const ReportScreen = lazy(() => import("./components/ReportScreen").then((m) => ({ default: m.ReportScreen })));
 const DataScreen = lazy(() => import("./components/DataScreen").then((m) => ({ default: m.default })));
 const RoadmapScreen = lazy(() => import("./components/RoadmapScreen").then((m) => ({ default: m.default })));
@@ -89,19 +118,6 @@ const expandScopeAliases = (scopes: string[]): string[] => {
   return Array.from(set);
 };
 
-const DEFAULT_TOP_BAR_HEIGHT = 64;
-const MOBILE_MAX_WIDTH_QUERY = "(max-width: 767px)";
-const MOBILE_SHEET_PEEK_HEIGHT = 136;
-const MOBILE_PARTIAL_MIN_MAP_RATIO = 0.05; // Min amount of viewport for the map when sheet is partial
-const MOBILE_PARTIAL_TARGET_SHEET_HEIGHT = 560; // Aim for this sheet height before applying other clamps
-const MOBILE_PARTIAL_MAP_HEIGHT_SCALE = 1; // Scale the computed map height when we have room above the minimum
-const MOBILE_PARTIAL_FOCUS_ANCHOR = 0.12; // Portion of visible sheet height to align with viewport center
-const MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MIN = 0.7; // Offset multiplier for taller mobile screens
-const MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX = 1; // Offset multiplier for shorter mobile screens
-const MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MIN_HEIGHT = 640; // Heights at or below this use the max multiplier
-const MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX_HEIGHT = 920; // Heights at or above this use the min multiplier
-const MOBILE_SHEET_DRAG_THRESHOLD = 72;
-const MOBILE_TAP_THRESHOLD = 10; // pixels - movement below this is considered a tap, not a drag
 const ORGANIZATION_MATCH_THRESHOLD = 0.55;
 const POPULATION_CANONICAL_STAT_ID = "8807bf0b-5a85-4a73-82f2-cd18c8140072";
 const POPULATION_ALIAS_STAT_IDS = [
@@ -114,74 +130,7 @@ const POPULATION_STAT_ID_SET = new Set<string>([
   DEFAULT_POPULATION_STAT_ID,
 ]);
 const FOOD_CATEGORY_SLUG = "food";
-
-const HASH_TO_SCREEN: Record<string, ScreenName> = {
-  "#roadmap": "roadmap",
-  "#queue": "queue",
-  "#admin": "admin",
-};
-
-const screenFromHash = (hash: string): ScreenName | null => {
-  if (!hash) return null;
-  return HASH_TO_SCREEN[hash.toLowerCase()] ?? null;
-};
-
-const hashForScreen = (screen: ScreenName): string | null => {
-  switch (screen) {
-    case "roadmap":
-      return "#roadmap";
-    case "queue":
-      return "#queue";
-    case "admin":
-      return "#admin";
-    default:
-      return null;
-  }
-};
-
-const isHashRoutedScreen = (screen: ScreenName): boolean => screen === "roadmap" || screen === "queue" || screen === "admin";
-
-interface AreaSelectionState {
-  selected: string[];
-  pinned: string[];
-  transient: string[];
-}
-
-interface AreaSelectionSnapshot {
-  kind: AreaKind;
-  selected: string[];
-  pinned: string[];
-}
-
-type AreaSelectionMap = Record<AreaKind, AreaSelectionState>;
-
-const createEmptySelection = (): AreaSelectionState => ({
-  selected: [],
-  pinned: [],
-  transient: [],
-});
-
-const dedupeIds = (ids: string[]): string[] => {
-  if (!ids || ids.length === 0) return [];
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const id of ids) {
-    if (!seen.has(id)) {
-      seen.add(id);
-      result.push(id);
-    }
-  }
-  return result;
-};
-
-const arraysEqual = (a: string[], b: string[]): boolean => {
-  if (a === b) return true;
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-};
+const MAP_URL_SYNC_DELAY_MS = 700;
 
 const expandBounds = (
   bounds: [[number, number], [number, number]],
@@ -248,6 +197,7 @@ export const ReactMapApp = () => {
   const isFoodDomain = useMemo(() => isFoodMapDomain(), []);
   const [authOpen, setAuthOpen] = useState(false);
   const [cameraState, setCameraState] = useState<{ center: [number, number]; zoom: number } | null>(null);
+  const mapUrlSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hasInteractedWithMap, setHasInteractedWithMap] = useState(false);
   const [sidebarFollowsMap, setSidebarFollowsMap] = useState(true);
   const [orgPinsVisible, setOrgPinsVisible] = useState<boolean>(() => initialMapState.orgPinsVisible);
@@ -298,7 +248,7 @@ export const ReactMapApp = () => {
     readBoolSetting(REDUCED_DATA_LOADING_KEY, false),
   );
   const [topBarHeight, setTopBarHeight] = useState(DEFAULT_TOP_BAR_HEIGHT);
-  const [sheetState, setSheetState] = useState<"peek" | "partial" | "expanded">("peek");
+  const [sheetState, setSheetState] = useState<MobileSheetState>("peek");
 
   useEffect(() => {
     writeBoolSetting(REDUCED_DATA_LOADING_KEY, reducedDataLoading);
@@ -416,40 +366,26 @@ export const ReactMapApp = () => {
   }, [setTimeSelectionState]);
   const [expandMobileSearch, setExpandMobileSearch] = useState(false);
   const sheetPointerIdRef = useRef<number | null>(null);
-  const sheetDragStateRef = useRef<{ startY: number; startState: "peek" | "partial" | "expanded" } | null>(null);
+  const sheetDragStateRef = useRef<{ startY: number; startState: MobileSheetState } | null>(null);
   const pendingContentDragRef = useRef<{ pointerId: number; startY: number } | null>(null);
   const sheetContentRef = useRef<HTMLDivElement | null>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
   const skipSidebarCenteringRef = useRef(false);
   const suppressAreaSelectionClearRef = useRef<{ ZIP: number; COUNTY: number }>({ ZIP: 0, COUNTY: 0 });
   const sheetAvailableHeight = Math.max(viewportHeight - topBarHeight, 0);
-  const sheetPeekOffset = Math.max(sheetAvailableHeight - MOBILE_SHEET_PEEK_HEIGHT, 0);
+  const sheetPeekOffset = calculateSheetPeekOffset(viewportHeight, topBarHeight);
   const sheetPartialOffset = useMemo(() => {
-    if (sheetPeekOffset <= 0) return 0;
-    const minMapHeight = Math.round(Math.max(viewportHeight * MOBILE_PARTIAL_MIN_MAP_RATIO, 0));
-    const desiredMapHeight = Math.max(
-      minMapHeight,
-      sheetAvailableHeight - MOBILE_PARTIAL_TARGET_SHEET_HEIGHT,
-    );
-    const baseMapHeight = Math.min(sheetPeekOffset, Math.max(desiredMapHeight, minMapHeight));
-    const adjustedMapHeight = Math.min(
+    return calculateSheetPartialOffset({
+      sheetAvailableHeight,
       sheetPeekOffset,
-      Math.max(minMapHeight, Math.round(baseMapHeight * MOBILE_PARTIAL_MAP_HEIGHT_SCALE)),
-    );
-    return Math.max(0, adjustedMapHeight);
+      viewportHeight,
+    });
   }, [sheetAvailableHeight, sheetPeekOffset, viewportHeight]);
 
   // Scale map offset based on viewport height so taller screens nudge less
   const mobilePartialFocusOffsetScale = useMemo(() => {
     if (!isMobile) return 1;
-    if (viewportHeight <= 0) return MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX;
-    const minHeight = MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MIN_HEIGHT;
-    const maxHeight = MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX_HEIGHT;
-    if (maxHeight <= minHeight) return MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX;
-    const clampedHeight = Math.min(Math.max(viewportHeight, minHeight), maxHeight);
-    const progress = (clampedHeight - minHeight) / (maxHeight - minHeight);
-    const range = MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX - MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MIN;
-    return MOBILE_PARTIAL_FOCUS_OFFSET_SCALE_MAX - progress * range;
+    return calculateMobilePartialFocusOffsetScale(viewportHeight);
   }, [isMobile, viewportHeight]);
 
   const { user, authReady } = useAuthSession();
@@ -525,7 +461,7 @@ export const ReactMapApp = () => {
       }
       return;
     }
-    if (currentHash && HASH_TO_SCREEN[currentHash]) {
+    if (currentHash && isKnownScreenHash(currentHash)) {
       const url = `${window.location.pathname}${window.location.search}`;
       window.history.replaceState(null, "", url);
     }
@@ -589,18 +525,10 @@ export const ReactMapApp = () => {
   };
 
   const applyAreaSelection = (kind: AreaKind, selection: AreaSelectionState) => {
-    const normalized: AreaSelectionState = {
-      selected: dedupeIds(selection.selected),
-      pinned: dedupeIds(selection.pinned),
-      transient: dedupeIds(selection.transient),
-    };
+    const normalized = normalizeAreaSelection(selection);
     setAreaSelections((prev) => {
       const current = prev[kind];
-      if (
-        arraysEqual(current.selected, normalized.selected) &&
-        arraysEqual(current.pinned, normalized.pinned) &&
-        arraysEqual(current.transient, normalized.transient)
-      ) {
+      if (areaSelectionsEqual(current, normalized)) {
         return prev;
       }
       return { ...prev, [kind]: normalized };
@@ -772,7 +700,7 @@ export const ReactMapApp = () => {
   }, [focusOnLocation, requestUserLocation, userLocation, userLocationSource]);
 
   const startSheetDrag = useCallback(
-    (pointerId: number, clientY: number, startState: "peek" | "partial" | "expanded") => {
+    (pointerId: number, clientY: number, startState: MobileSheetState) => {
       if (sheetPeekOffset <= 0) {
         expandSheet();
         return;
@@ -797,19 +725,7 @@ export const ReactMapApp = () => {
         return;
       }
       const delta = clientY - dragState.startY;
-      if (dragState.startState === "expanded") {
-        setSheetState(delta > MOBILE_SHEET_DRAG_THRESHOLD ? "peek" : "expanded");
-      } else if (dragState.startState === "peek") {
-        setSheetState(delta < -MOBILE_SHEET_DRAG_THRESHOLD ? "expanded" : "peek");
-      } else {
-        if (delta < -MOBILE_SHEET_DRAG_THRESHOLD) {
-          setSheetState("expanded");
-        } else if (delta > MOBILE_SHEET_DRAG_THRESHOLD) {
-          setSheetState("peek");
-        } else {
-          setSheetState("partial");
-        }
-      }
+      setSheetState(resolveSheetStateAfterDrag(dragState.startState, delta));
     },
     [expandSheet, sheetPeekOffset],
   );
@@ -963,18 +879,13 @@ export const ReactMapApp = () => {
   }, [collapseSheet, isMobile, selectedOrgIds.length, sheetState]);
 
   const sheetTranslateY = useMemo(() => {
-    if (!isMobile) return 0;
-    if (sheetPeekOffset <= 0) return 0;
-    if (sheetState === "expanded") {
-      return Math.min(Math.max(sheetDragOffset, 0), sheetPeekOffset);
-    }
-    if (sheetState === "partial") {
-      const maxDown = Math.max(0, sheetPeekOffset - sheetPartialOffset);
-      const adjustment = Math.max(-sheetPartialOffset, Math.min(sheetDragOffset, maxDown));
-      return sheetPartialOffset + adjustment;
-    }
-    const adjustment = Math.max(-sheetPeekOffset, Math.min(sheetDragOffset, 0));
-    return sheetPeekOffset + adjustment;
+    return calculateSheetTranslateY({
+      isMobile,
+      sheetState,
+      sheetDragOffset,
+      sheetPartialOffset,
+      sheetPeekOffset,
+    });
   }, [isMobile, sheetState, sheetDragOffset, sheetPartialOffset, sheetPeekOffset]);
 
   const showMobileSheet = isMobile && activeScreen === "map" && !isEmbedMode;
@@ -1698,26 +1609,39 @@ export const ReactMapApp = () => {
   // Keep URL in sync with shareable map state.
   useEffect(() => {
     if (!cameraState) return;
-    const [lng, lat] = cameraState.center;
-    updateUrlWithMapState(
-      lat,
-      lng,
-      cameraState.zoom,
-      selectedStatId,
-      secondaryStatId,
-      categoryFilter,
-      selectedOrgIds,
-      showAdvanced,
-      orgPinsVisible,
-      areasMode,
-      selectedZips,
-      selectedCounties,
-      sidebarTab,
-      sidebarInsightsState,
-      persistSidebarInsights,
-      sidebarCollapsed,
-      extremasVisible,
-    );
+    if (mapUrlSyncTimeoutRef.current !== null) {
+      clearTimeout(mapUrlSyncTimeoutRef.current);
+      mapUrlSyncTimeoutRef.current = null;
+    }
+    mapUrlSyncTimeoutRef.current = setTimeout(() => {
+      mapUrlSyncTimeoutRef.current = null;
+      const [lng, lat] = cameraState.center;
+      updateUrlWithMapState(
+        lat,
+        lng,
+        cameraState.zoom,
+        selectedStatId,
+        secondaryStatId,
+        categoryFilter,
+        selectedOrgIds,
+        showAdvanced,
+        orgPinsVisible,
+        areasMode,
+        selectedZips,
+        selectedCounties,
+        sidebarTab,
+        sidebarInsightsState,
+        persistSidebarInsights,
+        sidebarCollapsed,
+        extremasVisible,
+      );
+    }, MAP_URL_SYNC_DELAY_MS);
+    return () => {
+      if (mapUrlSyncTimeoutRef.current !== null) {
+        clearTimeout(mapUrlSyncTimeoutRef.current);
+        mapUrlSyncTimeoutRef.current = null;
+      }
+    };
   }, [
     cameraState,
     selectedStatId,

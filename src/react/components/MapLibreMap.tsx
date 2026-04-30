@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BoundaryMode } from "../../types/boundaries";
 import type { Organization } from "../../types/organization";
 import type { AreaId, AreaKind } from "../../types/areas";
@@ -76,6 +76,41 @@ interface MapLibreMapProps {
   visibleStatIds?: string[] | null;
 }
 
+const normalizeStartupError = (error: unknown): Error =>
+  error instanceof Error ? error : new Error(String(error));
+
+const detectWebGlStartupError = (): Error | null => {
+  if (typeof document === "undefined") return null;
+  try {
+    const canvas = document.createElement("canvas");
+    const attributes: WebGLContextAttributes = {
+      failIfMajorPerformanceCaveat: false,
+      powerPreference: "default",
+      preserveDrawingBuffer: false,
+    };
+    const gl = (
+      canvas.getContext("webgl2", attributes) ??
+      canvas.getContext("webgl", attributes) ??
+      canvas.getContext("experimental-webgl", attributes)
+    ) as WebGLRenderingContext | WebGL2RenderingContext | null;
+    if (!gl) {
+      return new Error("This browser could not create a WebGL context.");
+    }
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    return null;
+  } catch (error) {
+    return normalizeStartupError(error);
+  }
+};
+
+const getMapStartupMessage = (error: Error): string => {
+  const message = error.message.toLowerCase();
+  if (message.includes("webgl") || message.includes("context")) {
+    return "The map could not start because this browser could not create a WebGL graphics context.";
+  }
+  return "The map renderer could not start.";
+};
+
 /**
  * MapLibreMap - A thin React wrapper around the imperative MapLibre GL setup
  *
@@ -142,6 +177,7 @@ export const MapLibreMap = ({
 }: MapLibreMapProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapControllerRef = useRef<MapViewController | null>(null);
+  const [startupError, setStartupError] = useState<Error | null>(null);
   const isInternalUpdateRef = useRef(false);
   const appliedBoundaryModeRef = useRef<BoundaryMode | null>(null);
 
@@ -226,7 +262,17 @@ export const MapLibreMap = ({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const mapController = createMapView({
+    const webGlStartupError = detectWebGlStartupError();
+    if (webGlStartupError) {
+      console.warn("Map startup blocked:", webGlStartupError);
+      setStartupError(webGlStartupError);
+      onControllerReady?.(null);
+      return;
+    }
+
+    let mapController: MapViewController;
+    try {
+      mapController = createMapView({
       initialExtremasVisible: Boolean(extremasVisible),
       initialAreasMode: areasMode,
       initialUserLocation: userLocation,
@@ -300,7 +346,14 @@ export const MapLibreMap = ({
       },
       legendRangeMode,
       onboardingAutoPromptEnabled: onboardingTourAutoPromptEnabled,
-    });
+      });
+    } catch (error) {
+      const normalizedError = normalizeStartupError(error);
+      console.error("Map startup failed:", normalizedError);
+      setStartupError(normalizedError);
+      onControllerReady?.(null);
+      return;
+    }
 
     containerRef.current.appendChild(mapController.element);
     mapControllerRef.current = mapController;
@@ -537,6 +590,27 @@ export const MapLibreMap = ({
       }
     }
   }, [selectedCounties, pinnedCounties]);
+
+  if (startupError) {
+    return (
+      <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center bg-slate-50 px-6 text-center text-slate-700 dark:bg-slate-950 dark:text-slate-200">
+        <div className="max-w-md">
+          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Map unavailable</h2>
+          <p className="mt-2 text-sm leading-6">{getMapStartupMessage(startupError)}</p>
+          <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+            Try reloading after enabling graphics acceleration, updating the browser, or using another browser.
+          </p>
+          <button
+            type="button"
+            className="mt-4 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+            onClick={() => window.location.reload()}
+          >
+            Reload
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
