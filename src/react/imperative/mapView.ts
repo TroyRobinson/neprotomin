@@ -788,6 +788,11 @@ export const createMapView = ({
   };
   let isTileLoading = true;
   let isStatDataLoading = false;
+  let lastTileLoadingReason = "initial";
+  let lastTileLoadingSourceId: string | null = null;
+  let lastTileLoadingAtMs = 0;
+  let lastTileSettledReason: string | null = null;
+  let lastTileSettledAtMs = 0;
   let activeZipParentArea: string | null = FALLBACK_ZIP_PARENT_AREA;
   const destroyFns: Array<() => void> = [];
   const onboardingTour = createMapOnboardingTour({
@@ -1233,6 +1238,59 @@ export const createMapView = ({
     boxZoom: false,
     maxBounds: OKLAHOMA_MAX_BOUNDS,
   });
+
+  const getMapElapsedMs = () =>
+    Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - mapCreatedAtMs);
+
+  const getTileReadiness = () => {
+    let areTilesLoaded = false;
+    let mapLoaded = false;
+    let styleLoaded = false;
+    try { areTilesLoaded = map.areTilesLoaded(); } catch {}
+    try { mapLoaded = map.loaded(); } catch {}
+    try { styleLoaded = Boolean((map as unknown as { style?: { loaded?: () => boolean } }).style?.loaded?.()); } catch {}
+    return { areTilesLoaded, mapLoaded, styleLoaded };
+  };
+
+  const markTileLoadingSettled = (reason: string) => {
+    if (!isTileLoading) return;
+    isTileLoading = false;
+    lastTileSettledReason = reason;
+    lastTileSettledAtMs = getMapElapsedMs();
+    applyCompositeLoading();
+  };
+
+  const clearTileLoadingIfSettled = (reason: string) => {
+    if (!isTileLoading) return;
+    if (!getTileReadiness().areTilesLoaded) return;
+    markTileLoadingSettled(reason);
+  };
+
+  const getLoadingDebugSnapshot = () => ({
+    t: getMapElapsedMs(),
+    loading: isTileLoading || isStatDataLoading,
+    isTileLoading,
+    isStatDataLoading,
+    tile: {
+      ...getTileReadiness(),
+      lastLoadingReason: lastTileLoadingReason,
+      lastLoadingSourceId: lastTileLoadingSourceId,
+      lastLoadingAtMs: lastTileLoadingAtMs,
+      lastSettledReason: lastTileSettledReason,
+      lastSettledAtMs: lastTileSettledAtMs,
+    },
+    statData: {
+      isRefreshing: statDataStoreState.isRefreshing,
+      hasPendingRefresh: statDataStoreState.hasPendingRefresh,
+      selectedStatId,
+      secondaryStatId,
+      requiredBoundaries: getRequiredBoundariesForLoading(),
+    },
+  });
+
+  if (typeof window !== "undefined") {
+    (window as any).__mapLoadingDebugSnapshot = getLoadingDebugSnapshot;
+  }
 
   const graphicsContextOverlay = document.createElement("div");
   graphicsContextOverlay.className =
@@ -5088,8 +5146,7 @@ export const createMapView = ({
     });
     ensureSourcesAndLayers();
     wireMapInteractions();
-    isTileLoading = false;
-    applyCompositeLoading();
+    markTileLoadingSettled("idle");
   });
   map.once("idle", () => updateVisibleZipSet());
 
@@ -5114,6 +5171,7 @@ export const createMapView = ({
       selectedStatId,
       loadedZctas: getLoadedZctaCount(ZCTA_STATE),
       poi: lastPoiBuildSummary,
+      loading: getLoadingDebugSnapshot(),
     });
   }
 
@@ -5122,9 +5180,18 @@ export const createMapView = ({
   map.on("sourcedataloading", (e: maplibregl.MapSourceDataEvent) => {
     // Only trigger for tile loading events (has a tile property)
     if (e.tile) {
+      lastTileLoadingReason = "sourcedataloading";
+      lastTileLoadingSourceId = (e as { sourceId?: string }).sourceId ?? null;
+      lastTileLoadingAtMs = getMapElapsedMs();
       isTileLoading = true;
       applyCompositeLoading();
     }
+  });
+  map.on("sourcedata", (e: maplibregl.MapSourceDataEvent) => {
+    if (e.tile) clearTileLoadingIfSettled("sourcedata");
+  });
+  map.on("render", () => {
+    clearTileLoadingIfSettled("render");
   });
 
   unsubscribeStatData = statDataStore.subscribe((byStat) => {
