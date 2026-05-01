@@ -27,7 +27,7 @@ export const formatStatValue = (value: number, type: string): string => {
       }).format(Math.round(value));
     case "years":
     case "rate":
-      return (Math.round(value * 10) / 10).toLocaleString("en-US");
+      return formatRateValue(value, false);
     case "count":
     default:
       return Math.round(value).toLocaleString("en-US");
@@ -70,7 +70,7 @@ export const formatStatValueCompact = (value: number, type: string): string => {
       if (value >= 1000) {
         return `${(value / 1000).toFixed(0)}k`;
       }
-      return `${Math.round(value * 10) / 10}`;
+      return formatRateValue(value, true);
     case "count":
     default:
       if (value >= 1000000) {
@@ -81,4 +81,23 @@ export const formatStatValueCompact = (value: number, type: string): string => {
       }
       return `${Math.round(value)}`;
   }
+};
+
+const formatRateValue = (value: number, compact: boolean): string => {
+  const absolute = Math.abs(value);
+  if (absolute > 0 && absolute < 1) {
+    const maximumFractionDigits = compact ? 3 : 4;
+    return new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: absolute < 0.1 ? 2 : 1,
+      maximumFractionDigits,
+    }).format(value);
+  }
+  if (absolute < 10) {
+    return new Intl.NumberFormat("en-US", {
+      maximumFractionDigits: compact ? 2 : 3,
+    }).format(value);
+  }
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: compact ? 1 : 2,
+  }).format(value);
 };

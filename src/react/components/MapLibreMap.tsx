@@ -3,7 +3,7 @@ import type { BoundaryMode } from "../../types/boundaries";
 import type { Organization } from "../../types/organization";
 import type { AreaId, AreaKind } from "../../types/areas";
 import type { AreasMode } from "../lib/mapUrl";
-import { createMapView, type MapViewController, type SelectedStatChipOption } from "../imperative/mapView";
+import { createMapView, type MapStatDataById, type MapViewController, type SelectedStatChipOption } from "../imperative/mapView";
 
 interface AreaSelectionChange {
   kind: AreaKind;
@@ -36,6 +36,7 @@ interface MapLibreMapProps {
   categoryFilter?: string | null;
   areasMode?: AreasMode;
   selectedStatId?: string | null;
+  statDataById?: MapStatDataById;
   selectedStatOptions?: SelectedStatChipOption[];
   secondaryStatId?: string | null;
   onHover?: (idOrIds: string | string[] | null) => void;
@@ -142,6 +143,7 @@ export const MapLibreMap = ({
   categoryFilter = null,
   areasMode = "auto",
   selectedStatId = null,
+  statDataById,
   selectedStatOptions = [],
   secondaryStatId = null,
   onHover,
@@ -358,6 +360,7 @@ export const MapLibreMap = ({
     containerRef.current.appendChild(mapController.element);
     mapControllerRef.current = mapController;
     mapController.setVisibleStatIds(visibleStatIdsRef.current);
+    mapController.setStatDataById(statDataById ?? null);
     mapController.setSelectedStatOptions(selectedStatOptions);
     mapController.setExportCsvAreasVisible(Boolean(exportCsvAreasAvailable));
     setLegendInsetRef.current = mapController.setLegendInset;
@@ -524,6 +527,12 @@ export const MapLibreMap = ({
       mapControllerRef.current.setSelectedStat(selectedStatId);
     }
   }, [selectedStatId]);
+
+  useEffect(() => {
+    if (mapControllerRef.current) {
+      mapControllerRef.current.setStatDataById(statDataById ?? null);
+    }
+  }, [statDataById]);
 
   useEffect(() => {
     if (mapControllerRef.current) {

@@ -135,6 +135,7 @@ export const useStats = ({
 }: UseStatsOptions = {}) => {
   const { authReady } = useAuthSession();
   const queryEnabled = authReady;
+  const customDataOwnerId = typeof viewerId === "string" && viewerId.trim() ? viewerId : null;
   const statMapsActive = statDataEnabled && statMapsEnabled;
   const timeSeriesEnabled = statMapsActive && enableTimeSeries;
   // Verbose stat-loading diagnostics can be toggled by URL params
@@ -310,6 +311,80 @@ export const useStats = ({
       : null,
   );
 
+  const {
+    data: customDataResp,
+    isLoading: customDataLoading,
+    error: customDataError,
+  } = db.useQuery(
+    queryEnabled && statDataEnabled && customDataOwnerId
+      ? {
+          customDataStats: {
+            $: {
+              where: { owner: customDataOwnerId, status: "preview" },
+              fields: [
+                "id",
+                "owner",
+                "name",
+                "label",
+                "category",
+                "type",
+                "locationKind",
+                "sourceFile",
+                "status",
+                "updatedAt",
+              ],
+              order: { updatedAt: "desc" as const },
+            },
+          },
+          customDataStatData: {
+            $: {
+              where: {
+                owner: customDataOwnerId,
+                name: "root",
+                boundaryType: { $in: SUPPORTED_AREA_KINDS },
+              },
+              fields: [
+                "customStatId",
+                "name",
+                "parentArea",
+                "boundaryType",
+                "date",
+                "type",
+                "data",
+              ],
+              limit: 10000,
+              order: { date: "asc" as const },
+            },
+          },
+          customDataStatSummaries: {
+            $: {
+              where: {
+                owner: customDataOwnerId,
+                name: "root",
+                boundaryType: { $in: summaryKinds },
+              },
+              fields: [
+                "customStatId",
+                "name",
+                "parentArea",
+                "boundaryType",
+                "date",
+                "type",
+                "count",
+                "sum",
+                "avg",
+                "min",
+                "max",
+                "updatedAt",
+              ],
+              limit: 10000,
+              order: { customStatId: "asc" as const },
+            },
+          },
+        }
+      : null,
+  );
+
   if (Array.isArray(statsResp?.stats)) {
     cachedStatsRef.current = statsResp.stats;
   }
@@ -361,11 +436,75 @@ export const useStats = ({
     ? statsResp.statRelations
     : cachedStatRelationsRef.current;
 
+  const customStatsRows = useMemo(
+    () => (Array.isArray((customDataResp as any)?.customDataStats) ? ((customDataResp as any).customDataStats as any[]) : []),
+    [customDataResp],
+  );
+
+  const customStatIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const row of customStatsRows) {
+      if (typeof row?.id === "string" && row.id.trim()) ids.add(row.id);
+    }
+    return ids;
+  }, [customStatsRows]);
+
+  const customStatDataRows = useMemo(() => {
+    const rows = Array.isArray((customDataResp as any)?.customDataStatData)
+      ? ((customDataResp as any).customDataStatData as any[])
+      : [];
+    return rows
+      .map((row) => {
+        const boundaryType = row?.boundaryType;
+        return {
+          statId: typeof row?.customStatId === "string" ? row.customStatId : "",
+          name: row?.name,
+          parentArea:
+            boundaryType === "ZIP" && row?.parentArea === "Uploaded ZIPs"
+              ? DEFAULT_PARENT_AREA_BY_KIND.ZIP
+              : row?.parentArea,
+          boundaryType,
+          date: row?.date,
+          type: row?.type,
+          data: row?.data,
+        };
+      })
+      .filter((row) => customStatIds.has(row.statId));
+  }, [customDataResp, customStatIds]);
+
+  const customStatSummaryRows = useMemo(() => {
+    const rows = Array.isArray((customDataResp as any)?.customDataStatSummaries)
+      ? ((customDataResp as any).customDataStatSummaries as any[])
+      : [];
+    return rows
+      .map((row) => {
+        const boundaryType = row?.boundaryType;
+        return {
+          statId: typeof row?.customStatId === "string" ? row.customStatId : "",
+          name: row?.name,
+          parentArea:
+            boundaryType === "ZIP" && row?.parentArea === "Uploaded ZIPs"
+              ? DEFAULT_PARENT_AREA_BY_KIND.ZIP
+              : row?.parentArea,
+          boundaryType,
+          date: row?.date,
+          type: row?.type,
+          count: row?.count,
+          sum: row?.sum,
+          avg: row?.avg,
+          min: row?.min,
+          max: row?.max,
+          updatedAt: row?.updatedAt,
+        };
+      })
+      .filter((row) => customStatIds.has(row.statId));
+  }, [customDataResp, customStatIds]);
+
   const allStatsById = useMemo(() => {
     const map = new Map<string, Stat>();
-    if (!Array.isArray(statsRows)) return map;
-    for (const row of statsRows) {
-      if (row?.id && typeof row.name === "string" && typeof row.category === "string") {
+    if (Array.isArray(statsRows)) {
+      for (const row of statsRows) {
+        if (!row?.id || typeof row.name !== "string" || typeof row.category !== "string") continue;
         map.set(row.id, {
           id: row.id,
           name: row.name,
@@ -390,8 +529,23 @@ export const useStats = ({
         });
       }
     }
+    for (const row of customStatsRows) {
+      if (!row?.id || typeof row.name !== "string") continue;
+      map.set(row.id, {
+        id: row.id,
+        name: row.name,
+        label: typeof row.label === "string" && row.label.trim() ? row.label : row.name,
+        source: typeof row.sourceFile === "string" && row.sourceFile.trim() ? `Custom upload: ${row.sourceFile}` : "Custom upload",
+        category: (typeof row.category === "string" && row.category.trim() ? row.category : "custom") as Category,
+        active: true,
+        visibility: "private",
+        visibilityEffective: "private",
+        createdBy: typeof row.owner === "string" ? row.owner : customDataOwnerId,
+        type: typeof row.type === "string" ? row.type : undefined,
+      });
+    }
     return map;
-  }, [statsRows]);
+  }, [customDataOwnerId, customStatsRows, statsRows]);
 
   const parentsByChild = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -601,6 +755,7 @@ export const useStats = ({
     const add = (id?: string | null) => {
       if (!id || typeof id !== "string") return;
       if (seen.has(id)) return;
+      if (customStatIds.has(id)) return;
       if (!shouldRequest(id, prioritySet.has(id))) return;
       seen.add(id);
       batch.push(id);
@@ -621,7 +776,7 @@ export const useStats = ({
     // Prioritize immediate visible feedback: fetch one unresolved priority stat
     // first (selected, then secondary, then family/report priorities).
     const nextPriorityId = priorityIds.find(
-      (id) => typeof id === "string" && id.length > 0 && shouldRequest(id, true),
+      (id) => typeof id === "string" && id.length > 0 && !customStatIds.has(id) && shouldRequest(id, true),
     );
     if (nextPriorityId) {
       addWithChildren(nextPriorityId, 0);
@@ -652,6 +807,7 @@ export const useStats = ({
     batchGeneration,
     childrenByParent,
     statDataCacheVersion,
+    customStatIds,
   ]);
 
   const shouldIncludeStatData =
@@ -963,9 +1119,14 @@ export const useStats = ({
 
   const statDataRows = useMemo(() => {
     if (!statMapsActive) return [];
-    if (cachedStatDataRows.length > 0) return cachedStatDataRows;
-    return Array.isArray(statDataResp?.statData) ? (statDataResp.statData as any[]) : [];
-  }, [cachedStatDataRows, statDataResp?.statData, statMapsActive]);
+    const baseRows =
+      cachedStatDataRows.length > 0
+        ? cachedStatDataRows
+        : Array.isArray(statDataResp?.statData)
+          ? (statDataResp.statData as any[])
+          : [];
+    return customStatDataRows.length > 0 ? [...baseRows, ...customStatDataRows] : baseRows;
+  }, [cachedStatDataRows, customStatDataRows, statDataResp?.statData, statMapsActive]);
 
   const effectiveData = {
     stats: statsRows,
@@ -983,8 +1144,8 @@ export const useStats = ({
     return pending;
   }, [batchIds, canQueryStatData, completedStatIdsForContext, emptyStatIdsForContext]);
 
-  const isLoading = statsLoading || statDataLoading;
-  const error = statsError || statDataError;
+  const isLoading = statsLoading || statDataLoading || customDataLoading;
+  const error = statsError || statDataError || customDataError;
 
   const retryStatData = useCallback(
     (statId?: string | null) => {
@@ -1170,10 +1331,12 @@ export const useStats = ({
 
   const summaryRows = useMemo(() => {
     const persisted = persistedSummaryRowsRef.current;
-    if (!persisted.length) return liveSummaryRows;
-    // Order matters: live rows appended last so they win when we reduce into Maps below.
-    return [...persisted, ...liveSummaryRows];
-  }, [liveSummaryRows, persistedSummaryRowsVersion]);
+    if (!persisted.length) {
+      return customStatSummaryRows.length > 0 ? [...liveSummaryRows, ...customStatSummaryRows] : liveSummaryRows;
+    }
+    // Order matters: live/custom rows appended last so they win when we reduce into Maps below.
+    return [...persisted, ...liveSummaryRows, ...customStatSummaryRows];
+  }, [customStatSummaryRows, liveSummaryRows, persistedSummaryRowsVersion]);
 
   // Persist live summaries (small) so refresh/new-tab renders sidebar values instantly.
   const summariesPersistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

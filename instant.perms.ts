@@ -76,6 +76,42 @@ const rules = {
     },
     bind: ["isAdmin", adminCondition],
   },
+  customDataImports: {
+    allow: {
+      view: "isAdmin || (auth.id != null && data.owner == auth.id)",
+      create: "isAdmin || (auth.id != null && newData.owner == auth.id)",
+      update: "isAdmin || (auth.id != null && data.owner == auth.id && newData.owner == data.owner)",
+      delete: "isAdmin || (auth.id != null && data.owner == auth.id)",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
+  customDataStats: {
+    allow: {
+      view: "isAdmin || (auth.id != null && data.owner == auth.id)",
+      create: "isAdmin || (auth.id != null && newData.owner == auth.id)",
+      update: "isAdmin || (auth.id != null && data.owner == auth.id && newData.owner == data.owner)",
+      delete: "isAdmin || (auth.id != null && data.owner == auth.id)",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
+  customDataStatData: {
+    allow: {
+      view: "isAdmin || (auth.id != null && data.owner == auth.id)",
+      create: "isAdmin || (auth.id != null && newData.owner == auth.id)",
+      update: "isAdmin || (auth.id != null && data.owner == auth.id && newData.owner == data.owner)",
+      delete: "isAdmin || (auth.id != null && data.owner == auth.id)",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
+  customDataStatSummaries: {
+    allow: {
+      view: "isAdmin || (auth.id != null && data.owner == auth.id)",
+      create: "isAdmin || (auth.id != null && newData.owner == auth.id)",
+      update: "isAdmin || (auth.id != null && data.owner == auth.id && newData.owner == data.owner)",
+      delete: "isAdmin || (auth.id != null && data.owner == auth.id)",
+    },
+    bind: ["isAdmin", adminCondition],
+  },
   comments: {
     allow: {
       view: "isAdmin",

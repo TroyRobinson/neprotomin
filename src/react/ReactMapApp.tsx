@@ -4042,6 +4042,7 @@ export const ReactMapApp = () => {
               onOrganizationClick={handleOrganizationClick}
               onClusterClick={handleClusterClick}
               selectedStatId={selectedStatId}
+              statDataById={statDataByStatId}
               selectedStatOptions={selectedStatMapChipOptions}
               secondaryStatId={secondaryStatId}
               categoryFilter={categoryFilter}

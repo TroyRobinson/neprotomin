@@ -139,6 +139,7 @@ export interface MapViewController {
   setSelectedOrgIds: (ids: string[]) => void;
   setCategoryFilter: (categoryId: string | null) => void;
   setSelectedStat: (statId: string | null) => void;
+  setStatDataById: (data: MapStatDataById | null) => void;
   setSelectedStatOptions: (options: SelectedStatChipOption[]) => void;
   setSecondaryStat: (statId: string | null) => void;
   setVisibleStatIds: (ids: string[] | null) => void;
@@ -245,6 +246,7 @@ type ExtremaKind = "high" | "low";
 type StatDataEntry = { type: string; data: Record<string, number>; min: number; max: number };
 type StatDataEntryByBoundary = Partial<Record<BoundaryTypeKey, StatDataEntry>>;
 type StatDataStoreMap = Map<string, StatDataByParentArea>;
+export type MapStatDataById = Map<string, StatDataEntryByBoundary>;
 type PoiFeature = GeoJSON.Feature<
   GeoJSON.Point,
   {
@@ -757,6 +759,8 @@ export const createMapView = ({
 
   let statDataStoreMap: StatDataStoreMap = new Map();
   let scopedStatDataByBoundary = new Map<string, StatDataEntryByBoundary>();
+  let externalStatDataByBoundary: MapStatDataById = new Map();
+  let effectiveStatDataByBoundary: MapStatDataById = new Map();
   let zipHoverPillsByArea = new Map<string, HoverStackPill[]>();
   let countyHoverPillsByArea = new Map<string, HoverStackPill[]>();
   let unsubscribeStatData: (() => void) | null = null;
@@ -798,7 +802,7 @@ export const createMapView = ({
 
   const resolveScopedStatEntry = (statId: string | null): StatDataEntryByBoundary | undefined => {
     if (!statId) return undefined;
-    return scopedStatDataByBoundary.get(statId);
+    return effectiveStatDataByBoundary.get(statId);
   };
 
   const getStatEntryByBoundary = (statId: string | null, boundary: BoundaryTypeKey): StatDataEntry | undefined => {
@@ -1040,6 +1044,22 @@ export const createMapView = ({
     };
   };
 
+  const rebuildEffectiveStatDataByBoundary = () => {
+    const merged: MapStatDataById = new Map(scopedStatDataByBoundary);
+    for (const [statId, incoming] of externalStatDataByBoundary.entries()) {
+      const existing = merged.get(statId) ?? {};
+      const next: StatDataEntryByBoundary = { ...existing };
+      for (const boundary of ["ZIP", "COUNTY"] as const) {
+        const entry = incoming[boundary];
+        if (entry) {
+          next[boundary] = mergeStatEntries(next[boundary], entry);
+        }
+      }
+      merged.set(statId, next);
+    }
+    effectiveStatDataByBoundary = merged;
+  };
+
   const recomputeScopedStatData = () => {
     const scopeNames = getScopeAreaNames();
     const primaryScope = normalizeScopeLabel(activeZipParentArea) ?? FALLBACK_ZIP_PARENT_AREA;
@@ -1111,6 +1131,7 @@ export const createMapView = ({
       }
     }
     scopedStatDataByBoundary = aggregated;
+    rebuildEffectiveStatDataByBoundary();
   };
 
   const updateVisibleZipSet = () => {
@@ -2412,14 +2433,14 @@ export const createMapView = ({
     
     // Also update secondary stat hover layer immediately
     if (secondaryStatId) {
-      const primaryEntry = selectedStatId ? scopedStatDataByBoundary.get(selectedStatId) : undefined;
+      const primaryEntry = selectedStatId ? effectiveStatDataByBoundary.get(selectedStatId) : undefined;
       const primaryZipScope = new Set<string>(Object.keys(primaryEntry?.ZIP?.data ?? {}));
       extUpdateSecondaryStatHover(map, {
         SECONDARY_STAT_LAYER_ID,
         SECONDARY_STAT_HOVER_LAYER_ID,
         COUNTY_SECONDARY_LAYER_ID,
         COUNTY_SECONDARY_HOVER_LAYER_ID,
-      }, boundaryMode, secondaryStatId, scopedStatDataByBoundary, primaryZipScope, new Set(), hovered || null, null);
+      }, boundaryMode, secondaryStatId, effectiveStatDataByBoundary, primaryZipScope, new Set(), hovered || null, null);
       // Keep base secondary dots in sync during hover transitions in case a
       // zoom/scope update landed between scheduled visual refreshes.
       updateSecondaryStatOverlay();
@@ -2500,14 +2521,14 @@ export const createMapView = ({
     
     // Also update secondary stat hover layer immediately
     if (secondaryStatId) {
-      const primaryEntry = selectedStatId ? scopedStatDataByBoundary.get(selectedStatId) : undefined;
+      const primaryEntry = selectedStatId ? effectiveStatDataByBoundary.get(selectedStatId) : undefined;
       const primaryCountyScope = new Set<string>(Object.keys(primaryEntry?.COUNTY?.data ?? {}));
       extUpdateSecondaryStatHover(map, {
         SECONDARY_STAT_LAYER_ID,
         SECONDARY_STAT_HOVER_LAYER_ID,
         COUNTY_SECONDARY_LAYER_ID,
         COUNTY_SECONDARY_HOVER_LAYER_ID,
-      }, boundaryMode, secondaryStatId, scopedStatDataByBoundary, new Set(), primaryCountyScope, null, hovered || null);
+      }, boundaryMode, secondaryStatId, effectiveStatDataByBoundary, new Set(), primaryCountyScope, null, hovered || null);
       // Keep base secondary dots in sync during hover transitions in case a
       // zoom/scope update landed between scheduled visual refreshes.
       updateSecondaryStatOverlay();
@@ -3321,6 +3342,7 @@ export const createMapView = ({
       visible: boolean,
     ) => {
       if (map.getLayer(layerId)) return;
+      if (!map.getSource(sourceId)) return;
       const before = map.getLayer(LAYER_CLUSTERS_ID) ? LAYER_CLUSTERS_ID : undefined;
       const layer: any = {
         id: layerId,
@@ -5258,7 +5280,7 @@ export const createMapView = ({
       return;
     }
     
-    extUpdateLegend(choroplethLegend, selectedStatId, boundaryMode, scopedStatDataByBoundary);
+    extUpdateLegend(choroplethLegend, selectedStatId, boundaryMode, effectiveStatDataByBoundary);
   }
 
   function updateSecondaryChoroplethLegend() {
@@ -5267,7 +5289,7 @@ export const createMapView = ({
       secondaryChoroplethLegend.setVisible(false);
       return;
     }
-    extUpdateSecondaryLegend(secondaryChoroplethLegend, secondaryStatId, boundaryMode, scopedStatDataByBoundary);
+    extUpdateSecondaryLegend(secondaryChoroplethLegend, secondaryStatId, boundaryMode, effectiveStatDataByBoundary);
     const showLoading = isSecondaryLegendLoading();
     secondaryChoroplethLegend.setLoading(showLoading);
     if (showLoading) {
@@ -5277,7 +5299,7 @@ export const createMapView = ({
 
   function updateSecondaryStatOverlay() {
     if (!map.isStyleLoaded()) return;
-    const primaryEntry = selectedStatId ? scopedStatDataByBoundary.get(selectedStatId) : undefined;
+    const primaryEntry = selectedStatId ? effectiveStatDataByBoundary.get(selectedStatId) : undefined;
     const primaryZipScope = new Set<string>(Object.keys(primaryEntry?.ZIP?.data ?? {}));
     const primaryCountyScope = new Set<string>(Object.keys(primaryEntry?.COUNTY?.data ?? {}));
     extUpdateSecondaryOverlay(map, {
@@ -5287,7 +5309,7 @@ export const createMapView = ({
       COUNTY_SECONDARY_LAYER_ID,
       SECONDARY_STAT_HOVER_LAYER_ID,
       COUNTY_SECONDARY_HOVER_LAYER_ID,
-    }, boundaryMode, currentTheme, secondaryStatId, scopedStatDataByBoundary,
+    }, boundaryMode, currentTheme, secondaryStatId, effectiveStatDataByBoundary,
       primaryZipScope,
       primaryCountyScope,
       pinnedZips,
@@ -5422,7 +5444,7 @@ export const createMapView = ({
       COUNTY_SECONDARY_LAYER_ID,
       SECONDARY_STAT_HOVER_LAYER_ID,
       COUNTY_SECONDARY_HOVER_LAYER_ID,
-    }, currentTheme, boundaryMode, selectedStatId, scopedStatDataByBoundary, map.getZoom());
+    }, currentTheme, boundaryMode, selectedStatId, effectiveStatDataByBoundary, map.getZoom());
     if (!selectedStatId) {
       try { map.triggerRepaint(); } catch {}
     }
@@ -5800,6 +5822,12 @@ export const createMapView = ({
       if (typeof onStatSelectionChange === 'function') {
         onStatSelectionChange(selectedStatId);
       }
+    },
+    setStatDataById: (data: MapStatDataById | null) => {
+      externalStatDataByBoundary = data instanceof Map ? new Map(data) : new Map();
+      rebuildEffectiveStatDataByBoundary();
+      recomputeStatDataLoading();
+      refreshStatVisuals();
     },
     setSelectedStatOptions: (options: SelectedStatChipOption[]) => {
       categoryChips.setSelectedStatOptions(options);
