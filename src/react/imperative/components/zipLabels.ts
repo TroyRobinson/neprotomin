@@ -77,6 +77,7 @@ export const createZipLabels = ({
   let hoveredPillKey: string | null = null;
   let visible = true;
   let shouldShowStackedStats = map.getZoom() >= stackedStatsMinZoom;
+  let lastRenderSignature = "";
   const labelFadeMs = 45;
   const labelEnterTransformMs = 81;
   const labelEnterOffsetPx = 3;
@@ -669,36 +670,102 @@ export const createZipLabels = ({
     }
   };
 
+  const rowsSignature = (rows: HoverStackPill[]): string =>
+    rows
+      .map((row) => [
+        row.key,
+        row.label,
+        row.tone,
+        row.direction,
+        row.statId ?? "",
+        row.pairKey ?? "",
+        row.scopeLabel ?? "",
+      ].join("\u001f"))
+      .join("\u001e");
+
+  const statValueSignature = (statData: Record<string, number> | null, area: string): string => {
+    if (!statData || !(area in statData)) return "";
+    const value = statData[area];
+    return Number.isFinite(value) ? String(value) : "";
+  };
+
+  const buildLabelSpecs = () => {
+    const areasToLabel = new Set([...currentSelectedZips, ...currentPinnedZips]);
+    if (currentHoveredZip && !areasToLabel.has(currentHoveredZip)) {
+      areasToLabel.add(currentHoveredZip);
+    }
+    for (const area of currentLinkedHoverPillsByArea.keys()) {
+      if (!areasToLabel.has(area)) areasToLabel.add(area);
+    }
+    return Array.from(areasToLabel)
+      .sort((a, b) => a.localeCompare(b))
+      .map((area) => {
+        const isSelected = currentSelectedZips.has(area);
+        const isPinned = currentPinnedZips.has(area);
+        const isDirectHovered = currentHoveredZip === area;
+        const linkedRows = currentLinkedHoverPillsByArea.get(area) ?? [];
+        const hasLinkedOnlyRows = linkedRows.length > 0 && !isDirectHovered;
+        const hoverRows = isDirectHovered ? (currentHoverPillsByArea.get(area) ?? []) : linkedRows;
+        return {
+          area,
+          isSelected,
+          isPinned,
+          isDirectHovered,
+          showBaseStack: !hasLinkedOnlyRows,
+          hoverRows,
+        };
+      });
+  };
+
+  const buildRenderSignature = (specs: ReturnType<typeof buildLabelSpecs>): string => {
+    const parts = [
+      currentTheme,
+      currentStatId ?? "",
+      currentStatType,
+      currentSecondaryStatId ?? "",
+      currentSecondaryStatType,
+      shouldShowStackedStats ? "stacked" : "compact",
+    ];
+    for (const spec of specs) {
+      parts.push([
+        spec.area,
+        idToLabel(spec.area),
+        spec.isSelected ? "selected" : "",
+        spec.isPinned ? "pinned" : "",
+        spec.isDirectHovered ? "hovered" : "",
+        spec.showBaseStack ? "base" : "linked",
+        statValueSignature(currentStatData, spec.area),
+        statValueSignature(currentSecondaryData, spec.area),
+        rowsSignature(spec.hoverRows),
+      ].join("\u001d"));
+    }
+    return parts.join("\u001c");
+  };
+
   const updateLabels = (options?: { animateContainerFade?: boolean }) => {
     if (!visible) return;
     const animateContainerFade = options?.animateContainerFade !== false;
     shouldShowStackedStats = computeShouldShowStackedStats();
+    const labelSpecs = buildLabelSpecs();
+    const nextRenderSignature = buildRenderSignature(labelSpecs);
+    if (nextRenderSignature === lastRenderSignature) {
+      updateAllPositions();
+      return;
+    }
+    lastRenderSignature = nextRenderSignature;
     for (const [_zip, element] of labelElements) {
       removeLabelWithRowTransition(element, { animateContainerFade });
     }
     labelElements.clear();
-    const zipsToLabel = new Set([...currentSelectedZips, ...currentPinnedZips]);
-    if (currentHoveredZip && !zipsToLabel.has(currentHoveredZip)) {
-      zipsToLabel.add(currentHoveredZip);
-    }
-    for (const area of currentLinkedHoverPillsByArea.keys()) {
-      if (!zipsToLabel.has(area)) zipsToLabel.add(area);
-    }
-    for (const zip of zipsToLabel) {
-      const isSelected = currentSelectedZips.has(zip);
-      const isPinned = currentPinnedZips.has(zip);
-      const isDirectHovered = currentHoveredZip === zip;
-      const linkedRows = currentLinkedHoverPillsByArea.get(zip) ?? [];
-      const hasLinkedOnlyRows = linkedRows.length > 0 && !isDirectHovered;
-      const hoverRows = isDirectHovered ? (currentHoverPillsByArea.get(zip) ?? []) : linkedRows;
-      const element = createLabelElement(zip, isSelected, isPinned, {
-        isDirectHovered,
-        showBaseStack: !hasLinkedOnlyRows,
-        hoverRows,
+    for (const spec of labelSpecs) {
+      const element = createLabelElement(spec.area, spec.isSelected, spec.isPinned, {
+        isDirectHovered: spec.isDirectHovered,
+        showBaseStack: spec.showBaseStack,
+        hoverRows: spec.hoverRows,
         animateContainerFade,
       });
       if (element) {
-        labelElements.set(zip, element);
+        labelElements.set(spec.area, element);
       }
     }
     if (updatePositionHandler) {
@@ -754,14 +821,14 @@ export const createZipLabels = ({
     currentStatId = statId;
     currentStatData = statData;
     if (statType) currentStatType = statType;
-    if (visible) updateLabels();
+    if (visible) updateLabels({ animateContainerFade: false });
   };
 
   const setSecondaryStatOverlay = (statId: string | null, statData: Record<string, number> | null, statType?: string) => {
     currentSecondaryStatId = statId;
     currentSecondaryData = statData;
     if (statType) currentSecondaryStatType = statType;
-    if (visible) updateLabels();
+    if (visible) updateLabels({ animateContainerFade: false });
   };
 
   const setTheme = (theme: "light" | "dark") => {
@@ -782,6 +849,7 @@ export const createZipLabels = ({
       }
       for (const [, el] of labelElements) el.remove();
       labelElements.clear();
+      lastRenderSignature = "";
     } else {
       updateLabels();
     }
