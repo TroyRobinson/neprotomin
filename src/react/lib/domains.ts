@@ -18,9 +18,7 @@ export const isFoodMapDomain = (): boolean => {
   const hostname = window.location.hostname.toLowerCase();
   return (
     hostname === "okfoodmap.com" ||
-    hostname.endsWith(".okfoodmap.com") ||
-    hostname === "okfoodmap.org" ||
-    hostname.endsWith(".okfoodmap.org")
+    hostname.endsWith(".okfoodmap.com")
   );
 };
 

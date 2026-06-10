@@ -16,12 +16,6 @@ describe("domain defaults", () => {
     (globalThis as any).window = { location: { hostname: "app.okfoodmap.com" } };
     expect(isFoodMapDomain()).toBe(true);
 
-    (globalThis as any).window = { location: { hostname: "okfoodmap.org" } };
-    expect(isFoodMapDomain()).toBe(true);
-
-    (globalThis as any).window = { location: { hostname: "app.okfoodmap.org" } };
-    expect(isFoodMapDomain()).toBe(true);
-
     (globalThis as any).window = { location: { hostname: "example.test" } };
     expect(isFoodMapDomain()).toBe(false);
   });
