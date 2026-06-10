@@ -16,7 +16,12 @@ const DEFAULT_DOMAIN_METADATA = {
 export const isFoodMapDomain = (): boolean => {
   if (typeof window === "undefined") return false;
   const hostname = window.location.hostname.toLowerCase();
-  return hostname === "okfoodmap.com" || hostname.endsWith(".okfoodmap.com");
+  return (
+    hostname === "okfoodmap.com" ||
+    hostname.endsWith(".okfoodmap.com") ||
+    hostname === "okfoodmap.org" ||
+    hostname.endsWith(".okfoodmap.org")
+  );
 };
 
 export type DomainMetadata = {

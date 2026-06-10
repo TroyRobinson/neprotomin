@@ -10,6 +10,7 @@ import { isAdminEmail } from "../../lib/admin";
 import { themeController } from "../imperative/theme";
 import { MAP_TOUR_TARGETS } from "../imperative/constants/mapTourTargets";
 import { useCensusImportQueue } from "../hooks/useCensusImportQueue";
+import { isFoodMapDomain } from "../lib/domains";
 import {
   canProbeHomepageRedirectState,
   readHomepageRedirectState,
@@ -242,6 +243,7 @@ export const TopBar = ({
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
   const importQueueRef = useRef<HTMLDivElement | null>(null);
   const neHomeRedirectChangedRef = useRef(false);
+  const showNeHomeToggle = useMemo(() => !isFoodMapDomain(), []);
   const nextNeHomeRedirectDisabled = !neHomeRedirectDisabled;
   const nextNeHomeUrl = `https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=${nextNeHomeRedirectDisabled ? "1" : "0"}`;
 
@@ -912,60 +914,62 @@ export const TopBar = ({
                   "linear-gradient(to right, transparent 0%, rgba(15, 23, 42, 0.8) 100%)",
               }}
             />
-            <a
-              href={nextNeHomeUrl}
-              onClick={(e) => {
-                e.preventDefault();
-                // Persist the selected homepage mode before browser navigation.
-                neHomeRedirectChangedRef.current = true;
-                setNeHomeRedirectDisabled(nextNeHomeRedirectDisabled);
-                setNeHomeRedirectState(nextNeHomeRedirectDisabled);
-                if (nextNeHomeRedirectDisabled) {
-                  // Switching to original home: open classic homepage in a new tab
-                  // while keeping this map tab on its current host.
-                  const opened = window.open(nextNeHomeUrl, "_blank");
-                  if (opened) {
-                    // Detach opener to avoid tabnabbing while still allowing reliable popup detection.
-                    opened.opener = null;
+            {showNeHomeToggle && (
+              <a
+                href={nextNeHomeUrl}
+                onClick={(e) => {
+                  e.preventDefault();
+                  // Persist the selected homepage mode before browser navigation.
+                  neHomeRedirectChangedRef.current = true;
+                  setNeHomeRedirectDisabled(nextNeHomeRedirectDisabled);
+                  setNeHomeRedirectState(nextNeHomeRedirectDisabled);
+                  if (nextNeHomeRedirectDisabled) {
+                    // Switching to original home: open classic homepage in a new tab
+                    // while keeping this map tab on its current host.
+                    const opened = window.open(nextNeHomeUrl, "_blank");
+                    if (opened) {
+                      // Detach opener to avoid tabnabbing while still allowing reliable popup detection.
+                      opened.opener = null;
+                    }
+                    return;
                   }
-                  return;
-                }
-                // Switching to map home: navigate in this tab (server redirects to map).
-                window.location.assign(nextNeHomeUrl);
-              }}
-              aria-describedby="home-toggle-tooltip"
-              aria-label={
-                neHomeRedirectDisabled
-                  ? "Make map the default homepage"
-                  : "Open original homepage in a new tab"
-              }
-              className="group/home-toggle relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 dark:text-slate-300"
-            >
-              <span
-                className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                  // Switching to map home: navigate in this tab (server redirects to map).
+                  window.location.assign(nextNeHomeUrl);
+                }}
+                aria-describedby="home-toggle-tooltip"
+                aria-label={
                   neHomeRedirectDisabled
-                    ? "bg-slate-300 dark:bg-slate-600"
-                    : "bg-brand-400 dark:bg-brand-500"
-                }`}
+                    ? "Make map the default homepage"
+                    : "Open original homepage in a new tab"
+                }
+                className="group/home-toggle relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 dark:text-slate-300"
               >
                 <span
-                  className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition ${
-                    neHomeRedirectDisabled ? "translate-x-1.5" : "translate-x-3"
+                  className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                    neHomeRedirectDisabled
+                      ? "bg-slate-300 dark:bg-slate-600"
+                      : "bg-brand-400 dark:bg-brand-500"
                   }`}
-                />
-              </span>
-              <span className="whitespace-nowrap text-slate-400 dark:text-slate-500">
-                {neHomeRedirectDisabled ? "Home: Original" : "Home: Map"}
-              </span>
-              <span
-                id="home-toggle-tooltip"
-                role="tooltip"
-                className="pointer-events-none invisible absolute right-0 top-full z-50 mt-2 w-max rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-xs font-medium leading-4 text-slate-700 opacity-0 shadow-lg group-hover/home-toggle:visible group-hover/home-toggle:opacity-100 group-focus-visible/home-toggle:visible group-focus-visible/home-toggle:opacity-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-              >
-                <span className="block">what happens when you visit</span>
-                <span className="block">neighborhoodexplorer.org</span>
-              </span>
-            </a>
+                >
+                  <span
+                    className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition ${
+                      neHomeRedirectDisabled ? "translate-x-1.5" : "translate-x-3"
+                    }`}
+                  />
+                </span>
+                <span className="whitespace-nowrap text-slate-400 dark:text-slate-500">
+                  {neHomeRedirectDisabled ? "Home: Original" : "Home: Map"}
+                </span>
+                <span
+                  id="home-toggle-tooltip"
+                  role="tooltip"
+                  className="pointer-events-none invisible absolute right-0 top-full z-50 mt-2 w-max rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-xs font-medium leading-4 text-slate-700 opacity-0 shadow-lg group-hover/home-toggle:visible group-hover/home-toggle:opacity-100 group-focus-visible/home-toggle:visible group-focus-visible/home-toggle:opacity-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  <span className="block">What happens when you visit</span>
+                  <span className="block">neighborhoodexplorer.org</span>
+                </span>
+              </a>
+            )}
             {!isLoading && (!user || user.isGuest) && (
               <button
                 type="button"
