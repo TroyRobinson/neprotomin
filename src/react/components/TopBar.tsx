@@ -10,6 +10,10 @@ import { isAdminEmail } from "../../lib/admin";
 import { themeController } from "../imperative/theme";
 import { MAP_TOUR_TARGETS } from "../imperative/constants/mapTourTargets";
 import { useCensusImportQueue } from "../hooks/useCensusImportQueue";
+import {
+  canProbeHomepageRedirectState,
+  readHomepageRedirectState,
+} from "../lib/homepagePreference";
 import { QueueListIcon } from "@heroicons/react/24/outline";
 
 // ============================================================================
@@ -237,6 +241,7 @@ export const TopBar = ({
   const mapMenuRef = useRef<HTMLDivElement | null>(null);
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
   const importQueueRef = useRef<HTMLDivElement | null>(null);
+  const neHomeRedirectChangedRef = useRef(false);
   const nextNeHomeRedirectDisabled = !neHomeRedirectDisabled;
   const nextNeHomeUrl = `https://www.neighborhoodexplorer.org/?dwft_disable_homepage_redirect=${nextNeHomeRedirectDisabled ? "1" : "0"}`;
 
@@ -245,6 +250,22 @@ export const TopBar = ({
       setTheme(current);
     });
     return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (!canProbeHomepageRedirectState()) return;
+    let cancelled = false;
+    readHomepageRedirectState().then((state) => {
+      if (cancelled || neHomeRedirectChangedRef.current || state === "unknown") {
+        return;
+      }
+      const redirectDisabled = state === "original";
+      setNeHomeRedirectDisabled(redirectDisabled);
+      setNeHomeRedirectState(redirectDisabled);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -896,6 +917,7 @@ export const TopBar = ({
               onClick={(e) => {
                 e.preventDefault();
                 // Persist the selected homepage mode before browser navigation.
+                neHomeRedirectChangedRef.current = true;
                 setNeHomeRedirectDisabled(nextNeHomeRedirectDisabled);
                 setNeHomeRedirectState(nextNeHomeRedirectDisabled);
                 if (nextNeHomeRedirectDisabled) {
