@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import type { FormEvent, MouseEvent as ReactMouseEvent } from "react";
+import type {
+  FocusEvent as ReactFocusEvent,
+  FormEvent,
+  MouseEvent as ReactMouseEvent,
+} from "react";
 import { track } from "@vercel/analytics";
 import { db } from "../../lib/reactDb";
 import { isAdminEmail } from "../../lib/admin";
@@ -127,6 +131,8 @@ const ChevronDownIcon = () => (
 const MOBILE_SEARCH_AUTO_EXPAND_THRESHOLD = 380;
 
 const NE_HOME_REDIRECT_STORAGE_KEY = "ne.homeRedirectDisabled";
+const FULL_ORIGINAL_MAP_URL =
+  "https://www.neighborhoodexplorer.org/explore/7DZgo1Z5/?g=tract";
 
 const guessQueueTitle = (text: string): string => {
   const trimmed = text.trim();
@@ -211,6 +217,7 @@ export const TopBar = ({
   );
   const [showLocationTextMobile, setShowLocationTextMobile] = useState(true);
   const [showThemeButtonMobile, setShowThemeButtonMobile] = useState(true);
+  const [isMapMenuOpen, setIsMapMenuOpen] = useState(false);
   // Desktop "More" dropdown state
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const {
@@ -227,6 +234,7 @@ export const TopBar = ({
   const mobileActionsRef = useRef<HTMLDivElement | null>(null);
   const mobileSearchFormRef = useRef<HTMLFormElement | null>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const mapMenuRef = useRef<HTMLDivElement | null>(null);
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
   const importQueueRef = useRef<HTMLDivElement | null>(null);
   const nextNeHomeRedirectDisabled = !neHomeRedirectDisabled;
@@ -243,7 +251,8 @@ export const TopBar = ({
     if (!isMobile) {
       setIsMobileMenuOpen(false);
     } else {
-      // Close desktop dropdown when switching to mobile
+      // Close desktop dropdowns when switching to mobile.
+      setIsMapMenuOpen(false);
       setIsMoreMenuOpen(false);
     }
   }, [isMobile]);
@@ -390,6 +399,24 @@ export const TopBar = ({
     };
   }, [isCompactMobileSearch, isMobileSearchExpanded]);
 
+  useEffect(() => {
+    if (!isMapMenuOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const menu = mapMenuRef.current;
+      if (
+        menu &&
+        event.target instanceof Node &&
+        !menu.contains(event.target)
+      ) {
+        setIsMapMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isMapMenuOpen]);
+
   // Click-outside handler for desktop "More" dropdown
   useEffect(() => {
     if (!isMoreMenuOpen) return;
@@ -417,6 +444,14 @@ export const TopBar = ({
   const handleBrandClick = (e: ReactMouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
     onBrandClick?.();
+  };
+
+  const handleMapMenuBlur = (e: ReactFocusEvent<HTMLDivElement>) => {
+    const nextTarget = e.relatedTarget;
+    if (nextTarget instanceof Node && e.currentTarget.contains(nextTarget)) {
+      return;
+    }
+    setIsMapMenuOpen(false);
   };
 
   const handleMobileSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
@@ -560,24 +595,79 @@ export const TopBar = ({
             </a>
             <div className="relative flex min-w-0 flex-1 items-center">
               <div className="relative flex min-w-0 max-w-full items-center gap-2">
+                <div
+                  className="relative shrink-0"
+                  ref={mapMenuRef}
+                  onMouseEnter={() => {
+                    setIsMoreMenuOpen(false);
+                    setIsMapMenuOpen(true);
+                  }}
+                  onMouseLeave={() => setIsMapMenuOpen(false)}
+                  onFocus={() => {
+                    setIsMoreMenuOpen(false);
+                    setIsMapMenuOpen(true);
+                  }}
+                  onBlur={handleMapMenuBlur}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      setIsMapMenuOpen(true);
+                    }}
+                    className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap ${
+                      active === "map" || isMapMenuOpen
+                        ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                        : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    }`}
+                    aria-current={active === "map" ? "page" : undefined}
+                    aria-expanded={isMapMenuOpen}
+                    aria-haspopup="true"
+                  >
+                    <span>Map</span>
+                    <span
+                      className={`transition-transform duration-150 ${isMapMenuOpen ? "rotate-180" : ""}`}
+                    >
+                      <ChevronDownIcon />
+                    </span>
+                  </button>
+                  {isMapMenuOpen && (
+                    <div className="absolute left-0 top-full z-50 min-w-[220px] pt-2">
+                      <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                        <a
+                          href={FULL_ORIGINAL_MAP_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => {
+                            setIsMapMenuOpen(false);
+                            trackNavItem("Full, Original Map", "external");
+                          }}
+                          className="flex w-full items-center px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                        >
+                          Full, Original Map
+                        </a>
+                        <a
+                          href="#map"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setIsMapMenuOpen(false);
+                            trackNavItem("Food Map", "internal");
+                            onNavigate?.("map");
+                          }}
+                          className={`flex w-full items-center px-4 py-2 text-sm font-medium transition-colors ${
+                            active === "map"
+                              ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
+                              : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          Limited Beta Map
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div className="relative min-w-0 overflow-hidden">
                   <nav className="hidden min-w-0 items-center gap-2 sm:flex">
-                    <a
-                      href="#map"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        trackNavItem("Food Map", "internal");
-                        onNavigate?.("map");
-                      }}
-                      className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap ${
-                        active === "map"
-                          ? "bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-white"
-                          : "text-slate-600 hover:bg-brand-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                      }`}
-                      aria-current={active === "map" ? "page" : undefined}
-                    >
-                      Map
-                    </a>
                     {ENABLE_REPORT_MENU && showReportLink && (
                       <a
                         href="#report"
