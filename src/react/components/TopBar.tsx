@@ -921,14 +921,13 @@ export const TopBar = ({
                 setNeHomeRedirectDisabled(nextNeHomeRedirectDisabled);
                 setNeHomeRedirectState(nextNeHomeRedirectDisabled);
                 if (nextNeHomeRedirectDisabled) {
-                  // Switching to original home: open classic homepage in a new tab,
-                  // and keep this tab on the map host.
+                  // Switching to original home: open classic homepage in a new tab
+                  // while keeping this map tab on its current host.
                   const opened = window.open(nextNeHomeUrl, "_blank");
                   if (opened) {
                     // Detach opener to avoid tabnabbing while still allowing reliable popup detection.
                     opened.opener = null;
                   }
-                  window.location.assign("https://okfoodmap.com");
                   return;
                 }
                 // Switching to map home: navigate in this tab (server redirects to map).
