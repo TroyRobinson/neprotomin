@@ -933,12 +933,13 @@ export const TopBar = ({
                 // Switching to map home: navigate in this tab (server redirects to map).
                 window.location.assign(nextNeHomeUrl);
               }}
-              className="relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 dark:text-slate-300"
-              title={
+              aria-describedby="home-toggle-tooltip"
+              aria-label={
                 neHomeRedirectDisabled
                   ? "Make map the default homepage"
                   : "Open original homepage in a new tab"
               }
+              className="group/home-toggle relative inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 text-slate-600 dark:text-slate-300"
             >
               <span
                 className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
@@ -955,6 +956,14 @@ export const TopBar = ({
               </span>
               <span className="whitespace-nowrap text-slate-400 dark:text-slate-500">
                 {neHomeRedirectDisabled ? "Home: Original" : "Home: Map"}
+              </span>
+              <span
+                id="home-toggle-tooltip"
+                role="tooltip"
+                className="pointer-events-none invisible absolute right-0 top-full z-50 mt-2 w-max rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-xs font-medium leading-4 text-slate-700 opacity-0 shadow-lg group-hover/home-toggle:visible group-hover/home-toggle:opacity-100 group-focus-visible/home-toggle:visible group-focus-visible/home-toggle:opacity-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              >
+                <span className="block">what happens when you visit</span>
+                <span className="block">neighborhoodexplorer.org</span>
               </span>
             </a>
             {!isLoading && (!user || user.isGuest) && (
